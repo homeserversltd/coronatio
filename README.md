@@ -17,7 +17,7 @@ The old premium-tab system is quarry, not trash. It contains hard-won behavior l
 - installed tabs survive future host builds;
 - admin visibility and service health are part of the tab contract.
 
-Coronatio re-inscribes that law as typed Rust contracts.
+Coronatio re-inscribes that law as typed Rust contracts. The crown primary tabs are `admin`, `stats`, `portals`, and `upload`; third-party platform-owned brands stay out of primary navigation.
 
 ## Initial substrate
 
@@ -55,12 +55,12 @@ Minimal manifest:
 
 ```json
 {
-  "id": "youtube",
-  "title": "YouTube",
-  "description": "Download and subscription appliance",
-  "order": 90,
+  "id": "portals",
+  "title": "Portals",
+  "description": "Service portal launcher and local ingress appliance",
+  "order": 30,
   "adminOnly": true,
-  "routePrefix": "/api/tabs/youtube",
+  "routePrefix": "/api/tabs/portals",
   "staticDir": "static",
   "serviceUrl": "http://127.0.0.1:9910",
   "healthRoute": "/health",

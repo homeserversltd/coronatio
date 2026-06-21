@@ -11,6 +11,7 @@ use tokio::fs;
 use tower_http::services::ServeDir;
 
 const DEFAULT_TAB_ROOT: &str = "/var/lib/coronatio/tabs";
+const PRIMARY_TABS: [&str; 4] = ["admin", "stats", "portals", "upload"];
 
 #[derive(Clone)]
 struct AppState {
@@ -25,6 +26,7 @@ struct CoronatioRoot {
     product: String,
     routes: Vec<String>,
     tab_root: String,
+    primary_tabs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -126,6 +128,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/tabs/<tab-id>/static/...".to_string(),
         ],
         tab_root: state.tab_root.display().to_string(),
+        primary_tabs: PRIMARY_TABS.iter().map(|tab| (*tab).to_string()).collect(),
     })
 }
 
@@ -237,7 +240,9 @@ mod tests {
 
     #[test]
     fn tab_ids_are_forward_safe() {
-        assert!(is_safe_tab_id("youtube"));
+        for tab_id in PRIMARY_TABS {
+            assert!(is_safe_tab_id(tab_id));
+        }
         assert!(is_safe_tab_id("backblaze-tab"));
         assert!(!is_safe_tab_id("../escape"));
         assert!(!is_safe_tab_id("CamelCase"));
@@ -264,18 +269,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_root_declares_lawful_primary_tabs() {
+        let temp = test_tab_root("primary-tabs");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(Request::builder().uri("/api").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(root.primary_tabs, ["admin", "stats", "portals", "upload"]);
+    }
+
+    #[tokio::test]
     async fn loads_dynamic_cartridge_manifests_without_recompile() {
         let temp = test_tab_root("dynamic-tabs");
-        let tab_dir = temp.join("youtube");
+        let tab_dir = temp.join("portals");
         std::fs::create_dir_all(&tab_dir).unwrap();
         std::fs::write(
             tab_dir.join("tab.json"),
             r#"{
-              "id":"youtube",
-              "title":"YouTube",
-              "order":90,
+              "id":"portals",
+              "title":"Portals",
+              "order":30,
               "adminOnly":true,
-              "routePrefix":"/api/tabs/youtube",
+              "routePrefix":"/api/tabs/portals",
               "staticDir":"static",
               "serviceUrl":"http://127.0.0.1:9910",
               "healthRoute":"/health",
@@ -301,7 +323,7 @@ mod tests {
             .unwrap();
         let list: TabList = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(list.tabs.len(), 1);
-        assert_eq!(list.tabs[0].id, "youtube");
+        assert_eq!(list.tabs[0].id, "portals");
         assert_eq!(list.tabs[0].install_mode, InstallMode::DynamicCartridge);
     }
 

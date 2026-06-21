@@ -4,7 +4,7 @@
 
 Coronatio is the HOMESERVER crown: a Rust-owned appliance host for infinite services and infinite tabs.
 
-It replaces the old Flask/React HOMESERVER control surface by extracting the premium-tab state-machine law and rebuilding it as typed contracts, explicit lanes, receipts, and appliance readbacks.
+It replaces the old Flask/React HOMESERVER control surface by extracting the premium-tab state-machine law and rebuilding it as typed contracts, explicit lanes, receipts, and appliance readbacks. The lawful primary tabs are `admin`, `stats`, `portals`, and `upload`; platform-owned third-party brands are cartridge content only, never crown primary navigation.
 
 ## Preserved goods from HOMESERVER quarry
 
