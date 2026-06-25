@@ -305,8 +305,24 @@
         let readme = std::fs::read_to_string("README.md").unwrap();
         let north_star = std::fs::read_to_string("docs/coronatio-north-star-contract.md").unwrap();
         let bands = std::fs::read_to_string("src/bands/README.md").unwrap();
-        for (name, text) in [("shell", shell), ("readme", readme), ("north_star", north_star), ("bands", bands)] {
+        let theme_doc = std::fs::read_to_string("static/themes/README.md").unwrap();
+        let favorites_doc = std::fs::read_to_string("static/favorites/README.md").unwrap();
+        for (name, text) in [
+            ("shell", shell),
+            ("readme", readme),
+            ("north_star", north_star),
+            ("bands", bands),
+            ("theme_doc", theme_doc),
+            ("favorites_doc", favorites_doc),
+        ] {
             assert!(text.contains("homeserver.json"), "{name} must name homeserver.json authority");
+            assert!(text.contains("one-to-one port"), "{name} must name the one-to-one port doctrine");
+            assert!(
+                text.contains("before any Coronatio-local fallback")
+                    || text.contains("before any Coronatio local fallback")
+                    || text.contains("before any Coronatio-local fallback or firmware default"),
+                "{name} must name homeserver.json before local fallback authority"
+            );
             assert!(!text.contains("static/themes/theme.json"), "{name} advertises obsolete theme sidecar");
             assert!(!text.contains("static/favorites/favorites.json"), "{name} advertises obsolete favorites sidecar");
             assert!(!text.contains("CORONATIO_THEME_JSON"), "{name} advertises obsolete theme env sidecar");
