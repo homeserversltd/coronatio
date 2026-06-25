@@ -28,6 +28,19 @@ mod tests {
             .any(|pane| pane.admin_only && pane.id == "admin"));
     }
 
+    #[test]
+    fn docs_inscribe_one_to_one_port_doctrine() {
+        let readme = std::fs::read_to_string("README.md").unwrap();
+        let north_star = std::fs::read_to_string("docs/coronatio-north-star-contract.md").unwrap();
+        let bands = std::fs::read_to_string("src/bands/README.md").unwrap();
+        for doc in [&readme, &north_star, &bands] {
+            assert!(doc.contains("one-to-one port"));
+            assert!(doc.contains("not a reinterpretation, redesign, summary, scaffold, or inspired-by rebuild"));
+            assert!(doc.contains("directly queries the original Flask/React source and live quarry"));
+            assert!(doc.contains("indistinguishable to the user under the same viewport, theme, session/admin state, configuration, and data state"));
+        }
+    }
+
     #[tokio::test]
     async fn api_root_names_coronatio_not_arcadia() {
         let temp = test_tab_root("api-root");

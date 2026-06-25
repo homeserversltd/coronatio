@@ -6,6 +6,15 @@ Coronatio is the HOMESERVER crown: a Rust-owned appliance host for infinite serv
 
 It replaces the old Flask/React HOMESERVER control surface by extracting the premium-tab state-machine law and rebuilding it as typed contracts, explicit lanes, receipts, and appliance readbacks. The lawful primary tabs are `admin`, `stats`, `portals`, and `upload`; platform-owned third-party brands are cartridge content only, never crown primary navigation.
 
+## One-to-one port doctrine
+
+Coronatio's migration intent is a one-to-one port of the old Flask/React HOMESERVER user experience into Rust-owned firmware.
+
+A port is not a reinterpretation, redesign, summary, scaffold, or inspired-by rebuild. A port directly queries the original Flask/React source and live quarry for intended behavior, then reproduces the same visible controls, control placement, labels, click outcomes, state transitions, persistence keys, layout/feel, data boundaries, and result class in Coronatio unless an explicit approved divergence is recorded.
+
+Identical means indistinguishable to the user under the same viewport, theme, session/admin state, configuration, and data state. Implementation substrate may change from Flask/React/Python to Rust/Caduceus/Harmonia; the experienced surface may not drift. Tests that only prove word presence, contract existence, or approximate semantics are not acceptance for port work. Every port tranche must cite or inspect the original source/living quarry, name the old behavior, reproduce it in Rust, and prove the same user-visible behavior once.
+
+
 ## Preserved goods from HOMESERVER quarry
 
 The old premium-tab system proved these goods are required:
