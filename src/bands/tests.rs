@@ -187,7 +187,7 @@ mod tests {
             assert!(shell.contains(&format!(r#"data-indicator="{}""#, indicator)));
         }
         assert!(shell.contains(r#"class="indicator ok tailscale-indicator""#));
-        assert!(shell.contains(r#"data-fa-icon="network-wired""#));
+        assert!(shell.contains(r#"data-packed-icon="network-wired""#));
         assert!(shell.contains(r#"data-modal-title="Tailscale Status""#));
         assert!(shell.contains(r#"data-modal-kind="tailscale""#));
         assert!(shell.contains("data-info-modal-backdrop"));
@@ -650,10 +650,17 @@ mod tests {
 
 
     #[test]
-    fn header_status_indicators_are_react_icon_port_not_text_pills() {
+    fn header_status_indicators_are_packed_react_icon_port_not_text_pills() {
         let shell = render_crown_shell();
         for icon in ["network-wired", "plug", "lock", "server", "bolt"] {
-            assert!(shell.contains(&format!(r#"data-fa-icon="{}""#, icon)), "missing icon {icon}");
+            assert!(shell.contains(&format!(r#"data-packed-icon="{}""#, icon)), "missing icon {icon}");
+        }
+        assert!(shell.contains("<svg"));
+        assert!(shell.contains("<path"));
+        assert!(!shell.contains("Font Awesome"));
+        assert!(!shell.contains("data-fa-icon"));
+        for glyph in ["&#xf6ff;", "&#xf1e6;", "&#xf023;", "&#xf233;", "&#xf0e7;"] {
+            assert!(!shell.contains(glyph), "unpacked font glyph leaked: {glyph}");
         }
         for visible_text in [">Tailscale</button>", ">Internet</button>", ">OpenVPN</button>", ">Services</button>", ">Power Meter</button>"] {
             assert!(!shell.contains(visible_text), "indicator rendered as text pill: {visible_text}");
@@ -668,11 +675,11 @@ mod tests {
         assert!(shell.contains(r#"class="header-center""#));
         assert!(shell.contains(r#"class="header-right""#));
         assert!(shell.contains(r#"aria-label="Tailscale Status""#));
-        assert!(shell.contains(r#"data-fa-icon="network-wired""#));
-        assert!(shell.contains(r#"data-fa-icon="plug""#));
-        assert!(shell.contains(r#"data-fa-icon="lock""#));
-        assert!(shell.contains(r#"data-fa-icon="server""#));
-        assert!(shell.contains(r#"data-fa-icon="bolt""#));
+        assert!(shell.contains(r#"data-packed-icon="network-wired""#));
+        assert!(shell.contains(r#"data-packed-icon="plug""#));
+        assert!(shell.contains(r#"data-packed-icon="lock""#));
+        assert!(shell.contains(r#"data-packed-icon="server""#));
+        assert!(shell.contains(r#"data-packed-icon="bolt""#));
         assert!(shell.contains("Enter Admin Mode"));
         assert!(!shell.contains("brand-mark"));
         assert!(!shell.contains("⌂"));
