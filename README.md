@@ -154,6 +154,11 @@ Live config writes, `factoryFallback.sh`, `chown`, `chmod`, and temp-file promot
 
 Live installation remains outside this tranche. Privileged file writes, dependency installs, config writes, rebuilds, and service restarts require a later Caduceus actuator/receipt membrane.
 
+
+## Theme system tranche law
+
+The old Flask/React theme system is behavior quarry and visual contract. Coronatio implements it as Rust-delivered firmware with the same browser-visible theme membrane: `preferred-theme`, `themeData`, `style[data-theme-styles]`, `data-theme`, and `--theme-*` CSS variables. Light, dark, and radioactive themes must apply through one token catalog and produce identical token-driven styling across Admin, Stats, Portals, Upload, header controls, modals, cards, and tab controls. A theme switch is real only when the DOM dataset, injected style membrane, local persistence, theme button label, and all pane card computed styles move together.
+
 ## Proof commands
 
 ```bash

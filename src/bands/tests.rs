@@ -198,7 +198,8 @@ mod tests {
         assert!(shell.contains("Open theme selector"));
         assert!(shell.contains(r#"data-theme-choice="dark""#));
         assert!(shell.contains(r#"data-theme-choice="light""#));
-        assert!(shell.contains(r#"data-theme-choice="blue""#));
+        assert!(shell.contains(r#"data-theme-choice="radioactive""#));
+        assert!(!shell.contains(r#"data-theme-choice="blue""#));
         assert!(shell.contains("Current theme:"));
         assert!(shell.contains(r#"class="admin-button""#));
         assert!(shell.contains("Enter Admin Mode"));
@@ -256,6 +257,36 @@ mod tests {
         ] {
             assert!(!shell.contains(invented), "invented visible prose survived: {}", invented);
         }
+    }
+
+
+    #[test]
+    fn crown_theme_system_uses_legacy_react_variable_membrane_across_panes() {
+        let shell = render_crown_shell();
+        for preserved in [
+            "--theme-color-primary",
+            "--theme-bg-primary",
+            "--theme-bg-secondary",
+            "--theme-text-primary",
+            "--theme-status-success",
+            "--theme-spacing-md",
+            "--theme-transition-fast",
+            "--theme-shadow-md",
+            "style[data-theme-styles]",
+            "themeToCss(theme)",
+            "themeCatalog",
+            "preferred-theme",
+            "themeData",
+            r#"data-theme="radioactive""#,
+        ] {
+            assert!(shell.contains(preserved), "theme membrane marker missing: {}", preserved);
+        }
+        for pane in ["admin", "stats", "portals", "upload"] {
+            assert!(shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
+        }
+        assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));
+        assert!(shell.contains("aria-pressed"));
+        assert!(!shell.contains("Choose the active HOMESERVER theme."));
     }
 
     #[tokio::test]
