@@ -13,6 +13,7 @@ use std::{
     net::{SocketAddr, TcpStream},
     path::PathBuf,
     sync::Arc,
+    thread,
     time::Duration,
 };
 use tokio::fs;
@@ -826,7 +827,7 @@ async fn caduceus_update_check_route() -> impl IntoResponse {
 }
 
 async fn caduceus_update_now_route() -> impl IntoResponse {
-    caduceus_mutation_route("update_now", "/api/v1/update/now")
+    caduceus_dispatch_route("update_now", "/api/v1/update/now")
 }
 
 async fn caduceus_receipts_latest_route() -> impl IntoResponse {
@@ -842,6 +843,26 @@ async fn caduceus_receipts_latest_route() -> impl IntoResponse {
             "ok": readback.ok,
             "readback": readback,
             "firstMissingSignal": readback.first_missing_signal
+        })),
+    )
+}
+
+fn caduceus_dispatch_route(
+    route: &'static str,
+    path: &'static str,
+) -> (StatusCode, Json<serde_json::Value>) {
+    thread::spawn(move || {
+        let _ = caduceus_http("POST", path);
+    });
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "schema": "coronatio.caduceus.dispatch.v1",
+            "ok": true,
+            "route": route,
+            "accepted": true,
+            "path": path,
+            "firstMissingSignal": "none"
         })),
     )
 }
@@ -2542,6 +2563,31 @@ mod tests {
         assert!(body.contains("/api/caduceus/update/check"));
         assert!(body.contains("/api/caduceus/update/now"));
         assert!(body.contains("/api/caduceus/receipts/latest"));
+    }
+
+    #[tokio::test]
+    async fn caduceus_update_now_acknowledges_self_restart_dispatch() {
+        let temp = test_tab_root("caduceus-dispatch");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/caduceus/update/now")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("coronatio.caduceus.dispatch.v1"));
+        assert!(body.contains("update_now"));
+        assert!(body.contains("/api/v1/update/now"));
     }
 
     #[tokio::test]
