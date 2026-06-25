@@ -16,7 +16,8 @@
             assert!(
                 body.contains("coronatio.homeserver.route.read.v1")
                     || body.contains("coronatio.upload.history.v1")
-                    || body.contains("coronatio.theme-catalog.response.v1"),
+                    || body.contains("coronatio.theme-catalog.response.v1")
+                    || body.contains("coronatio.portals.config.v1"),
                 "{body}"
             );
             assert!(body.contains(route) || route == "/api/upload/history" || route == "/api/themes", "{body}");

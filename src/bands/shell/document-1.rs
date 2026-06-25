@@ -174,6 +174,15 @@ fn shell_document_1() -> &'static str {
     .pane.active { display: block; }
     .pane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; align-items: start; }
     .portal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: stretch; }
+    .portal-card[data-portal-card] { min-height: 220px; align-items: center; text-align: center; cursor: pointer; }
+    .portal-card[data-portal-card]:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); }
+    .portal-card-header { display: flex; flex-direction: column; align-items: center; gap: .45rem; }
+    .portal-icon { width: 96px; height: 96px; object-fit: contain; border-radius: 8px; }
+    .portal-name { margin: .25rem 0 0; font-size: 1.05rem; font-weight: 700; color: var(--text); }
+    .portal-description { margin: 0; color: var(--text-secondary); font-size: .9rem; line-height: 1.35; }
+    .portal-service-row { display: flex; gap: .35rem; justify-content: center; flex-wrap: wrap; color: var(--text-secondary); font-size: .78rem; }
+    .portal-chip { border: 1px solid var(--border); border-radius: 999px; padding: .18rem .45rem; background: rgba(255,255,255,.05); }
+
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
