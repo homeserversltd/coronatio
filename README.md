@@ -104,6 +104,19 @@ Coronatio does not need one installation strategy. It needs a lawful membrane fo
 
 The acceptance law is not “never recompile.” The acceptance law is: choose the lane that preserves infinite installation while making the membrane explicit, typed, reversible, and provable.
 
+## Frontend storage and persistence contract
+
+`/api/frontend/storage` is a contract/readback route only. It extracts old browser persistence without reading or writing any browser storage. The readback names:
+
+- old persisted stores: `homeserver-store`, `auth-storage`, and `themeData`;
+- old persisted fields: `theme`, `visibility`, `starredTab`, `isInitialized`, `tabs`, `activeTab`, `isAdmin`, and `themeData`;
+- debounce and timeout law: 500ms localStorage write debounce, 500ms duplicate tablet-load debounce, 15s tablet load fallback, and 7s startup config fetch timeout;
+- stale-state recovery: malformed localStorage ignored, hidden/disabled/admin-forbidden tabs clipped, stale async loads discarded, failed visibility writes rolled back;
+- Coronatio ownership: registry owns tabs/visibility/starred tab, browser owns active tab/theme preferences, startup/session receipts own initialization/admin state;
+- migration path and forbidden credential persistence.
+
+Live storage migration remains behind a later browser adapter and receipt.
+
 ## Service, portal, monitor, and data contract
 
 `/api/services/data` is a contract/readback route only. It extracts old portal and monitor behavior without running systemctl, network checks, VPN/Tailscale commands, disk probes, sync jobs, or drive tests. The readback names:
