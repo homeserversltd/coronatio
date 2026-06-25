@@ -37,11 +37,11 @@ fn app(state: AppState) -> Router {
         .route("/api/lanes", get(lane_policy_route))
         .route("/api/fallback", get(fallback_route))
         .route("/api/session", get(session_route))
-        .route("/api/validatePin", post(validate_pin_route))
-        .route("/api/verifyPin", post(validate_pin_route))
-        .route("/api/logout", post(legacy_logout_route))
-        .route("/api/admin/ping", get(legacy_admin_ping_route))
-        .route("/api/admin/pin", post(legacy_staff_intent_route))
+        .route("/api/validatePin", post(homeserver_validate_pin_route))
+        .route("/api/verifyPin", post(homeserver_validate_pin_route))
+        .route("/api/logout", post(homeserver_logout_route))
+        .route("/api/admin/ping", get(homeserver_admin_ping_route))
+        .route("/api/admin/pin", post(homeserver_rust_mutation_route))
         .route(
             "/api/admin/session",
             get(session_route).post(session_renew_route),
@@ -67,6 +67,7 @@ fn app(state: AppState) -> Router {
         .route("/api/stats", get(stats_route))
         .route("/api/tabs", get(tabs_route))
         .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
+        .merge(full_rust_route_table())
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
         .fallback(route_boundary_fallback)
         .with_state(state)

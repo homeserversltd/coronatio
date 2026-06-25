@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     http::{header, Method, StatusCode, Uri},
     response::{Html, IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ include!("bands/runtime.rs");
 include!("bands/routes.rs");
 include!("bands/caduceus.rs");
 include!("bands/router-readback.rs");
+include!("bands/full-rust-routes.rs");
 include!("bands/crown-law.rs");
 include!("bands/shell.rs");
 
