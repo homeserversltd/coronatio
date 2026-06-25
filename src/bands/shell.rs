@@ -140,7 +140,7 @@ fn render_crown_shell() -> String {
     .indicator { cursor: pointer; padding: .25rem; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--text); transition: transform .2s ease, background-color .2s ease, box-shadow .2s ease; }
     .indicator:hover { background-color: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,.15); }
     .indicator:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
-    .indicator-icon { font-family: "Font Awesome 6 Free", "Font Awesome 5 Free", sans-serif; font-weight: 900; font-size: 1.15rem; line-height: 1; }
+    .indicator-icon { width: 1.15rem; height: 1.15rem; display: block; fill: currentColor; }
     .indicator.ok .indicator-icon { color: var(--success); }
     .indicator.warn .indicator-icon { color: var(--warning); }
     .modal-body { display: grid; gap: .75rem; color: var(--text-secondary); }
@@ -284,11 +284,11 @@ fn render_crown_shell() -> String {
         <div class="header-left"><span class="uptime" data-uptime-indicator title="Server uptime">connecting...</span></div>
         <div class="header-center">
           <div class="status-indicators" aria-label="Status indicators">
-            <button type="button" class="indicator ok tailscale-indicator" data-indicator="tailscale" data-modal-kind="tailscale" data-modal-title="Tailscale Status" aria-label="Tailscale Status" title="Tailscale Status"><span class="indicator-icon" data-fa-icon="network-wired" aria-hidden="true">&#xf6ff;</span></button>
-            <button type="button" class="indicator ok internet-indicator" data-indicator="internet" data-modal-kind="internet" data-modal-title="Internet Status" aria-label="Internet Status" title="Internet Status"><span class="indicator-icon" data-fa-icon="plug" aria-hidden="true">&#xf1e6;</span></button>
-            <button type="button" class="indicator warn openvpn-indicator" data-indicator="openvpn" data-modal-kind="openvpn" data-modal-title="VPN & Transmission Configuration" aria-label="VPN & Transmission Configuration" title="VPN & Transmission Configuration"><span class="indicator-icon" data-fa-icon="lock" aria-hidden="true">&#xf023;</span></button>
-            <button type="button" class="indicator ok services-indicator" data-indicator="services" data-modal-kind="services" data-modal-title="Services Status" aria-label="Services Status" title="Services Status"><span class="indicator-icon" data-fa-icon="server" aria-hidden="true">&#xf233;</span></button>
-            <button type="button" class="indicator warn power-indicator" data-indicator="power-meter" data-modal-kind="power-meter" data-modal-title="Power Consumption" aria-label="Power Consumption" title="Power Consumption"><span class="indicator-icon" data-fa-icon="bolt" aria-hidden="true">&#xf0e7;</span></button>
+            <button type="button" class="indicator ok tailscale-indicator" data-indicator="tailscale" data-modal-kind="tailscale" data-modal-title="Tailscale Status" aria-label="Tailscale Status" title="Tailscale Status"><svg class="indicator-icon" data-packed-icon="network-wired" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v8H4V5zm2 2v4h12V7H6zm5 8h2v2h7v2h-7v2h-2v-2H4v-2h7v-2z"/></svg></button>
+            <button type="button" class="indicator ok internet-indicator" data-indicator="internet" data-modal-kind="internet" data-modal-title="Internet Status" aria-label="Internet Status" title="Internet Status"><svg class="indicator-icon" data-packed-icon="plug" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h2v5h2V2h2v5h2V2h2v7a5 5 0 0 1-4 4.9V17h3v2h-3v3h-2v-3H8v-2h3v-3.1A5 5 0 0 1 7 9V2z"/></svg></button>
+            <button type="button" class="indicator warn openvpn-indicator" data-indicator="openvpn" data-modal-kind="openvpn" data-modal-title="VPN & Transmission Configuration" aria-label="VPN & Transmission Configuration" title="VPN & Transmission Configuration"><svg class="indicator-icon" data-packed-icon="lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2h2v11H5V10h2zm2 0h6V8a3 3 0 0 0-6 0v2zm2 4v3h2v-3h-2z"/></svg></button>
+            <button type="button" class="indicator ok services-indicator" data-indicator="services" data-modal-kind="services" data-modal-title="Services Status" aria-label="Services Status" title="Services Status"><svg class="indicator-icon" data-packed-icon="server" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v8H4V3zm2 2v4h12V5H6zm-2 8h16v8H4v-8zm2 2v4h12v-4H6zm9-8h2v2h-2V7zm0 10h2v2h-2v-2z"/></svg></button>
+            <button type="button" class="indicator warn power-indicator" data-indicator="power-meter" data-modal-kind="power-meter" data-modal-title="Power Consumption" aria-label="Power Consumption" title="Power Consumption"><svg class="indicator-icon" data-packed-icon="bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 10-13h-7l1-7z"/></svg></button>
           </div>
         </div>
         <div class="header-right">
