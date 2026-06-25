@@ -19,11 +19,12 @@ use std::{
     time::Duration,
 };
 use tokio::fs;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 const DEFAULT_TAB_ROOT: &str = "/var/lib/coronatio/tabs";
 const PRIMARY_TABS: [&str; 4] = ["admin", "stats", "portals", "upload"];
 const LEGACY_HOMESERVER_ASSET_ROOT: &str = "/var/www/homeserver/build/assets";
+const LEGACY_HOMESERVER_BUILD_ROOT: &str = "/var/www/homeserver/build";
 
 #[derive(Clone)]
 struct AppState {
@@ -697,6 +698,35 @@ fn app(state: AppState) -> Router {
         .route("/api/*path", any(legacy_homeserver_proxy_route))
         .route("/socket.io/*path", any(legacy_homeserver_proxy_route))
         .nest_service("/assets", ServeDir::new(legacy_homeserver_asset_root()))
+        .route_service("/favicon.ico", legacy_homeserver_build_file("favicon.ico"))
+        .route_service(
+            "/favicon-16x16.png",
+            legacy_homeserver_build_file("favicon-16x16.png"),
+        )
+        .route_service(
+            "/favicon-32x32.png",
+            legacy_homeserver_build_file("favicon-32x32.png"),
+        )
+        .route_service(
+            "/apple-touch-icon.png",
+            legacy_homeserver_build_file("apple-touch-icon.png"),
+        )
+        .route_service(
+            "/android-chrome-192x192.png",
+            legacy_homeserver_build_file("android-chrome-192x192.png"),
+        )
+        .route_service(
+            "/android-chrome-512x512.png",
+            legacy_homeserver_build_file("android-chrome-512x512.png"),
+        )
+        .route_service(
+            "/fallback.html",
+            legacy_homeserver_build_file("fallback.html"),
+        )
+        .route_service(
+            "/fallback-sw.js",
+            legacy_homeserver_build_file("fallback-sw.js"),
+        )
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
         .fallback(route_boundary_fallback)
         .with_state(state)
@@ -1124,6 +1154,16 @@ fn legacy_homeserver_asset_root() -> PathBuf {
     env::var("CORONATIO_LEGACY_HOMESERVER_ASSET_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(LEGACY_HOMESERVER_ASSET_ROOT))
+}
+
+fn legacy_homeserver_build_root() -> PathBuf {
+    env::var("CORONATIO_LEGACY_HOMESERVER_BUILD_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(LEGACY_HOMESERVER_BUILD_ROOT))
+}
+
+fn legacy_homeserver_build_file(name: &str) -> ServeFile {
+    ServeFile::new(legacy_homeserver_build_root().join(name))
 }
 
 fn legacy_homeserver_proxy_socket() -> PathBuf {
@@ -2428,6 +2468,39 @@ fn render_crown_shell() -> String {
         visibility: visible;
       }
     </style>
+    <script data-coronatio-identical-socket-bridge="home-arpa">
+      (() => {
+        const targetOrigin = 'https://home.arpa';
+        const targetWs = 'wss://home.arpa';
+        const rewrite = (value) => {
+          const text = String(value || '');
+          if (!text.includes('/socket.io')) return value;
+          if (text.startsWith('ws://') || text.startsWith('wss://')) return text.replace(/^wss?:\/\/[^/]+/, targetWs);
+          if (text.startsWith('http://') || text.startsWith('https://')) return text.replace(/^https?:\/\/[^/]+/, targetOrigin);
+          if (text.startsWith('/socket.io')) return targetOrigin + text;
+          return value;
+        };
+        const NativeWebSocket = window.WebSocket;
+        window.WebSocket = function(url, protocols) {
+          const rewritten = rewrite(url);
+          return protocols === undefined ? new NativeWebSocket(rewritten) : new NativeWebSocket(rewritten, protocols);
+        };
+        window.WebSocket.prototype = NativeWebSocket.prototype;
+        Object.assign(window.WebSocket, NativeWebSocket);
+        const nativeOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+          return nativeOpen.call(this, method, rewrite(url), ...rest);
+        };
+        const nativeFetch = window.fetch;
+        window.fetch = (input, init) => {
+          if (typeof input === 'string') return nativeFetch(rewrite(input), init);
+          if (input && input.url && String(input.url).includes('/socket.io')) {
+            input = new Request(rewrite(input.url), input);
+          }
+          return nativeFetch(input, init);
+        };
+      })();
+    </script>
     <script type="module" crossorigin src="/assets/index-BRoXzIjg.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-Co-PYpJ8.css">
   </head>
@@ -2563,6 +2636,8 @@ mod tests {
         assert!(body.contains("HomeServer Admin Interface"));
         assert!(body.contains("/assets/index-BRoXzIjg.js"));
         assert!(body.contains("/assets/index-Co-PYpJ8.css"));
+        assert!(body.contains("data-coronatio-identical-socket-bridge=\"home-arpa\""));
+        assert!(body.contains("wss://home.arpa"));
         assert!(body.contains("<div id=\"root\"></div>"));
         assert!(!body.contains("Coronatio crown shell"));
         assert!(!body.contains("data-source-material=\"homeserver-main-site\""));
@@ -3018,6 +3093,10 @@ mod tests {
         assert_eq!(
             legacy_homeserver_asset_root(),
             PathBuf::from(LEGACY_HOMESERVER_ASSET_ROOT)
+        );
+        assert_eq!(
+            legacy_homeserver_build_root(),
+            PathBuf::from(LEGACY_HOMESERVER_BUILD_ROOT)
         );
         assert_eq!(
             legacy_homeserver_proxy_socket(),
