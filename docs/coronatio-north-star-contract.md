@@ -64,6 +64,10 @@ The scaffolding SHALL make these decisions visible before they harden:
 7. Sandboxing: systemd service first; WASI only when pure plugin code wants stronger sandboxing.
 8. Promotion path: dynamic cartridge to first-party native when a tab becomes crown law.
 
+## Premium installer tranche law
+
+The old Flask premium installer is behavior quarry, not runtime authority. Coronatio currently exposes it as `/api/installer`, a typed readback/state-machine contract. The route records the package schema (`name`, `version`, `config.repository`, `git_managed`, `files`), component operation schema (`source`, `target`, `type`, `identifier`, `marker`, `description`), validation order, install order, rollback order, uninstall/reinstall/batch law, and lane mapping. It does not copy files, append blueprints, install dependencies, patch config, rebuild frontend assets, or restart services. Those live mutations require a later Caduceus actuator with non-secret receipts.
+
 ## Current scaffold proof
 
 The first scaffold proves:
@@ -81,6 +85,7 @@ The first scaffold proves:
 - `/api/topics` replaces Socket.IO subscribe/unsubscribe law with SSE EventSource plus POST renew topic admission;
 - `/api/monitor/pulse`, `/api/stats/events`, and `/api/stats/events/renew` prove the first `stats.system` monitor pulse contract end-to-end;
 - `/api/boundary` and the fallback router expose Flask route and SPA boundary law: `/api/*` JSON 404, non-API shell fallback, and cartridge static serving;
+- `/api/installer` exposes the old premium installer as contract-only law: manifest fields, copy/append operation schema, validation phases, install phases, rollback/uninstall/reinstall/batch policy, lane mapping, and the missing Caduceus actuator signal;
 - `/api/stats` exposes the first honest Stats snapshot readback and names the SSE lease routes;
 - `/api/tabs` loads installed tab manifests dynamically while preserving native pane readback;
 - unsafe tab ids are rejected;

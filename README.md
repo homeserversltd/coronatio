@@ -36,6 +36,7 @@ This scaffold provides the first host surface:
 - `GET /api/topics` — topic catalog replacing Socket.IO subscription law with SSE EventSource plus POST renew admission.
 - `GET /api/monitor/pulse` — monitor payload/pulse contract for the first `stats.system` topic: cadence, changed predicate, admin fields, snapshot, SSE, renew, and first event proof.
 - `GET /api/boundary` — Flask route and SPA boundary replacement: `/api/*` JSON 404, non-API shell fallback, cartridge static serving.
+- `GET /api/installer` — premium installer law readback: root/component manifest schemas, copy/append operation fields, validation phases, install phases, rollback/uninstall/reinstall/batch law, lane mapping, and the first missing Caduceus live-mutation signal.
 - `GET /api/stats/events` — first Stats SSE event stream contract.
 - `POST /api/stats/events/renew` — first Stats SSE lease renewal contract.
 - `GET /api/stats` — honest first-party Stats snapshot readback with SSE route posture.
@@ -102,6 +103,19 @@ Coronatio does not need one installation strategy. It needs a lawful membrane fo
 
 The acceptance law is not “never recompile.” The acceptance law is: choose the lane that preserves infinite installation while making the membrane explicit, typed, reversible, and provable.
 
+## Premium installer contract
+
+`/api/installer` is a contract/readback route only. It extracts the old premium installer’s manifest and lifecycle law without executing third-party premium code or mutating the host. The readback names:
+
+- root package fields: `name`, `version`, `config.repository`, `git_managed`, and `files`;
+- component operation fields: `source`, `target`, `type`, `identifier`, `marker`, and `description`;
+- validation phases: current config, package manifest, name collision, version conflict, and dependency validation;
+- install phases: backend/frontend/root/permissions file operations, Python requirements, npm patches, system deps, config patches, hooks, frontend rebuild, and service restart;
+- rollback/lifecycle law for config restore, package rollback, file reversal, service state restore, uninstall, reinstall, batch mode, and restore-patches;
+- lane mapping that replaces Flask blueprint injection with `dynamic-cartridge`, `source-injection-recompile`, or `first-party-native` contracts.
+
+Live installation remains outside this tranche. Privileged file writes, dependency installs, config writes, rebuilds, and service restarts require a later Caduceus actuator/receipt membrane.
+
 ## Proof commands
 
 ```bash
@@ -127,6 +141,7 @@ This scaffold is accepted when:
 - Tests prove `/api/topics` replaces Socket.IO subscription law with SSE + lease renew topic contracts.
 - Tests prove `/api/monitor/pulse`, `/api/stats/events`, and `/api/stats/events/renew` expose the first `stats.system` monitor pulse end-to-end.
 - Tests prove `/api/*` misses return JSON 404 while non-API unknown paths return the shell.
+- Tests prove `/api/installer` exposes premium installer law as typed contract-only readback and does not claim live mutation.
 - Tests prove `/api/stats` returns an honest snapshot with unavailable telemetry and SSE routes.
 - Tests prove dynamic cartridge manifests load without host recompile and final manifest validation rejects unsafe/native cartridge shapes.
 - Paligenesis carries the North Star contract and open decisions.
