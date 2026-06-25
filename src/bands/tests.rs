@@ -183,7 +183,8 @@ mod tests {
         for indicator in ["tailscale", "internet", "openvpn", "services", "power-meter"] {
             assert!(shell.contains(&format!(r#"data-indicator="{}""#, indicator)));
         }
-        assert!(shell.contains(r#"<button type="button" class="indicator ok" data-indicator="tailscale""#));
+        assert!(shell.contains(r#"class="indicator ok tailscale-indicator""#));
+        assert!(shell.contains(r#"data-fa-icon="network-wired""#));
         assert!(shell.contains(r#"data-modal-title="Tailscale Status""#));
         assert!(shell.contains(r#"data-modal-kind="tailscale""#));
         assert!(shell.contains("data-info-modal-backdrop"));
@@ -572,6 +573,40 @@ mod tests {
             .contains("compiled crown law"));
     }
 
+
+
+
+    #[test]
+    fn header_status_indicators_are_react_icon_port_not_text_pills() {
+        let shell = render_crown_shell();
+        for icon in ["network-wired", "plug", "lock", "server", "bolt"] {
+            assert!(shell.contains(&format!(r#"data-fa-icon="{}""#, icon)), "missing icon {icon}");
+        }
+        for visible_text in [">Tailscale</button>", ">Internet</button>", ">OpenVPN</button>", ">Services</button>", ">Power Meter</button>"] {
+            assert!(!shell.contains(visible_text), "indicator rendered as text pill: {visible_text}");
+        }
+    }
+
+    #[test]
+    fn header_obliterates_non_quarry_coronatio_branding() {
+        let shell = render_crown_shell();
+        assert!(shell.contains(r#"data-flask-react-quarry="Header""#));
+        assert!(shell.contains(r#"class="header-left""#));
+        assert!(shell.contains(r#"class="header-center""#));
+        assert!(shell.contains(r#"class="header-right""#));
+        assert!(shell.contains(r#"aria-label="Tailscale Status""#));
+        assert!(shell.contains(r#"data-fa-icon="network-wired""#));
+        assert!(shell.contains(r#"data-fa-icon="plug""#));
+        assert!(shell.contains(r#"data-fa-icon="lock""#));
+        assert!(shell.contains(r#"data-fa-icon="server""#));
+        assert!(shell.contains(r#"data-fa-icon="bolt""#));
+        assert!(shell.contains("Enter Admin Mode"));
+        assert!(!shell.contains("brand-mark"));
+        assert!(!shell.contains("⌂"));
+        assert!(!shell.contains("/ Coronatio"));
+        assert!(!shell.contains(r#"HomeServer</span><span class="muted">"#));
+        assert!(!shell.contains(" ? 'live' :"));
+    }
 
     #[test]
     fn admin_mode_binary_contract_gates_viewport_enhancements() {
