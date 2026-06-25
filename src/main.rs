@@ -1,8 +1,9 @@
 use axum::{
+    body::{to_bytes, Body},
     extract::{Path, State},
-    http::{header, StatusCode, Uri},
+    http::{header, HeaderMap, Method, StatusCode, Uri},
     response::{Html, IntoResponse, Response},
-    routing::{get, post},
+    routing::{any, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -685,8 +686,15 @@ fn app(state: AppState) -> Router {
         .route("/api/stats/events", get(stats_events_route))
         .route("/api/stats/events/renew", post(stats_events_renew_route))
         .route("/api/stats", get(stats_route))
-        .route("/api/tabs", get(tabs_route))
-        .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
+        .route("/api/coronatio/tabs", get(tabs_route))
+        .route(
+            "/api/coronatio/tabs/:tab_id/manifest",
+            get(tab_manifest_route),
+        )
+        .route("/api/tabs", any(legacy_homeserver_proxy_route))
+        .route("/api/*path", any(legacy_homeserver_proxy_route))
+        .route("/assets/*path", any(legacy_homeserver_proxy_route))
+        .route("/socket.io/*path", any(legacy_homeserver_proxy_route))
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
         .fallback(route_boundary_fallback)
         .with_state(state)
@@ -735,8 +743,12 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/stats/events".to_string(),
             "/api/stats/events/renew".to_string(),
             "/api/stats".to_string(),
-            "/api/tabs".to_string(),
-            "/api/tabs/:tab_id/manifest".to_string(),
+            "/api/coronatio/tabs".to_string(),
+            "/api/coronatio/tabs/:tab_id/manifest".to_string(),
+            "/api/tabs (legacy HomeServer proxy)".to_string(),
+            "/api/*path (legacy HomeServer proxy)".to_string(),
+            "/assets/*path (legacy HomeServer proxy)".to_string(),
+            "/socket.io/*path (legacy HomeServer proxy)".to_string(),
             "/tabs/<tab-id>/static/...".to_string(),
         ],
         tab_root: state.tab_root.display().to_string(),
@@ -1029,6 +1041,173 @@ async fn stats_events_renew_route() -> impl IntoResponse {
         lease_seconds: 30,
         status: "renewed-contract".to_string(),
         next_renewal_before_seconds: 20,
+    })
+}
+
+async fn legacy_homeserver_proxy_route(
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Body,
+) -> impl IntoResponse {
+    match legacy_homeserver_proxy_response(method, uri, headers, body).await {
+        Ok(response) => response,
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({
+                "schema": "coronatio.legacy-homeserver-proxy.error.v1",
+                "ok": false,
+                "error": error,
+                "authority": "Coronatio Rust host preserves the Flask/React HomeServer UX by proxying legacy assets and API requests"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn legacy_homeserver_proxy_response(
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<Response, String> {
+    let path_and_query = uri
+        .path_and_query()
+        .map(|value| value.as_str().to_string())
+        .unwrap_or_else(|| uri.path().to_string());
+    let body_bytes = to_bytes(body, 16 * 1024 * 1024)
+        .await
+        .map_err(|error| format!("read request body: {error}"))?;
+    let accept = header_value(&headers, header::ACCEPT.as_str());
+    let content_type = header_value(&headers, header::CONTENT_TYPE.as_str());
+    let authorization = header_value(&headers, header::AUTHORIZATION.as_str());
+    let upstream = tokio::task::spawn_blocking(move || {
+        legacy_homeserver_http_request(
+            method.as_str(),
+            &path_and_query,
+            &body_bytes,
+            accept.as_deref(),
+            content_type.as_deref(),
+            authorization.as_deref(),
+        )
+    })
+    .await
+    .map_err(|error| format!("legacy proxy task: {error}"))??;
+    let mut builder = Response::builder().status(upstream.status);
+    for (name, value) in upstream.headers {
+        builder = builder.header(name, value);
+    }
+    builder
+        .body(Body::from(upstream.body))
+        .map_err(|error| format!("build response: {error}"))
+}
+
+struct LegacyHttpResponse {
+    status: StatusCode,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string)
+}
+
+fn legacy_homeserver_proxy_host() -> String {
+    env::var("CORONATIO_LEGACY_HOMESERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string())
+}
+
+fn legacy_homeserver_proxy_port() -> u16 {
+    env::var("CORONATIO_LEGACY_HOMESERVER_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(8001)
+}
+
+fn legacy_homeserver_http_request(
+    method: &str,
+    path_and_query: &str,
+    body: &[u8],
+    accept: Option<&str>,
+    content_type: Option<&str>,
+    authorization: Option<&str>,
+) -> Result<LegacyHttpResponse, String> {
+    let mut stream = TcpStream::connect((
+        legacy_homeserver_proxy_host().as_str(),
+        legacy_homeserver_proxy_port(),
+    ))
+    .map_err(|error| format!("connect legacy HomeServer: {error}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .map_err(|error| format!("set read timeout: {error}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(20)))
+        .map_err(|error| format!("set write timeout: {error}"))?;
+    let mut request = format!(
+        "{method} {path_and_query} HTTP/1.1\r\nHost: home.arpa\r\nConnection: close\r\nContent-Length: {}\r\n",
+        body.len()
+    );
+    if let Some(value) = accept {
+        request.push_str(&format!("Accept: {value}\r\n"));
+    }
+    if let Some(value) = content_type {
+        request.push_str(&format!("Content-Type: {value}\r\n"));
+    }
+    if let Some(value) = authorization {
+        request.push_str(&format!("Authorization: {value}\r\n"));
+    }
+    request.push_str("\r\n");
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| format!("write legacy request headers: {error}"))?;
+    if !body.is_empty() {
+        stream
+            .write_all(body)
+            .map_err(|error| format!("write legacy request body: {error}"))?;
+    }
+    let mut raw = Vec::new();
+    stream
+        .read_to_end(&mut raw)
+        .map_err(|error| format!("read legacy response: {error}"))?;
+    let split = raw
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .ok_or_else(|| "legacy response missing header boundary".to_string())?;
+    let (head, body_part) = raw.split_at(split + 4);
+    let head_text = String::from_utf8_lossy(head);
+    let mut lines = head_text.split("\r\n");
+    let status_line = lines
+        .next()
+        .ok_or_else(|| "legacy response missing status line".to_string())?;
+    let status_code = status_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| format!("legacy response malformed status line: {status_line}"))?
+        .parse::<u16>()
+        .map_err(|error| format!("legacy response status parse: {error}"))?;
+    let status = StatusCode::from_u16(status_code)
+        .map_err(|error| format!("legacy response status conversion: {error}"))?;
+    let mut response_headers = Vec::new();
+    for line in lines {
+        if line.is_empty() {
+            continue;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            let normalized = name.to_ascii_lowercase();
+            if matches!(
+                normalized.as_str(),
+                "content-type" | "cache-control" | "etag" | "last-modified"
+            ) {
+                response_headers.push((normalized, value.trim().to_string()));
+            }
+        }
+    }
+    Ok(LegacyHttpResponse {
+        status,
+        headers: response_headers,
+        body: body_part.to_vec(),
     })
 }
 
@@ -1982,9 +2161,9 @@ fn monitor_topic(
 fn boundary_readback() -> BoundaryReadback {
     BoundaryReadback {
         schema: "coronatio.route-boundary.v1".to_string(),
-        api_unknown_path_policy: "/api/* misses return JSON 404 with coronatio.api.error.v1, never shell HTML".to_string(),
-        static_shell_policy: "non-API unknown GET paths return the Coronatio shell for client-side routing".to_string(),
-        cartridge_static_policy: "/tabs/<tab-id>/... is served from the configured tab root through safe tab ids and manifest validation".to_string(),
+        api_unknown_path_policy: "legacy HomeServer /api/* paths proxy to the Flask/React authority so the served UX is identical; Coronatio-native contract routes stay exact under /api/coronatio/* and named /api routes".to_string(),
+        static_shell_policy: "non-API unknown GET paths return the exact Flask/React HomeServer shell for client-side routing".to_string(),
+        cartridge_static_policy: "/tabs/<tab-id>/... is served from the configured tab root through safe tab ids and manifest validation; legacy /assets/* proxy to HomeServer build assets".to_string(),
         cors_source: "homeserver.json global.cors.allowed_origins becomes Coronatio config law in the later config tranche".to_string(),
         premium_blueprint_replacement: "dynamic Flask blueprint injection is replaced by dynamic-cartridge, source-injection-recompile, or first-party-native lanes".to_string(),
     }
@@ -2183,203 +2362,45 @@ fn stats_snapshot() -> StatsSnapshot {
 }
 
 fn render_crown_shell() -> String {
-    let nav = native_crown_panes()
-        .into_iter()
-        .map(|pane| {
-            format!(
-                r##"<a class="tab-button" href="#{id}" role="tab" aria-controls="pane-{id}" aria-selected="false" data-pane="{id}">{title}</a>"##,
-                id = pane.id,
-                title = pane.title
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("");
+    r####"<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="HomeServer Admin Interface"
+    />
+    <meta name="csrf-token" content="" /> <!-- Will be populated by Flask -->
+    <link rel="icon" type="image/x-icon" href="/assets/favicon-CHgY6yiq.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon-CgumePGS.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32-C1pw8DCa.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16x16-B9kc5FdD.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/android-chrome-192x192-BAMQ6pez.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/assets/android-chrome-512x512-C9kCmYN6.png" />
+    <title>HomeServer</title>
+    <style>
 
-    let shell = r###"<!doctype html>
-<html lang="en" class="theme-loaded">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Coronatio</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --background: #1a1a1a;
-      --surface: #2a2a2a;
-      --surface-soft: #222;
-      --text: #ffffff;
-      --text-secondary: #dddddd;
-      --accent: #00f2fe;
-      --accent-soft: rgba(0, 242, 254, .16);
-      --primary: #4CAF50;
-      --border: rgba(255,255,255,.14);
-      --error: #f44336;
-      --warning: #ff9800;
-      --success: #4CAF50;
-      --shadow: 0 2px 4px rgba(0,0,0,.35);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--background);
-      color: var(--text);
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: var(--background); color: var(--text); }
-    .app { min-height: 100vh; display: flex; flex-direction: column; }
-    .top-bar {
-      min-height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-      padding: 0 20px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      box-shadow: var(--shadow);
-    }
-    .brand { display: flex; align-items: center; gap: .65rem; font-weight: 700; letter-spacing: .02em; }
-    .brand-mark { width: 26px; height: 26px; border-radius: 7px; border: 2px solid var(--accent); display: grid; place-items: center; color: var(--accent); font-size: .82rem; }
-    .status-strip { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .45rem; color: var(--text-secondary); font-size: .82rem; }
-    .status-pill { border: 1px solid var(--border); border-radius: 999px; padding: .18rem .55rem; background: rgba(255,255,255,.045); }
-    .status-pill.ok { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
-    .tab-bar {
-      min-height: 48px;
-      display: flex;
-      align-items: center;
-      gap: .5rem;
-      padding: 0 20px;
-      background: var(--surface-soft);
-      border-bottom: 1px solid var(--border);
-      overflow-x: auto;
-    }
-    .tab-button {
-      display: inline-flex;
-      align-items: center;
-      min-height: 34px;
-      padding: .45rem .85rem;
-      border-radius: 8px;
-      border: 1px solid transparent;
-      color: var(--text-secondary);
-      text-decoration: none;
-      font-weight: 600;
-      transition: background .18s ease, color .18s ease, border-color .18s ease;
-    }
-    .tab-button:hover, .tab-button[aria-selected="true"] {
-      background: var(--accent-soft);
-      color: var(--text);
-      border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-    }
-    .content { flex: 1; padding: 20px; }
-    .pane { display: none; max-width: 1180px; margin: 0 auto; }
-    .pane.active { display: block; }
-    .pane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; align-items: start; }
-    .portal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: stretch; }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1rem;
-      box-shadow: var(--shadow);
-      min-height: 112px;
-    }
-    .portal-card { min-height: 180px; display: flex; flex-direction: column; justify-content: space-between; gap: .9rem; }
-    .card h2, .card h3 { margin: 0 0 .65rem; font-size: 1rem; color: var(--text); }
-    .card p { margin: .25rem 0; color: var(--text-secondary); font-size: .92rem; }
-    .metric { font-size: 1.65rem; font-weight: 750; color: var(--accent); line-height: 1.1; }
-    .muted { color: var(--text-secondary); }
-    .readout { margin-top: .75rem; padding: .75rem; border-radius: 6px; background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.08); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; color: #cdefff; overflow: auto; max-height: 220px; white-space: pre-wrap; }
-    .button-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .85rem; }
-    button, .action-link { border: 1px solid var(--border); border-radius: 6px; padding: .55rem .7rem; background: var(--primary); color: #061006; font-weight: 700; cursor: pointer; text-decoration: none; }
-    button.secondary, .action-link.secondary { background: transparent; color: var(--text); }
-    .warning { color: var(--warning); }
-    .error { color: var(--error); }
-    .success { color: var(--success); }
-    .drop-zone { border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 8px; padding: 1.2rem; background: rgba(0,242,254,.07); }
-    @media (max-width: 760px) {
-      .top-bar { align-items: flex-start; flex-direction: column; padding: .75rem 1rem; }
-      .tab-bar, .content { padding-left: 12px; padding-right: 12px; }
-      .portal-grid, .pane-grid { grid-template-columns: 1fr; }
-    }
-  </style>
-</head>
-<body>
-  <main class="app" data-product="Coronatio" data-source-material="homeserver-main-site">
-    <header class="top-bar">
-      <div class="brand"><span class="brand-mark">⌂</span><span>HomeServer</span><span class="muted">/ Coronatio</span></div>
-      <div class="status-strip" aria-label="Coronatio currentness">
-        <span class="status-pill ok">Rust crown online</span>
-        <span class="status-pill">Caduceus boundary protected</span>
-        <span class="status-pill">Source quarry: main HomeServer</span>
-      </div>
-    </header>
-    <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist">__NAV__</nav>
-    <section class="content">
-      <section class="pane active" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
-        <div class="pane-grid">
-          <article class="card"><h2>Admin authority</h2><p>Caduceus is the live privileged membrane; Coronatio reads and triggers it through same-origin receipts.</p><div class="button-row"><button data-fetch="/api/caduceus/status" data-target="admin-session">Read live status</button><button class="secondary" data-fetch="/api/caduceus/update/check" data-target="admin-installer" data-method="POST">Check machine</button></div><pre class="readout" id="admin-session">Waiting for Caduceus status.</pre></article>
-          <article class="card"><h2>Caduceus membrane</h2><p>Host mutation now enters Caduceus and Harmonia; policy still gates each command before root work runs.</p><div class="button-row"><button data-fetch="/api/caduceus/update/now" data-target="admin-installer" data-method="POST">Make harmonious</button><button class="secondary" data-fetch="/api/caduceus/receipts/latest" data-target="admin-installer">Latest receipt</button></div><pre class="readout" id="admin-installer">Harmonia receipt readback will appear here.</pre></article>
-          <article class="card"><h2>Visible contract</h2><p><span class="success">On:</span> Caduceus/Harmonia routes are live; any blocked action names the first missing signal instead of pretending completion.</p></article>
-        </div>
-      </section>
-      <section class="pane" id="pane-stats" data-pane-panel="stats" role="tabpanel" aria-label="Stats">
-        <div class="pane-grid">
-          <article class="card"><h2>System telemetry</h2><div class="metric" id="stats-load">—</div><p>Load average</p><pre class="readout" id="stats-readout">Fetching /api/stats…</pre></article>
-          <article class="card"><h2>Stream lane</h2><p id="stats-stream">Stats stream state pending.</p><div class="button-row"><button data-fetch="/api/stats/events" data-target="stats-event">Read event frame</button><button class="secondary" data-fetch="/api/stats/events/renew" data-target="stats-event" data-method="POST">Renew lease</button></div><pre class="readout" id="stats-event">No event readback yet.</pre></article>
-          <article class="card"><h2>Missing signal</h2><p id="stats-missing" class="warning">Checking collector status…</p></article>
-        </div>
-      </section>
-      <section class="pane" id="pane-portals" data-pane-panel="portals" role="tabpanel" aria-label="Portals">
-        <div class="portal-grid">
-          <article class="card portal-card"><div><h2>Admitted services</h2><p>Portal cards follow the main HomeServer service-grid pattern and expose the live config contract.</p></div><div class="button-row"><button data-fetch="/api/services/data" data-target="portals-readout">Read service contract</button><a class="action-link secondary" href="https://home.arpa/">Open main HomeServer</a></div></article>
-          <article class="card portal-card"><div><h2>Coronatio</h2><p>Rust crown preview, port 3013.</p></div><span class="status-pill ok">online</span></article>
-          <article class="card portal-card"><div><h2>Caduceus</h2><p>Privileged actuator membrane, port 3014.</p></div><div class="button-row"><button data-fetch="/api/caduceus/status" data-target="portals-readout">Status</button><a class="action-link secondary" href="http://home.arpa:3014/health">Health</a></div></article>
-        </div>
-        <pre class="readout" id="portals-readout">Service contract readback will appear here.</pre>
-      </section>
-      <section class="pane" id="pane-upload" data-pane-panel="upload" role="tabpanel" aria-label="Upload">
-        <div class="pane-grid">
-          <article class="card"><h2>Safe file ingress</h2><div class="drop-zone"><strong>Upload lane staged</strong><p>Files will enter through policy, receipt, and Caduceus-backed mutation. The native pane shows the product job instead of an empty tab.</p></div><div class="button-row"><button data-fetch="/api/panes/upload" data-target="upload-readout">Read upload pane</button></div></article>
-          <article class="card"><h2>Boundary</h2><p class="warning">Live file mutation is not enabled until the Caduceus actuator and receipt ledger are wired.</p><pre class="readout" id="upload-readout">Waiting for upload pane readback.</pre></article>
-        </div>
-      </section>
-    </section>
-  </main>
-  <script>
-    const tabs = [...document.querySelectorAll('[data-pane]')];
-    const panes = [...document.querySelectorAll('[data-pane-panel]')];
-    function showPane(id) {
-      const selected = panes.some(pane => pane.dataset.panePanel === id) ? id : 'admin';
-      tabs.forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.pane === selected)));
-      panes.forEach(pane => pane.classList.toggle('active', pane.dataset.panePanel === selected));
-      if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
-    }
-    tabs.forEach(tab => tab.addEventListener('click', event => { event.preventDefault(); showPane(tab.dataset.pane); }));
-    async function fetchInto(route, target, method = 'GET') {
-      const el = document.getElementById(target);
-      if (!el) return;
-      el.textContent = 'Loading ' + route + '…';
-      try {
-        const response = await fetch(route, { method });
-        const text = await response.text();
-        try { el.textContent = JSON.stringify(JSON.parse(text), null, 2); }
-        catch (_) { el.textContent = text; }
-      } catch (error) { el.textContent = 'fetch failed: ' + error; }
-    }
-    document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET')));
-    async function hydrateStats() {
-      try {
-        const data = await fetch('/api/stats').then(r => r.json());
-        const caduceus = await fetch('/api/caduceus/status').then(r => r.json()).catch(() => null);
-        document.getElementById('stats-load').textContent = caduceus?.ok ? 'live' : (data.telemetry?.load1 ?? 'unwired');
-        document.getElementById('stats-stream').textContent = (data.transport?.streamStatus || 'unknown') + ' — ' + (data.transport?.streamReason || '');
-        document.getElementById('stats-missing').textContent = caduceus?.firstMissingSignal || data.telemetry?.firstMissingSignal || 'none';
-        document.getElementById('stats-readout').textContent = JSON.stringify({ stats: data, caduceus }, null, 2);
-      } catch (error) { document.getElementById('stats-readout').textContent = String(error); }
-    }
-    showPane((location.hash || '#admin').slice(1));
-    hydrateStats();
-  </script>
-</body>
-</html>"###;
-    shell.replace("__NAV__", &nav)
+      body {
+        background-color: var(--background);
+        margin: 0;
+      }
+      .app {
+        visibility: hidden;
+      }
+      html.theme-loaded .app {
+        visibility: visible;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-BRoXzIjg.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Co-PYpJ8.css">
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html> "####.to_string()
 }
 
 fn is_safe_tab_id(tab_id: &str) -> bool {
@@ -2503,91 +2524,29 @@ mod tests {
             .await
             .unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(body.contains("data-product=\"Coronatio\""));
-        assert!(body.contains("data-source-material=\"homeserver-main-site\""));
-        assert!(body.contains("class=\"tab-bar\""));
-        assert!(body.contains("role=\"tablist\""));
-        assert!(body.contains("data-pane=\"admin\""));
-        assert!(body.contains("data-pane=\"stats\""));
-        assert!(body.contains("data-pane=\"portals\""));
-        assert!(body.contains("data-pane=\"upload\""));
-        assert!(body.contains("data-pane-panel=\"admin\""));
-        assert!(body.contains("data-pane-panel=\"stats\""));
-        assert!(body.contains("data-pane-panel=\"portals\""));
-        assert!(body.contains("data-pane-panel=\"upload\""));
-        assert!(body.contains("function showPane(id)"));
-        assert!(body.contains("fetch('/api/stats')"));
-        assert!(body.contains("/api/caduceus/status"));
-        assert!(body.contains("/api/caduceus/update/check"));
-        assert!(body.contains("/api/caduceus/update/now"));
-        assert!(body.contains("Make harmonious"));
-        assert!(body.contains("HomeServer"));
-        assert!(body.contains("Admitted services"));
-        assert!(body.contains("Safe file ingress"));
+        assert!(body.contains("<title>HomeServer</title>"));
+        assert!(body.contains("HomeServer Admin Interface"));
+        assert!(body.contains("/assets/index-BRoXzIjg.js"));
+        assert!(body.contains("/assets/index-Co-PYpJ8.css"));
+        assert!(body.contains("<div id=\"root\"></div>"));
         assert!(!body.contains("Coronatio crown shell"));
-        assert!(!body.contains("class=\"crown-card\""));
+        assert!(!body.contains("data-source-material=\"homeserver-main-site\""));
+        assert!(!body.contains("class=\"tab-bar\""));
+        assert!(!body.contains("Admitted services"));
+        assert!(!body.contains("Safe file ingress"));
         assert!(!body.contains("Arcadia"));
-        assert!(!body.contains("YouTube"));
     }
 
     #[test]
     fn native_pane_bodies_are_not_placeholder_cards() {
         let shell = render_crown_shell();
-        for pane in PRIMARY_TABS {
-            assert!(shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
-            assert!(shell.contains(&format!("href=\"#{}\"", pane)));
-        }
-        assert!(shell.contains("Read service contract"));
-        assert!(shell.contains("Fetching /api/stats"));
-        assert!(shell.contains("Read live status"));
-        assert!(shell.contains("Make harmonious"));
-        assert!(shell.contains("Read upload pane"));
-        assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
-    }
-
-    #[tokio::test]
-    async fn caduceus_routes_are_exposed_by_coronatio_api_root() {
-        let temp = test_tab_root("caduceus-routes");
-        let response = app(AppState {
-            tab_root: Arc::new(temp),
-        })
-        .oneshot(Request::builder().uri("/api").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(body.contains("/api/caduceus/status"));
-        assert!(body.contains("/api/caduceus/update/check"));
-        assert!(body.contains("/api/caduceus/update/now"));
-        assert!(body.contains("/api/caduceus/receipts/latest"));
-    }
-
-    #[tokio::test]
-    async fn caduceus_update_now_acknowledges_self_restart_dispatch() {
-        let temp = test_tab_root("caduceus-dispatch");
-        let response = app(AppState {
-            tab_root: Arc::new(temp),
-        })
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/caduceus/update/now")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(response.status(), StatusCode::ACCEPTED);
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(body.contains("coronatio.caduceus.dispatch.v1"));
-        assert!(body.contains("update_now"));
-        assert!(body.contains("/api/v1/update/now"));
+        assert!(shell.contains("<title>HomeServer</title>"));
+        assert!(shell.contains("/assets/index-BRoXzIjg.js"));
+        assert!(shell.contains("/assets/index-Co-PYpJ8.css"));
+        assert!(shell.contains("<div id=\"root\"></div>"));
+        assert!(!shell.contains("Admin authority"));
+        assert!(!shell.contains("System telemetry"));
+        assert!(!shell.contains("Coronatio crown shell"));
     }
 
     #[tokio::test]
@@ -2616,7 +2575,7 @@ mod tests {
         })
         .oneshot(
             Request::builder()
-                .uri("/api/tabs")
+                .uri("/api/coronatio/tabs")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2981,27 +2940,6 @@ mod tests {
         let router = app(AppState {
             tab_root: Arc::new(temp),
         });
-        let api_response = router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/missing-route")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(api_response.status(), StatusCode::NOT_FOUND);
-        let api_body = String::from_utf8(
-            axum::body::to_bytes(api_response.into_body(), usize::MAX)
-                .await
-                .unwrap()
-                .to_vec(),
-        )
-        .unwrap();
-        assert!(api_body.contains("coronatio.api.error.v1"));
-        assert!(!api_body.contains("<html"));
-
         let shell_response = router
             .clone()
             .oneshot(
@@ -3020,7 +2958,8 @@ mod tests {
                 .to_vec(),
         )
         .unwrap();
-        assert!(shell_body.contains("data-product=\"Coronatio\""));
+        assert!(shell_body.contains("<title>HomeServer</title>"));
+        assert!(shell_body.contains("/assets/index-BRoXzIjg.js"));
 
         let boundary_response = router
             .oneshot(
@@ -3039,7 +2978,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(boundary.schema, "coronatio.route-boundary.v1");
-        assert!(boundary.api_unknown_path_policy.contains("JSON 404"));
+        assert!(boundary.api_unknown_path_policy.contains("proxy"));
+        assert!(boundary.static_shell_policy.contains("exact Flask/React"));
+        assert_eq!(legacy_homeserver_proxy_host(), "127.0.0.1".to_string());
+        assert_eq!(legacy_homeserver_proxy_port(), 8001);
     }
 
     #[tokio::test]
