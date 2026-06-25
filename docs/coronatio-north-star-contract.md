@@ -73,6 +73,10 @@ The first scaffold proves:
 - `/api` names the Coronatio root;
 - `/api/panes` exposes the first-party native crown pane registry;
 - native crown panes are exactly `admin`, `stats`, `portals`, and `upload`;
+- `/api/registry` exposes extracted registry/tab law from `homeserver.json`, including config, visibility, data, starred/default route, admin gating, enabled state, order, and validation rules;
+- `/api/startup` exposes startup and initial-tab law: forced tab, failed connection fallback, valid visible starred tab, first visible tab, and tab-bar visibility;
+- `/api/lanes` exposes dynamic cartridge, source-injection/recompile, and first-party native failure/recovery policy;
+- `/api/fallback` exposes the safe fallback pane, activation reasons, recovery sequence, and receipt fields;
 - `/api/stats` exposes the first honest Stats snapshot readback and names the future SSE lease routes;
 - `/api/tabs` loads installed tab manifests dynamically while preserving native pane readback;
 - unsafe tab ids are rejected;

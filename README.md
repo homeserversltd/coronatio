@@ -28,6 +28,10 @@ This scaffold provides the first host surface:
 - `GET /api` — root Coronatio object with native-pane readback.
 - `GET /api/panes` — first-party native pane registry for `admin`, `stats`, `portals`, and `upload`.
 - `GET /api/panes/:pane_id` — one native pane readback.
+- `GET /api/registry` — extracted HOMESERVER tab registry law: visibility, admin gating, enabled state, order, starred/default route, and validation rules.
+- `GET /api/startup` — extracted startup and initial-tab law: phases, connection fallback, forced tab, starred tab, first visible tab, and tab-bar rule.
+- `GET /api/lanes` — dynamic cartridge, source-injection/recompile, and first-party native failure/recovery policy.
+- `GET /api/fallback` — safe fallback pane, activation reasons, recovery sequence, and receipt fields.
 - `GET /api/stats` — honest first-party Stats snapshot readback with future SSE route posture.
 - `GET /api/tabs` — dynamic tab registry read from installed cartridges plus native-pane readback.
 - `GET /api/tabs/:tab_id/manifest` — one cartridge manifest readback.
@@ -109,6 +113,10 @@ This scaffold is accepted when:
 - Tests prove the host names Coronatio, not Arcadia.
 - Tests prove the native crown panes are exactly `admin`, `stats`, `portals`, and `upload`.
 - Tests prove the shell renders those primary panes without platform-owned brand navigation.
+- Tests prove `/api/registry` captures old `homeserver.json` tab law: config, visibility, data, starred, admin gating, enabled state, order, and default route behavior.
+- Tests prove `/api/startup` captures forced tab, connection failure, starred/default route, first-visible fallback, and tab-bar behavior.
+- Tests prove `/api/lanes` captures dynamic cartridge, source-injection/recompile, and first-party native failure policy.
+- Tests prove `/api/fallback` captures safe fallback pane, activation reasons, recovery sequence, and receipt fields.
 - Tests prove `/api/stats` returns an honest snapshot with unavailable telemetry and planned SSE routes.
-- Tests prove dynamic cartridge manifests load without host recompile.
+- Tests prove dynamic cartridge manifests load without host recompile and final manifest validation rejects unsafe/native cartridge shapes.
 - Paligenesis carries the North Star contract and open decisions.

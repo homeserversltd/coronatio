@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use std::{env, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, env, net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::fs;
 use tower_http::services::ServeDir;
 
@@ -54,9 +54,17 @@ struct TabManifest {
     #[serde(default)]
     icon: String,
     #[serde(default)]
+    display_name: String,
+    #[serde(default)]
     order: i64,
+    #[serde(default = "default_enabled")]
+    enabled: bool,
     #[serde(default)]
     admin_only: bool,
+    #[serde(default)]
+    visibility: TabVisibility,
+    #[serde(default)]
+    data: serde_json::Value,
     #[serde(default)]
     route_prefix: String,
     #[serde(default)]
@@ -85,6 +93,96 @@ struct TabList {
     tab_root: String,
     native_panes: Vec<CrownPane>,
     tabs: Vec<TabManifest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct TabVisibility {
+    tab: bool,
+    elements: BTreeMap<String, bool>,
+}
+
+impl Default for TabVisibility {
+    fn default() -> Self {
+        Self {
+            tab: true,
+            elements: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct RegistryReadback {
+    schema: String,
+    source_contract: String,
+    starred_tab: String,
+    default_route_tab: String,
+    force_tab_bar_visibility: bool,
+    visible_tabs_user: Vec<String>,
+    visible_tabs_admin: Vec<String>,
+    validation_rules: Vec<ValidationRule>,
+    native_tab_contracts: Vec<CoronatioTabContract>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ValidationRule {
+    field: String,
+    rule: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct CoronatioTabContract {
+    id: String,
+    display_name: String,
+    order: i64,
+    enabled: bool,
+    admin_only: bool,
+    visibility: TabVisibility,
+    install_mode: InstallMode,
+    route: String,
+    state_route: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StartupReadback {
+    schema: String,
+    phases: Vec<String>,
+    current_phase: String,
+    connection_status: String,
+    initial_tab: String,
+    default_route_law: String,
+    fallback_tab: String,
+    tab_bar_law: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct LanePolicyReadback {
+    schema: String,
+    policies: Vec<InstallLanePolicy>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct InstallLanePolicy {
+    install_mode: InstallMode,
+    success_contract: String,
+    failure_contract: String,
+    recovery_contract: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct FallbackReadback {
+    schema: String,
+    safe_pane: String,
+    activation_reasons: Vec<String>,
+    recovery_sequence: Vec<String>,
+    receipt_fields: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -159,6 +257,10 @@ fn app(state: AppState) -> Router {
         .route("/api", get(api_root_route))
         .route("/api/panes", get(panes_route))
         .route("/api/panes/:pane_id", get(pane_route))
+        .route("/api/registry", get(registry_route))
+        .route("/api/startup", get(startup_route))
+        .route("/api/lanes", get(lane_policy_route))
+        .route("/api/fallback", get(fallback_route))
         .route("/api/stats", get(stats_route))
         .route("/api/tabs", get(tabs_route))
         .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
@@ -189,6 +291,10 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api".to_string(),
             "/api/panes".to_string(),
             "/api/panes/:pane_id".to_string(),
+            "/api/registry".to_string(),
+            "/api/startup".to_string(),
+            "/api/lanes".to_string(),
+            "/api/fallback".to_string(),
             "/api/stats".to_string(),
             "/api/tabs".to_string(),
             "/api/tabs/:tab_id/manifest".to_string(),
@@ -210,6 +316,22 @@ async fn panes_route() -> impl IntoResponse {
 
 async fn stats_route() -> impl IntoResponse {
     Json(stats_snapshot())
+}
+
+async fn registry_route() -> impl IntoResponse {
+    Json(registry_readback())
+}
+
+async fn startup_route() -> impl IntoResponse {
+    Json(startup_readback())
+}
+
+async fn lane_policy_route() -> impl IntoResponse {
+    Json(lane_policy_readback())
+}
+
+async fn fallback_route() -> impl IntoResponse {
+    Json(fallback_readback())
 }
 
 async fn pane_route(Path(pane_id): Path<String>) -> impl IntoResponse {
@@ -320,6 +442,8 @@ async fn load_tab_manifest(
             "tab id mismatch or unsafe tab id",
         ));
     }
+    validate_tab_manifest(&manifest)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     Ok(Some(manifest))
 }
 
@@ -370,6 +494,184 @@ fn native_crown_panes() -> Vec<CrownPane> {
             state_route: "/api/panes/upload".to_string(),
         },
     ]
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+fn validate_tab_manifest(manifest: &TabManifest) -> Result<(), String> {
+    if !is_safe_tab_id(&manifest.id) {
+        return Err("id must be lowercase hyphen-case ascii".to_string());
+    }
+    if manifest.title.trim().is_empty() {
+        return Err("title must be present".to_string());
+    }
+    if manifest.install_mode == InstallMode::FirstPartyNative {
+        return Err(
+            "first-party-native panes are compiled crown law, not user cartridge manifests"
+                .to_string(),
+        );
+    }
+    if manifest.order < 0 {
+        return Err("order must be non-negative".to_string());
+    }
+    if manifest.route_prefix.is_empty() {
+        return Err("routePrefix must be present".to_string());
+    }
+    let expected = format!("/api/tabs/{}", manifest.id);
+    if manifest.route_prefix != expected {
+        return Err(format!("routePrefix must equal {expected}"));
+    }
+    if manifest.static_dir.contains("..") || manifest.static_dir.starts_with('/') {
+        return Err("staticDir must be relative and stay inside the tab root".to_string());
+    }
+    Ok(())
+}
+
+fn registry_readback() -> RegistryReadback {
+    let native_tab_contracts = native_tab_contracts();
+    RegistryReadback {
+        schema: "coronatio.registry.v1".to_string(),
+        source_contract: "homeserver.json tabs.{config,visibility,data,starred}".to_string(),
+        starred_tab: "portals".to_string(),
+        default_route_tab: initial_tab(true, None, false),
+        force_tab_bar_visibility: false,
+        visible_tabs_user: visible_tab_ids(&native_tab_contracts, false),
+        visible_tabs_admin: visible_tab_ids(&native_tab_contracts, true),
+        validation_rules: registry_validation_rules(),
+        native_tab_contracts,
+    }
+}
+
+fn native_tab_contracts() -> Vec<CoronatioTabContract> {
+    native_crown_panes()
+        .into_iter()
+        .map(|pane| CoronatioTabContract {
+            id: pane.id.clone(),
+            display_name: pane.title.clone(),
+            order: pane.order,
+            enabled: true,
+            admin_only: pane.admin_only,
+            visibility: TabVisibility::default(),
+            install_mode: pane.install_mode,
+            route: pane.route,
+            state_route: pane.state_route,
+        })
+        .collect()
+}
+
+fn visible_tab_ids(tabs: &[CoronatioTabContract], is_admin: bool) -> Vec<String> {
+    let mut visible = tabs
+        .iter()
+        .filter(|tab| tab.enabled && tab.visibility.tab && (!tab.admin_only || is_admin))
+        .collect::<Vec<_>>();
+    visible.sort_by(|left, right| left.order.cmp(&right.order).then(left.id.cmp(&right.id)));
+    visible.into_iter().map(|tab| tab.id.clone()).collect()
+}
+
+fn registry_validation_rules() -> Vec<ValidationRule> {
+    vec![
+        ValidationRule { field: "id".to_string(), rule: "lowercase ascii letters, digits, and hyphen only; @ is normalized away before lookup".to_string() },
+        ValidationRule { field: "displayName/title".to_string(), rule: "human visible title is required".to_string() },
+        ValidationRule { field: "visibility.tab".to_string(), rule: "regular users see only enabled visible non-admin tabs; admins see enabled visible tabs including admin-only".to_string() },
+        ValidationRule { field: "order".to_string(), rule: "non-negative sort key; ties sort by tab id for deterministic recovery".to_string() },
+        ValidationRule { field: "starred".to_string(), rule: "default route pointer; invalid, disabled, hidden, or fallback resolves to first visible tab then fallback".to_string() },
+        ValidationRule { field: "installMode".to_string(), rule: "dynamic-cartridge for runtime tabs, source-injection-recompile for trusted source lanes, first-party-native only for compiled crown panes".to_string() },
+    ]
+}
+
+fn initial_tab(connection_ok: bool, forced_tab: Option<&str>, is_admin: bool) -> String {
+    if let Some(tab) = forced_tab {
+        return normalize_tab_id(tab);
+    }
+    if !connection_ok {
+        return "fallback".to_string();
+    }
+    let contracts = native_tab_contracts();
+    let visible = visible_tab_ids(&contracts, is_admin);
+    let starred = normalize_tab_id("portals");
+    if visible.iter().any(|tab| tab == &starred) {
+        starred
+    } else {
+        visible
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "fallback".to_string())
+    }
+}
+
+fn startup_readback() -> StartupReadback {
+    StartupReadback {
+        schema: "coronatio.startup.v1".to_string(),
+        phases: vec!["idle", "loading-config", "connecting-events", "app-ready", "fallback", "error"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        current_phase: "app-ready".to_string(),
+        connection_status: "snapshot-only-ready".to_string(),
+        initial_tab: initial_tab(true, None, false),
+        default_route_law: "forced tab wins; failed connection uses fallback; valid visible starred tab wins; else first visible tab by order; else fallback".to_string(),
+        fallback_tab: "fallback".to_string(),
+        tab_bar_law: "admin sessions show the tab bar; regular sessions show it when more than two tabs are visible unless forceTabBarVisibility overrides".to_string(),
+    }
+}
+
+fn lane_policy_readback() -> LanePolicyReadback {
+    LanePolicyReadback {
+        schema: "coronatio.lane-policy.v1".to_string(),
+        policies: vec![
+            InstallLanePolicy { install_mode: InstallMode::DynamicCartridge, success_contract: "manifest validates, staticDir remains inside tab root, optional service health is read separately, routePrefix is /api/tabs/<id>".to_string(), failure_contract: "missing manifest/static asset/service health yields tab-local error and fallback recovery candidate, not host failure".to_string(), recovery_contract: "choose next visible accessible tab; if none, activate fallback receipt".to_string() },
+            InstallLanePolicy { install_mode: InstallMode::SourceInjectionRecompile, success_contract: "trusted package injects declared source, host rebuilds, cargo fmt/test/build passes, and Cibation admits source".to_string(), failure_contract: "compile/test/admission failure rejects the package and preserves previous admitted host".to_string(), recovery_contract: "keep old host binary standing; emit source-injection failure receipt".to_string() },
+            InstallLanePolicy { install_mode: InstallMode::FirstPartyNative, success_contract: "pane is compiled into Coronatio and present in native registry".to_string(), failure_contract: "native pane missing is a build/test failure, not a runtime cartridge problem".to_string(), recovery_contract: "fallback pane remains reachable while source repair proceeds through Cibation".to_string() },
+        ],
+    }
+}
+
+fn fallback_readback() -> FallbackReadback {
+    FallbackReadback {
+        schema: "coronatio.fallback.v1".to_string(),
+        safe_pane: "fallback".to_string(),
+        activation_reasons: vec![
+            "connection_failed",
+            "startup_timeout",
+            "no_visible_tabs",
+            "module_load_error",
+            "invalid_native_pane",
+            "critical_startup_error",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
+        recovery_sequence: vec![
+            "classify reason",
+            "preserve previous active tab in receipt",
+            "choose starred visible tab if lawful",
+            "choose first visible accessible tab",
+            "activate fallback when no lawful pane exists",
+            "emit recovery receipt",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
+        receipt_fields: vec![
+            "schema",
+            "reason",
+            "previousTab",
+            "candidateTab",
+            "selectedTab",
+            "connectionStatus",
+            "startupPhase",
+            "timestamp",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
+    }
+}
+
+fn normalize_tab_id(tab_id: &str) -> String {
+    tab_id.strip_prefix('@').unwrap_or(tab_id).to_string()
 }
 
 fn stats_snapshot() -> StatsSnapshot {
@@ -674,6 +976,158 @@ mod tests {
             .find(|pane| pane.id == "stats")
             .unwrap();
         assert_eq!(stats.state_route, "/api/stats");
+    }
+
+    #[tokio::test]
+    async fn registry_route_encodes_tab_visibility_and_starred_law() {
+        let temp = test_tab_root("registry-law");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/registry")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let registry: RegistryReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(registry.schema, "coronatio.registry.v1");
+        assert_eq!(registry.starred_tab, "portals");
+        assert_eq!(registry.default_route_tab, "portals");
+        assert_eq!(registry.visible_tabs_user, ["stats", "portals", "upload"]);
+        assert_eq!(
+            registry.visible_tabs_admin,
+            ["admin", "stats", "portals", "upload"]
+        );
+        assert!(registry
+            .validation_rules
+            .iter()
+            .any(|rule| rule.field == "starred"));
+    }
+
+    #[tokio::test]
+    async fn startup_route_encodes_initial_tab_and_fallback_law() {
+        let temp = test_tab_root("startup-law");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/startup")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let startup: StartupReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(startup.schema, "coronatio.startup.v1");
+        assert_eq!(startup.initial_tab, "portals");
+        assert_eq!(initial_tab(false, None, false), "fallback");
+        assert_eq!(initial_tab(true, Some("@stats"), false), "stats");
+        assert!(startup.default_route_law.contains("forced tab wins"));
+    }
+
+    #[tokio::test]
+    async fn lane_policy_route_decides_dynamic_source_and_native_failures() {
+        let temp = test_tab_root("lane-policy");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/lanes")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let lanes: LanePolicyReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(lanes.schema, "coronatio.lane-policy.v1");
+        assert_eq!(lanes.policies.len(), 3);
+        assert!(lanes.policies.iter().any(|policy| policy.install_mode
+            == InstallMode::DynamicCartridge
+            && policy.failure_contract.contains("tab-local error")));
+        assert!(lanes.policies.iter().any(|policy| policy.install_mode
+            == InstallMode::SourceInjectionRecompile
+            && policy.success_contract.contains("Cibation admits")));
+        assert!(lanes.policies.iter().any(|policy| policy.install_mode
+            == InstallMode::FirstPartyNative
+            && policy.failure_contract.contains("build/test failure")));
+    }
+
+    #[tokio::test]
+    async fn fallback_route_encodes_safe_pane_and_recovery_receipt() {
+        let temp = test_tab_root("fallback-law");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/fallback")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let fallback: FallbackReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(fallback.schema, "coronatio.fallback.v1");
+        assert_eq!(fallback.safe_pane, "fallback");
+        assert!(fallback
+            .activation_reasons
+            .contains(&"no_visible_tabs".to_string()));
+        assert!(fallback
+            .activation_reasons
+            .contains(&"module_load_error".to_string()));
+        assert!(fallback.receipt_fields.contains(&"selectedTab".to_string()));
+    }
+
+    #[test]
+    fn cartridge_manifest_validation_rejects_unsafe_and_native_shapes() {
+        let mut manifest = TabManifest {
+            id: "service-card".to_string(),
+            title: "Service Card".to_string(),
+            description: String::new(),
+            icon: String::new(),
+            display_name: String::new(),
+            order: 9,
+            enabled: true,
+            admin_only: false,
+            visibility: TabVisibility::default(),
+            data: serde_json::Value::Null,
+            route_prefix: "/api/tabs/service-card".to_string(),
+            static_dir: "static".to_string(),
+            service_url: None,
+            health_route: None,
+            install_mode: InstallMode::DynamicCartridge,
+        };
+        assert!(validate_tab_manifest(&manifest).is_ok());
+        manifest.route_prefix = "/wrong".to_string();
+        assert!(validate_tab_manifest(&manifest)
+            .unwrap_err()
+            .contains("routePrefix"));
+        manifest.route_prefix = "/api/tabs/service-card".to_string();
+        manifest.install_mode = InstallMode::FirstPartyNative;
+        assert!(validate_tab_manifest(&manifest)
+            .unwrap_err()
+            .contains("compiled crown law"));
     }
 
     fn test_tab_root(name: &str) -> PathBuf {
