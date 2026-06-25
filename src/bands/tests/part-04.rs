@@ -363,7 +363,7 @@
         let config_path = temp.join("homeserver.json");
         let factory_path = temp.join("homeserver.factory");
         std::fs::write(&config_path, r#"{
-          "tabs": { "portals": { "data": { "portals": [
+          "tabs": { "portals": { "visibility": { "tab": true, "elements": { "Docs": false } }, "data": { "portals": [
             { "name": "Coronatio", "description": "Rust crown", "services": ["coronatio"], "type": "systemd", "port": 3013, "localURL": "http://home.arpa:3013/", "remoteURL": "https://home.tail13aff.ts.net:13013/" },
             { "name": "Docs", "description": "Reference", "services": [], "type": "link", "localURL": "https://docs.home.arpa/" }
           ] } } }
@@ -391,6 +391,8 @@
         assert_eq!(data.portals[0].local_url, "http://home.arpa:3013/");
         assert_eq!(data.portals[0].remote_url.as_deref(), Some("https://home.tail13aff.ts.net:13013/"));
         assert_eq!(data.portals[1].r#type, "link");
+        assert!(data.portals[0].visible);
+        assert!(!data.portals[1].visible);
         assert!(data.factory_portals.contains(&"Coronatio".to_string()));
         assert_eq!(data.first_missing_signal, "none");
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
@@ -430,6 +432,19 @@
         assert!(!shell.contains("Privileged actuator membrane, port 3014"));
     }
 
+
+
+    #[test]
+    fn portals_visibility_uses_admin_mode_not_missing_apply_admin_mode() {
+        let shell = render_crown_shell();
+        assert!(!shell.contains("applyAdminMode()"));
+        assert!(shell.contains("setAdminMode(headerState.isAdmin)"));
+        assert!(shell.contains("data-portal-element data-visible=\"${isVisible}\""));
+        assert!(shell.contains("data-portal-visibility-toggle"));
+        assert!(shell.contains("portal.visible !== false"));
+        assert!(shell.contains("[data-admin-mode=\"false\"] [data-portal-element][data-visible=\"false\"]"));
+        assert!(shell.contains("[data-admin-mode=\"true\"] [data-portal-element][data-visible=\"false\"]"));
+    }
 
     #[test]
     fn portals_admin_mode_ports_original_service_controls() {

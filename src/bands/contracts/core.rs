@@ -371,6 +371,12 @@ struct PortalEntry {
     remote_url: Option<String>,
     #[serde(default)]
     status: Option<String>,
+    #[serde(default = "default_true")]
+    visible: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_portal_type() -> String {
