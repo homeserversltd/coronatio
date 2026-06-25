@@ -77,7 +77,11 @@ The first scaffold proves:
 - `/api/startup` exposes startup and initial-tab law: forced tab, failed connection fallback, valid visible starred tab, first visible tab, and tab-bar visibility;
 - `/api/lanes` exposes dynamic cartridge, source-injection/recompile, and first-party native failure/recovery policy;
 - `/api/fallback` exposes the safe fallback pane, activation reasons, recovery sequence, and receipt fields;
-- `/api/stats` exposes the first honest Stats snapshot readback and names the future SSE lease routes;
+- `/api/session` and `/api/admin/session` expose admin session law: PIN validation, 30-minute token lease, keepalive/renewal, admin-enhanced field filtering, and Caduceus privileged mutation membrane;
+- `/api/topics` replaces Socket.IO subscribe/unsubscribe law with SSE EventSource plus POST renew topic admission;
+- `/api/monitor/pulse`, `/api/stats/events`, and `/api/stats/events/renew` prove the first `stats.system` monitor pulse contract end-to-end;
+- `/api/boundary` and the fallback router expose Flask route and SPA boundary law: `/api/*` JSON 404, non-API shell fallback, and cartridge static serving;
+- `/api/stats` exposes the first honest Stats snapshot readback and names the SSE lease routes;
 - `/api/tabs` loads installed tab manifests dynamically while preserving native pane readback;
 - unsafe tab ids are rejected;
 - the architecture keeps both options alive: runtime cartridges and full-host recompilation.
