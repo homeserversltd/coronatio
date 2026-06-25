@@ -223,9 +223,9 @@ fn shell_document_2() -> &'static str {
     let themes = [];
     const savedHeaderState = (() => { try { return JSON.parse(localStorage.getItem(headerStateKey) || '{}'); } catch (_) { return {}; } })();
     const savedPreferredTheme = localStorage.getItem(preferredThemeKey);
-    const headerState = Object.assign({ theme: savedPreferredTheme || savedHeaderState.theme || 'dark', isAdmin: false }, savedHeaderState, { theme: savedPreferredTheme || savedHeaderState.theme || 'dark' });
+    const headerState = { theme: savedPreferredTheme || savedHeaderState.theme || 'dark', isAdmin: false };
     const saveHeaderState = () => {
-      localStorage.setItem(headerStateKey, JSON.stringify(headerState));
+      localStorage.setItem(headerStateKey, JSON.stringify({ theme: headerState.theme }));
       localStorage.setItem(preferredThemeKey, headerState.theme);
       localStorage.setItem(themeDataKey, JSON.stringify({ name: headerState.theme, values: themeCatalog.themes[headerState.theme] || {} }));
     };

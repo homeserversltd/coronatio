@@ -266,6 +266,10 @@
         assert!(shell.contains(r#"data-admin-mode="false""#));
         assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));
         assert!(shell.contains(r#"querySelectorAll('[data-admin-only]:not([data-admin-only="false"])')"#));
+        assert!(shell.contains("const headerState = { theme: savedPreferredTheme || savedHeaderState.theme || 'dark', isAdmin: false };"));
+        assert!(shell.contains("localStorage.setItem(headerStateKey, JSON.stringify({ theme: headerState.theme }))"));
+        assert!(!shell.contains("Object.assign({ theme: savedPreferredTheme || savedHeaderState.theme || 'dark', isAdmin: false }, savedHeaderState"));
+        assert!(!shell.contains("localStorage.setItem(headerStateKey, JSON.stringify(headerState))"));
         assert!(shell.contains("appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         assert!(shell.contains("tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         for viewport in ["admin", "stats", "portals", "upload"] {
