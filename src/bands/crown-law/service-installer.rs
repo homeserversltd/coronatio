@@ -259,6 +259,8 @@ fn stats_snapshot() -> StatsSnapshot {
     let storage = stats_storage();
     let network = stats_network();
     let io = stats_io(&storage);
+    let leases = stats_kea_leases();
+    let processes = stats_processes();
     let services = stats_services();
     let first_missing_signal = stats_first_missing_signal(&storage, &services);
     StatsSnapshot {
@@ -267,18 +269,18 @@ fn stats_snapshot() -> StatsSnapshot {
         product: "Coronatio".to_string(),
         doctrine: StatsViewportDoctrine {
             quarry_sources: vec![
-                "serverGenesis original var-www-homeserver app/tabs/stats/stats.js".to_string(),
-                "serverGenesis original serverbox basic tabs stats.html".to_string(),
-                "Coronatio North Star first-party native lane".to_string(),
+                "Flask/React src/tablets/stats/index.tsx".to_string(),
+                "Flask/React Stats component files".to_string(),
+                "Coronatio Rust one-to-one replacement lane".to_string(),
             ],
             preserved_sections: vec![
-                "resources".to_string(),
-                "storage".to_string(),
+                "cpu-chart".to_string(),
                 "network".to_string(),
-                "connections".to_string(),
-                "disk I/O chart".to_string(),
-                "services".to_string(),
-                "SSE lease controls".to_string(),
+                "io-section".to_string(),
+                "memory".to_string(),
+                "disk-usage".to_string(),
+                "kea-leases".to_string(),
+                "process-usage".to_string(),
             ],
             refresh_seconds: 5,
             authority: "read-only Rust snapshot from /proc and df; host mutation remains behind Caduceus".to_string(),
@@ -294,6 +296,8 @@ fn stats_snapshot() -> StatsSnapshot {
         storage: storage.clone(),
         network: network.clone(),
         io,
+        leases,
+        processes,
         services: services.clone(),
         telemetry: StatsTelemetry {
             load1: resources.load.one,

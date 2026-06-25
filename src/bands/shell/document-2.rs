@@ -11,6 +11,41 @@ fn shell_document_2() -> &'static str {
     .modules-table th, .modules-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; font-size: .85rem; }
     .log-frame { min-height: 76px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--secondary); }
     .admin-quarry-note { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+    .stats-tablet { display: flex; flex-direction: column; gap: 24px; padding: 16px; }
+    .stat-element { position: relative; padding: 8px; border-radius: 8px; background-color: var(--background); transition: all 0.2s ease-out; box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border); }
+    .stat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .stat-title { margin: 0; color: var(--text); font-size: 1rem; font-weight: 500; flex-grow: 1; text-align: center; }
+    .stat-content { display: flex; flex-direction: column; gap: 16px; }
+    .visibility-toggle { padding: .35rem .45rem; min-width: 34px; }
+    .cpu-stats-container, .network-stats-container, .disk-io-chart, .memory-stats, .disk-usage-stats, .kea-leases-table, .process-usage-list { width: 100%; }
+    .cpu-chart, .network-speed-chart, .stat-chart { width: 100%; height: 200px; margin: 0; }
+    .recharts-wrapper { width: 100%; height: 200px; position: relative; }
+    .recharts-surface { width: 100%; height: 200px; overflow: visible; }
+    .recharts-legend-wrapper, .custom-legend { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; color: var(--text); font-size: .85rem; }
+    .load-averages, .load-average-values { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; color: var(--text); }
+    .load-average-item { display: inline-flex; gap: 4px; }
+    .network-interfaces-table, .kea-leases-table table { width: 100%; border-collapse: collapse; color: var(--text); }
+    .network-interfaces-table th, .network-interfaces-table td, .kea-leases-table th, .kea-leases-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; }
+    .device-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
+    .device-control { border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: var(--hiddenTabBackground); }
+    .device-name { font-weight: 600; margin-bottom: 6px; }
+    .device-checkboxes { display: flex; gap: 10px; }
+    .memory-stats { display: flex; flex-direction: column; gap: 16px; }
+    .memory-current { display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+    .memory-current:last-child { border-bottom: none; }
+    .memory-label { font-size: .85rem; font-weight: 500; color: var(--text); margin-bottom: -4px; }
+    .memory-bar, .disk-usage-bar, .process-bar { width: 100%; height: 24px; background-color: var(--hiddenTabBackground); border-radius: 12px; overflow: hidden; position: relative; }
+    .memory-bar-fill, .disk-usage-fill, .process-bar-fill { height: 100%; background-color: var(--secondary); border-radius: 12px; transition: width .3s ease-out; display: flex; align-items: center; justify-content: center; min-width: 40px; }
+    .memory-bar-fill-swap { background-color: var(--accent); }
+    .memory-text { color: var(--background); font-size: .85rem; font-weight: 500; text-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .memory-details, .disk-usage-details { display: flex; justify-content: space-between; font-size: .85rem; color: var(--text); padding: 0 4px; }
+    .disk-usage-stats, .process-usage-list { display: flex; flex-direction: column; gap: 8px; }
+    .disk-usage-item { display: flex; flex-direction: column; gap: 8px; }
+    .disk-usage-header { display: flex; justify-content: space-between; gap: 10px; color: var(--text); }
+    .process-bar-fill { position: absolute; left: 0; top: 0; background-color: var(--primaryHover); }
+    .process-text-container { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; z-index: 1; }
+    .process-name, .process-usage { color: var(--text); }
     @media (max-width: 768px) { .key-manager-content, .disk-manager-container { flex-direction: column; } .system-controls-btn { width: 100%; max-width: 180px; } .admin-modal-shelf { grid-template-columns: 1fr; } }
     button, .action-link { border: 1px solid var(--border); border-radius: 6px; padding: .55rem .7rem; background: var(--primary); color: #061006; font-weight: 700; cursor: pointer; text-decoration: none; }
     button.secondary, .action-link.secondary { background: transparent; color: var(--text); }
@@ -142,40 +177,35 @@ fn shell_document_2() -> &'static str {
         </div>
       </section>
       <section class="pane" id="pane-stats" data-pane-panel="stats" role="tabpanel" aria-label="Stats">
-        <div class="stats-viewport" data-stats-viewport>
-          <section class="stats-section resources" aria-label="Resources">
-            <h2>Resources</h2>
-            <div class="stats-resource-grid">
-              <article class="stats-resource-card chart-card" data-chart-card="cpu"><h3>CPU</h3><div class="chart-container"><canvas id="cpuChart" data-chart-canvas="cpuChart"></canvas></div><div id="cpu-details" class="cpu-details"><span>CPU <strong id="cpu-current">—</strong>%</span><span>Temp <strong id="cpu-temp">—</strong>°C</span><span>5m <strong id="cpu-5m">—</strong></span><span>Cores <strong id="cpu-cores">—</strong></span></div></article>
-              <article class="stats-resource-card"><h3>Memory</h3><div id="memory-usage" class="metric">—</div><div class="progress-bar"><div class="progress" id="stats-memory-progress"></div></div><div class="details"><span id="stats-memory-used">Used —</span><span id="stats-memory-total">Total —</span></div></article>
-              <article class="stats-resource-card"><h3>Swap</h3><div class="metric" id="stats-swap">—</div><div class="progress-bar"><div class="progress" id="stats-swap-progress"></div></div><div class="details"><span id="stats-swap-used">Used —</span><span id="stats-swap-total">Total —</span></div></article>
-            </div>
-          </section>
-          <section class="stats-section drives" aria-label="Storage">
-            <h2>Storage</h2>
-            <div id="io-drive-selector" class="drive-checkboxes" data-io-drive-selector></div>
-            <div class="chart-container"><canvas id="io-chart" data-chart-canvas="io-chart"></canvas></div>
-            <div id="io-chart-legend" class="io-chart-legend" data-io-chart-legend></div>
-            <div class="drives-grid" data-stats-drives></div>
-          </section>
-          <section class="stats-section network" aria-label="Network">
-            <h2>Network</h2>
-            <div class="chart-container"><canvas id="networkChart" data-chart-canvas="networkChart"></canvas></div>
-            <div class="network-grid" data-stats-network></div>
-            <div class="connections-summary" data-stats-connections></div>
-          </section>
-          <section class="stats-section services" aria-label="Services">
-            <h2>Services</h2>
-            <div class="services-grid" data-stats-services></div>
-          </section>
-          <section class="stats-section stats-transport-card" aria-label="Stats stream">
-            <h2>Stream lane</h2>
-            <p id="stats-stream">Stats stream state pending.</p>
-            <p id="stats-missing" class="warning">Checking collector status…</p>
-            <div class="button-row"><button data-fetch="/api/stats/events" data-target="stats-event">Read event frame</button><button class="secondary" data-admin-only data-admin-viewport="stats" data-fetch="/api/stats/events/renew" data-target="stats-event" data-method="POST">Renew lease</button></div>
-            <pre class="readout" id="stats-event">No event readback yet.</pre>
-            <pre class="readout" id="stats-readout">Fetching /api/stats…</pre>
-          </section>
+        <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
+          <div class="stat-element" data-stat-element-id="cpu-chart" data-visible="true">
+            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="cpu-chart" data-visible="true" aria-label="Hide CPU Usage & Load">👁</button><h3 class="stat-title">CPU Usage &amp; Load</h3></div>
+            <div class="stat-content"><div class="cpu-stats-container"><div class="cpu-chart" data-recharts-chart="cpu"><div class="recharts-wrapper" id="cpu-chart-container"></div></div><div class="load-averages"><div class="load-average-values"><div class="load-average-item"><span class="load-label">1 min:</span><span class="load-value" id="load-1min">—</span></div><div class="load-average-item"><span class="load-label">5 min:</span><span class="load-value" id="load-5min">—</span></div><div class="load-average-item"><span class="load-label">15 min:</span><span class="load-value" id="load-15min">—</span></div></div></div></div></div>
+          </div>
+          <div class="stat-element" data-stat-element-id="network" data-visible="true">
+            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="network" data-visible="true" aria-label="Hide Network Traffic (WAN)">👁</button><h3 class="stat-title">Network Traffic (WAN)</h3></div>
+            <div class="stat-content"><div class="network-stats-container"><div class="network-speed-chart" data-recharts-chart="network"><div class="recharts-wrapper" id="network-chart-container"></div></div><div class="network-interfaces"><table class="network-interfaces-table"><thead><tr><th>Interface</th><th>Total Received</th><th>Total Sent</th></tr></thead><tbody data-network-interfaces></tbody></table></div></div></div>
+          </div>
+          <div class="stat-element" data-stat-element-id="io-section" data-visible="true">
+            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="io-section" data-visible="true" aria-label="Hide Disk I/O">👁</button><h3 class="stat-title">Disk I/O</h3></div>
+            <div class="stat-content"><div class="disk-io-chart"><div class="device-controls" data-device-controls></div><div class="recharts-wrapper" id="disk-io-chart-container"></div></div></div>
+          </div>
+          <div class="stat-element" data-stat-element-id="memory" data-visible="true">
+            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="memory" data-visible="true" aria-label="Hide Memory Usage">👁</button><h3 class="stat-title">Memory Usage</h3></div>
+            <div class="stat-content"><div class="memory-stats"><div class="memory-current"><div class="memory-label">RAM</div><div class="memory-bar"><div class="memory-bar-fill" id="memory-bar-fill"><span class="memory-text" id="memory-percent">—</span></div></div><div class="memory-details"><div id="memory-used">Used: —</div><div id="memory-available">Available: —</div><div id="memory-total">Total: —</div></div></div><div class="memory-current"><div class="memory-label">Swap</div><div class="memory-bar"><div class="memory-bar-fill memory-bar-fill-swap" id="swap-bar-fill"><span class="memory-text" id="swap-percent">—</span></div></div><div class="memory-details"><div id="swap-used">Used: —</div><div id="swap-free">Free: —</div><div id="swap-total">Total: —</div></div></div></div></div>
+          </div>
+          <div class="stat-element" data-stat-element-id="disk-usage" data-visible="true">
+            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="disk-usage" data-visible="true" aria-label="Hide Disk Usage">👁</button><h3 class="stat-title">Disk Usage</h3></div>
+            <div class="stat-content"><div class="disk-usage-stats" data-disk-usage-stats></div></div>
+          </div>
+          <div class="stat-element" data-stat-element-id="kea-leases" data-visible="true">
+            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="kea-leases" data-visible="true" aria-label="Hide DHCP Leases">👁</button><h3 class="stat-title">DHCP Leases</h3></div>
+            <div class="stat-content"><div class="kea-leases-table"><table><thead><tr><th>Device Note</th><th>Hostname</th><th>IP Address</th><th>MAC Address</th></tr></thead><tbody data-kea-leases><tr><td colspan="4">Loading Kea leases...</td></tr></tbody></table></div></div>
+          </div>
+          <div class="stat-element" data-stat-element-id="process-usage" data-visible="true">
+            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="process-usage" data-visible="true" aria-label="Hide CPU Usage by Process">👁</button><h3 class="stat-title">CPU Usage by Process</h3></div>
+            <div class="stat-content"><div class="process-usage-list" data-process-usage-list><p>Loading process usage...</p></div></div>
+          </div>
         </div>
       </section>
       <section class="pane" id="pane-portals" data-pane-panel="portals" role="tabpanel" aria-label="Portals">
