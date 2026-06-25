@@ -493,6 +493,64 @@ struct ConfigRollbackLaw {
     mismatch_policy: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ServiceDataReadback {
+    schema: String,
+    status: String,
+    route: String,
+    portal_schema: PortalSchema,
+    service_card_schema: ServiceCardSchema,
+    monitor_topics: Vec<MonitorTopicLaw>,
+    broadcast_law: BroadcastLaw,
+    admin_field_law: Vec<AdminFieldFilter>,
+    first_missing_live_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct PortalSchema {
+    source_path: String,
+    fields: Vec<String>,
+    required_fields: Vec<String>,
+    portal_types: Vec<String>,
+    validation_rules: Vec<ValidationRule>,
+    factory_portal_law: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ServiceCardSchema {
+    source_paths: Vec<String>,
+    fields: Vec<String>,
+    systemd_resolution: String,
+    script_managed_resolution: String,
+    enabled_cache_policy: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MonitorTopicLaw {
+    topic: String,
+    source_monitor: String,
+    cadence_source: String,
+    payload_fields: Vec<String>,
+    admin_only: bool,
+    admin_fields: Vec<String>,
+    change_rule: String,
+    coronatio_contract: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct BroadcastLaw {
+    transport_replacement: String,
+    regular_delivery: String,
+    admin_delivery: String,
+    change_detection: String,
+    ui_state_law: String,
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -538,6 +596,7 @@ fn app(state: AppState) -> Router {
         )
         .route("/api/topics", get(topics_route))
         .route("/api/monitor/pulse", get(monitor_pulse_route))
+        .route("/api/services/data", get(service_data_route))
         .route("/api/boundary", get(boundary_route))
         .route("/api/installer", get(installer_route))
         .route("/api/stats/events", get(stats_events_route))
@@ -582,6 +641,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/admin/session".to_string(),
             "/api/topics".to_string(),
             "/api/monitor/pulse".to_string(),
+            "/api/services/data".to_string(),
             "/api/boundary".to_string(),
             "/api/installer".to_string(),
             "/api/stats/events".to_string(),
@@ -648,6 +708,10 @@ async fn topics_route() -> impl IntoResponse {
 
 async fn monitor_pulse_route() -> impl IntoResponse {
     Json(monitor_pulse_readback())
+}
+
+async fn service_data_route() -> impl IntoResponse {
+    Json(service_data_readback())
 }
 
 async fn boundary_route() -> impl IntoResponse {
@@ -1350,6 +1414,86 @@ fn stats_event_payload() -> StatsEventPayload {
         lease_seconds: 30,
         payload_state: "placeholder-unavailable".to_string(),
         first_missing_signal: "stats collectors not wired".to_string(),
+    }
+}
+
+fn service_data_readback() -> ServiceDataReadback {
+    ServiceDataReadback {
+        schema: "coronatio.service-data.contract.v1".to_string(),
+        status: "contract-only".to_string(),
+        route: "/api/services/data".to_string(),
+        portal_schema: PortalSchema {
+            source_path: "homeserver.json tabs.portals.data.portals[]".to_string(),
+            fields: vec!["name", "description", "services", "type", "port", "localURL", "remoteURL"].into_iter().map(String::from).collect(),
+            required_fields: vec!["name", "description", "localURL"].into_iter().map(String::from).collect(),
+            portal_types: vec!["systemd", "script", "link"].into_iter().map(String::from).collect(),
+            validation_rules: vec![
+                ValidationRule { field: "name".to_string(), rule: "non-empty unique portal name".to_string() },
+                ValidationRule { field: "services".to_string(), rule: "non-link portals require at least one service".to_string() },
+                ValidationRule { field: "port".to_string(), rule: "non-link portals require unique integer port 1..65535".to_string() },
+                ValidationRule { field: "localURL".to_string(), rule: "non-empty local URL is the primary appliance link".to_string() },
+                ValidationRule { field: "factory".to_string(), rule: "factory portals are read-only and cannot be deleted by custom portal mutation".to_string() },
+            ],
+            factory_portal_law: "factory portals are loaded from factory config for readback and protected from deletion; custom portals mutate only through later Caduceus config transactions".to_string(),
+        },
+        service_card_schema: ServiceCardSchema {
+            source_paths: vec![
+                "backend/portals/routes.py /api/portals".to_string(),
+                "backend/monitors/services.py ServicesMonitor.collect_status".to_string(),
+                "backend/utils/utils.py get_service_status".to_string(),
+            ],
+            fields: vec!["name", "systemdName", "isEnabled", "isActive", "status", "statusDetails", "isScriptManaged", "port", "needsReboot"].into_iter().map(String::from).collect(),
+            systemd_resolution: "portal services resolve through exact service mapping, normalized name mapping, then .service suffix; active and enabled use systemctl".to_string(),
+            script_managed_resolution: "script-managed portal services use port reachability as running proxy, assume enabled, and mark needsReboot true".to_string(),
+            enabled_cache_policy: "is-enabled results are cached for 60 seconds in the old monitor; Coronatio records cache TTL as contract, not live systemctl state".to_string(),
+        },
+        monitor_topics: monitor_topic_laws(),
+        broadcast_law: BroadcastLaw {
+            transport_replacement: "old eventlet/Socket.IO broadcasters become Coronatio topic contracts and SSE/readback routes".to_string(),
+            regular_delivery: "regular clients receive non-admin payload fields for core service, power, internet, tailscale, vpn, sync, and hard-drive-test topics".to_string(),
+            admin_delivery: "admin sessions may receive registered admin fields and admin-only disk/system topics through Caduceus-gated capability".to_string(),
+            change_detection: "topic-specific comparison rules decide broadcast eligibility; realtime power/system always pulse, services compare set/status/enabled, sync compares status/job/progress/keepalive".to_string(),
+            ui_state_law: "monitor data becomes current service cards, indicator chips, and pane snapshots; unavailable collectors surface firstMissingSignal instead of fake green".to_string(),
+        },
+        admin_field_law: admin_field_filters(),
+        first_missing_live_signal: "service collectors and monitor broadcasters are not wired; Coronatio does not run systemctl, ping, tailscale, vpn, disk, rsync, smartctl, or power sensors in this tranche".to_string(),
+    }
+}
+
+fn monitor_topic_laws() -> Vec<MonitorTopicLaw> {
+    vec![
+        monitor_topic("services.status", "ServicesMonitor.broadcast_status", "SERVICES_CHECK_INTERVAL", vec!["name", "systemdName", "isActive", "status", "statusDetails", "isScriptManaged", "port", "needsReboot"], false, vec!["isEnabled"], "broadcast when service count/name/status/enabled state changes", "service cards and portal currentness readback"),
+        monitor_topic("power.status", "PowerMonitor.broadcast_power_data", "POWER_SAMPLE_INTERVAL", vec!["current", "historical", "unit", "timestamp"], false, vec![], "always broadcast realtime power samples", "power indicator/currentness readback"),
+        monitor_topic("system.stats", "SystemStatsMonitor.broadcast_stats", "STATS_INTERVAL", vec!["load", "cpu", "memory", "disk", "network", "timestamp"], false, vec!["processes", "users", "networkConnections"], "always broadcast realtime system stats", "stats pane snapshot/SSE payload"),
+        monitor_topic("internet.status", "InternetStatusMonitor.broadcast_status", "INTERNET_CHECK_INTERVAL", vec!["status", "timestamp"], false, vec!["publicIp", "ipDetails", "dnsServers"], "broadcast on connectivity/public IP/DNS/error-validity changes", "internet indicator readback"),
+        monitor_topic("tailscale.status", "TailscaleMonitor.broadcast_status", "TAILSCALE_CHECK_INTERVAL", vec!["status", "interface", "timestamp"], false, vec!["ip", "tailnet", "isEnabled", "loginUrl"], "broadcast on status/interface/admin-field/login URL changes", "tailscale indicator readback"),
+        monitor_topic("vpn.status", "VPNMonitor.broadcast_status", "VPN_CHECK_INTERVAL", vec!["vpnStatus", "transmissionStatus", "timestamp"], false, vec!["connectionDetails", "credentials", "isEnabled"], "broadcast on vpn/transmission/enabled changes", "vpn indicator readback with credentials redacted"),
+        monitor_topic("sync.status", "sync_monitor.broadcast_status", "2 seconds", vec!["status", "id", "progress", "timestamp", "message"], false, vec![], "broadcast on status/job/progress >=10% or working keepalive", "sync indicator and admin action readback"),
+        monitor_topic("hard-drive-test.status", "HardDriveTestMonitor.broadcast_status", "DRIVE_TEST_INTERVAL", vec!["status", "device", "testType", "progress", "message", "timestamp"], false, vec![], "broadcast starting/done and working keepalive", "drive-test indicator/action readback"),
+        monitor_topic("admin.disk.info", "DiskMonitor.broadcast_disk_info", "DISK_CHECK_INTERVAL", vec!["blockDevices", "diskUsage", "encryptionInfo", "nasCompatibleDevices", "timestamp"], true, vec![], "broadcast on device/encryption/NAS/mount/filesystem/UUID/usage/error changes or 5 minute pulse", "admin disk appliance readback"),
+        monitor_topic("admin.system", "SystemStatsMonitor.broadcast_admin_stats", "ADMIN_STATS_INTERVAL", vec!["system stats plus admin detail fields"], true, vec![], "admin-only realtime system pulse", "admin diagnostics readback"),
+    ]
+}
+
+fn monitor_topic(
+    topic: &str,
+    source_monitor: &str,
+    cadence_source: &str,
+    payload_fields: Vec<&str>,
+    admin_only: bool,
+    admin_fields: Vec<&str>,
+    change_rule: &str,
+    coronatio_contract: &str,
+) -> MonitorTopicLaw {
+    MonitorTopicLaw {
+        topic: topic.to_string(),
+        source_monitor: source_monitor.to_string(),
+        cadence_source: cadence_source.to_string(),
+        payload_fields: payload_fields.into_iter().map(String::from).collect(),
+        admin_only,
+        admin_fields: admin_fields.into_iter().map(String::from).collect(),
+        change_rule: change_rule.to_string(),
+        coronatio_contract: coronatio_contract.to_string(),
     }
 }
 
@@ -2255,6 +2399,51 @@ mod tests {
                 |mapping| mapping.install_mode == InstallMode::FirstPartyNative
                     && mapping.rejected_shape.contains("premium package")
             ));
+    }
+
+    #[tokio::test]
+    async fn service_data_route_encodes_portal_monitor_and_broadcast_law() {
+        let temp = test_tab_root("service-data");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/services/data")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let data: ServiceDataReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(data.schema, "coronatio.service-data.contract.v1");
+        assert_eq!(data.status, "contract-only");
+        assert!(data.portal_schema.fields.contains(&"remoteURL".to_string()));
+        assert!(data
+            .portal_schema
+            .portal_types
+            .contains(&"link".to_string()));
+        assert!(data
+            .service_card_schema
+            .fields
+            .contains(&"isScriptManaged".to_string()));
+        assert!(data
+            .monitor_topics
+            .iter()
+            .any(|topic| topic.topic == "admin.disk.info" && topic.admin_only));
+        assert!(data
+            .monitor_topics
+            .iter()
+            .any(|topic| topic.topic == "services.status"
+                && topic.admin_fields.contains(&"isEnabled".to_string())));
+        assert!(data.broadcast_law.transport_replacement.contains("SSE"));
+        assert!(data
+            .first_missing_live_signal
+            .contains("service collectors and monitor broadcasters are not wired"));
     }
 
     #[tokio::test]

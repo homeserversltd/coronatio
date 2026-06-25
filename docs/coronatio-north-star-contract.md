@@ -64,6 +64,10 @@ The scaffolding SHALL make these decisions visible before they harden:
 7. Sandboxing: systemd service first; WASI only when pure plugin code wants stronger sandboxing.
 8. Promotion path: dynamic cartridge to first-party native when a tab becomes crown law.
 
+## Service, portal, monitor, and data tranche law
+
+The old portals, services monitor, and broadcast manager are behavior quarry, not runtime authority. Coronatio currently exposes them as `/api/services/data`, a typed readback contract. The route records portal fields (`name`, `description`, `services`, `type`, `port`, `localURL`, `remoteURL`), service-card health fields (`systemdName`, `isEnabled`, `isActive`, `status`, `statusDetails`, `isScriptManaged`, `port`, `needsReboot`), monitor topics for services, power, system, internet, tailscale, VPN, sync, hard-drive-test, admin disk, and admin system, plus admin field filters and topic-specific broadcast change predicates. It does not run host collectors or privileged actions; those require later Caduceus/Coronatio actuator receipts.
+
 ## Config patch and persistence tranche law
 
 The old `ConfigManager` registry writer is behavior quarry, not runtime authority. Coronatio currently exposes it as `/api/registry/transaction`, a typed readback/state-machine contract. The route records object-recursive deep merge, scalar/array replacement, `tabs.starred` preservation, factory fallback validation, temp-candidate write/promote, `www-data:www-data`/`664` permission restoration, backup restore, patch-key revert, and mismatch preservation. It does not write live config, execute `factoryFallback.sh`, move temp files, or change ownership/mode. Those live mutations require a later Caduceus actuator with non-secret receipts.
