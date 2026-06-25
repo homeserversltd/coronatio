@@ -197,9 +197,9 @@ mod tests {
         assert!(shell.contains(r#"class="theme-button""#));
         assert!(shell.contains("data-theme-button"));
         assert!(shell.contains("Open theme selector"));
-        assert!(shell.contains(r#"data-theme-choice="dark""#));
-        assert!(shell.contains(r#"data-theme-choice="light""#));
-        assert!(shell.contains(r#"data-theme-choice="radioactive""#));
+        assert!(shell.contains(r#"data-theme-json-source="/api/themes""#));
+        assert!(shell.contains("loadThemeCatalog()"));
+        assert!(shell.contains("fetch('/api/themes')"));
         assert!(!shell.contains(r#"data-theme-choice="blue""#));
         assert!(shell.contains("Current theme:"));
         assert!(shell.contains(r#"class="admin-button""#));
@@ -278,7 +278,8 @@ mod tests {
             "themeCatalog",
             "preferred-theme",
             "themeData",
-            r#"data-theme="radioactive""#,
+            "/api/themes",
+            "data-theme-json-source",
         ] {
             assert!(shell.contains(preserved), "theme membrane marker missing: {}", preserved);
         }
@@ -287,7 +288,31 @@ mod tests {
         }
         assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));
         assert!(shell.contains("aria-pressed"));
+        assert!(!shell.contains("const themeCatalog = {"));
+        assert!(!shell.contains(r#":root[data-theme="light"]"#));
         assert!(!shell.contains("Choose the active HOMESERVER theme."));
+    }
+
+    #[tokio::test]
+    async fn themes_route_reads_runtime_theme_json_catalog() {
+        let temp = test_tab_root("theme-json-catalog");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(Request::builder().uri("/api/themes").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("coronatio.theme-catalog.response.v1"));
+        assert!(body.contains("static/themes/theme.json"));
+        assert!(body.contains("radioactive"));
+        assert!(body.contains("color-primary"));
+        assert!(body.contains("bg-primary"));
+        assert!(body.contains("font-family"));
     }
 
     #[tokio::test]
@@ -1083,10 +1108,11 @@ mod tests {
             let body = String::from_utf8(bytes.to_vec()).unwrap();
             assert!(
                 body.contains("coronatio.homeserver.route.read.v1")
-                    || body.contains("coronatio.upload.history.v1"),
+                    || body.contains("coronatio.upload.history.v1")
+                    || body.contains("coronatio.theme-catalog.response.v1"),
                 "{body}"
             );
-            assert!(body.contains(route) || route == "/api/upload/history", "{body}");
+            assert!(body.contains(route) || route == "/api/upload/history" || route == "/api/themes", "{body}");
         }
     }
 

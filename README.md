@@ -159,6 +159,8 @@ Live installation remains outside this tranche. Privileged file writes, dependen
 
 The old Flask/React theme system is behavior quarry and visual contract. Coronatio implements it as Rust-delivered firmware with the same browser-visible theme membrane: `preferred-theme`, `themeData`, `style[data-theme-styles]`, `data-theme`, and `--theme-*` CSS variables. Light, dark, and radioactive themes must apply through one token catalog and produce identical token-driven styling across Admin, Stats, Portals, Upload, header controls, modals, cards, and tab controls. A theme switch is real only when the DOM dataset, injected style membrane, local persistence, theme button label, and all pane card computed styles move together.
 
+Runtime theme authority is `static/themes/theme.json`, not Rust source literals. The installed service reads `/opt/coronatio/source/static/themes/theme.json` unless `CORONATIO_THEME_JSON` points elsewhere. `/api/themes` validates and exposes that catalog at runtime so users can add a new theme object without editing Rust code; the browser then derives theme choices, `<html data-theme>`, `preferred-theme`, `themeData`, and `style[data-theme-styles]` from the JSON catalog.
+
 ## Proof commands
 
 ```bash
