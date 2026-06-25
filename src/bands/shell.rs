@@ -41,19 +41,18 @@ fn render_crown_shell() -> String {
       border-bottom: 1px solid var(--border);
       box-shadow: var(--shadow);
     }
-    .brand { display: flex; align-items: center; gap: .65rem; font-weight: 700; letter-spacing: .02em; }
-    .brand-mark { width: 26px; height: 26px; border-radius: 7px; border: 2px solid var(--accent); display: grid; place-items: center; color: var(--accent); font-size: .82rem; }
     .header-top-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-width: 0; flex: 1 1 auto; }
     .header-left, .header-center, .header-right { display: flex; align-items: center; gap: .5rem; }
     .header-center { justify-content: center; flex: 2 1 auto; min-width: 0; }
     .header-right { justify-content: flex-end; flex-wrap: wrap; }
     .uptime { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; padding: .24rem .5rem; border-radius: 6px; background: rgba(255,255,255,.06); color: var(--text); }
-    .status-indicators { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .4rem; }
-    .indicator { display: inline-flex; cursor: pointer; align-items: center; gap: .3rem; border: 1px solid var(--border); border-radius: 999px; padding: .18rem .55rem; background: rgba(255,255,255,.045); color: var(--text-secondary); font-size: .78rem; }
-    .indicator::before { content: ''; width: .5rem; height: .5rem; border-radius: 999px; background: var(--warning); box-shadow: 0 0 0 2px rgba(255,152,0,.14); }
-    .indicator.ok::before { background: var(--success); box-shadow: 0 0 0 2px rgba(76,175,80,.14); }
-    .indicator.warn::before { background: var(--warning); }
-    .indicator:hover { background: rgba(255,255,255,.1); color: var(--text); }
+    .status-indicators { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px; }
+    .indicator { cursor: pointer; padding: .25rem; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--text); transition: transform .2s ease, background-color .2s ease, box-shadow .2s ease; }
+    .indicator:hover { background-color: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,.15); }
+    .indicator:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .indicator-icon { font-family: "Font Awesome 6 Free", "Font Awesome 5 Free", sans-serif; font-weight: 900; font-size: 1.15rem; line-height: 1; }
+    .indicator.ok .indicator-icon { color: var(--success); }
+    .indicator.warn .indicator-icon { color: var(--warning); }
     .modal-body { display: grid; gap: .75rem; color: var(--text-secondary); }
     .modal-body ul { margin: .25rem 0 0; padding-left: 1.15rem; }
     .modal-section, .status-section, .config-section, .credentials-section, .service-controls, .power-history-section, .speed-test-section { display: grid; gap: .55rem; }
@@ -172,16 +171,15 @@ fn render_crown_shell() -> String {
 <body>
   <main class="app" data-product="Coronatio" data-source-material="homeserver-main-site" data-admin-mode="false">
     <header class="top-bar header" data-flask-react-quarry="Header">
-      <div class="brand"><span class="brand-mark">⌂</span><span>HomeServer</span><span class="muted">/ Coronatio</span></div>
       <div class="header-top-row">
         <div class="header-left"><span class="uptime" data-uptime-indicator title="Server uptime">connecting...</span></div>
         <div class="header-center">
           <div class="status-indicators" aria-label="Status indicators">
-            <button type="button" class="indicator ok" data-indicator="tailscale" data-modal-kind="tailscale" data-modal-title="Tailscale Status">Tailscale</button>
-            <button type="button" class="indicator ok" data-indicator="internet" data-modal-kind="internet" data-modal-title="Internet Status">Internet</button>
-            <button type="button" class="indicator warn" data-indicator="openvpn" data-modal-kind="openvpn" data-modal-title="VPN & Transmission Configuration">OpenVPN</button>
-            <button type="button" class="indicator ok" data-indicator="services" data-modal-kind="services" data-modal-title="Services Status">Services</button>
-            <button type="button" class="indicator warn" data-indicator="power-meter" data-modal-kind="power-meter" data-modal-title="Power Consumption">Power Meter</button>
+            <button type="button" class="indicator ok tailscale-indicator" data-indicator="tailscale" data-modal-kind="tailscale" data-modal-title="Tailscale Status" aria-label="Tailscale Status" title="Tailscale Status"><span class="indicator-icon" data-fa-icon="network-wired" aria-hidden="true">&#xf6ff;</span></button>
+            <button type="button" class="indicator ok internet-indicator" data-indicator="internet" data-modal-kind="internet" data-modal-title="Internet Status" aria-label="Internet Status" title="Internet Status"><span class="indicator-icon" data-fa-icon="plug" aria-hidden="true">&#xf1e6;</span></button>
+            <button type="button" class="indicator warn openvpn-indicator" data-indicator="openvpn" data-modal-kind="openvpn" data-modal-title="VPN & Transmission Configuration" aria-label="VPN & Transmission Configuration" title="VPN & Transmission Configuration"><span class="indicator-icon" data-fa-icon="lock" aria-hidden="true">&#xf023;</span></button>
+            <button type="button" class="indicator ok services-indicator" data-indicator="services" data-modal-kind="services" data-modal-title="Services Status" aria-label="Services Status" title="Services Status"><span class="indicator-icon" data-fa-icon="server" aria-hidden="true">&#xf233;</span></button>
+            <button type="button" class="indicator warn power-indicator" data-indicator="power-meter" data-modal-kind="power-meter" data-modal-title="Power Consumption" aria-label="Power Consumption" title="Power Consumption"><span class="indicator-icon" data-fa-icon="bolt" aria-hidden="true">&#xf0e7;</span></button>
           </div>
         </div>
         <div class="header-right">
@@ -484,14 +482,14 @@ fn render_crown_shell() -> String {
       if (!uptime) return;
       try {
         const data = await fetch('/uptime').then(r => r.json()).catch(() => null);
-        uptime.textContent = data?.uptime ? data.uptime + 's' : 'live';
-      } catch (_) { uptime.textContent = navigator.onLine ? 'live' : 'disconnected'; }
+        uptime.textContent = data?.uptime ? data.uptime + 's' : 'connecting...';
+      } catch (_) { uptime.textContent = navigator.onLine ? 'connecting...' : 'disconnected'; }
     }
     async function hydrateStats() {
       try {
         const data = await fetch('/api/stats').then(r => r.json());
         const caduceus = await fetch('/api/caduceus/status').then(r => r.json()).catch(() => null);
-        document.getElementById('stats-load').textContent = caduceus?.ok ? 'live' : (data.telemetry?.load1 ?? 'unwired');
+        document.getElementById('stats-load').textContent = caduceus?.ok ? 'connected' : (data.telemetry?.load1 ?? 'unwired');
         document.getElementById('stats-stream').textContent = (data.transport?.streamStatus || 'unknown') + ' — ' + (data.transport?.streamReason || '');
         document.getElementById('stats-missing').textContent = caduceus?.firstMissingSignal || data.telemetry?.firstMissingSignal || 'none';
         document.getElementById('stats-readout').textContent = JSON.stringify({ stats: data, caduceus }, null, 2);
