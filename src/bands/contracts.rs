@@ -1,6 +1,8 @@
 const DEFAULT_TAB_ROOT: &str = "/var/lib/coronatio/tabs";
 const DEFAULT_THEME_JSON: &str = "static/themes/theme.json";
 const INSTALLED_THEME_JSON: &str = "/opt/coronatio/source/static/themes/theme.json";
+const INSTALLED_STATIC_ROOT: &str = "/opt/coronatio/source/static";
+const DEFAULT_STATIC_ROOT: &str = "static";
 const PRIMARY_TABS: [&str; 4] = ["admin", "stats", "portals", "upload"];
 
 const REQUIRED_THEME_KEYS: &[&str] = &[
