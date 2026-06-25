@@ -54,8 +54,14 @@ fn render_crown_shell() -> String {
     .indicator.ok::before { background: var(--success); box-shadow: 0 0 0 2px rgba(76,175,80,.14); }
     .indicator.warn::before { background: var(--warning); }
     .indicator:hover { background: rgba(255,255,255,.1); color: var(--text); }
-    .modal-body { display: grid; gap: .65rem; color: var(--text-secondary); }
+    .modal-body { display: grid; gap: .75rem; color: var(--text-secondary); }
     .modal-body ul { margin: .25rem 0 0; padding-left: 1.15rem; }
+    .modal-section, .status-section, .config-section, .credentials-section, .service-controls, .power-history-section, .speed-test-section { display: grid; gap: .55rem; }
+    .modal-grid { display: grid; gap: .55rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .modal-body input { width: 100%; padding: .55rem .65rem; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--text); }
+    .status-item, .power-average-row, .current-tailnet { display: flex; justify-content: space-between; gap: .75rem; border-bottom: 1px solid rgba(255,255,255,.08); padding-bottom: .35rem; }
+    .status-value, .power-value, .power-average-value, .value { color: var(--text); font-weight: 700; }
+    .action-output:empty { display: none; }
     .theme-choice-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
     .theme-choice-row[hidden] { display: none !important; }
     .theme-choice { min-width: 90px; }
@@ -168,11 +174,11 @@ fn render_crown_shell() -> String {
         <div class="header-left"><span class="uptime" data-uptime-indicator title="Server uptime">connecting...</span></div>
         <div class="header-center">
           <div class="status-indicators" aria-label="Status indicators">
-            <button type="button" class="indicator ok" data-indicator="tailscale" data-modal-title="Tailscale" data-modal-body="Tailscale status, tailnet posture, service enablement, and connect/disconnect controls.">Tailscale</button>
-            <button type="button" class="indicator ok" data-indicator="internet" data-modal-title="Internet" data-modal-body="Internet status, public IP posture, and speed-test/diagnostic controls.">Internet</button>
-            <button type="button" class="indicator warn" data-indicator="openvpn" data-modal-title="OpenVPN" data-modal-body="OpenVPN tunnel state, client profile posture, and recovery controls.">OpenVPN</button>
-            <button type="button" class="indicator ok" data-indicator="services" data-modal-title="Services" data-modal-body="Service health summary with per-service running/enabled detail.">Services</button>
-            <button type="button" class="indicator warn" data-indicator="power-meter" data-modal-title="Power Meter" data-modal-body="Power meter readback, energy telemetry, and device availability.">Power Meter</button>
+            <button type="button" class="indicator ok" data-indicator="tailscale" data-modal-kind="tailscale" data-modal-title="Tailscale Status">Tailscale</button>
+            <button type="button" class="indicator ok" data-indicator="internet" data-modal-kind="internet" data-modal-title="Internet Status">Internet</button>
+            <button type="button" class="indicator warn" data-indicator="openvpn" data-modal-kind="openvpn" data-modal-title="VPN & Transmission Configuration">OpenVPN</button>
+            <button type="button" class="indicator ok" data-indicator="services" data-modal-kind="services" data-modal-title="Services Status">Services</button>
+            <button type="button" class="indicator warn" data-indicator="power-meter" data-modal-kind="power-meter" data-modal-title="Power Consumption">Power Meter</button>
           </div>
         </div>
         <div class="header-right">
@@ -180,11 +186,6 @@ fn render_crown_shell() -> String {
           <button type="button" class="change-admin-pin-button" data-change-pin-button hidden>Change PIN</button>
           <button type="button" class="admin-button" data-admin-button data-admin-state="logged-out">Enter Admin Mode</button>
         </div>
-      </div>
-      <div class="status-strip" aria-label="Coronatio currentness">
-        <span class="status-pill ok">Rust crown online</span>
-        <span class="status-pill">Caduceus boundary protected</span>
-        <span class="status-pill">Source quarry: main HomeServer</span>
       </div>
     </header>
     <div class="modal-backdrop" data-pin-modal-backdrop aria-hidden="true">
@@ -308,21 +309,46 @@ fn render_crown_shell() -> String {
       modalBackdrop.classList.remove('open');
       modalBackdrop.setAttribute('aria-hidden', 'true');
     }
-    function openInfoModal(title, body, mode = 'status') {
+    function modalTemplate(kind) {
+      if (kind === 'tailscale') return `<div class="tailscale-status-modal">
+        <div class="status-section"><p class="status-text loading">LOADING...</p></div>
+        <div class="config-section"><div class="current-tailnet"><span class="label">Current Tailnet:</span><span class="value" data-route-read="/api/status/tailscale/config">Loading...</span></div><input data-tailnet-input placeholder="Enter Tailnet name"><div class="button-row"><button data-modal-fetch="/api/status/tailscale/update-tailnet" data-method="POST">Update Tailnet</button><button data-modal-fetch="/api/status/tailscale/connect" data-method="POST">Connect</button><button data-modal-fetch="/api/status/tailscale/disconnect" data-method="POST">Disconnect</button><button data-modal-fetch="/api/status/tailscale/enable" data-method="POST">Enable Service</button><button data-modal-fetch="/api/status/tailscale/disable" data-method="POST">Disable Service</button></div></div>
+        <div class="authkey-section"><input class="authkey-input" placeholder="Enter your tskey-auth-... or tskey-client-... key"><div class="button-row"><button data-modal-fetch="/api/status/tailscale/authkey" data-method="POST">Authenticate</button></div></div><pre class="readout action-output" data-modal-output></pre>
+      </div>`;
+      if (kind === 'internet') return `<div class="internet-status-modal"><div class="status-section"><p class="status-text loading">CHECKING...</p></div><div class="speed-test-section"><div class="button-row"><button data-modal-fetch="/api/status/internet/speedtest" data-method="POST">Run Speed Test</button></div><div class="speed-results"><p>Download: — Mbps</p><p>Upload: — Mbps</p><p>Latency: — ms</p></div></div><pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'services') return `<div class="services-status-modal"><div class="loading-section">Loading service status...</div><ul class="service-status-list" data-route-read="/api/status/services"><li>No status data available</li></ul><div class="button-row"><button data-modal-fetch="/api/status/services">Refresh</button><button data-modal-fetch="/api/services/data">Service Data</button></div><pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'openvpn') return `<div class="vpn-status-modal"><div class="status-section"><div class="service-statuses"><div class="status-item loading"><span>VPN Status:</span><span class="status-value">LOADING</span></div><div class="status-item loading"><span>Transmission Status:</span><span class="status-value">LOADING</span></div><div class="status-item"><span>Systemd Service:</span><span class="status-value">LOADING</span></div></div></div><div class="credentials-section"><div class="modal-grid"><div class="credential-group"><input placeholder="PIA Username"><input type="password" placeholder="PIA Password"><button data-modal-fetch="/api/status/vpn/updatekey/pia" data-method="POST">Create PIA Key</button></div><div class="credential-group"><input placeholder="Transmission Username"><input type="password" placeholder="Transmission Password"><button data-modal-fetch="/api/status/vpn/updatekey/transmission" data-method="POST">Create Transmission</button></div></div></div><div class="service-controls"><div class="button-row"><button data-modal-fetch="/api/status/vpn/enable" data-method="POST">Enable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/disable" data-method="POST">Disable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/pia/exists">PIA Key Exists</button><button data-modal-fetch="/api/status/vpn/transmission/exists">Transmission Key Exists</button></div></div><div class="restart-notice"><p>Note: Service changes require a restart to take effect.</p></div><pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'power-meter') return `<div class="power-meter-modal"><div class="power-usage-display"><div class="power-value"><span class="power-value-number">—</span><span class="power-value-unit">Watts</span></div></div><div class="power-history-section"><div class="power-averages"><div class="power-average-row"><div class="power-average-label">5s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">30s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">60s average:</div><div class="power-average-value">—W</div></div></div></div><div class="button-row"><button data-modal-fetch="/api/status/power/usage">Refresh</button></div><pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p></div>`;
+      return '';
+    }
+    function wireModalFetches() {
+      infoBody.querySelectorAll('[data-modal-fetch]').forEach(button => button.addEventListener('click', async () => {
+        const output = infoBody.querySelector('[data-modal-output]');
+        if (output) output.textContent = 'Loading ' + button.dataset.modalFetch + '…';
+        try {
+          const response = await fetch(button.dataset.modalFetch, { method: button.dataset.method || 'GET' });
+          const text = await response.text();
+          if (output) { try { output.textContent = JSON.stringify(JSON.parse(text), null, 2); } catch (_) { output.textContent = text; } }
+        } catch (error) { if (output) output.textContent = 'fetch failed: ' + error; }
+      }));
+    }
+    function openInfoModal(title, kind = 'status') {
       infoTitle.textContent = title;
-      infoBody.innerHTML = '<p>' + body + '</p>' + (mode === 'theme' ? '<p>Choose the active HOMESERVER theme.</p>' : '<ul><li>Live Rust header control</li><li>Detailed backend wiring continues through Coronatio/Caduceus routes</li></ul>');
-      themeChoiceRow.hidden = mode !== 'theme';
+      infoBody.innerHTML = modalTemplate(kind);
+      themeChoiceRow.hidden = kind !== 'theme';
       infoBackdrop.classList.add('open');
       infoBackdrop.setAttribute('aria-hidden', 'false');
+      wireModalFetches();
     }
     function closeInfoModal() {
       infoBackdrop.classList.remove('open');
       infoBackdrop.setAttribute('aria-hidden', 'true');
     }
     document.querySelector('[data-info-modal-close]')?.addEventListener('click', closeInfoModal);
-    document.querySelectorAll('[data-indicator]').forEach(button => button.addEventListener('click', () => openInfoModal(button.dataset.modalTitle, button.dataset.modalBody)));
+    document.querySelectorAll('[data-indicator]').forEach(button => button.addEventListener('click', () => openInfoModal(button.dataset.modalTitle, button.dataset.modalKind)));
     themeButton?.addEventListener('click', () => {
-      openInfoModal('Theme', 'Current theme: ' + headerState.theme + '.', 'theme');
+      openInfoModal('Theme', 'theme');
     });
     document.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click', () => {
       headerState.theme = button.dataset.themeChoice;

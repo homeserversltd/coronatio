@@ -184,10 +184,12 @@ mod tests {
             assert!(shell.contains(&format!(r#"data-indicator="{}""#, indicator)));
         }
         assert!(shell.contains(r#"<button type="button" class="indicator ok" data-indicator="tailscale""#));
-        assert!(shell.contains(r#"data-modal-title="Tailscale""#));
-        assert!(shell.contains(r#"data-modal-body="Tailscale status"#));
+        assert!(shell.contains(r#"data-modal-title="Tailscale Status""#));
+        assert!(shell.contains(r#"data-modal-kind="tailscale""#));
         assert!(shell.contains("data-info-modal-backdrop"));
         assert!(shell.contains(".theme-choice-row[hidden]"));
+        assert!(shell.contains("modalTemplate(kind)"));
+        assert!(shell.contains("wireModalFetches"));
         assert!(shell.contains("openInfoModal"));
         assert!(shell.contains("document.querySelectorAll('[data-indicator]')"));
         assert!(shell.contains("data-uptime-indicator"));
@@ -213,6 +215,47 @@ mod tests {
         assert!(shell.contains("coronatio.flask-react-header.v1"));
         assert!(shell.contains("setAdminMode"));
         assert!(shell.contains("applyTheme"));
+        for preserved in [
+            "Tailscale Status",
+            "Current Tailnet:",
+            "Enter Tailnet name",
+            "Update Tailnet",
+            "Authenticate",
+            "/api/status/tailscale/connect",
+            "/api/status/tailscale/authkey",
+            "Internet Status",
+            "Run Speed Test",
+            "/api/status/internet/speedtest",
+            "Services Status",
+            "service-status-list",
+            "/api/status/services",
+            "VPN & Transmission Configuration",
+            "VPN Status:",
+            "Transmission Status:",
+            "PIA Username",
+            "Create PIA Key",
+            "Enable Transmission over PIA VPN",
+            "/api/status/vpn/updatekey/pia",
+            "Power Consumption",
+            "power-meter-modal",
+            "5s average:",
+            "30s average:",
+            "60s average:",
+            "/api/status/power/usage",
+        ] {
+            assert!(shell.contains(preserved), "original header feature missing: {}", preserved);
+        }
+        for invented in [
+            "Rust crown online",
+            "Caduceus boundary protected",
+            "Source quarry: main HomeServer",
+            "Live Rust header control",
+            "Detailed backend wiring continues through Coronatio/Caduceus routes",
+            "Power meter readback, energy telemetry, and device availability",
+            "Choose the active HOMESERVER theme.",
+        ] {
+            assert!(!shell.contains(invented), "invented visible prose survived: {}", invented);
+        }
     }
 
     #[tokio::test]
