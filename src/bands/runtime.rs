@@ -69,8 +69,19 @@ fn app(state: AppState) -> Router {
         .route("/api/tabs", get(tabs_route))
         .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
         .merge(full_rust_route_table())
-        .nest_service("/static", ServeDir::new("static"))
+        .nest_service("/static", ServeDir::new(static_root()))
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
         .fallback(route_boundary_fallback)
         .with_state(state)
+}
+
+fn static_root() -> PathBuf {
+    env::var("CORONATIO_STATIC_ROOT")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| {
+            let installed = PathBuf::from(INSTALLED_STATIC_ROOT);
+            installed.exists().then_some(installed)
+        })
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_STATIC_ROOT))
 }

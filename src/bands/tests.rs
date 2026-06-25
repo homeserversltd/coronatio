@@ -579,6 +579,21 @@ mod tests {
     }
 
 
+
+    #[test]
+    fn static_root_prefers_installed_source_and_allows_env_override() {
+        std::env::remove_var("CORONATIO_STATIC_ROOT");
+        let root = static_root();
+        assert!(
+            root == PathBuf::from(INSTALLED_STATIC_ROOT) || root == PathBuf::from(DEFAULT_STATIC_ROOT),
+            "unexpected static root: {}",
+            root.display()
+        );
+        std::env::set_var("CORONATIO_STATIC_ROOT", "/tmp/coronatio-static-test");
+        assert_eq!(static_root(), PathBuf::from("/tmp/coronatio-static-test"));
+        std::env::remove_var("CORONATIO_STATIC_ROOT");
+    }
+
     #[tokio::test]
     async fn chartjs_dependency_is_served_as_first_party_static_asset() {
         let temp = test_tab_root("chartjs-static");
