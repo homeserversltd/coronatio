@@ -811,6 +811,36 @@ mod tests {
 
 
 
+
+    #[test]
+    fn indicator_modals_hydrate_route_reads_instead_of_endless_loading() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("async function hydrateModalRouteReads(kind)"));
+        assert!(shell.contains("function routeReadLabel(route, data)"));
+        assert!(shell.contains("hydrateModalRouteReads(kind)"));
+        for route in [
+            "/api/status/tailscale",
+            "/api/status",
+            "/api/status/services",
+            "/api/status/vpn/pia",
+            "/api/status/vpn/transmission",
+            "/api/status/power/usage",
+        ] {
+            assert!(shell.contains(route), "indicator modal read route missing: {route}");
+        }
+        for marker in [
+            r#"data-modal-kind-body="tailscale""#,
+            r#"data-modal-kind-body="internet""#,
+            r#"data-modal-kind-body="services""#,
+            r#"data-modal-kind-body="openvpn""#,
+            r#"data-modal-kind-body="power-meter""#,
+            "node.dataset.hydrated = 'true'",
+            "Status unavailable: ",
+        ] {
+            assert!(shell.contains(marker), "hydration marker missing: {marker}");
+        }
+    }
+
     #[test]
     fn all_modals_close_on_backdrop_outside_click_only() {
         let shell = render_crown_shell();
