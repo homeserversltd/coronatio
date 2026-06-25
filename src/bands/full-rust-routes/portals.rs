@@ -124,9 +124,17 @@ fn portal_image_roots() -> Vec<PathBuf> {
 }
 
 fn extract_portals(value: &serde_json::Value) -> Vec<PortalEntry> {
-    value
-        .get("tabs")
-        .and_then(|tabs| tabs.get("portals"))
+    let portals_tab = value.get("tabs").and_then(|tabs| tabs.get("portals"));
+    let tab_visible = portals_tab
+        .and_then(|portals| portals.get("visibility"))
+        .and_then(|visibility| visibility.get("tab"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let element_visibility = portals_tab
+        .and_then(|portals| portals.get("visibility"))
+        .and_then(|visibility| visibility.get("elements"))
+        .and_then(serde_json::Value::as_object);
+    portals_tab
         .and_then(|portals| portals.get("data"))
         .and_then(|data| data.get("portals"))
         .and_then(serde_json::Value::as_array)
@@ -134,6 +142,14 @@ fn extract_portals(value: &serde_json::Value) -> Vec<PortalEntry> {
             items
                 .iter()
                 .filter_map(|item| serde_json::from_value::<PortalEntry>(item.clone()).ok())
+                .map(|mut portal| {
+                    let element_visible = element_visibility
+                        .and_then(|elements| elements.get(&portal.name))
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true);
+                    portal.visible = tab_visible && element_visible;
+                    portal
+                })
                 .filter(|portal| !portal.name.trim().is_empty() && !portal.local_url.trim().is_empty())
                 .collect::<Vec<_>>()
         })

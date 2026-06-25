@@ -194,15 +194,20 @@ fn shell_document_4() -> &'static str {
         <div class="admin-controls-row"><button data-service-action="start">Start</button><button data-service-action="stop">Stop</button><button data-service-action="restart">Restart</button></div>
         <div class="admin-controls-row"><button data-service-action="enable">Enable</button><button data-service-action="disable">Disable</button><button data-service-action="status">Status</button></div>
       </div>`;
-      return `<article class="card portal-card ${escapeHtml(portal.status || 'unknown')}" data-portal-card data-portal-name="${escapeHtml(portal.name)}" data-portal-url="${escapeHtml(destination)}" role="link" tabindex="0">
-        <div class="portal-card-header">
-          <img src="/api/portals/images/${encodeURIComponent(portal.name)}.png" alt="${escapeHtml(portal.name)} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">
-          <h2 class="portal-name">${escapeHtml(portal.name)}</h2>
-          <p class="portal-description">${escapeHtml(portal.description || '')}</p>
-        </div>
-        <div class="portal-service-row">${factory ? '<span class="portal-chip">factory</span>' : '<span class="portal-chip">custom</span>'}${port}${services}</div>
-        ${adminControls}
-      </article>`;
+      const isVisible = portal.visible !== false;
+      const visibilityToggle = `<button type="button" class="visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle data-visible="${isVisible}" aria-label="${isVisible ? 'Hide' : 'Show'} ${escapeHtml(portal.name)}">${isVisible ? '👁' : '🙈'}</button>`;
+      return `<div class="portal-element" data-portal-element data-visible="${isVisible}" style="position:relative">
+        ${visibilityToggle}
+        <article class="card portal-card ${escapeHtml(portal.status || 'unknown')}" data-portal-card data-portal-name="${escapeHtml(portal.name)}" data-portal-url="${escapeHtml(destination)}" role="link" tabindex="0">
+          <div class="portal-card-header">
+            <img src="/api/portals/images/${encodeURIComponent(portal.name)}.png" alt="${escapeHtml(portal.name)} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">
+            <h2 class="portal-name">${escapeHtml(portal.name)}</h2>
+            <p class="portal-description">${escapeHtml(portal.description || '')}</p>
+          </div>
+          <div class="portal-service-row">${factory ? '<span class="portal-chip">factory</span>' : '<span class="portal-chip">custom</span>'}${isVisible ? '' : '<span class="portal-chip">hidden</span>'}${port}${services}</div>
+          ${adminControls}
+        </article>
+      </div>`;
     }
 
     async function handlePortalServiceAction(event) {
@@ -250,7 +255,7 @@ fn shell_document_4() -> &'static str {
           card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
         });
         grid.querySelectorAll('[data-service-action]').forEach(button => button.addEventListener('click', handlePortalServiceAction));
-        applyAdminMode();
+        setAdminMode(headerState.isAdmin);
         if (readout) readout.textContent = JSON.stringify({ source: data.source, count: portals.length, firstMissingSignal: data.firstMissingSignal }, null, 2);
       } catch (error) {
         grid.innerHTML = '<article class="card portal-card error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>';
