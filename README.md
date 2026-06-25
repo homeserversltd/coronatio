@@ -32,7 +32,13 @@ This scaffold provides the first host surface:
 - `GET /api/startup` — extracted startup and initial-tab law: phases, connection fallback, forced tab, starred tab, first visible tab, and tab-bar rule.
 - `GET /api/lanes` — dynamic cartridge, source-injection/recompile, and first-party native failure/recovery policy.
 - `GET /api/fallback` — safe fallback pane, activation reasons, recovery sequence, and receipt fields.
-- `GET /api/stats` — honest first-party Stats snapshot readback with future SSE route posture.
+- `GET /api/session` / `GET|POST /api/admin/session` — admin session contract: PIN validation, 30-minute token lease, keepalive/renewal, admin field filtering, and Caduceus privileged mutation membrane.
+- `GET /api/topics` — topic catalog replacing Socket.IO subscription law with SSE EventSource plus POST renew admission.
+- `GET /api/monitor/pulse` — monitor payload/pulse contract for the first `stats.system` topic: cadence, changed predicate, admin fields, snapshot, SSE, renew, and first event proof.
+- `GET /api/boundary` — Flask route and SPA boundary replacement: `/api/*` JSON 404, non-API shell fallback, cartridge static serving.
+- `GET /api/stats/events` — first Stats SSE event stream contract.
+- `POST /api/stats/events/renew` — first Stats SSE lease renewal contract.
+- `GET /api/stats` — honest first-party Stats snapshot readback with SSE route posture.
 - `GET /api/tabs` — dynamic tab registry read from installed cartridges plus native-pane readback.
 - `GET /api/tabs/:tab_id/manifest` — one cartridge manifest readback.
 - `/tabs/<tab-id>/...` — static installed tab assets under the configured tab root.
@@ -117,6 +123,10 @@ This scaffold is accepted when:
 - Tests prove `/api/startup` captures forced tab, connection failure, starred/default route, first-visible fallback, and tab-bar behavior.
 - Tests prove `/api/lanes` captures dynamic cartridge, source-injection/recompile, and first-party native failure policy.
 - Tests prove `/api/fallback` captures safe fallback pane, activation reasons, recovery sequence, and receipt fields.
-- Tests prove `/api/stats` returns an honest snapshot with unavailable telemetry and planned SSE routes.
+- Tests prove `/api/session` captures PIN validation, session timeout/keepalive, admin field filtering, and Caduceus mutation membrane.
+- Tests prove `/api/topics` replaces Socket.IO subscription law with SSE + lease renew topic contracts.
+- Tests prove `/api/monitor/pulse`, `/api/stats/events`, and `/api/stats/events/renew` expose the first `stats.system` monitor pulse end-to-end.
+- Tests prove `/api/*` misses return JSON 404 while non-API unknown paths return the shell.
+- Tests prove `/api/stats` returns an honest snapshot with unavailable telemetry and SSE routes.
 - Tests prove dynamic cartridge manifests load without host recompile and final manifest validation rejects unsafe/native cartridge shapes.
 - Paligenesis carries the North Star contract and open decisions.

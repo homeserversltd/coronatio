@@ -1,8 +1,8 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
-    response::{Html, IntoResponse},
-    routing::get,
+    http::{header, StatusCode, Uri},
+    response::{Html, IntoResponse, Response},
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -185,6 +185,117 @@ struct FallbackReadback {
     receipt_fields: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct AdminSessionReadback {
+    schema: String,
+    pin_validation: String,
+    session_timeout_seconds: u64,
+    keepalive_route: String,
+    logout_route: String,
+    token_header: String,
+    token_policy: Vec<String>,
+    admin_enhanced_filtering: Vec<AdminFieldFilter>,
+    caduceus_membrane: CaduceusMembrane,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct AdminFieldFilter {
+    topic: String,
+    admin_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct CaduceusMembrane {
+    schema: String,
+    privileged_mutations: Vec<String>,
+    coronatio_role: String,
+    caduceus_role: String,
+    first_missing_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct TopicCatalogReadback {
+    schema: String,
+    transport: String,
+    stream_policy: String,
+    renew_policy: String,
+    core_topics: Vec<TopicContract>,
+    admin_topics: Vec<TopicContract>,
+    tab_topics: Vec<TabTopicContract>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct TabTopicContract {
+    pane_id: String,
+    topics: Vec<String>,
+    event_route: String,
+    renew_route: String,
+    lifecycle: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct TopicContract {
+    id: String,
+    scope: String,
+    cadence_seconds: u64,
+    admin_only: bool,
+    admin_fields: Vec<String>,
+    payload_schema: String,
+    changed_rule: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MonitorPulseReadback {
+    schema: String,
+    topic: TopicContract,
+    snapshot_route: String,
+    event_route: String,
+    renew_route: String,
+    first_event: StatsEventPayload,
+    proof_policy: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsEventPayload {
+    schema: String,
+    topic: String,
+    event_id: String,
+    event: String,
+    lease_seconds: u64,
+    payload_state: String,
+    first_missing_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct LeaseRenewalReadback {
+    schema: String,
+    topic: String,
+    route: String,
+    lease_seconds: u64,
+    status: String,
+    next_renewal_before_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct BoundaryReadback {
+    schema: String,
+    api_unknown_path_policy: String,
+    static_shell_policy: String,
+    cartridge_static_policy: String,
+    cors_source: String,
+    premium_blueprint_replacement: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct StatsSnapshot {
@@ -261,10 +372,21 @@ fn app(state: AppState) -> Router {
         .route("/api/startup", get(startup_route))
         .route("/api/lanes", get(lane_policy_route))
         .route("/api/fallback", get(fallback_route))
+        .route("/api/session", get(session_route))
+        .route(
+            "/api/admin/session",
+            get(session_route).post(session_renew_route),
+        )
+        .route("/api/topics", get(topics_route))
+        .route("/api/monitor/pulse", get(monitor_pulse_route))
+        .route("/api/boundary", get(boundary_route))
+        .route("/api/stats/events", get(stats_events_route))
+        .route("/api/stats/events/renew", post(stats_events_renew_route))
         .route("/api/stats", get(stats_route))
         .route("/api/tabs", get(tabs_route))
         .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
+        .fallback(route_boundary_fallback)
         .with_state(state)
 }
 
@@ -295,6 +417,13 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/startup".to_string(),
             "/api/lanes".to_string(),
             "/api/fallback".to_string(),
+            "/api/session".to_string(),
+            "/api/admin/session".to_string(),
+            "/api/topics".to_string(),
+            "/api/monitor/pulse".to_string(),
+            "/api/boundary".to_string(),
+            "/api/stats/events".to_string(),
+            "/api/stats/events/renew".to_string(),
             "/api/stats".to_string(),
             "/api/tabs".to_string(),
             "/api/tabs/:tab_id/manifest".to_string(),
@@ -332,6 +461,75 @@ async fn lane_policy_route() -> impl IntoResponse {
 
 async fn fallback_route() -> impl IntoResponse {
     Json(fallback_readback())
+}
+
+async fn session_route() -> impl IntoResponse {
+    Json(admin_session_readback())
+}
+
+async fn session_renew_route() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "schema": "coronatio.admin.session.renewal.v1",
+        "status": "contract-only",
+        "leaseSeconds": 1800,
+        "authority": "Caduceus must mint or refresh privileged mutation capability before live mutation is enabled"
+    }))
+}
+
+async fn topics_route() -> impl IntoResponse {
+    Json(topic_catalog_readback())
+}
+
+async fn monitor_pulse_route() -> impl IntoResponse {
+    Json(monitor_pulse_readback())
+}
+
+async fn boundary_route() -> impl IntoResponse {
+    Json(boundary_readback())
+}
+
+async fn stats_events_route() -> impl IntoResponse {
+    let event = stats_event_payload();
+    let payload = serde_json::to_string(&event).expect("serialize stats event");
+    let body = format!(
+        "event: stats.system\nid: {}\ndata: {}\n\n",
+        event.event_id, payload
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .header("x-coronatio-schema", "coronatio.stats.events.v1")
+        .body(body)
+        .expect("build stats event response")
+}
+
+async fn stats_events_renew_route() -> impl IntoResponse {
+    Json(LeaseRenewalReadback {
+        schema: "coronatio.stats.events.renewal.v1".to_string(),
+        topic: "stats.system".to_string(),
+        route: "/api/stats/events/renew".to_string(),
+        lease_seconds: 30,
+        status: "renewed-contract".to_string(),
+        next_renewal_before_seconds: 20,
+    })
+}
+
+async fn route_boundary_fallback(uri: Uri) -> impl IntoResponse {
+    let normalized = uri.path().to_string();
+    if normalized.starts_with("/api/") {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "schema": "coronatio.api.error.v1",
+                "error": "api route not found",
+                "path": normalized,
+                "policy": "API clients receive JSON 404, never the shell HTML"
+            })),
+        )
+            .into_response();
+    }
+    Html(render_crown_shell()).into_response()
 }
 
 async fn pane_route(Path(pane_id): Path<String>) -> impl IntoResponse {
@@ -672,6 +870,258 @@ fn fallback_readback() -> FallbackReadback {
 
 fn normalize_tab_id(tab_id: &str) -> String {
     tab_id.strip_prefix('@').unwrap_or(tab_id).to_string()
+}
+
+fn admin_session_readback() -> AdminSessionReadback {
+    AdminSessionReadback {
+        schema: "coronatio.admin.session.v1".to_string(),
+        pin_validation: "POST /api/validatePin compared request pin to homeserver.json global.admin.pin and returned a generated session token".to_string(),
+        session_timeout_seconds: 30 * 60,
+        keepalive_route: "/api/admin/session".to_string(),
+        logout_route: "/api/logout".to_string(),
+        token_header: "X-Admin-Token".to_string(),
+        token_policy: vec![
+            "tokens are generated from random bytes, timestamp, and uuid".to_string(),
+            "token expiry refreshes on validation".to_string(),
+            "logout invalidates the token".to_string(),
+            "PIN fallback compatibility is retired behind Caduceus before privileged mutation".to_string(),
+        ],
+        admin_enhanced_filtering: admin_field_filters(),
+        caduceus_membrane: CaduceusMembrane {
+            schema: "coronatio.caduceus.membrane.v1".to_string(),
+            privileged_mutations: vec![
+                "pin change".to_string(),
+                "service restart".to_string(),
+                "premium/source installation".to_string(),
+                "disk/vault/key operations".to_string(),
+            ],
+            coronatio_role: "session readback, capability request shaping, and non-secret UI state".to_string(),
+            caduceus_role: "privileged host mutation, token mint/refresh, command execution, and mutation receipts".to_string(),
+            first_missing_signal: "live Caduceus admin token minting endpoint not wired".to_string(),
+        },
+    }
+}
+
+fn admin_field_filters() -> Vec<AdminFieldFilter> {
+    vec![
+        AdminFieldFilter {
+            topic: "internet_status".to_string(),
+            admin_fields: vec!["publicIp", "ipDetails", "dnsServers"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+        },
+        AdminFieldFilter {
+            topic: "vpn_status".to_string(),
+            admin_fields: vec!["connectionDetails", "credentials"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+        },
+        AdminFieldFilter {
+            topic: "system_stats".to_string(),
+            admin_fields: vec!["processes", "users", "networkConnections"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+        },
+        AdminFieldFilter {
+            topic: "tailscale_status".to_string(),
+            admin_fields: vec!["ip", "tailnet", "isEnabled", "loginUrl"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+        },
+        AdminFieldFilter {
+            topic: "services_status".to_string(),
+            admin_fields: vec!["isEnabled"].into_iter().map(String::from).collect(),
+        },
+    ]
+}
+
+fn topic_catalog_readback() -> TopicCatalogReadback {
+    TopicCatalogReadback {
+        schema: "coronatio.topic-catalog.v1".to_string(),
+        transport: "SSE EventSource plus POST renew; Socket.IO subscribe/unsubscribe is quarry only".to_string(),
+        stream_policy: "open a pane stream only while the pane is active and document is visible; core topics stay independent of active pane".to_string(),
+        renew_policy: "client renews before lease expiry; expired streams produce an expired event and close in the live implementation".to_string(),
+        core_topics: core_topic_contracts(),
+        admin_topics: admin_topic_contracts(),
+        tab_topics: vec![
+            TabTopicContract {
+                pane_id: "stats".to_string(),
+                topics: vec!["stats.system".to_string()],
+                event_route: "/api/stats/events".to_string(),
+                renew_route: "/api/stats/events/renew".to_string(),
+                lifecycle: "active pane + visible document".to_string(),
+            },
+            TabTopicContract { pane_id: "upload".to_string(), topics: vec![], event_route: "snapshot-only".to_string(), renew_route: "snapshot-only".to_string(), lifecycle: "no live stream yet".to_string() },
+            TabTopicContract { pane_id: "portals".to_string(), topics: vec![], event_route: "snapshot-only".to_string(), renew_route: "snapshot-only".to_string(), lifecycle: "no live stream yet".to_string() },
+        ],
+    }
+}
+
+fn core_topic_contracts() -> Vec<TopicContract> {
+    vec![
+        topic_contract(
+            "internet.status",
+            "core",
+            10,
+            false,
+            vec!["publicIp", "ipDetails", "dnsServers"],
+            "internet status and public ingress posture",
+            "status/public IP/DNS changes",
+        ),
+        topic_contract(
+            "tailscale.status",
+            "core",
+            10,
+            false,
+            vec!["ip", "tailnet", "isEnabled", "loginUrl"],
+            "tailscale status and admin login hints",
+            "status/interface/admin field changes",
+        ),
+        topic_contract(
+            "vpn.status",
+            "core",
+            10,
+            false,
+            vec!["connectionDetails", "credentials"],
+            "VPN and transmission status",
+            "vpnStatus/transmissionStatus/isEnabled changes",
+        ),
+        topic_contract(
+            "services.status",
+            "core",
+            10,
+            false,
+            vec!["isEnabled"],
+            "service health posture",
+            "service status or enabled-state changes",
+        ),
+        topic_contract(
+            "power.status",
+            "core",
+            1,
+            false,
+            vec![],
+            "power sample",
+            "always broadcast realtime power samples",
+        ),
+    ]
+}
+
+fn admin_topic_contracts() -> Vec<TopicContract> {
+    vec![
+        topic_contract(
+            "admin.disk.info",
+            "admin",
+            30,
+            true,
+            vec![],
+            "disk, encryption, NAS compatibility, and mount posture",
+            "device/error/encryption/mount/filesystem/periodic changes",
+        ),
+        topic_contract(
+            "admin.system",
+            "admin",
+            2,
+            true,
+            vec![],
+            "admin system details",
+            "admin-only system stats pulse",
+        ),
+        topic_contract(
+            "hard-drive-test.status",
+            "admin",
+            5,
+            true,
+            vec![],
+            "hard-drive-test state",
+            "test status changes",
+        ),
+        topic_contract(
+            "sync.status",
+            "admin",
+            2,
+            true,
+            vec![],
+            "sync job status",
+            "sync status changes",
+        ),
+    ]
+}
+
+fn topic_contract(
+    id: &str,
+    scope: &str,
+    cadence_seconds: u64,
+    admin_only: bool,
+    admin_fields: Vec<&str>,
+    payload_schema: &str,
+    changed_rule: &str,
+) -> TopicContract {
+    TopicContract {
+        id: id.to_string(),
+        scope: scope.to_string(),
+        cadence_seconds,
+        admin_only,
+        admin_fields: admin_fields.into_iter().map(String::from).collect(),
+        payload_schema: payload_schema.to_string(),
+        changed_rule: changed_rule.to_string(),
+    }
+}
+
+fn stats_topic_contract() -> TopicContract {
+    topic_contract(
+        "stats.system",
+        "tab:stats",
+        1,
+        false,
+        vec!["processes", "users", "networkConnections"],
+        "system_stats payload: load, cpu, memory, disk, network, process/user/admin fields",
+        "always pulse realtime system stats; admin fields filtered unless session has admin capability",
+    )
+}
+
+fn monitor_pulse_readback() -> MonitorPulseReadback {
+    MonitorPulseReadback {
+        schema: "coronatio.monitor-pulse.v1".to_string(),
+        topic: stats_topic_contract(),
+        snapshot_route: "/api/stats".to_string(),
+        event_route: "/api/stats/events".to_string(),
+        renew_route: "/api/stats/events/renew".to_string(),
+        first_event: stats_event_payload(),
+        proof_policy: vec![
+            "initial subscriber receives first state".to_string(),
+            "meaningful-change predicate decides later pulses".to_string(),
+            "admin fields are filtered for non-admin sessions".to_string(),
+            "SSE heartbeat/expiry replaces Socket.IO subscription diffing".to_string(),
+        ],
+    }
+}
+
+fn stats_event_payload() -> StatsEventPayload {
+    StatsEventPayload {
+        schema: "coronatio.stats.event.v1".to_string(),
+        topic: "stats.system".to_string(),
+        event_id: "stats-system-bootstrap-1".to_string(),
+        event: "snapshot".to_string(),
+        lease_seconds: 30,
+        payload_state: "placeholder-unavailable".to_string(),
+        first_missing_signal: "stats collectors not wired".to_string(),
+    }
+}
+
+fn boundary_readback() -> BoundaryReadback {
+    BoundaryReadback {
+        schema: "coronatio.route-boundary.v1".to_string(),
+        api_unknown_path_policy: "/api/* misses return JSON 404 with coronatio.api.error.v1, never shell HTML".to_string(),
+        static_shell_policy: "non-API unknown GET paths return the Coronatio shell for client-side routing".to_string(),
+        cartridge_static_policy: "/tabs/<tab-id>/... is served from the configured tab root through safe tab ids and manifest validation".to_string(),
+        cors_source: "homeserver.json global.cors.allowed_origins becomes Coronatio config law in the later config tranche".to_string(),
+        premium_blueprint_replacement: "dynamic Flask blueprint injection is replaced by dynamic-cartridge, source-injection-recompile, or first-party-native lanes".to_string(),
+    }
 }
 
 fn stats_snapshot() -> StatsSnapshot {
@@ -1128,6 +1578,220 @@ mod tests {
         assert!(validate_tab_manifest(&manifest)
             .unwrap_err()
             .contains("compiled crown law"));
+    }
+
+    #[tokio::test]
+    async fn session_route_encodes_admin_and_caduceus_membrane() {
+        let temp = test_tab_root("session-law");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/session")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let session: AdminSessionReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(session.schema, "coronatio.admin.session.v1");
+        assert_eq!(session.session_timeout_seconds, 1800);
+        assert_eq!(session.token_header, "X-Admin-Token");
+        assert!(session
+            .admin_enhanced_filtering
+            .iter()
+            .any(|filter| filter.topic == "system_stats"
+                && filter.admin_fields.contains(&"processes".to_string())));
+        assert_eq!(
+            session.caduceus_membrane.schema,
+            "coronatio.caduceus.membrane.v1"
+        );
+        assert!(session
+            .caduceus_membrane
+            .privileged_mutations
+            .contains(&"service restart".to_string()));
+    }
+
+    #[tokio::test]
+    async fn topics_route_replaces_socketio_with_sse_lease_contracts() {
+        let temp = test_tab_root("topics-law");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/topics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let topics: TopicCatalogReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(topics.schema, "coronatio.topic-catalog.v1");
+        assert!(topics.transport.contains("SSE EventSource"));
+        assert!(topics
+            .core_topics
+            .iter()
+            .any(|topic| topic.id == "services.status"));
+        assert!(topics
+            .admin_topics
+            .iter()
+            .any(|topic| topic.id == "admin.disk.info" && topic.admin_only));
+        let stats = topics
+            .tab_topics
+            .iter()
+            .find(|topic| topic.pane_id == "stats")
+            .unwrap();
+        assert_eq!(stats.event_route, "/api/stats/events");
+        assert_eq!(stats.renew_route, "/api/stats/events/renew");
+    }
+
+    #[tokio::test]
+    async fn stats_sse_and_monitor_pulse_prove_first_topic() {
+        let temp = test_tab_root("stats-sse");
+        let router = app(AppState {
+            tab_root: Arc::new(temp),
+        });
+        let pulse_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/monitor/pulse")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(pulse_response.status(), StatusCode::OK);
+        let pulse_bytes = axum::body::to_bytes(pulse_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let pulse: MonitorPulseReadback = serde_json::from_slice(&pulse_bytes).unwrap();
+        assert_eq!(pulse.schema, "coronatio.monitor-pulse.v1");
+        assert_eq!(pulse.topic.id, "stats.system");
+        assert_eq!(pulse.first_event.schema, "coronatio.stats.event.v1");
+        assert_eq!(pulse.event_route, "/api/stats/events");
+
+        let event_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/stats/events")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(event_response.status(), StatusCode::OK);
+        assert_eq!(
+            event_response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "text/event-stream"
+        );
+        let event_body = String::from_utf8(
+            axum::body::to_bytes(event_response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(event_body.contains("event: stats.system"));
+        assert!(event_body.contains("coronatio.stats.event.v1"));
+
+        let renew_response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/stats/events/renew")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(renew_response.status(), StatusCode::OK);
+        let renew: LeaseRenewalReadback = serde_json::from_slice(
+            &axum::body::to_bytes(renew_response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(renew.schema, "coronatio.stats.events.renewal.v1");
+        assert_eq!(renew.topic, "stats.system");
+    }
+
+    #[tokio::test]
+    async fn route_boundary_returns_json_for_api_misses_and_shell_for_static_fallback() {
+        let temp = test_tab_root("boundary-law");
+        let router = app(AppState {
+            tab_root: Arc::new(temp),
+        });
+        let api_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/missing-route")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(api_response.status(), StatusCode::NOT_FOUND);
+        let api_body = String::from_utf8(
+            axum::body::to_bytes(api_response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(api_body.contains("coronatio.api.error.v1"));
+        assert!(!api_body.contains("<html"));
+
+        let shell_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/some/client/route")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(shell_response.status(), StatusCode::OK);
+        let shell_body = String::from_utf8(
+            axum::body::to_bytes(shell_response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(shell_body.contains("data-product=\"Coronatio\""));
+
+        let boundary_response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/api/boundary")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(boundary_response.status(), StatusCode::OK);
+        let boundary: BoundaryReadback = serde_json::from_slice(
+            &axum::body::to_bytes(boundary_response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(boundary.schema, "coronatio.route-boundary.v1");
+        assert!(boundary.api_unknown_path_policy.contains("JSON 404"));
     }
 
     fn test_tab_root(name: &str) -> PathBuf {
