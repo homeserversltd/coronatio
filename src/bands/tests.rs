@@ -183,9 +183,19 @@ mod tests {
         for indicator in ["tailscale", "internet", "openvpn", "services", "power-meter"] {
             assert!(shell.contains(&format!(r#"data-indicator="{}""#, indicator)));
         }
+        assert!(shell.contains(r#"<button type="button" class="indicator ok" data-indicator="tailscale""#));
+        assert!(shell.contains(r#"data-modal-title="Tailscale""#));
+        assert!(shell.contains(r#"data-modal-body="Tailscale status"#));
+        assert!(shell.contains("data-info-modal-backdrop"));
+        assert!(shell.contains("openInfoModal"));
+        assert!(shell.contains("document.querySelectorAll('[data-indicator]')"));
         assert!(shell.contains("data-uptime-indicator"));
         assert!(shell.contains(r#"class="theme-button""#));
         assert!(shell.contains("data-theme-button"));
+        assert!(shell.contains("Open theme selector"));
+        assert!(shell.contains(r#"data-theme-choice="dark""#));
+        assert!(shell.contains(r#"data-theme-choice="light""#));
+        assert!(shell.contains(r#"data-theme-choice="blue""#));
         assert!(shell.contains("Current theme:"));
         assert!(shell.contains(r#"class="admin-button""#));
         assert!(shell.contains("Enter Admin Mode"));
