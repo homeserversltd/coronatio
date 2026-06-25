@@ -57,6 +57,7 @@ fn render_crown_shell() -> String {
     .modal-body { display: grid; gap: .65rem; color: var(--text-secondary); }
     .modal-body ul { margin: .25rem 0 0; padding-left: 1.15rem; }
     .theme-choice-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+    .theme-choice-row[hidden] { display: none !important; }
     .theme-choice { min-width: 90px; }
     .header-control, .admin-button, .theme-button, .change-admin-pin-button { min-height: 34px; min-width: 120px; padding: 0 .9rem; border: none; border-radius: 6px; background: var(--primary); color: #061006; font-size: .86rem; font-weight: 700; box-shadow: inset 0 2px 4px rgba(0,0,0,.2); }
     .header-control:hover, .admin-button:hover, .theme-button:hover, .change-admin-pin-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
