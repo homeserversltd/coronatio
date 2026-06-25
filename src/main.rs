@@ -16,7 +16,7 @@ use std::{
     path::PathBuf,
     sync::Arc,
     thread,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::fs;
 use tower_http::services::{ServeDir, ServeFile};
@@ -25,10 +25,18 @@ const DEFAULT_TAB_ROOT: &str = "/var/lib/coronatio/tabs";
 const PRIMARY_TABS: [&str; 4] = ["admin", "stats", "portals", "upload"];
 const LEGACY_HOMESERVER_ASSET_ROOT: &str = "/var/www/homeserver/build/assets";
 const LEGACY_HOMESERVER_BUILD_ROOT: &str = "/var/www/homeserver/build";
+const DEFAULT_HOMESERVER_CONFIG: &str = "/etc/homeserver.json";
+const ADMIN_SESSION_TIMEOUT_SECONDS: u64 = 1800;
 
 #[derive(Clone)]
 struct AppState {
     tab_root: Arc<PathBuf>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ValidatePinRequest {
+    pin: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -666,6 +674,9 @@ fn app(state: AppState) -> Router {
         .route("/api/lanes", get(lane_policy_route))
         .route("/api/fallback", get(fallback_route))
         .route("/api/session", get(session_route))
+        .route("/api/validatePin", post(validate_pin_route))
+        .route("/api/verifyPin", post(validate_pin_route))
+        .route("/api/logout", post(logout_route))
         .route(
             "/api/admin/session",
             get(session_route).post(session_renew_route),
@@ -767,6 +778,9 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/lanes".to_string(),
             "/api/fallback".to_string(),
             "/api/session".to_string(),
+            "/api/validatePin".to_string(),
+            "/api/verifyPin".to_string(),
+            "/api/logout".to_string(),
             "/api/admin/session".to_string(),
             "/api/caduceus/status".to_string(),
             "/api/caduceus/update/check".to_string(),
@@ -838,6 +852,104 @@ async fn session_renew_route() -> impl IntoResponse {
         "leaseSeconds": 1800,
         "authority": "Caduceus must mint or refresh privileged mutation capability before live mutation is enabled"
     }))
+}
+
+async fn validate_pin_route(Json(request): Json<ValidatePinRequest>) -> impl IntoResponse {
+    match homeserver_admin_pin() {
+        Ok(expected_pin) if request.pin == expected_pin => Json(serde_json::json!({
+            "success": true,
+            "token": mint_admin_token(),
+            "sessionTimeout": ADMIN_SESSION_TIMEOUT_SECONDS,
+            "schema": "coronatio.admin.pin.validation.v1",
+            "configSource": homeserver_config_path().display().to_string()
+        }))
+        .into_response(),
+        Ok(_) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "success": false,
+                "schema": "coronatio.admin.pin.validation.v1",
+                "error": "invalid-pin",
+                "configSource": homeserver_config_path().display().to_string()
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "success": false,
+                "schema": "coronatio.admin.pin.validation.v1",
+                "error": "pin-config-unavailable",
+                "detail": error,
+                "configSource": homeserver_config_path().display().to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn logout_route() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "success": true,
+        "schema": "coronatio.admin.logout.v1"
+    }))
+}
+
+fn homeserver_config_path() -> PathBuf {
+    env::var("CORONATIO_HOMESERVER_CONFIG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_HOMESERVER_CONFIG))
+}
+
+fn homeserver_admin_pin() -> Result<String, String> {
+    let path = homeserver_config_path();
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|error| format!("read {}: {error}", path.display()))?;
+    let config: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|error| format!("parse {}: {error}", path.display()))?;
+    config
+        .pointer("/global/admin/pin")
+        .and_then(|value| value.as_str())
+        .filter(|pin| !pin.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| format!("{} missing global.admin.pin", path.display()))
+}
+
+fn homeserver_theme_name() -> String {
+    let path = homeserver_config_path();
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|config| {
+            config
+                .pointer("/global/theme/name")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "dark".to_string())
+}
+
+fn first_paint_theme() -> (&'static str, &'static str, &'static str, &'static str) {
+    match homeserver_theme_name().as_str() {
+        "light" => ("#f8fafc", "#2563eb", "#334155", "#e2e8f0"),
+        _ => ("#1f2937", "#3b82f6", "#e5e7eb", "#374151"),
+    }
+}
+
+fn mint_admin_token() -> String {
+    let mut random = [0u8; 24];
+    if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
+        let _ = file.read_exact(&mut random);
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let mut token = format!("coronatio-{now:x}-{:x}-", std::process::id());
+    for byte in random {
+        token.push_str(&format!("{byte:02x}"));
+    }
+    token
 }
 
 async fn caduceus_status_route() -> impl IntoResponse {
@@ -2516,12 +2628,13 @@ fn stats_snapshot() -> StatsSnapshot {
 }
 
 fn render_crown_shell() -> String {
+    let (background, primary, text, hidden_tab_background) = first_paint_theme();
     r####"<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="__PRIMARY__" />
     <meta
       name="description"
       content="HomeServer Admin Interface"
@@ -2535,10 +2648,17 @@ fn render_crown_shell() -> String {
     <link rel="icon" type="image/png" sizes="512x512" href="/assets/android-chrome-512x512-C9kCmYN6.png" />
     <title>HomeServer</title>
     <style>
-
-      body {
+      :root {
+        --background: __BACKGROUND__;
+        --primary: __PRIMARY__;
+        --primaryHover: __PRIMARY__;
+        --text: __TEXT__;
+        --hiddenTabBackground: __HIDDEN_TAB_BACKGROUND__;
+      }
+      html, body, #root {
         background-color: var(--background);
         margin: 0;
+        min-height: 100%;
       }
       .app {
         visibility: hidden;
@@ -2572,7 +2692,11 @@ fn render_crown_shell() -> String {
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
   </body>
-</html> "####.to_string()
+</html> "####
+        .replace("__BACKGROUND__", background)
+        .replace("__PRIMARY__", primary)
+        .replace("__TEXT__", text)
+        .replace("__HIDDEN_TAB_BACKGROUND__", hidden_tab_background)
 }
 
 fn is_safe_tab_id(tab_id: &str) -> bool {
@@ -2721,6 +2845,67 @@ mod tests {
         assert!(!shell.contains("Admin authority"));
         assert!(!shell.contains("System telemetry"));
         assert!(!shell.contains("Coronatio crown shell"));
+    }
+
+    #[test]
+    fn crown_shell_sets_first_paint_theme_before_bundle_loads() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("<meta name=\"theme-color\" content=\"#"));
+        assert!(shell.contains("--background:"));
+        assert!(shell.contains("--primary:"));
+        assert!(shell.contains("--hiddenTabBackground:"));
+        assert!(!shell.contains("content=\"#000000\""));
+        assert!(
+            shell.find("--background:").unwrap() < shell.find("/assets/index-BRoXzIjg.js").unwrap()
+        );
+    }
+
+    #[test]
+    fn homeserver_config_pin_reader_uses_global_admin_pin() {
+        let temp = test_tab_root("homeserver-config-pin");
+        let config_path = temp.join("homeserver.json");
+        std::fs::write(
+            &config_path,
+            r#"{"global":{"admin":{"pin":"2468"},"theme":{"name":"light"}}}"#,
+        )
+        .unwrap();
+        std::env::set_var("CORONATIO_HOMESERVER_CONFIG", &config_path);
+        assert_eq!(homeserver_admin_pin().unwrap(), "2468");
+        std::env::remove_var("CORONATIO_HOMESERVER_CONFIG");
+    }
+
+    #[tokio::test]
+    async fn validate_pin_route_reads_homeserver_config() {
+        let temp = test_tab_root("validate-pin");
+        let config_path = temp.join("homeserver.json");
+        std::fs::write(
+            &config_path,
+            r#"{"global":{"admin":{"pin":"2468"},"theme":{"name":"dark"}}}"#,
+        )
+        .unwrap();
+        std::env::set_var("CORONATIO_HOMESERVER_CONFIG", &config_path);
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/validatePin")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"pin":"2468"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["success"], true);
+        assert_eq!(body["sessionTimeout"], ADMIN_SESSION_TIMEOUT_SECONDS);
+        assert!(body["token"].as_str().unwrap().starts_with("coronatio-"));
+        std::env::remove_var("CORONATIO_HOMESERVER_CONFIG");
     }
 
     #[tokio::test]
