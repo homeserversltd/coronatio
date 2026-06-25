@@ -220,9 +220,9 @@ fn render_crown_shell() -> String {
         <pre class="readout" id="portals-readout">Service contract readback will appear here.</pre>
       </section>
       <section class="pane" id="pane-upload" data-pane-panel="upload" role="tabpanel" aria-label="Upload">
-        <div class="pane-grid">
-          <article class="card"><h2>Safe file ingress</h2><div class="drop-zone"><strong>Upload lane staged</strong><p>Files will enter through policy, receipt, and Caduceus-backed mutation. The native pane shows the product job instead of an empty tab.</p></div><div class="button-row"><button data-fetch="/api/panes/upload" data-target="upload-readout">Read upload pane</button></div></article>
-          <article class="card"><h2>Boundary</h2><p class="warning">Live file mutation is not enabled until the Caduceus actuator and receipt ledger are wired.</p><pre class="readout" id="upload-readout">Waiting for upload pane readback.</pre></article>
+        <div class="pane-grid upload-viewport" data-upload-viewport>
+          <article class="card upload-card"><h2>Safe file ingress</h2><form class="upload-form" data-upload-form><label>Destination <input class="field" name="path" data-upload-path value="/mnt/nas" autocomplete="off"></label><label>File <input class="field" name="file" data-upload-file type="file"></label><div class="button-row"><button type="submit">Upload through Caduceus</button><button type="button" class="secondary" data-fetch="/api/upload/default-directory" data-target="upload-readout">Default directory</button></div></form><div class="drop-zone" data-upload-drop><strong>Choose a file</strong><p>Coronatio reads the browser file and sends upload metadata through the Caduceus staff membrane.</p></div></article>
+          <article class="card"><h2>Upload controls</h2><div class="button-row"><button data-fetch="/api/upload/pin-required-status" data-target="upload-readout">PIN requirement</button><button class="secondary" data-fetch="/api/upload/history" data-target="upload-readout">History</button><button class="secondary" data-fetch="/api/upload/blacklist/list" data-target="upload-readout">Blacklist</button></div><pre class="readout" id="upload-readout">Select a file to send the upload intent to Caduceus.</pre></article>
         </div>
       </section>
     </section>
@@ -384,6 +384,26 @@ fn render_crown_shell() -> String {
       } catch (error) { el.textContent = 'fetch failed: ' + error; }
     }
     document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET')));
+
+    const uploadForm = document.querySelector('[data-upload-form]');
+    uploadForm?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const file = document.querySelector('[data-upload-file]')?.files?.[0];
+      const destination = document.querySelector('[data-upload-path]')?.value || '/mnt/nas';
+      const out = document.getElementById('upload-readout');
+      if (!file) { out.textContent = 'Choose a file first.'; return; }
+      const form = new FormData();
+      form.append('file', file);
+      form.append('path', destination);
+      out.textContent = 'Uploading ' + file.name + ' through Caduceus…';
+      try {
+        const response = await fetch('/api/files/upload', { method: 'POST', body: form });
+        const text = await response.text();
+        try { out.textContent = JSON.stringify(JSON.parse(text), null, 2); }
+        catch (_) { out.textContent = text; }
+      } catch (error) { out.textContent = 'upload failed: ' + error; }
+    });
+
     async function hydrateUptime() {
       const uptime = document.querySelector('[data-uptime-indicator]');
       if (!uptime) return;
