@@ -12,6 +12,7 @@ use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::PathBuf,
+    process::Command,
     sync::Arc,
     thread,
     time::Duration,
