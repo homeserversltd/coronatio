@@ -216,9 +216,9 @@ fn render_crown_shell() -> String {
     .error { color: var(--error); }
     .success { color: var(--success); }
     .drop-zone { border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 8px; padding: 1.2rem; background: rgba(0,242,254,.07); }
-    [data-admin-mode="false"] [data-admin-only] { display: none !important; }
-    [data-admin-mode="true"] [data-admin-only] { display: revert; }
-    [data-admin-only] { border-style: dashed; border-color: color-mix(in srgb, var(--warning) 42%, var(--border)); }
+    [data-admin-mode="false"] [data-admin-only="true"] { display: none !important; }
+    [data-admin-mode="true"] [data-admin-only="true"] { display: revert; }
+    [data-admin-only="true"] { border-style: dashed; border-color: color-mix(in srgb, var(--warning) 42%, var(--border)); }
     @media (max-width: 760px) {
       .top-bar { align-items: stretch; flex-direction: column; padding: .75rem 1rem; }
       .header-top-row { flex-direction: column; align-items: stretch; }
@@ -547,7 +547,7 @@ fn render_crown_shell() -> String {
       }
       if (appRoot) appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
       if (tabBar) tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
-      document.querySelectorAll('[data-admin-only]').forEach(el => {
+      document.querySelectorAll('[data-admin-only="true"]').forEach(el => {
         el.hidden = !headerState.isAdmin;
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });

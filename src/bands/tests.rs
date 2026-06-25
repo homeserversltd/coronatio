@@ -165,6 +165,44 @@ mod tests {
         assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
     }
 
+
+
+    #[test]
+    fn normal_mode_keeps_primary_tabs_visible_and_admin_only_enhances_controls() {
+        let shell = render_crown_shell();
+        for pane in ["stats", "portals", "upload"] {
+            let marker = format!(r#"data-tab-id="{}""#, pane);
+            let start = shell.find(&marker).expect("normal tab marker present");
+            let tab_start = shell[..start]
+                .rfind("<div class=\"tab")
+                .expect("tab starts before marker");
+            let tag_end = shell[start..]
+                .find('>')
+                .map(|n| start + n)
+                .expect("tab opening tag closes after marker");
+            let opening_tag = &shell[tab_start..tag_end];
+            assert!(
+                !opening_tag.contains("data-admin-only"),
+                "{pane} tab element itself must be visible outside admin mode"
+            );
+            assert!(
+                !opening_tag.contains("hidden"),
+                "{pane} tab element must not start hidden outside admin mode"
+            );
+            assert!(
+                shell.contains(&format!(r#"data-tab-star="{}""#, pane)),
+                "{pane} keeps normal star/default control"
+            );
+        }
+        assert!(shell.contains(r#"data-tab-id="admin" data-visibility="visible" data-admin-only="true""#));
+        for pane in ["stats", "portals", "upload"] {
+            assert!(shell.contains(&format!(r#"data-admin-only="true" data-tab-visibility-toggle="{}""#, pane)), "{pane} eye control is admin enhancement");
+        }
+        assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only="true"]"#));
+        assert!(shell.contains(r#"querySelectorAll('[data-admin-only="true"]')"#));
+        assert!(!shell.contains(r#"data-admin-only="false""#));
+    }
+
     #[test]
     fn crown_tabbar_recreates_flask_react_star_eye_and_hide_controls() {
         let shell = render_crown_shell();
@@ -754,7 +792,8 @@ mod tests {
     fn admin_mode_binary_contract_gates_viewport_enhancements() {
         let shell = render_crown_shell();
         assert!(shell.contains(r#"data-admin-mode="false""#));
-        assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]"#));
+        assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only="true"]"#));
+        assert!(shell.contains(r#"querySelectorAll('[data-admin-only="true"]')"#));
         assert!(shell.contains("appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         assert!(shell.contains("tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         for viewport in ["admin", "stats", "portals", "upload"] {

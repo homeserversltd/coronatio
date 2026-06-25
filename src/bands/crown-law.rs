@@ -1271,12 +1271,12 @@ fn render_flask_react_tabbar_quarry() -> String {
         .into_iter()
         .map(|pane| {
             let is_starred = pane.id == starred_tab;
-            let active = pane.id == "admin";
+            let active = pane.id == starred_tab;
             let visibility_button = if pane.admin_only {
                 r##"<div class="tab-visibility-column" aria-hidden="true"></div>"##.to_string()
             } else {
                 format!(
-                    r##"<div class="tab-visibility-column"><button type="button" class="visibility-toggle" data-tab-visibility-toggle="{id}" data-visible="true" aria-label="Hide {title} tab" title="Hide {title} tab"><span class="eye-icon" aria-hidden="true">👁</span></button></div>"##,
+                    r##"<div class="tab-visibility-column"><button type="button" class="visibility-toggle" data-admin-only="true" data-tab-visibility-toggle="{id}" data-visible="true" aria-label="Hide {title} tab" title="Hide {title} tab"><span class="eye-icon" aria-hidden="true">👁</span></button></div>"##,
                     id = pane.id,
                     title = pane.title
                 )
@@ -1296,11 +1296,12 @@ fn render_flask_react_tabbar_quarry() -> String {
                     }
                 )
             };
+            let admin_only_attr = if pane.admin_only { r##" data-admin-only="true""## } else { "" };
             format!(
-                r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="visible" data-admin-only="{admin_only}">{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
+                r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="visible"{admin_only_attr}>{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
                 id = pane.id,
                 title = pane.title,
-                admin_only = pane.admin_only,
+                admin_only_attr = admin_only_attr,
                 active_class = if active { "active" } else { "" },
                 selected = active,
                 visibility_button = visibility_button,
