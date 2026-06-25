@@ -1258,7 +1258,7 @@ fn legacy_homeserver_http_request(
         Box::new(stream)
     };
     let mut request = format!(
-        "{method} {path_and_query} HTTP/1.1\r\nHost: home.arpa\r\nConnection: close\r\nX-Forwarded-Proto: https\r\nContent-Length: {}\r\n",
+        "{method} {path_and_query} HTTP/1.1\r\nHost: home.arpa\r\nConnection: close\r\nX-Forwarded-Proto: https\r\nOrigin: https://home.arpa\r\nReferer: https://home.arpa/\r\nContent-Length: {}\r\n",
         body.len()
     );
     if let Some(value) = accept {
