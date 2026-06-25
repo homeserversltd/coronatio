@@ -1,0 +1,39 @@
+{
+  "schema": "coronatio.source_band.children.v1",
+  "name": "contracts",
+  "description": "Recursive contract/readback type band for Coronatio.",
+  "children": [
+    "core",
+    "registry-startup",
+    "topics-stats",
+    "installer-registry",
+    "service-storage"
+  ],
+  "bands": [
+    {
+      "id": "core",
+      "file": "core.rs",
+      "description": "Core app state, pane, manifest, tab list, and visibility contracts."
+    },
+    {
+      "id": "registry-startup",
+      "file": "registry-startup.rs",
+      "description": "Registry, startup, lane, fallback, admin, and Caduceus membrane contracts."
+    },
+    {
+      "id": "topics-stats",
+      "file": "topics-stats.rs",
+      "description": "Topic catalog, monitor pulse, events, boundary, and stats contracts."
+    },
+    {
+      "id": "installer-registry",
+      "file": "installer-registry.rs",
+      "description": "Installer, transaction, merge, starred-tab, config persistence, and rollback contracts."
+    },
+    {
+      "id": "service-storage",
+      "file": "service-storage.rs",
+      "description": "Service data, portal, broadcast, frontend storage, and persistence contracts."
+    }
+  ]
+}
