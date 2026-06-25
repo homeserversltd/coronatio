@@ -551,6 +551,69 @@ struct BroadcastLaw {
     ui_state_law: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct FrontendStorageReadback {
+    schema: String,
+    status: String,
+    route: String,
+    quarry_sources: Vec<String>,
+    persisted_stores: Vec<PersistedStoreLaw>,
+    persistence_fields: Vec<PersistedFieldLaw>,
+    debounce_law: Vec<DebounceLaw>,
+    stale_state_law: Vec<StaleStateLaw>,
+    coronatio_ownership: Vec<StateOwnershipLaw>,
+    migration_path: Vec<String>,
+    forbidden_persistence: Vec<String>,
+    first_missing_live_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct PersistedStoreLaw {
+    store_name: String,
+    storage_key: String,
+    source_path: String,
+    persisted_fields: Vec<String>,
+    boundary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct PersistedFieldLaw {
+    field: String,
+    old_source: String,
+    old_behavior: String,
+    coronatio_owner: String,
+    migration_rule: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct DebounceLaw {
+    source: String,
+    interval_ms: u64,
+    purpose: String,
+    coronatio_rule: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StaleStateLaw {
+    source: String,
+    stale_condition: String,
+    old_recovery: String,
+    coronatio_rule: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StateOwnershipLaw {
+    state_family: String,
+    owner: String,
+    reason: String,
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -597,6 +660,7 @@ fn app(state: AppState) -> Router {
         .route("/api/topics", get(topics_route))
         .route("/api/monitor/pulse", get(monitor_pulse_route))
         .route("/api/services/data", get(service_data_route))
+        .route("/api/frontend/storage", get(frontend_storage_route))
         .route("/api/boundary", get(boundary_route))
         .route("/api/installer", get(installer_route))
         .route("/api/stats/events", get(stats_events_route))
@@ -642,6 +706,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/topics".to_string(),
             "/api/monitor/pulse".to_string(),
             "/api/services/data".to_string(),
+            "/api/frontend/storage".to_string(),
             "/api/boundary".to_string(),
             "/api/installer".to_string(),
             "/api/stats/events".to_string(),
@@ -712,6 +777,10 @@ async fn monitor_pulse_route() -> impl IntoResponse {
 
 async fn service_data_route() -> impl IntoResponse {
     Json(service_data_readback())
+}
+
+async fn frontend_storage_route() -> impl IntoResponse {
+    Json(frontend_storage_readback())
 }
 
 async fn boundary_route() -> impl IntoResponse {
@@ -1414,6 +1483,205 @@ fn stats_event_payload() -> StatsEventPayload {
         lease_seconds: 30,
         payload_state: "placeholder-unavailable".to_string(),
         first_missing_signal: "stats collectors not wired".to_string(),
+    }
+}
+
+fn frontend_storage_readback() -> FrontendStorageReadback {
+    FrontendStorageReadback {
+        schema: "coronatio.frontend-storage.contract.v1".to_string(),
+        status: "contract-only".to_string(),
+        route: "/api/frontend/storage".to_string(),
+        quarry_sources: vec![
+            "src/store/index.ts".to_string(),
+            "src/store/slices/themeSlice.ts".to_string(),
+            "src/store/slices/tabSlice.ts".to_string(),
+            "src/store/slices/visibilitySlice.ts".to_string(),
+            "src/store/slices/favoriteSlice.ts".to_string(),
+            "src/store/slices/startupSlice.ts".to_string(),
+            "src/App.tsx".to_string(),
+            "src/api/auth.ts".to_string(),
+        ],
+        persisted_stores: vec![
+            PersistedStoreLaw {
+                store_name: "main zustand store".to_string(),
+                storage_key: "homeserver-store".to_string(),
+                source_path: "src/store/index.ts persist(partialize)".to_string(),
+                persisted_fields: vec!["theme", "visibility", "starredTab", "isInitialized", "tabs", "activeTab"].into_iter().map(String::from).collect(),
+                boundary: "mixed server truth and browser preference; Coronatio splits this before migration".to_string(),
+            },
+            PersistedStoreLaw {
+                store_name: "auth zustand store".to_string(),
+                storage_key: "auth-storage".to_string(),
+                source_path: "src/api/auth.ts persist(partialize)".to_string(),
+                persisted_fields: vec!["isAdmin"].into_iter().map(String::from).collect(),
+                boundary: "browser remembrance only; privileged authority remains token/session receipt, never localStorage".to_string(),
+            },
+            PersistedStoreLaw {
+                store_name: "theme data cache".to_string(),
+                storage_key: "themeData".to_string(),
+                source_path: "src/store/slices/themeSlice.ts THEME_DATA_STORAGE_KEY".to_string(),
+                persisted_fields: vec!["themeData"].into_iter().map(String::from).collect(),
+                boundary: "browser cosmetic cache; server theme catalog remains authority".to_string(),
+            },
+        ],
+        persistence_fields: frontend_persistence_fields(),
+        debounce_law: vec![
+            DebounceLaw {
+                source: "src/store/index.ts debouncedSetItem".to_string(),
+                interval_ms: 500,
+                purpose: "reduce repeated homeserver-store localStorage writes and skip unchanged serialized state".to_string(),
+                coronatio_rule: "write browser preference snapshots only after settle; server-owned state is not hidden behind browser debounce".to_string(),
+            },
+            DebounceLaw {
+                source: "src/App.tsx loadTablet duplicate-load debounce".to_string(),
+                interval_ms: 500,
+                purpose: "avoid immediately reloading the same tablet unless recovering from fallback".to_string(),
+                coronatio_rule: "pane loading may debounce duplicate dynamic-cartridge loads; current route state remains explicit".to_string(),
+            },
+            DebounceLaw {
+                source: "src/App.tsx tablet load timeout".to_string(),
+                interval_ms: 15000,
+                purpose: "show fallback when a tablet module stalls".to_string(),
+                coronatio_rule: "dynamic cartridge timeout becomes a typed fallback receipt, not silent local state drift".to_string(),
+            },
+            DebounceLaw {
+                source: "src/store/slices/startupSlice.ts tab config fetch timeout".to_string(),
+                interval_ms: 7000,
+                purpose: "abort stale /api/tabs startup config fetch and retry before default fallback".to_string(),
+                coronatio_rule: "startup config has bounded fetch/retry receipts; stale local storage never overrides admitted registry".to_string(),
+            },
+        ],
+        stale_state_law: vec![
+            StaleStateLaw {
+                source: "src/store/index.ts storage.getItem".to_string(),
+                stale_condition: "invalid JSON or parse failure in homeserver-store".to_string(),
+                old_recovery: "log parse error and return null".to_string(),
+                coronatio_rule: "ignore malformed browser snapshot and reload server registry plus safe defaults".to_string(),
+            },
+            StaleStateLaw {
+                source: "src/utils/bootstrap.ts determineInitialTab".to_string(),
+                stale_condition: "starred tab missing, hidden, disabled, admin-only without admin, or fallback-only".to_string(),
+                old_recovery: "choose visible enabled server starred tab, else first visible non-admin/admin-allowed tab, else fallback".to_string(),
+                coronatio_rule: "server registry decides first pane; browser activeTab is advisory and clipped to visible admitted panes".to_string(),
+            },
+            StaleStateLaw {
+                source: "src/App.tsx stale load detection".to_string(),
+                stale_condition: "async tablet load completes after a newer load id or after unmount".to_string(),
+                old_recovery: "discard stale module result".to_string(),
+                coronatio_rule: "dynamic cartridge load receipts carry generation id and stale completions do not mutate visible pane".to_string(),
+            },
+            StaleStateLaw {
+                source: "src/store/slices/visibilitySlice.ts updateTabVisibility".to_string(),
+                stale_condition: "backend visibility update fails".to_string(),
+                old_recovery: "revert local visibility to previous value and recalculate starred fallback".to_string(),
+                coronatio_rule: "server visibility transaction is authority; browser optimistic state rolls back on failed receipt".to_string(),
+            },
+        ],
+        coronatio_ownership: vec![
+            StateOwnershipLaw { state_family: "tabs".to_string(), owner: "server registry /api/registry and dynamic cartridge manifests".to_string(), reason: "tab catalog and native/dynamic lane admission are product truth".to_string() },
+            StateOwnershipLaw { state_family: "visibility".to_string(), owner: "server registry transaction".to_string(), reason: "visibility controls appliance access and fallback law".to_string() },
+            StateOwnershipLaw { state_family: "starredTab".to_string(), owner: "server registry with browser advisory bootstrap".to_string(), reason: "first pane must survive device changes and visibility changes".to_string() },
+            StateOwnershipLaw { state_family: "activeTab".to_string(), owner: "browser session preference clipped by server registry".to_string(), reason: "current pane is local navigation, not product configuration".to_string() },
+            StateOwnershipLaw { state_family: "theme".to_string(), owner: "browser preference using server theme catalog".to_string(), reason: "theme is cosmetic unless a server profile later claims it".to_string() },
+            StateOwnershipLaw { state_family: "isInitialized".to_string(), owner: "runtime startup phase receipt".to_string(), reason: "initialization is live process state and must not be trusted from stale storage".to_string() },
+            StateOwnershipLaw { state_family: "isAdmin".to_string(), owner: "Caduceus/session token receipt".to_string(), reason: "admin authority cannot be granted by localStorage".to_string() },
+        ],
+        migration_path: vec![
+            "read existing homeserver-store snapshot if present".to_string(),
+            "drop malformed JSON and all credential/token-shaped values".to_string(),
+            "accept theme only when present in server theme catalog".to_string(),
+            "accept activeTab only when admitted, visible, enabled, and accessible to current role".to_string(),
+            "migrate starredTab to server registry only when visible enabled non-admin tab or fallback".to_string(),
+            "migrate visibility/tabs from server registry, not from stale browser snapshot".to_string(),
+            "write new Coronatio browser preference key after successful server readback".to_string(),
+            "leave old homeserver-store readable for one migration pass, then ignore".to_string(),
+        ],
+        forbidden_persistence: vec![
+            "adminToken".to_string(),
+            "PIN".to_string(),
+            "password".to_string(),
+            "session token".to_string(),
+            "API key".to_string(),
+            "credential-bearing theme or tab data".to_string(),
+        ],
+        first_missing_live_signal: "Coronatio storage migration adapter and browser preference key are not wired; this tranche exposes the contract only".to_string(),
+    }
+}
+
+fn frontend_persistence_fields() -> Vec<PersistedFieldLaw> {
+    vec![
+        field_law(
+            "theme",
+            "src/store/index.ts + themeSlice.ts",
+            "persisted in homeserver-store and themeData cache",
+            "browser preference",
+            "preserve if theme exists in server catalog, otherwise default",
+        ),
+        field_law(
+            "visibility",
+            "src/store/index.ts + visibilitySlice.ts",
+            "persisted locally but also posted to /tabs/visibility",
+            "server registry transaction",
+            "reload from server; local snapshot is fallback evidence only",
+        ),
+        field_law(
+            "starredTab",
+            "src/store/index.ts + favoriteSlice.ts",
+            "persisted locally and posted to /setstarredtab",
+            "server registry",
+            "preserve only if visible/enabled and role-accessible, else first visible tab/fallback",
+        ),
+        field_law(
+            "isInitialized",
+            "src/store/index.ts + tabSlice.ts",
+            "persisted as initialization flag",
+            "startup receipt",
+            "do not trust from storage; recompute during startup",
+        ),
+        field_law(
+            "tabs",
+            "src/store/index.ts + startupSlice.ts",
+            "persisted full tab state",
+            "server registry /api/tabs",
+            "treat browser copy as stale cache; server response wins",
+        ),
+        field_law(
+            "activeTab",
+            "src/store/index.ts + App.tsx",
+            "persisted current navigation target",
+            "browser session preference",
+            "clip to admitted visible tab; never load hidden/disabled/admin-forbidden tab",
+        ),
+        field_law(
+            "isAdmin",
+            "src/api/auth.ts auth-storage",
+            "persisted boolean",
+            "Caduceus/session token receipt",
+            "discard as authority; require valid token/session proof",
+        ),
+        field_law(
+            "themeData",
+            "src/store/slices/themeSlice.ts",
+            "persisted theme object under themeData",
+            "browser cosmetic cache",
+            "validate hex color schema and catalog membership before reuse",
+        ),
+    ]
+}
+
+fn field_law(
+    field: &str,
+    old_source: &str,
+    old_behavior: &str,
+    coronatio_owner: &str,
+    migration_rule: &str,
+) -> PersistedFieldLaw {
+    PersistedFieldLaw {
+        field: field.to_string(),
+        old_source: old_source.to_string(),
+        old_behavior: old_behavior.to_string(),
+        coronatio_owner: coronatio_owner.to_string(),
+        migration_rule: migration_rule.to_string(),
     }
 }
 
@@ -2399,6 +2667,58 @@ mod tests {
                 |mapping| mapping.install_mode == InstallMode::FirstPartyNative
                     && mapping.rejected_shape.contains("premium package")
             ));
+    }
+
+    #[tokio::test]
+    async fn frontend_storage_route_encodes_browser_persistence_and_migration_law() {
+        let temp = test_tab_root("frontend-storage");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/frontend/storage")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let data: FrontendStorageReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(data.schema, "coronatio.frontend-storage.contract.v1");
+        assert_eq!(data.status, "contract-only");
+        assert!(data
+            .persisted_stores
+            .iter()
+            .any(|store| store.storage_key == "homeserver-store"
+                && store.persisted_fields.contains(&"activeTab".to_string())));
+        assert!(data
+            .persisted_stores
+            .iter()
+            .any(|store| store.storage_key == "auth-storage"
+                && store.boundary.contains("never localStorage")));
+        assert!(data
+            .persistence_fields
+            .iter()
+            .any(|field| field.field == "isInitialized"
+                && field.coronatio_owner == "startup receipt"));
+        assert!(data
+            .debounce_law
+            .iter()
+            .any(|law| law.interval_ms == 500 && law.source.contains("debouncedSetItem")));
+        assert!(data
+            .stale_state_law
+            .iter()
+            .any(|law| law.coronatio_rule.contains("malformed browser snapshot")));
+        assert!(data
+            .forbidden_persistence
+            .contains(&"adminToken".to_string()));
+        assert!(data
+            .first_missing_live_signal
+            .contains("storage migration adapter"));
     }
 
     #[tokio::test]

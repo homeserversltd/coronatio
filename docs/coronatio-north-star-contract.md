@@ -64,6 +64,10 @@ The scaffolding SHALL make these decisions visible before they harden:
 7. Sandboxing: systemd service first; WASI only when pure plugin code wants stronger sandboxing.
 8. Promotion path: dynamic cartridge to first-party native when a tab becomes crown law.
 
+## Frontend storage and persistence tranche law
+
+The old browser persistence layer is behavior quarry, not runtime authority. Coronatio currently exposes it as `/api/frontend/storage`, a typed readback contract. The route records the old `homeserver-store`, `auth-storage`, and `themeData` keys; persisted fields `theme`, `visibility`, `starredTab`, `isInitialized`, `tabs`, `activeTab`, `isAdmin`, and `themeData`; debounce and timeout behavior; stale local-storage and stale async-load recovery; the split between registry/server-owned state and browser-only preferences; and a one-pass migration path. Credential/token/PIN/password/API-key persistence is explicitly forbidden. The route does not read browser storage or perform migration; that requires a later browser adapter and receipt.
+
 ## Service, portal, monitor, and data tranche law
 
 The old portals, services monitor, and broadcast manager are behavior quarry, not runtime authority. Coronatio currently exposes them as `/api/services/data`, a typed readback contract. The route records portal fields (`name`, `description`, `services`, `type`, `port`, `localURL`, `remoteURL`), service-card health fields (`systemdName`, `isEnabled`, `isActive`, `status`, `statusDetails`, `isScriptManaged`, `port`, `needsReboot`), monitor topics for services, power, system, internet, tailscale, VPN, sync, hard-drive-test, admin disk, and admin system, plus admin field filters and topic-specific broadcast change predicates. It does not run host collectors or privileged actions; those require later Caduceus/Coronatio actuator receipts.
