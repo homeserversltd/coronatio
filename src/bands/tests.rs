@@ -759,6 +759,20 @@ mod tests {
 
 
 
+
+    #[test]
+    fn all_modals_close_on_backdrop_outside_click_only() {
+        let shell = render_crown_shell();
+        assert!(shell.contains(r#"data-pin-modal-backdrop"#));
+        assert!(shell.contains(r#"data-info-modal-backdrop"#));
+        assert!(shell.contains("function closeModalOnOutsideClick(backdrop, closeModal)"));
+        assert!(shell.contains("event.target === event.currentTarget"));
+        assert!(shell.contains("closeModalOnOutsideClick(modalBackdrop, closePinModal)"));
+        assert!(shell.contains("closeModalOnOutsideClick(infoBackdrop, closeInfoModal)"));
+        assert!(shell.contains("document.querySelector('[data-info-modal-close]')?.addEventListener('click', closeInfoModal)"));
+        assert!(shell.contains("document.querySelector('[data-pin-cancel]')?.addEventListener('click', closePinModal)"));
+    }
+
     #[test]
     fn indicator_modals_gate_admin_enhancements_from_regular_mode() {
         let shell = render_crown_shell();
