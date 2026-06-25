@@ -85,7 +85,7 @@ fn registry_readback() -> RegistryReadback {
     RegistryReadback {
         schema: "coronatio.registry.v1".to_string(),
         source_contract: "homeserver.json tabs.{config,visibility,data,starred}".to_string(),
-        starred_tab: "portals".to_string(),
+        starred_tab: "upload".to_string(),
         default_route_tab: initial_tab(true, None, false),
         force_tab_bar_visibility: false,
         visible_tabs_user: visible_tab_ids(&native_tab_contracts, false),
@@ -141,7 +141,7 @@ fn initial_tab(connection_ok: bool, forced_tab: Option<&str>, is_admin: bool) ->
     }
     let contracts = native_tab_contracts();
     let visible = visible_tab_ids(&contracts, is_admin);
-    let starred = normalize_tab_id("portals");
+    let starred = normalize_tab_id("upload");
     if visible.iter().any(|tab| tab == &starred) {
         starred
     } else {

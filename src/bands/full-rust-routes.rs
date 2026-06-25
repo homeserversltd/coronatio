@@ -1,6 +1,5 @@
 fn full_rust_route_table() -> Router<AppState> {
     Router::new()
-        .route("/api/setstarredtab", post(homeserver_rust_mutation_route))
         .route("/api/tabs/visibility", post(homeserver_rust_mutation_route))
         .route("/api/tabs/elements", put(homeserver_rust_mutation_route))
         .route("/api/pre-unlock", post(homeserver_rust_mutation_route))
@@ -425,8 +424,7 @@ fn homeserver_route_family(path: &str) -> &'static str {
 #[cfg(test)]
 fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static str])] {
     &[
-        ("/api/setstarredtab", &["post"]),
-        ("/api/tabs/visibility", &["post"]),
+                ("/api/tabs/visibility", &["post"]),
         ("/api/tabs/elements", &["put"]),
         ("/api/pre-unlock", &["post"]),
         ("/api/vault/status", &["get"]),

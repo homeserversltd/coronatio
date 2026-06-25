@@ -15,6 +15,11 @@ A port is not a reinterpretation, redesign, summary, scaffold, or inspired-by re
 Identical means indistinguishable to the user under the same viewport, theme, session/admin state, configuration, and data state. Implementation substrate may change from Flask/React/Python to Rust/Caduceus/Harmonia; the experienced surface may not drift. Tests that only prove word presence, contract existence, or approximate semantics are not acceptance for port work. Every port tranche must cite or inspect the original source/living quarry, name the old behavior, reproduce it in Rust, and prove the same user-visible behavior once.
 
 
+
+## Favorite and first-load manifest law
+
+Original first load is governed by the Flask tab registry and favorite system: `flask-0-6-tabstate.md` marks `upload` as the starred tab; `flask-0-7-tabdrawing.md` loads `get_starred_tab() or get_first_visible_tab()` into the root template; `flask-0-8-favoritecomponent.md` loads `/api/get_starred_tab`, updates exactly one visible non-admin favorite, and updates the star UI. Coronatio records that law in `static/favorites/favorites.json`, exposes it through `/api/favorites` and `/api/get_starred_tab`, and first-loads the manifest starred tab unless an explicit URL hash names a valid visible tab. The star is the favorite/default-route control. The eye is the visibility control: in admin mode it hides or shows a tab without deleting, disabling, uninstalling, or marking it failed.
+
 ## Preserved goods from HOMESERVER quarry
 
 The old premium-tab system proved these goods are required:
