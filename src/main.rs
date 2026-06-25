@@ -1980,6 +1980,7 @@ fn render_crown_shell() -> String {
         })
         .collect::<Vec<_>>()
         .join("");
+    let pane_bodies = render_native_pane_bodies();
 
     format!(
         r#"<!doctype html>
@@ -1995,11 +1996,19 @@ fn render_crown_shell() -> String {
     .crown-rail {{ border-right: 1px solid rgba(255,255,255,.12); padding: 1rem; background: rgba(3,6,12,.72); }}
     .crown-mark {{ font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 1rem; }}
     .crown-tab {{ display: block; color: #dbe7ff; text-decoration: none; padding: .75rem .85rem; border-radius: .75rem; margin-bottom: .35rem; background: rgba(255,255,255,.055); }}
-    .crown-tab:hover {{ background: rgba(125,166,255,.18); }}
+    .crown-tab:hover, .crown-tab:focus {{ background: rgba(125,166,255,.18); outline: 1px solid rgba(125,166,255,.38); }}
     .crown-stage {{ padding: 1.25rem; }}
     .crown-hero {{ border: 1px solid rgba(255,255,255,.12); border-radius: 1.1rem; padding: 1.1rem; background: rgba(8,13,25,.78); box-shadow: 0 1.5rem 4rem rgba(0,0,0,.28); }}
-    .crown-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .8rem; margin-top: 1rem; }}
-    .crown-card {{ border: 1px solid rgba(255,255,255,.10); border-radius: .95rem; padding: .95rem; background: rgba(255,255,255,.045); }}
+    .crown-pane {{ display: grid; gap: 1rem; margin-top: 1rem; border: 1px solid rgba(255,255,255,.11); border-radius: 1rem; padding: 1rem; background: rgba(255,255,255,.035); }}
+    .pane-topline {{ display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }}
+    .pane-title {{ margin: 0; font-size: 1.35rem; }}
+    .pane-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .75rem; }}
+    .pane-card {{ border: 1px solid rgba(255,255,255,.10); border-radius: .85rem; padding: .85rem; background: rgba(255,255,255,.045); min-height: 5.5rem; }}
+    .pane-card strong {{ display: block; margin-bottom: .35rem; color: #ffffff; }}
+    .pane-action-row {{ display: flex; flex-wrap: wrap; gap: .55rem; }}
+    .pane-button {{ border: 1px solid rgba(125,166,255,.42); border-radius: .7rem; background: rgba(125,166,255,.13); color: #edf2ff; padding: .55rem .75rem; font: inherit; }}
+    .pane-button[aria-disabled="true"] {{ opacity: .58; }}
+    .receipt-strip {{ border-left: 3px solid #7da6ff; padding: .65rem .8rem; background: rgba(125,166,255,.10); color: #dbe7ff; }}
     .chip {{ display: inline-block; border: 1px solid rgba(125,166,255,.35); border-radius: 999px; padding: .18rem .55rem; font-size: .78rem; color: #aac3ff; }}
   </style>
 </head>
@@ -2009,23 +2018,94 @@ fn render_crown_shell() -> String {
       <div class="crown-mark">Coronatio</div>
       {nav}
     </nav>
-    <section class="crown-stage">
+    <section class="crown-stage" aria-label="Coronatio native pane bodies">
       <div class="crown-hero">
         <span class="chip">HOMESERVER Rust crown</span>
-        <h1>Coronatio crown shell</h1>
-        <p>First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles.</p>
-        <div class="crown-grid">
-          <article class="crown-card"><strong>Admin</strong><br>Session, capability, and install authority.</article>
-          <article class="crown-card"><strong>Stats</strong><br>Machine readback and live telemetry lane.</article>
-          <article class="crown-card"><strong>Portals</strong><br>Admitted service ingress and currentness.</article>
-          <article class="crown-card"><strong>Upload</strong><br>Safe file ingress with receipts.</article>
-        </div>
+        <h1>Coronatio native crown</h1>
+        <p>Admin, Stats, Portals, and Upload are first-party Rust pane bodies. Cartridge tabs remain additive and governed.</p>
+        {pane_bodies}
       </div>
     </section>
   </main>
+  <script>
+    const tabs = Array.from(document.querySelectorAll('.crown-tab'));
+    const panes = Array.from(document.querySelectorAll('.crown-pane'));
+    function showPane(id) {{
+      panes.forEach((pane) => pane.hidden = pane.dataset.paneBody !== id);
+      tabs.forEach((tab) => tab.setAttribute('aria-current', tab.dataset.pane === id ? 'page' : 'false'));
+    }}
+    window.addEventListener('hashchange', () => showPane((location.hash || '#portals').slice(1)));
+    showPane((location.hash || '#portals').slice(1));
+  </script>
 </body>
 </html>"#
     )
+}
+
+fn render_native_pane_bodies() -> String {
+    [
+        render_admin_pane_body(),
+        render_stats_pane_body(),
+        render_portals_pane_body(),
+        render_upload_pane_body(),
+    ]
+    .join("")
+}
+
+fn render_admin_pane_body() -> String {
+    r#"<article class="crown-pane" data-pane-body="admin" id="admin" hidden>
+  <div class="pane-topline"><h2 class="pane-title">Admin</h2><span class="chip">PIN session + Caduceus membrane</span></div>
+  <div class="pane-grid">
+    <div class="pane-card"><strong>Session lease</strong>30 minute admin lease, keepalive at /api/admin/session, logout invalidates token.</div>
+    <div class="pane-card"><strong>Mutation boundary</strong>Privileged writes route through Caduceus; Coronatio presents state and receipts.</div>
+    <div class="pane-card"><strong>Install authority</strong>Installer law is visible; live package mutation waits for actuator proof.</div>
+  </div>
+  <div class="pane-action-row"><button class="pane-button" type="button" aria-disabled="true">Unlock with PIN</button><button class="pane-button" type="button" aria-disabled="true">Renew admin lease</button><a class="pane-button" href="/api/session">Read session contract</a></div>
+  <div class="receipt-strip">First missing live signal: Caduceus must mint privileged mutation capability before mutation is enabled.</div>
+</article>"#
+        .to_string()
+}
+
+fn render_stats_pane_body() -> String {
+    r#"<article class="crown-pane" data-pane-body="stats" id="stats" hidden>
+  <div class="pane-topline"><h2 class="pane-title">Stats</h2><span class="chip">snapshot + SSE lease</span></div>
+  <div class="pane-grid">
+    <div class="pane-card"><strong>System snapshot</strong>Load, storage, temperature, and service counters read from /api/stats.</div>
+    <div class="pane-card"><strong>Live topic</strong>stats.system streams from /api/stats/events with renewal at /api/stats/events/renew.</div>
+    <div class="pane-card"><strong>Unavailable truth</strong>Missing collectors remain explicit blanks instead of fake telemetry.</div>
+  </div>
+  <div class="pane-action-row"><a class="pane-button" href="/api/stats">Read stats snapshot</a><a class="pane-button" href="/api/monitor/pulse">Read monitor pulse</a></div>
+  <div class="receipt-strip">Stats pane is native crown law; collectors are the next live signal, not a completion claim.</div>
+</article>"#
+        .to_string()
+}
+
+fn render_portals_pane_body() -> String {
+    r#"<article class="crown-pane" data-pane-body="portals" id="portals">
+  <div class="pane-topline"><h2 class="pane-title">Portals</h2><span class="chip">service ingress</span></div>
+  <div class="pane-grid">
+    <div class="pane-card"><strong>Local portals</strong>Service cards expose local URL, remote URL, port, and systemd health posture.</div>
+    <div class="pane-card"><strong>Currentness</strong>Admitted services show enabled/active/script-managed/reboot-needed state without brand nav.</div>
+    <div class="pane-card"><strong>Registry source</strong>Portal records preserve homeserver.json tab data until live Harmonia/Caduceus mutation replaces it.</div>
+  </div>
+  <div class="pane-action-row"><a class="pane-button" href="/api/services/data">Read service data</a><a class="pane-button" href="/api/tabs">Read installed cartridges</a></div>
+  <div class="receipt-strip">Portals is the default crown pane because service ingress is the operator's normal public surface.</div>
+</article>"#
+        .to_string()
+}
+
+fn render_upload_pane_body() -> String {
+    r#"<article class="crown-pane" data-pane-body="upload" id="upload" hidden>
+  <div class="pane-topline"><h2 class="pane-title">Upload</h2><span class="chip">file ingress policy</span></div>
+  <div class="pane-grid">
+    <div class="pane-card"><strong>Admission queue</strong>Files enter a receipt-bearing queue before any privileged move.</div>
+    <div class="pane-card"><strong>Storage policy</strong>Destination, ownership, permissions, and validation stay explicit in the future upload receipt.</div>
+    <div class="pane-card"><strong>Safe posture</strong>Drop-zone controls are disabled until the Caduceus actuator owns live writes.</div>
+  </div>
+  <div class="pane-action-row"><button class="pane-button" type="button" aria-disabled="true">Choose files</button><button class="pane-button" type="button" aria-disabled="true">Submit upload</button><a class="pane-button" href="/api/boundary">Read boundary</a></div>
+  <div class="receipt-strip">Upload is visible but non-mutating: no file write happens before Caduceus live proof.</div>
+</article>"#
+        .to_string()
 }
 
 fn is_safe_tab_id(tab_id: &str) -> bool {
@@ -2154,9 +2234,33 @@ mod tests {
         assert!(body.contains("data-pane=\"stats\""));
         assert!(body.contains("data-pane=\"portals\""));
         assert!(body.contains("data-pane=\"upload\""));
+        assert!(body.contains("data-pane-body=\"admin\""));
+        assert!(body.contains("data-pane-body=\"stats\""));
+        assert!(body.contains("data-pane-body=\"portals\""));
+        assert!(body.contains("data-pane-body=\"upload\""));
         assert!(body.contains("HOMESERVER Rust crown"));
+        assert!(body.contains("PIN session + Caduceus membrane"));
+        assert!(body.contains("snapshot + SSE lease"));
+        assert!(body.contains("service ingress"));
+        assert!(body.contains("file ingress policy"));
+        assert!(body.contains("showPane((location.hash || '#portals').slice(1))"));
+        assert!(!body.contains("class=\"crown-card\""));
         assert!(!body.contains("Arcadia"));
         assert!(!body.contains("YouTube"));
+    }
+
+    #[test]
+    fn native_pane_bodies_are_not_placeholder_cards() {
+        let shell = render_crown_shell();
+        for pane in PRIMARY_TABS {
+            assert!(shell.contains(&format!("data-pane-body=\"{}\"", pane)));
+            assert!(shell.contains(&format!("href=\"#{}\"", pane)));
+        }
+        assert!(shell.contains("Read service data"));
+        assert!(shell.contains("Read stats snapshot"));
+        assert!(shell.contains("Read session contract"));
+        assert!(shell.contains("Read boundary"));
+        assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
     }
 
     #[tokio::test]
