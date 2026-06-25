@@ -1,0 +1,80 @@
+{
+  "schema": "coronatio.source_bands.v1",
+  "name": "coronatio-rust-source-bands",
+  "description": "Ordered infinite-infinite preservation spine for Coronatio Rust source previously accumulated in src/main.rs.",
+  "children": [
+    "contracts",
+    "server",
+    "routes",
+    "legacy-proxy",
+    "tab-manifests",
+    "crown-readbacks",
+    "topic-readbacks",
+    "frontend-storage",
+    "installer-stats",
+    "legacy-shell",
+    "tests"
+  ],
+  "bands": [
+    {
+      "id": "contracts",
+      "file": "contracts.rs",
+      "description": "Constants and contract/readback structs shared by Coronatio bands."
+    },
+    {
+      "id": "server",
+      "file": "server.rs",
+      "description": "Process entry and Axum router spine."
+    },
+    {
+      "id": "routes",
+      "file": "routes.rs",
+      "description": "HTTP route handlers and native API response faces."
+    },
+    {
+      "id": "legacy-proxy",
+      "file": "legacy-proxy.rs",
+      "description": "Legacy HomeServer asset, Unix-socket proxy, chunk decoding, and route-boundary behavior."
+    },
+    {
+      "id": "tab-manifests",
+      "file": "tab-manifests.rs",
+      "description": "Dynamic tab manifest loading and validation routes."
+    },
+    {
+      "id": "crown-readbacks",
+      "file": "crown-readbacks.rs",
+      "description": "Crown pane, registry, startup, lane, fallback, and admin-session readbacks."
+    },
+    {
+      "id": "topic-readbacks",
+      "file": "topic-readbacks.rs",
+      "description": "Socket/SSE topic and monitor-pulse readback contracts."
+    },
+    {
+      "id": "frontend-storage",
+      "file": "frontend-storage.rs",
+      "description": "Frontend persistence and service-data migration readbacks."
+    },
+    {
+      "id": "installer-stats",
+      "file": "installer-stats.rs",
+      "description": "Boundary, installer, registry, and stats snapshot readbacks."
+    },
+    {
+      "id": "legacy-shell",
+      "file": "legacy-shell.rs",
+      "description": "Exact legacy HomeServer shell rendering plus safety/shutdown helpers."
+    },
+    {
+      "id": "tests",
+      "file": "tests.rs",
+      "description": "Unit tests preserving Coronatio behavior through the split."
+    }
+  ],
+  "invariants": [
+    "src/main.rs remains the thin crate/process face and includes bands in this order.",
+    "Bands are included at crate root to preserve existing private item visibility during the first preservation tranche.",
+    "Behavioral extraction to ordinary Rust modules is a later typed-interface tranche after live behavior stays proven."
+  ]
+}
