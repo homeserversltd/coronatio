@@ -899,8 +899,8 @@ mod tests {
         root
     }
     #[tokio::test]
-    async fn preserved_legacy_read_routes_do_not_404() {
-        let temp = test_tab_root("legacy-read-routes");
+    async fn full_rust_read_routes_are_registered() {
+        let temp = test_tab_root("full-rust-read-routes");
         let app = app(AppState { tab_root: Arc::new(temp) });
         for route in [
             "/api/themes",
@@ -913,21 +913,21 @@ mod tests {
             assert_eq!(response.status(), StatusCode::OK, "{route}");
             let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
             let body = String::from_utf8(bytes.to_vec()).unwrap();
-            assert!(body.contains("coronatio.legacy.api.compat.v1"), "{body}");
+            assert!(body.contains("coronatio.homeserver.route.read.v1"), "{body}");
             assert!(body.contains(route), "{body}");
         }
     }
 
     #[tokio::test]
-    async fn preserved_legacy_mutation_routes_enter_caduceus_membrane() {
-        let temp = test_tab_root("legacy-mutation-routes");
+    async fn full_rust_mutation_routes_enter_caduceus_membrane() {
+        let temp = test_tab_root("full-rust-mutation-routes");
         let response = app(AppState { tab_root: Arc::new(temp) })
             .oneshot(Request::builder().method("POST").uri("/api/admin/system/restart").body(Body::empty()).unwrap())
             .await.unwrap();
         assert_ne!(response.status(), StatusCode::NOT_FOUND);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(body.contains("coronatio.legacy.api.mutation.v1"));
+        assert!(body.contains("coronatio.homeserver.route.mutation.v1"));
         assert!(body.contains("Caduceus staff intent membrane"));
         assert!(body.contains("/api/admin/system/restart"));
     }
@@ -939,6 +939,25 @@ mod tests {
         assert!(main_rs.contains(r#"include!("bands/shell.rs")"#));
         assert!(main_rs.lines().count() < 80);
         assert!(std::path::Path::new("src/bands/index.json").exists());
+    }
+
+    #[test]
+    fn website_endpoint_inventory_is_explicit_rust_routes() {
+        let inventory = full_rust_route_inventory();
+        assert!(inventory.len() > 130, "expected broad website endpoint route table");
+        for required in [
+            "/api/files/upload",
+            "/api/service/control",
+            "/api/admin/diskman/mount",
+            "/api/admin/updates/modules/:module_name/status",
+            "/api/wakeonlan/targets",
+            "/api/dhcp/reservations/:reservation_id",
+            "/api/youtube/download",
+            "/api/backup/status",
+            "/api/miner/stats",
+        ] {
+            assert!(inventory.iter().any(|(path, _)| *path == required), "missing {required}");
+        }
     }
 
 }
