@@ -697,6 +697,10 @@ fn app(state: AppState) -> Router {
         .route("/api/tabs", any(legacy_homeserver_proxy_route))
         .route("/api/*path", any(legacy_homeserver_proxy_route))
         .route("/socket.io/*path", any(legacy_homeserver_proxy_route))
+        .route(
+            "/assets/index-BRoXzIjg.js",
+            get(legacy_homeserver_react_bundle_route),
+        )
         .nest_service("/assets", ServeDir::new(legacy_homeserver_asset_root()))
         .route_service("/favicon.ico", legacy_homeserver_build_file("favicon.ico"))
         .route_service(
@@ -1074,6 +1078,37 @@ async fn stats_events_renew_route() -> impl IntoResponse {
         status: "renewed-contract".to_string(),
         next_renewal_before_seconds: 20,
     })
+}
+
+async fn legacy_homeserver_react_bundle_route() -> impl IntoResponse {
+    let path = legacy_homeserver_asset_root().join("index-BRoXzIjg.js");
+    match fs::read_to_string(&path).await {
+        Ok(bundle) => {
+            let patched = bundle.replace(
+                "transports:[\"websocket\",\"polling\"]",
+                "transports:[\"polling\"]",
+            );
+            (
+                StatusCode::OK,
+                [(
+                    header::CONTENT_TYPE,
+                    "application/javascript; charset=utf-8",
+                )],
+                patched,
+            )
+                .into_response()
+        }
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "schema": "coronatio.legacy-homeserver-bundle.error.v1",
+                "ok": false,
+                "path": path.display().to_string(),
+                "error": error.to_string()
+            })),
+        )
+            .into_response(),
+    }
 }
 
 async fn legacy_homeserver_proxy_route(
