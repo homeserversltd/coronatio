@@ -1973,139 +1973,198 @@ fn render_crown_shell() -> String {
         .into_iter()
         .map(|pane| {
             format!(
-                r##"<a class="crown-tab" href="#{id}" data-pane="{id}">{title}</a>"##,
+                r##"<a class="tab-button" href="#{id}" role="tab" aria-controls="pane-{id}" aria-selected="false" data-pane="{id}">{title}</a>"##,
                 id = pane.id,
                 title = pane.title
             )
         })
         .collect::<Vec<_>>()
         .join("");
-    let pane_bodies = render_native_pane_bodies();
 
-    format!(
-        r#"<!doctype html>
-<html lang="en">
+    let shell = r###"<!doctype html>
+<html lang="en" class="theme-loaded">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Coronatio</title>
   <style>
-    :root {{ color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #070a12; color: #edf2ff; }}
-    body {{ margin: 0; min-height: 100vh; background: radial-gradient(circle at top, #17233a 0, #070a12 42rem); }}
-    .crown-shell {{ display: grid; grid-template-columns: 14rem 1fr; min-height: 100vh; }}
-    .crown-rail {{ border-right: 1px solid rgba(255,255,255,.12); padding: 1rem; background: rgba(3,6,12,.72); }}
-    .crown-mark {{ font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 1rem; }}
-    .crown-tab {{ display: block; color: #dbe7ff; text-decoration: none; padding: .75rem .85rem; border-radius: .75rem; margin-bottom: .35rem; background: rgba(255,255,255,.055); }}
-    .crown-tab:hover, .crown-tab:focus {{ background: rgba(125,166,255,.18); outline: 1px solid rgba(125,166,255,.38); }}
-    .crown-stage {{ padding: 1.25rem; }}
-    .crown-hero {{ border: 1px solid rgba(255,255,255,.12); border-radius: 1.1rem; padding: 1.1rem; background: rgba(8,13,25,.78); box-shadow: 0 1.5rem 4rem rgba(0,0,0,.28); }}
-    .crown-pane {{ display: grid; gap: 1rem; margin-top: 1rem; border: 1px solid rgba(255,255,255,.11); border-radius: 1rem; padding: 1rem; background: rgba(255,255,255,.035); }}
-    .pane-topline {{ display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }}
-    .pane-title {{ margin: 0; font-size: 1.35rem; }}
-    .pane-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .75rem; }}
-    .pane-card {{ border: 1px solid rgba(255,255,255,.10); border-radius: .85rem; padding: .85rem; background: rgba(255,255,255,.045); min-height: 5.5rem; }}
-    .pane-card strong {{ display: block; margin-bottom: .35rem; color: #ffffff; }}
-    .pane-action-row {{ display: flex; flex-wrap: wrap; gap: .55rem; }}
-    .pane-button {{ border: 1px solid rgba(125,166,255,.42); border-radius: .7rem; background: rgba(125,166,255,.13); color: #edf2ff; padding: .55rem .75rem; font: inherit; }}
-    .pane-button[aria-disabled="true"] {{ opacity: .58; }}
-    .receipt-strip {{ border-left: 3px solid #7da6ff; padding: .65rem .8rem; background: rgba(125,166,255,.10); color: #dbe7ff; }}
-    .chip {{ display: inline-block; border: 1px solid rgba(125,166,255,.35); border-radius: 999px; padding: .18rem .55rem; font-size: .78rem; color: #aac3ff; }}
+    :root {
+      color-scheme: dark;
+      --background: #1a1a1a;
+      --surface: #2a2a2a;
+      --surface-soft: #222;
+      --text: #ffffff;
+      --text-secondary: #dddddd;
+      --accent: #00f2fe;
+      --accent-soft: rgba(0, 242, 254, .16);
+      --primary: #4CAF50;
+      --border: rgba(255,255,255,.14);
+      --error: #f44336;
+      --warning: #ff9800;
+      --success: #4CAF50;
+      --shadow: 0 2px 4px rgba(0,0,0,.35);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--background);
+      color: var(--text);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--background); color: var(--text); }
+    .app { min-height: 100vh; display: flex; flex-direction: column; }
+    .top-bar {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .brand { display: flex; align-items: center; gap: .65rem; font-weight: 700; letter-spacing: .02em; }
+    .brand-mark { width: 26px; height: 26px; border-radius: 7px; border: 2px solid var(--accent); display: grid; place-items: center; color: var(--accent); font-size: .82rem; }
+    .status-strip { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .45rem; color: var(--text-secondary); font-size: .82rem; }
+    .status-pill { border: 1px solid var(--border); border-radius: 999px; padding: .18rem .55rem; background: rgba(255,255,255,.045); }
+    .status-pill.ok { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+    .tab-bar {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding: 0 20px;
+      background: var(--surface-soft);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    .tab-button {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: .45rem .85rem;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 600;
+      transition: background .18s ease, color .18s ease, border-color .18s ease;
+    }
+    .tab-button:hover, .tab-button[aria-selected="true"] {
+      background: var(--accent-soft);
+      color: var(--text);
+      border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    }
+    .content { flex: 1; padding: 20px; }
+    .pane { display: none; max-width: 1180px; margin: 0 auto; }
+    .pane.active { display: block; }
+    .pane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; align-items: start; }
+    .portal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: stretch; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      box-shadow: var(--shadow);
+      min-height: 112px;
+    }
+    .portal-card { min-height: 180px; display: flex; flex-direction: column; justify-content: space-between; gap: .9rem; }
+    .card h2, .card h3 { margin: 0 0 .65rem; font-size: 1rem; color: var(--text); }
+    .card p { margin: .25rem 0; color: var(--text-secondary); font-size: .92rem; }
+    .metric { font-size: 1.65rem; font-weight: 750; color: var(--accent); line-height: 1.1; }
+    .muted { color: var(--text-secondary); }
+    .readout { margin-top: .75rem; padding: .75rem; border-radius: 6px; background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.08); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; color: #cdefff; overflow: auto; max-height: 220px; white-space: pre-wrap; }
+    .button-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .85rem; }
+    button, .action-link { border: 1px solid var(--border); border-radius: 6px; padding: .55rem .7rem; background: var(--primary); color: #061006; font-weight: 700; cursor: pointer; text-decoration: none; }
+    button.secondary, .action-link.secondary { background: transparent; color: var(--text); }
+    .warning { color: var(--warning); }
+    .error { color: var(--error); }
+    .success { color: var(--success); }
+    .drop-zone { border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 8px; padding: 1.2rem; background: rgba(0,242,254,.07); }
+    @media (max-width: 760px) {
+      .top-bar { align-items: flex-start; flex-direction: column; padding: .75rem 1rem; }
+      .tab-bar, .content { padding-left: 12px; padding-right: 12px; }
+      .portal-grid, .pane-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <main class="crown-shell" data-product="Coronatio">
-    <nav class="crown-rail" aria-label="Coronatio primary tabs">
-      <div class="crown-mark">Coronatio</div>
-      {nav}
-    </nav>
-    <section class="crown-stage" aria-label="Coronatio native pane bodies">
-      <div class="crown-hero">
-        <span class="chip">HOMESERVER Rust crown</span>
-        <h1>Coronatio native crown</h1>
-        <p>Admin, Stats, Portals, and Upload are first-party Rust pane bodies. Cartridge tabs remain additive and governed.</p>
-        {pane_bodies}
+  <main class="app" data-product="Coronatio" data-source-material="homeserver-main-site">
+    <header class="top-bar">
+      <div class="brand"><span class="brand-mark">⌂</span><span>HomeServer</span><span class="muted">/ Coronatio</span></div>
+      <div class="status-strip" aria-label="Coronatio currentness">
+        <span class="status-pill ok">Rust crown online</span>
+        <span class="status-pill">Caduceus boundary protected</span>
+        <span class="status-pill">Source quarry: main HomeServer</span>
       </div>
+    </header>
+    <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist">__NAV__</nav>
+    <section class="content">
+      <section class="pane active" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
+        <div class="pane-grid">
+          <article class="card"><h2>Admin authority</h2><p>Session, capability, and install authority are visible here instead of hidden behind scaffold copy.</p><div class="button-row"><button data-fetch="/api/session" data-target="admin-session">Read session law</button><button class="secondary" data-fetch="/api/installer" data-target="admin-installer">Read installer law</button></div><pre class="readout" id="admin-session">Waiting for session readback.</pre></article>
+          <article class="card"><h2>Caduceus membrane</h2><p>Privileged host mutation remains behind Caduceus. Coronatio shows capability state and receipts, not fake root controls.</p><pre class="readout" id="admin-installer">Installer and mutation contract readback will appear here.</pre></article>
+          <article class="card"><h2>Visible contract</h2><p><span class="warning">Not complete:</span> live mutation endpoints are still being wired. This pane now states that honestly and exposes the boundary.</p></article>
+        </div>
+      </section>
+      <section class="pane" id="pane-stats" data-pane-panel="stats" role="tabpanel" aria-label="Stats">
+        <div class="pane-grid">
+          <article class="card"><h2>System telemetry</h2><div class="metric" id="stats-load">—</div><p>Load average</p><pre class="readout" id="stats-readout">Fetching /api/stats…</pre></article>
+          <article class="card"><h2>Stream lane</h2><p id="stats-stream">Stats stream state pending.</p><div class="button-row"><button data-fetch="/api/stats/events" data-target="stats-event">Read event frame</button><button class="secondary" data-fetch="/api/stats/events/renew" data-target="stats-event" data-method="POST">Renew lease</button></div><pre class="readout" id="stats-event">No event readback yet.</pre></article>
+          <article class="card"><h2>Missing signal</h2><p id="stats-missing" class="warning">Checking collector status…</p></article>
+        </div>
+      </section>
+      <section class="pane" id="pane-portals" data-pane-panel="portals" role="tabpanel" aria-label="Portals">
+        <div class="portal-grid">
+          <article class="card portal-card"><div><h2>Admitted services</h2><p>Portal cards follow the main HomeServer service-grid pattern and expose the live config contract.</p></div><div class="button-row"><button data-fetch="/api/services/data" data-target="portals-readout">Read service contract</button><a class="action-link secondary" href="https://home.arpa/">Open main HomeServer</a></div></article>
+          <article class="card portal-card"><div><h2>Coronatio</h2><p>Rust crown preview, port 3013.</p></div><span class="status-pill ok">online</span></article>
+          <article class="card portal-card"><div><h2>Caduceus</h2><p>Privileged actuator membrane, port 3014.</p></div><a class="action-link" href="http://home.arpa:3014/health">Health</a></article>
+        </div>
+        <pre class="readout" id="portals-readout">Service contract readback will appear here.</pre>
+      </section>
+      <section class="pane" id="pane-upload" data-pane-panel="upload" role="tabpanel" aria-label="Upload">
+        <div class="pane-grid">
+          <article class="card"><h2>Safe file ingress</h2><div class="drop-zone"><strong>Upload lane staged</strong><p>Files will enter through policy, receipt, and Caduceus-backed mutation. The native pane shows the product job instead of an empty tab.</p></div><div class="button-row"><button data-fetch="/api/panes/upload" data-target="upload-readout">Read upload pane</button></div></article>
+          <article class="card"><h2>Boundary</h2><p class="warning">Live file mutation is not enabled until the Caduceus actuator and receipt ledger are wired.</p><pre class="readout" id="upload-readout">Waiting for upload pane readback.</pre></article>
+        </div>
+      </section>
     </section>
   </main>
   <script>
-    const tabs = Array.from(document.querySelectorAll('.crown-tab'));
-    const panes = Array.from(document.querySelectorAll('.crown-pane'));
-    function showPane(id) {{
-      panes.forEach((pane) => pane.hidden = pane.dataset.paneBody !== id);
-      tabs.forEach((tab) => tab.setAttribute('aria-current', tab.dataset.pane === id ? 'page' : 'false'));
-    }}
-    window.addEventListener('hashchange', () => showPane((location.hash || '#portals').slice(1)));
-    showPane((location.hash || '#portals').slice(1));
+    const tabs = [...document.querySelectorAll('[data-pane]')];
+    const panes = [...document.querySelectorAll('[data-pane-panel]')];
+    function showPane(id) {
+      const selected = panes.some(pane => pane.dataset.panePanel === id) ? id : 'admin';
+      tabs.forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.pane === selected)));
+      panes.forEach(pane => pane.classList.toggle('active', pane.dataset.panePanel === selected));
+      if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
+    }
+    tabs.forEach(tab => tab.addEventListener('click', event => { event.preventDefault(); showPane(tab.dataset.pane); }));
+    async function fetchInto(route, target, method = 'GET') {
+      const el = document.getElementById(target);
+      if (!el) return;
+      el.textContent = 'Loading ' + route + '…';
+      try {
+        const response = await fetch(route, { method });
+        const text = await response.text();
+        try { el.textContent = JSON.stringify(JSON.parse(text), null, 2); }
+        catch (_) { el.textContent = text; }
+      } catch (error) { el.textContent = 'fetch failed: ' + error; }
+    }
+    document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET')));
+    async function hydrateStats() {
+      try {
+        const data = await fetch('/api/stats').then(r => r.json());
+        document.getElementById('stats-load').textContent = data.telemetry?.load1 ?? 'unwired';
+        document.getElementById('stats-stream').textContent = (data.transport?.streamStatus || 'unknown') + ' — ' + (data.transport?.streamReason || '');
+        document.getElementById('stats-missing').textContent = data.telemetry?.firstMissingSignal || 'none';
+        document.getElementById('stats-readout').textContent = JSON.stringify(data, null, 2);
+      } catch (error) { document.getElementById('stats-readout').textContent = String(error); }
+    }
+    showPane((location.hash || '#admin').slice(1));
+    hydrateStats();
   </script>
 </body>
-</html>"#
-    )
-}
-
-fn render_native_pane_bodies() -> String {
-    [
-        render_admin_pane_body(),
-        render_stats_pane_body(),
-        render_portals_pane_body(),
-        render_upload_pane_body(),
-    ]
-    .join("")
-}
-
-fn render_admin_pane_body() -> String {
-    r#"<article class="crown-pane" data-pane-body="admin" id="admin" hidden>
-  <div class="pane-topline"><h2 class="pane-title">Admin</h2><span class="chip">PIN session + Caduceus membrane</span></div>
-  <div class="pane-grid">
-    <div class="pane-card"><strong>Session lease</strong>30 minute admin lease, keepalive at /api/admin/session, logout invalidates token.</div>
-    <div class="pane-card"><strong>Mutation boundary</strong>Privileged writes route through Caduceus; Coronatio presents state and receipts.</div>
-    <div class="pane-card"><strong>Install authority</strong>Installer law is visible; live package mutation waits for actuator proof.</div>
-  </div>
-  <div class="pane-action-row"><button class="pane-button" type="button" aria-disabled="true">Unlock with PIN</button><button class="pane-button" type="button" aria-disabled="true">Renew admin lease</button><a class="pane-button" href="/api/session">Read session contract</a></div>
-  <div class="receipt-strip">First missing live signal: Caduceus must mint privileged mutation capability before mutation is enabled.</div>
-</article>"#
-        .to_string()
-}
-
-fn render_stats_pane_body() -> String {
-    r#"<article class="crown-pane" data-pane-body="stats" id="stats" hidden>
-  <div class="pane-topline"><h2 class="pane-title">Stats</h2><span class="chip">snapshot + SSE lease</span></div>
-  <div class="pane-grid">
-    <div class="pane-card"><strong>System snapshot</strong>Load, storage, temperature, and service counters read from /api/stats.</div>
-    <div class="pane-card"><strong>Live topic</strong>stats.system streams from /api/stats/events with renewal at /api/stats/events/renew.</div>
-    <div class="pane-card"><strong>Unavailable truth</strong>Missing collectors remain explicit blanks instead of fake telemetry.</div>
-  </div>
-  <div class="pane-action-row"><a class="pane-button" href="/api/stats">Read stats snapshot</a><a class="pane-button" href="/api/monitor/pulse">Read monitor pulse</a></div>
-  <div class="receipt-strip">Stats pane is native crown law; collectors are the next live signal, not a completion claim.</div>
-</article>"#
-        .to_string()
-}
-
-fn render_portals_pane_body() -> String {
-    r#"<article class="crown-pane" data-pane-body="portals" id="portals">
-  <div class="pane-topline"><h2 class="pane-title">Portals</h2><span class="chip">service ingress</span></div>
-  <div class="pane-grid">
-    <div class="pane-card"><strong>Local portals</strong>Service cards expose local URL, remote URL, port, and systemd health posture.</div>
-    <div class="pane-card"><strong>Currentness</strong>Admitted services show enabled/active/script-managed/reboot-needed state without brand nav.</div>
-    <div class="pane-card"><strong>Registry source</strong>Portal records preserve homeserver.json tab data until live Harmonia/Caduceus mutation replaces it.</div>
-  </div>
-  <div class="pane-action-row"><a class="pane-button" href="/api/services/data">Read service data</a><a class="pane-button" href="/api/tabs">Read installed cartridges</a></div>
-  <div class="receipt-strip">Portals is the default crown pane because service ingress is the operator's normal public surface.</div>
-</article>"#
-        .to_string()
-}
-
-fn render_upload_pane_body() -> String {
-    r#"<article class="crown-pane" data-pane-body="upload" id="upload" hidden>
-  <div class="pane-topline"><h2 class="pane-title">Upload</h2><span class="chip">file ingress policy</span></div>
-  <div class="pane-grid">
-    <div class="pane-card"><strong>Admission queue</strong>Files enter a receipt-bearing queue before any privileged move.</div>
-    <div class="pane-card"><strong>Storage policy</strong>Destination, ownership, permissions, and validation stay explicit in the future upload receipt.</div>
-    <div class="pane-card"><strong>Safe posture</strong>Drop-zone controls are disabled until the Caduceus actuator owns live writes.</div>
-  </div>
-  <div class="pane-action-row"><button class="pane-button" type="button" aria-disabled="true">Choose files</button><button class="pane-button" type="button" aria-disabled="true">Submit upload</button><a class="pane-button" href="/api/boundary">Read boundary</a></div>
-  <div class="receipt-strip">Upload is visible but non-mutating: no file write happens before Caduceus live proof.</div>
-</article>"#
-        .to_string()
+</html>"###;
+    shell.replace("__NAV__", &nav)
 }
 
 fn is_safe_tab_id(tab_id: &str) -> bool {
@@ -2230,20 +2289,23 @@ mod tests {
             .unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("data-product=\"Coronatio\""));
+        assert!(body.contains("data-source-material=\"homeserver-main-site\""));
+        assert!(body.contains("class=\"tab-bar\""));
+        assert!(body.contains("role=\"tablist\""));
         assert!(body.contains("data-pane=\"admin\""));
         assert!(body.contains("data-pane=\"stats\""));
         assert!(body.contains("data-pane=\"portals\""));
         assert!(body.contains("data-pane=\"upload\""));
-        assert!(body.contains("data-pane-body=\"admin\""));
-        assert!(body.contains("data-pane-body=\"stats\""));
-        assert!(body.contains("data-pane-body=\"portals\""));
-        assert!(body.contains("data-pane-body=\"upload\""));
-        assert!(body.contains("HOMESERVER Rust crown"));
-        assert!(body.contains("PIN session + Caduceus membrane"));
-        assert!(body.contains("snapshot + SSE lease"));
-        assert!(body.contains("service ingress"));
-        assert!(body.contains("file ingress policy"));
-        assert!(body.contains("showPane((location.hash || '#portals').slice(1))"));
+        assert!(body.contains("data-pane-panel=\"admin\""));
+        assert!(body.contains("data-pane-panel=\"stats\""));
+        assert!(body.contains("data-pane-panel=\"portals\""));
+        assert!(body.contains("data-pane-panel=\"upload\""));
+        assert!(body.contains("function showPane(id)"));
+        assert!(body.contains("fetch('/api/stats')"));
+        assert!(body.contains("HomeServer"));
+        assert!(body.contains("Admitted services"));
+        assert!(body.contains("Safe file ingress"));
+        assert!(!body.contains("Coronatio crown shell"));
         assert!(!body.contains("class=\"crown-card\""));
         assert!(!body.contains("Arcadia"));
         assert!(!body.contains("YouTube"));
@@ -2253,13 +2315,13 @@ mod tests {
     fn native_pane_bodies_are_not_placeholder_cards() {
         let shell = render_crown_shell();
         for pane in PRIMARY_TABS {
-            assert!(shell.contains(&format!("data-pane-body=\"{}\"", pane)));
+            assert!(shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
             assert!(shell.contains(&format!("href=\"#{}\"", pane)));
         }
-        assert!(shell.contains("Read service data"));
-        assert!(shell.contains("Read stats snapshot"));
-        assert!(shell.contains("Read session contract"));
-        assert!(shell.contains("Read boundary"));
+        assert!(shell.contains("Read service contract"));
+        assert!(shell.contains("Fetching /api/stats"));
+        assert!(shell.contains("Read session law"));
+        assert!(shell.contains("Read upload pane"));
         assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
     }
 
