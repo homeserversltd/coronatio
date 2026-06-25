@@ -23,10 +23,13 @@ Coronatio re-inscribes that law as typed Rust contracts. The crown primary tabs 
 
 This scaffold provides the first host surface:
 
+- `GET /` — static Coronatio crown shell with lawful primary panes.
 - `GET /health` — host health readback.
-- `GET /api` — root Coronatio object.
-- `GET /api/tabs` — dynamic tab registry read from installed cartridges.
-- `GET /api/tabs/:tab_id/manifest` — one manifest readback.
+- `GET /api` — root Coronatio object with native-pane readback.
+- `GET /api/panes` — first-party native pane registry for `admin`, `stats`, `portals`, and `upload`.
+- `GET /api/panes/:pane_id` — one native pane readback.
+- `GET /api/tabs` — dynamic tab registry read from installed cartridges plus native-pane readback.
+- `GET /api/tabs/:tab_id/manifest` — one cartridge manifest readback.
 - `/tabs/<tab-id>/...` — static installed tab assets under the configured tab root.
 
 Default tab root:
@@ -103,5 +106,7 @@ This scaffold is accepted when:
 - Fulcrum attaches `HOMESERVERSLTD/coronatio` as `attachments/coronatio`.
 - Coronatio builds as a Rust binary.
 - Tests prove the host names Coronatio, not Arcadia.
+- Tests prove the native crown panes are exactly `admin`, `stats`, `portals`, and `upload`.
+- Tests prove the shell renders those primary panes without platform-owned brand navigation.
 - Tests prove dynamic cartridge manifests load without host recompile.
 - Paligenesis carries the North Star contract and open decisions.
