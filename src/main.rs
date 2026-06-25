@@ -2182,18 +2182,54 @@ fn stats_snapshot() -> StatsSnapshot {
     }
 }
 
-fn render_crown_shell() -> String {
-    let nav = native_crown_panes()
+fn render_flask_react_tabbar_quarry() -> String {
+    let starred_tab = registry_readback().starred_tab;
+    native_crown_panes()
         .into_iter()
         .map(|pane| {
+            let is_starred = pane.id == starred_tab;
+            let active = pane.id == "admin";
+            let visibility_button = if pane.admin_only {
+                r##"<div class="tab-visibility-column" aria-hidden="true"></div>"##.to_string()
+            } else {
+                format!(
+                    r##"<div class="tab-visibility-column"><button type="button" class="visibility-toggle" data-tab-visibility-toggle="{id}" data-visible="true" aria-label="Hide {title} tab" title="Hide {title} tab"><span class="eye-icon" aria-hidden="true">👁</span></button></div>"##,
+                    id = pane.id,
+                    title = pane.title
+                )
+            };
+            let star_button = if pane.admin_only {
+                r##"<div class="tab-star-column" aria-hidden="true"></div>"##.to_string()
+            } else {
+                format!(
+                    r##"<div class="tab-star-column"><button type="button" class="star-button {star_class} fa-star" data-tab-star="{id}" aria-pressed="{pressed}" aria-label="{label}" title="{label}"><span aria-hidden="true">★</span></button></div>"##,
+                    id = pane.id,
+                    star_class = if is_starred { "fas" } else { "far" },
+                    pressed = is_starred,
+                    label = if is_starred {
+                        format!("{} tab is starred", pane.title)
+                    } else {
+                        format!("Star {} tab", pane.title)
+                    }
+                )
+            };
             format!(
-                r##"<a class="tab-button" href="#{id}" role="tab" aria-controls="pane-{id}" aria-selected="false" data-pane="{id}">{title}</a>"##,
+                r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="visible" data-admin-only="{admin_only}">{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
                 id = pane.id,
-                title = pane.title
+                title = pane.title,
+                admin_only = pane.admin_only,
+                active_class = if active { "active" } else { "" },
+                selected = active,
+                visibility_button = visibility_button,
+                star_button = star_button
             )
         })
         .collect::<Vec<_>>()
-        .join("");
+        .join("")
+}
+
+fn render_crown_shell() -> String {
+    let nav = render_flask_react_tabbar_quarry();
 
     let shell = r###"<!doctype html>
 <html lang="en" class="theme-loaded">
@@ -2250,23 +2286,47 @@ fn render_crown_shell() -> String {
       border-bottom: 1px solid var(--border);
       overflow-x: auto;
     }
-    .tab-button {
-      display: inline-flex;
+    .tab-bar.hidden { display: none; }
+    .tab {
+      display: grid;
+      grid-template-columns: 28px minmax(max-content, 1fr) 28px;
       align-items: center;
-      min-height: 34px;
-      padding: .45rem .85rem;
+      min-height: 38px;
+      gap: .35rem;
+      padding: .35rem .45rem;
       border-radius: 8px;
       border: 1px solid transparent;
       color: var(--text-secondary);
-      text-decoration: none;
       font-weight: 600;
-      transition: background .18s ease, color .18s ease, border-color .18s ease;
+      cursor: pointer;
+      transition: background .18s ease, color .18s ease, border-color .18s ease, opacity .18s ease;
+      user-select: none;
     }
-    .tab-button:hover, .tab-button[aria-selected="true"] {
+    .tab:hover, .tab.active, .tab[aria-selected="true"] {
       background: var(--accent-soft);
       color: var(--text);
       border-color: color-mix(in srgb, var(--accent) 42%, transparent);
     }
+    .tab[data-visibility="hidden"] { opacity: .48; border-style: dashed; }
+    .tab[data-visibility="hidden"] .tab-name { text-decoration: line-through; }
+    .tab-visibility-column, .tab-star-column { display: grid; place-items: center; min-width: 24px; }
+    .visibility-toggle, .star-button {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-secondary);
+      line-height: 1;
+    }
+    .visibility-toggle:hover, .star-button:hover { background: rgba(255,255,255,.1); color: var(--text); }
+    .visibility-toggle[data-visible="false"] { color: var(--warning); }
+    .star-button.fas { color: var(--warning); }
+    .star-button.far { color: rgba(255,255,255,.42); }
+    .tab-name { white-space: nowrap; }
     .content { flex: 1; padding: 20px; }
     .pane { display: none; max-width: 1180px; margin: 0 auto; }
     .pane.active { display: block; }
@@ -2310,7 +2370,7 @@ fn render_crown_shell() -> String {
         <span class="status-pill">Source quarry: main HomeServer</span>
       </div>
     </header>
-    <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist">__NAV__</nav>
+    <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist" data-admin-mode="true" data-hidden="false">__NAV__</nav>
     <section class="content">
       <section class="pane active" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
         <div class="pane-grid">
@@ -2345,13 +2405,75 @@ fn render_crown_shell() -> String {
   <script>
     const tabs = [...document.querySelectorAll('[data-pane]')];
     const panes = [...document.querySelectorAll('[data-pane-panel]')];
+    const fallbackTab = 'admin';
+    const storageKey = 'coronatio.flask-react-tabbar.v1';
+    const loadTabState = () => {
+      try { return JSON.parse(localStorage.getItem(storageKey) || '{}'); }
+      catch (_) { return {}; }
+    };
+    const saveTabState = state => localStorage.setItem(storageKey, JSON.stringify(state));
+    const tabState = Object.assign({ starredTab: 'portals', hiddenTabs: [] }, loadTabState());
+    function visibleTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
+    function firstVisibleTab() { return visibleTabs()[0]?.dataset.pane || fallbackTab; }
+    function setStarredTab(id) {
+      tabState.starredTab = id;
+      saveTabState(tabState);
+      tabs.forEach(tab => {
+        const starred = tab.dataset.pane === id;
+        const button = tab.querySelector('[data-tab-star]');
+        if (button) {
+          button.classList.toggle('fas', starred);
+          button.classList.toggle('far', !starred);
+          button.setAttribute('aria-pressed', String(starred));
+          button.title = starred ? tab.querySelector('.tab-name').textContent + ' tab is starred' : 'Star ' + tab.querySelector('.tab-name').textContent + ' tab';
+        }
+      });
+    }
+    function applyVisibilityState() {
+      tabs.forEach(tab => {
+        const hidden = tabState.hiddenTabs.includes(tab.dataset.pane);
+        tab.dataset.visibility = hidden ? 'hidden' : 'visible';
+        const button = tab.querySelector('[data-tab-visibility-toggle]');
+        if (button) {
+          button.dataset.visible = String(!hidden);
+          button.title = (hidden ? 'Show ' : 'Hide ') + tab.querySelector('.tab-name').textContent + ' tab';
+          button.setAttribute('aria-label', button.title);
+          button.querySelector('.eye-icon').textContent = hidden ? '🙈' : '👁';
+        }
+      });
+    }
     function showPane(id) {
-      const selected = panes.some(pane => pane.dataset.panePanel === id) ? id : 'admin';
-      tabs.forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.pane === selected)));
+      const selected = panes.some(pane => pane.dataset.panePanel === id) ? id : firstVisibleTab();
+      tabs.forEach(tab => {
+        const active = tab.dataset.pane === selected;
+        tab.setAttribute('aria-selected', String(active));
+        tab.classList.toggle('active', active);
+      });
       panes.forEach(pane => pane.classList.toggle('active', pane.dataset.panePanel === selected));
       if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
     }
-    tabs.forEach(tab => tab.addEventListener('click', event => { event.preventDefault(); showPane(tab.dataset.pane); }));
+    tabs.forEach(tab => {
+      tab.addEventListener('click', event => {
+        if (event.target.closest('button')) return;
+        event.preventDefault();
+        if (tab.dataset.visibility !== 'hidden') showPane(tab.dataset.pane);
+      });
+      tab.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showPane(tab.dataset.pane); } });
+    });
+    document.querySelectorAll('[data-tab-star]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); setStarredTab(button.dataset.tabStar); }));
+    document.querySelectorAll('[data-tab-visibility-toggle]').forEach(button => button.addEventListener('click', event => {
+      event.stopPropagation();
+      const id = button.dataset.tabVisibilityToggle;
+      const hidden = tabState.hiddenTabs.includes(id);
+      tabState.hiddenTabs = hidden ? tabState.hiddenTabs.filter(tab => tab !== id) : [...new Set([...tabState.hiddenTabs, id])];
+      saveTabState(tabState);
+      applyVisibilityState();
+      if (!hidden && tabState.starredTab === id) setStarredTab(firstVisibleTab());
+      const active = tabs.find(tab => tab.getAttribute('aria-selected') === 'true');
+      if (!active || active.dataset.visibility === 'hidden') showPane(firstVisibleTab());
+    }));
+    applyVisibilityState();
+    setStarredTab(tabState.starredTab);
     async function fetchInto(route, target, method = 'GET') {
       const el = document.getElementById(target);
       if (!el) return;
@@ -2374,7 +2496,7 @@ fn render_crown_shell() -> String {
         document.getElementById('stats-readout').textContent = JSON.stringify({ stats: data, caduceus }, null, 2);
       } catch (error) { document.getElementById('stats-readout').textContent = String(error); }
     }
-    showPane((location.hash || '#admin').slice(1));
+    showPane((location.hash || '#' + (tabState.starredTab || firstVisibleTab())).slice(1));
     hydrateStats();
   </script>
 </body>
@@ -2535,7 +2657,7 @@ mod tests {
         let shell = render_crown_shell();
         for pane in PRIMARY_TABS {
             assert!(shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
-            assert!(shell.contains(&format!("href=\"#{}\"", pane)));
+            assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
         }
         assert!(shell.contains("Read service contract"));
         assert!(shell.contains("Fetching /api/stats"));
@@ -2543,6 +2665,32 @@ mod tests {
         assert!(shell.contains("Make harmonious"));
         assert!(shell.contains("Read upload pane"));
         assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
+    }
+
+    #[test]
+    fn crown_tabbar_recreates_flask_react_star_eye_and_hide_controls() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("class=\"tab-bar\""));
+        assert!(shell.contains("data-admin-mode=\"true\""));
+        for pane in ["admin", "stats", "portals", "upload"] {
+            assert!(shell.contains("class=\"tab active\""));
+            assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
+            assert!(shell.contains(&format!("data-pane=\"{}\"", pane)));
+        }
+        for pane in ["stats", "portals", "upload"] {
+            assert!(shell.contains(&format!("data-tab-visibility-toggle=\"{}\"", pane)));
+            assert!(shell.contains(&format!("data-tab-star=\"{}\"", pane)));
+        }
+        assert!(shell.contains("class=\"visibility-toggle\""));
+        assert!(shell.contains("class=\"star-button fas fa-star\""));
+        assert!(shell.contains("class=\"star-button far fa-star\""));
+        assert!(shell.contains("data-visibility=\"visible\""));
+        assert!(shell.contains("hiddenTabs"));
+        assert!(shell.contains("firstVisibleTab()"));
+        assert!(shell.contains("setStarredTab"));
+        assert!(shell.contains("applyVisibilityState"));
+        assert!(shell.contains("🙈"));
+        assert!(!shell.contains("class=\"tab-button\""));
     }
 
     #[tokio::test]
