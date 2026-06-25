@@ -278,7 +278,7 @@
         for admin_action in ["Hard Drive Test", "Force Update", "Renew lease", "Add portal", "PIN requirement", "Blacklist"] {
             assert!(shell.contains(admin_action), "missing {admin_action}");
         }
-        assert!(shell.contains("90 buttons"));
+        assert!(shell.contains("87 buttons"));
         assert!(shell.contains("History"));
         assert!(shell.contains("Open main HomeServer"));
     }

@@ -10,8 +10,6 @@ fn shell_document_2() -> &'static str {
     .modules-table, .log-frame { width: 100%; border-collapse: collapse; background-color: var(--primary); border-radius: 6px; overflow: hidden; }
     .modules-table th, .modules-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; font-size: .85rem; }
     .log-frame { min-height: 76px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--secondary); }
-    .subscription-debug-toggle, .subscription-debug-panel { background-color: var(--background); border: 1px solid var(--border); border-radius: 8px; padding: 12px; box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border); }
-    .subscription-debug-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .admin-quarry-note { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
     @media (max-width: 768px) { .key-manager-content, .disk-manager-container { flex-direction: column; } .system-controls-btn { width: 100%; max-width: 180px; } .admin-modal-shelf { grid-template-columns: 1fr; } }
     button, .action-link { border: 1px solid var(--border); border-radius: 6px; padding: .55rem .7rem; background: var(--primary); color: #061006; font-weight: 700; cursor: pointer; text-decoration: none; }
@@ -82,10 +80,10 @@ fn shell_document_2() -> &'static str {
     <section class="content">
       <section class="pane active" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
 
-        <div class="admin-tablet admin-visual-port" data-admin-quarry="flask-react-admin" data-admin-quarry-button-total="90" data-admin-only="true" data-admin-viewport="admin" data-admin-visual-port="one-to-one-best-effort">
+        <div class="admin-tablet admin-visual-port" data-admin-quarry="flask-react-admin" data-admin-quarry-button-total="87" data-admin-only="true" data-admin-viewport="admin" data-admin-visual-port="one-to-one-best-effort">
           <section class="system-controls-container" data-admin-quarry-group="system-controls" aria-label="System controls">
             <div class="system-controls">
-              <span class="admin-quarry-note" data-admin-quarry-count-readback>90 buttons</span>
+              <span class="admin-quarry-note" data-admin-quarry-count-readback>87 buttons</span>
               <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="1" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="1" data-stub-action="true" aria-disabled="true" ><span>Hard Drive Test</span></button>
               <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="2" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="2" data-stub-action="true" aria-disabled="true" ><span>Update</span></button>
               <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="3" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="3" data-stub-action="true" aria-disabled="true" ><span>Restart</span></button>
@@ -126,12 +124,6 @@ fn shell_document_2() -> &'static str {
               </div></div>
             </div>
             <span class="admin-quarry-note">12 buttons · disk-manager</span>
-          </section>
-
-          <section class="subscription-debug-panel" data-admin-quarry-group="debug-subscriptions">
-            <div class="subscription-debug-header"><h3>WebSocket Subscriptions</h3><div><button type="button" class="modal-button admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="24" data-admin-quarry-source="components/DebugSubscriptions.tsx" data-admin-quarry-placement="debug drawer controls" data-admin-quarry-local-index="1" data-stub-action="true" aria-disabled="true" ><span>Show Subscriptions</span></button> <button type="button" class="modal-button admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="25" data-admin-quarry-source="components/DebugSubscriptions.tsx" data-admin-quarry-placement="debug drawer controls" data-admin-quarry-local-index="2" data-stub-action="true" aria-disabled="true" ><span>Refresh</span></button> <button type="button" class="modal-button admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="26" data-admin-quarry-source="components/DebugSubscriptions.tsx" data-admin-quarry-placement="debug drawer controls" data-admin-quarry-local-index="3" data-stub-action="true" aria-disabled="true" ><span>Hide</span></button></div></div>
-            <div class="subscription-stats"><div>Total: 0</div><div>Active: 0</div></div>
-            <span class="admin-quarry-note">3 buttons · debug-subscriptions</span>
           </section>
 
           <section class="admin-modal-shelf" aria-label="Admin modal controls">
