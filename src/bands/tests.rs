@@ -198,9 +198,8 @@ mod tests {
         for pane in ["stats", "portals", "upload"] {
             assert!(shell.contains(&format!(r#"data-admin-only="true" data-tab-visibility-toggle="{}""#, pane)), "{pane} eye control is admin enhancement");
         }
-        assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only="true"]"#));
-        assert!(shell.contains(r#"querySelectorAll('[data-admin-only="true"]')"#));
-        assert!(!shell.contains(r#"data-admin-only="false""#));
+        assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));
+        assert!(shell.contains(r#"querySelectorAll('[data-admin-only]:not([data-admin-only="false"])')"#));
     }
 
     #[test]
@@ -792,8 +791,8 @@ mod tests {
     fn admin_mode_binary_contract_gates_viewport_enhancements() {
         let shell = render_crown_shell();
         assert!(shell.contains(r#"data-admin-mode="false""#));
-        assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only="true"]"#));
-        assert!(shell.contains(r#"querySelectorAll('[data-admin-only="true"]')"#));
+        assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));
+        assert!(shell.contains(r#"querySelectorAll('[data-admin-only]:not([data-admin-only="false"])')"#));
         assert!(shell.contains("appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         assert!(shell.contains("tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         for viewport in ["admin", "stats", "portals", "upload"] {
