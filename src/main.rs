@@ -2549,35 +2549,20 @@ fn render_crown_shell() -> String {
     </style>
     <script data-coronatio-identical-socket-bridge="home-arpa">
       (() => {
-        const targetOrigin = 'https://home.arpa';
         const targetWs = 'wss://home.arpa';
-        const rewrite = (value) => {
+        const rewriteWebSocket = (value) => {
           const text = String(value || '');
           if (!text.includes('/socket.io')) return value;
           if (text.startsWith('ws://') || text.startsWith('wss://')) return text.replace(/^wss?:\/\/[^/]+/, targetWs);
-          if (text.startsWith('http://') || text.startsWith('https://')) return text.replace(/^https?:\/\/[^/]+/, targetOrigin);
-          if (text.startsWith('/socket.io')) return targetOrigin + text;
           return value;
         };
         const NativeWebSocket = window.WebSocket;
         window.WebSocket = function(url, protocols) {
-          const rewritten = rewrite(url);
+          const rewritten = rewriteWebSocket(url);
           return protocols === undefined ? new NativeWebSocket(rewritten) : new NativeWebSocket(rewritten, protocols);
         };
         window.WebSocket.prototype = NativeWebSocket.prototype;
         Object.assign(window.WebSocket, NativeWebSocket);
-        const nativeOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-          return nativeOpen.call(this, method, rewrite(url), ...rest);
-        };
-        const nativeFetch = window.fetch;
-        window.fetch = (input, init) => {
-          if (typeof input === 'string') return nativeFetch(rewrite(input), init);
-          if (input && input.url && String(input.url).includes('/socket.io')) {
-            input = new Request(rewrite(input.url), input);
-          }
-          return nativeFetch(input, init);
-        };
       })();
     </script>
     <script type="module" crossorigin src="/assets/index-BRoXzIjg.js?coronatio-identical=20260625"></script>
