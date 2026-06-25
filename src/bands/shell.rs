@@ -69,54 +69,6 @@ fn render_crown_shell() -> String {
       background: var(--background);
       color: var(--text);
     }
-    :root[data-theme="light"] {
-      color-scheme: light;
-      --theme-color-primary: #1976d2;
-      --theme-color-secondary: #f5f5f5;
-      --theme-bg-primary: #ffffff;
-      --theme-bg-secondary: #f5f5f5;
-      --theme-bg-tertiary: #e0e0e0;
-      --theme-bg-hover: #eeeeee;
-      --theme-bg-active: #d5d5d5;
-      --theme-text-primary: #000000;
-      --theme-text-secondary: #666666;
-      --theme-text-tertiary: #999999;
-      --theme-text-disabled: #cccccc;
-      --theme-text-accent: #1976d2;
-      --theme-shadow-md: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    :root[data-theme="dark"] {
-      color-scheme: dark;
-      --theme-color-primary: #00f2fe;
-      --theme-color-secondary: #4CAF50;
-      --theme-bg-primary: #2a2a2a;
-      --theme-bg-secondary: #1a1a1a;
-      --theme-bg-tertiary: #222222;
-      --theme-bg-hover: #333333;
-      --theme-bg-active: #3a3a3a;
-      --theme-text-primary: #ffffff;
-      --theme-text-secondary: #dddddd;
-      --theme-text-tertiary: #a7a7a7;
-      --theme-text-disabled: #777777;
-      --theme-text-accent: #00f2fe;
-      --theme-shadow-md: 0 2px 4px rgba(0,0,0,0.35);
-    }
-    :root[data-theme="radioactive"] {
-      color-scheme: dark;
-      --theme-color-primary: #39ff14;
-      --theme-color-secondary: #00d084;
-      --theme-bg-primary: #101510;
-      --theme-bg-secondary: #050805;
-      --theme-bg-tertiary: #0b210b;
-      --theme-bg-hover: #123112;
-      --theme-bg-active: #163d16;
-      --theme-text-primary: #f3fff2;
-      --theme-text-secondary: #b6f5b1;
-      --theme-text-tertiary: #7ccf76;
-      --theme-text-disabled: #477047;
-      --theme-text-accent: #39ff14;
-      --theme-shadow-md: 0 2px 8px rgba(57,255,20,0.18);
-    }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: var(--background); color: var(--text); }
     .app { min-height: 100vh; display: flex; flex-direction: column; }
@@ -316,11 +268,7 @@ fn render_crown_shell() -> String {
       <section class="modal" role="dialog" aria-modal="true" aria-labelledby="info-modal-title">
         <h2 id="info-modal-title">Status</h2>
         <div class="modal-body" data-info-modal-body></div>
-        <div class="theme-choice-row" data-theme-choice-row hidden>
-          <button type="button" class="theme-choice" data-theme-choice="light">Light</button>
-          <button type="button" class="theme-choice" data-theme-choice="dark">Dark</button>
-          <button type="button" class="theme-choice" data-theme-choice="radioactive">Radioactive</button>
-        </div>
+        <div class="theme-choice-row" data-theme-choice-row hidden data-theme-json-source="/api/themes"></div>
         <div class="modal-actions"><button type="button" class="secondary" data-info-modal-close>Close</button></div>
       </section>
     </div>
@@ -518,20 +466,15 @@ fn render_crown_shell() -> String {
     const headerStateKey = 'coronatio.flask-react-header.v1';
     const preferredThemeKey = 'preferred-theme';
     const themeDataKey = 'themeData';
-    const themeCatalog = {
-      light: { name: 'light', colors: { colorPrimary: '#1976d2', colorSecondary: '#f5f5f5', bgPrimary: '#ffffff', bgSecondary: '#f5f5f5', bgTertiary: '#e0e0e0', bgHover: '#eeeeee', bgActive: '#d5d5d5', textPrimary: '#000000', textSecondary: '#666666', textTertiary: '#999999', textDisabled: '#cccccc', textAccent: '#1976d2', statusSuccess: '#4CAF50', statusError: '#f44336', statusWarning: '#ff9800', statusInfo: '#2196f3' } },
-      dark: { name: 'dark', colors: { colorPrimary: '#00f2fe', colorSecondary: '#4CAF50', bgPrimary: '#2a2a2a', bgSecondary: '#1a1a1a', bgTertiary: '#222222', bgHover: '#333333', bgActive: '#3a3a3a', textPrimary: '#ffffff', textSecondary: '#dddddd', textTertiary: '#a7a7a7', textDisabled: '#777777', textAccent: '#00f2fe', statusSuccess: '#4CAF50', statusError: '#f44336', statusWarning: '#ff9800', statusInfo: '#2196f3' } },
-      radioactive: { name: 'radioactive', colors: { colorPrimary: '#39ff14', colorSecondary: '#00d084', bgPrimary: '#101510', bgSecondary: '#050805', bgTertiary: '#0b210b', bgHover: '#123112', bgActive: '#163d16', textPrimary: '#f3fff2', textSecondary: '#b6f5b1', textTertiary: '#7ccf76', textDisabled: '#477047', textAccent: '#39ff14', statusSuccess: '#4CAF50', statusError: '#f44336', statusWarning: '#ff9800', statusInfo: '#2196f3' } }
-    };
-    const themes = Object.keys(themeCatalog);
+    let themeCatalog = { default: 'dark', themes: {} };
+    let themes = [];
     const savedHeaderState = (() => { try { return JSON.parse(localStorage.getItem(headerStateKey) || '{}'); } catch (_) { return {}; } })();
     const savedPreferredTheme = localStorage.getItem(preferredThemeKey);
-    const initialTheme = themes.includes(savedPreferredTheme) ? savedPreferredTheme : (themes.includes(savedHeaderState.theme) ? savedHeaderState.theme : 'dark');
-    const headerState = Object.assign({ theme: initialTheme, isAdmin: false }, savedHeaderState, { theme: initialTheme });
+    const headerState = Object.assign({ theme: savedPreferredTheme || savedHeaderState.theme || 'dark', isAdmin: false }, savedHeaderState, { theme: savedPreferredTheme || savedHeaderState.theme || 'dark' });
     const saveHeaderState = () => {
       localStorage.setItem(headerStateKey, JSON.stringify(headerState));
       localStorage.setItem(preferredThemeKey, headerState.theme);
-      localStorage.setItem(themeDataKey, JSON.stringify(themeCatalog[headerState.theme]));
+      localStorage.setItem(themeDataKey, JSON.stringify({ name: headerState.theme, values: themeCatalog.themes[headerState.theme] || {} }));
     };
     const themeButton = document.querySelector('[data-theme-button]');
     const adminButton = document.querySelector('[data-admin-button]');
@@ -549,26 +492,29 @@ fn render_crown_shell() -> String {
     const confirmPinInput = document.querySelector('[data-pin-confirm]');
     let modalMode = 'enter';
     function themeToCss(theme) {
-      if (!theme || !theme.colors) return '';
-      const cssVars = {
-        '--theme-color-primary': theme.colors.colorPrimary,
-        '--theme-color-secondary': theme.colors.colorSecondary,
-        '--theme-bg-primary': theme.colors.bgPrimary,
-        '--theme-bg-secondary': theme.colors.bgSecondary,
-        '--theme-bg-tertiary': theme.colors.bgTertiary,
-        '--theme-bg-hover': theme.colors.bgHover,
-        '--theme-bg-active': theme.colors.bgActive,
-        '--theme-text-primary': theme.colors.textPrimary,
-        '--theme-text-secondary': theme.colors.textSecondary,
-        '--theme-text-tertiary': theme.colors.textTertiary,
-        '--theme-text-disabled': theme.colors.textDisabled,
-        '--theme-text-accent': theme.colors.textAccent,
-        '--theme-status-success': theme.colors.statusSuccess,
-        '--theme-status-error': theme.colors.statusError,
-        '--theme-status-warning': theme.colors.statusWarning,
-        '--theme-status-info': theme.colors.statusInfo
-      };
-      return ':root {\n' + Object.entries(cssVars).map(([key, value]) => '  ' + key + ': ' + value + ';').join('\n') + '\n}';
+      if (!theme) return '';
+      return ':root {\n' + Object.entries(theme).map(([key, value]) => '  --theme-' + key + ': ' + value + ';').join('\n') + '\n}';
+    }
+    function themeLabel(name) {
+      return name.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+    }
+    function renderThemeChoices() {
+      if (!themeChoiceRow) return;
+      themeChoiceRow.innerHTML = '';
+      themes.forEach(name => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'theme-choice';
+        button.dataset.themeChoice = name;
+        button.textContent = themeLabel(name);
+        button.addEventListener('click', () => {
+          headerState.theme = name;
+          saveHeaderState();
+          applyTheme();
+          closeInfoModal();
+        });
+        themeChoiceRow.appendChild(button);
+      });
     }
     function ensureThemeStyleElement() {
       let style = document.querySelector('style[data-theme-styles]');
@@ -580,13 +526,13 @@ fn render_crown_shell() -> String {
       return style;
     }
     function applyTheme() {
-      if (!themes.includes(headerState.theme)) headerState.theme = 'dark';
-      const theme = themeCatalog[headerState.theme];
+      if (!themes.includes(headerState.theme)) headerState.theme = themeCatalog.default || themes[0] || 'dark';
+      const theme = themeCatalog.themes[headerState.theme];
       document.documentElement.dataset.theme = headerState.theme;
       ensureThemeStyleElement().textContent = themeToCss(theme);
       saveHeaderState();
       if (themeButton) {
-        const label = headerState.theme.charAt(0).toUpperCase() + headerState.theme.slice(1);
+        const label = themeLabel(headerState.theme);
         themeButton.querySelector('span').textContent = label;
         themeButton.title = 'Current theme: ' + label + '. Open theme selector.';
       }
@@ -634,7 +580,7 @@ fn render_crown_shell() -> String {
       if (kind === 'services') return `<div class="services-status-modal"><div class="loading-section">Loading service status...</div><ul class="service-status-list" data-route-read="/api/status/services"><li>No status data available</li></ul><div class="button-row"><button data-modal-fetch="/api/status/services">Refresh</button><button data-modal-fetch="/api/services/data">Service Data</button></div><pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'openvpn') return `<div class="vpn-status-modal"><div class="status-section"><div class="service-statuses"><div class="status-item loading"><span>VPN Status:</span><span class="status-value">LOADING</span></div><div class="status-item loading"><span>Transmission Status:</span><span class="status-value">LOADING</span></div><div class="status-item"><span>Systemd Service:</span><span class="status-value">LOADING</span></div></div></div><div class="credentials-section"><div class="modal-grid"><div class="credential-group"><input placeholder="PIA Username"><input type="password" placeholder="PIA Password"><button data-modal-fetch="/api/status/vpn/updatekey/pia" data-method="POST">Create PIA Key</button></div><div class="credential-group"><input placeholder="Transmission Username"><input type="password" placeholder="Transmission Password"><button data-modal-fetch="/api/status/vpn/updatekey/transmission" data-method="POST">Create Transmission</button></div></div></div><div class="service-controls"><div class="button-row"><button data-modal-fetch="/api/status/vpn/enable" data-method="POST">Enable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/disable" data-method="POST">Disable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/pia/exists">PIA Key Exists</button><button data-modal-fetch="/api/status/vpn/transmission/exists">Transmission Key Exists</button></div></div><div class="restart-notice"><p>Note: Service changes require a restart to take effect.</p></div><pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'power-meter') return `<div class="power-meter-modal"><div class="power-usage-display"><div class="power-value"><span class="power-value-number">—</span><span class="power-value-unit">Watts</span></div></div><div class="power-history-section"><div class="power-averages"><div class="power-average-row"><div class="power-average-label">5s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">30s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">60s average:</div><div class="power-average-value">—W</div></div></div></div><div class="button-row"><button data-modal-fetch="/api/status/power/usage">Refresh</button></div><pre class="readout action-output" data-modal-output></pre></div>`;
-      if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p><p>Theme variables are applied through the same legacy ThemeComponent CSS variable membrane used by the React quarry.</p></div>`;
+      if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p><p>Themes are loaded from /api/themes backed by static/themes/theme.json.</p></div>`;
       return '';
     }
     function wireModalFetches() {
@@ -665,12 +611,21 @@ fn render_crown_shell() -> String {
     themeButton?.addEventListener('click', () => {
       openInfoModal('Theme', 'theme');
     });
-    document.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click', () => {
-      headerState.theme = button.dataset.themeChoice;
-      saveHeaderState();
-      applyTheme();
-      closeInfoModal();
-    }));
+    async function loadThemeCatalog() {
+      try {
+        const catalog = await fetch('/api/themes').then(response => response.json());
+        if (!catalog.themes || Object.keys(catalog.themes).length === 0) throw new Error('empty theme catalog');
+        themeCatalog = catalog;
+        themes = Object.keys(catalog.themes);
+        renderThemeChoices();
+        applyTheme();
+      } catch (error) {
+        console.error('theme catalog load failed', error);
+        themes = [];
+        ensureThemeStyleElement().textContent = '';
+        if (themeButton) themeButton.title = 'Theme catalog unavailable: ' + error;
+      }
+    }
     adminButton?.addEventListener('click', () => {
       if (headerState.isAdmin) setAdminMode(false);
       else openPinModal('enter');
@@ -688,7 +643,7 @@ fn render_crown_shell() -> String {
       modalMessage.textContent = modalMode === 'change' ? 'PIN changed successfully' : '';
       if (modalMode === 'enter') closePinModal();
     });
-    applyTheme();
+    loadThemeCatalog();
     setAdminMode(headerState.isAdmin);
     function visibleTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function firstVisibleTab() { return visibleTabs()[0]?.dataset.pane || fallbackTab; }

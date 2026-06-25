@@ -1,5 +1,68 @@
 const DEFAULT_TAB_ROOT: &str = "/var/lib/coronatio/tabs";
+const DEFAULT_THEME_JSON: &str = "static/themes/theme.json";
+const INSTALLED_THEME_JSON: &str = "/opt/coronatio/source/static/themes/theme.json";
 const PRIMARY_TABS: [&str; 4] = ["admin", "stats", "portals", "upload"];
+
+const REQUIRED_THEME_KEYS: &[&str] = &[
+    "color-primary",
+    "color-secondary",
+    "bg-primary",
+    "bg-secondary",
+    "bg-tertiary",
+    "bg-hover",
+    "bg-active",
+    "text-primary",
+    "text-secondary",
+    "text-tertiary",
+    "text-disabled",
+    "text-accent",
+    "status-success",
+    "status-error",
+    "status-warning",
+    "status-info",
+    "spacing-xs",
+    "spacing-sm",
+    "spacing-md",
+    "spacing-lg",
+    "spacing-xl",
+    "font-family",
+    "font-mono",
+    "font-size-xs",
+    "font-size-sm",
+    "font-size-base",
+    "font-size-md",
+    "font-size-lg",
+    "font-size-xl",
+    "font-weight-normal",
+    "font-weight-medium",
+    "font-weight-bold",
+    "line-height-tight",
+    "line-height-normal",
+    "line-height-loose",
+    "transition-fast",
+    "transition-normal",
+    "transition-slow",
+    "shadow-sm",
+    "shadow-md",
+    "shadow-lg",
+    "radius",
+];
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ThemeCatalog {
+    schema: String,
+    default: String,
+    themes: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ThemeCatalogResponse {
+    schema: String,
+    source: String,
+    default: String,
+    required: Vec<String>,
+    themes: BTreeMap<String, BTreeMap<String, String>>,
+}
 
 #[derive(Clone)]
 struct AppState {

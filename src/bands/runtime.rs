@@ -60,6 +60,7 @@ fn app(state: AppState) -> Router {
         .route("/api/monitor/pulse", get(monitor_pulse_route))
         .route("/api/services/data", get(service_data_route))
         .route("/api/frontend/storage", get(frontend_storage_route))
+        .route("/api/themes", get(themes_route))
         .route("/api/boundary", get(boundary_route))
         .route("/api/installer", get(installer_route))
         .route("/api/stats/events", get(stats_events_route))

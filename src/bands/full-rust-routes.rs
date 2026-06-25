@@ -6,7 +6,6 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/pre-unlock", post(homeserver_rust_mutation_route))
         .route("/api/vault/status", get(homeserver_rust_read_route))
         .route("/api/vault/unlock", post(homeserver_rust_mutation_route))
-        .route("/api/themes", get(homeserver_rust_read_route))
         .route("/api/system/log", post(homeserver_rust_mutation_route))
         .route("/api/system/update", post(homeserver_rust_mutation_route))
         .route("/api/admin/system/update-password", post(homeserver_rust_mutation_route))

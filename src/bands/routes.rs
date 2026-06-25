@@ -36,6 +36,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/monitor/pulse".to_string(),
             "/api/services/data".to_string(),
             "/api/frontend/storage".to_string(),
+            "/api/themes".to_string(),
             "/api/boundary".to_string(),
             "/api/installer".to_string(),
             "/api/stats/events".to_string(),
@@ -94,4 +95,75 @@ async fn session_renew_route() -> impl IntoResponse {
         "leaseSeconds": 1800,
         "authority": "Caduceus must mint or refresh privileged mutation capability before live mutation is enabled"
     }))
+}
+
+async fn themes_route() -> impl IntoResponse {
+    match load_theme_catalog().await {
+        Ok((source, catalog)) => Json(ThemeCatalogResponse {
+            schema: "coronatio.theme-catalog.response.v1".to_string(),
+            source,
+            default: catalog.default,
+            required: REQUIRED_THEME_KEYS.iter().map(|key| (*key).to_string()).collect(),
+            themes: catalog.themes,
+        })
+        .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "schema": "coronatio.theme-catalog.error.v1",
+                "ok": false,
+                "error": error,
+                "expected": DEFAULT_THEME_JSON,
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn load_theme_catalog() -> Result<(String, ThemeCatalog), String> {
+    let path = theme_catalog_path();
+    let raw = fs::read_to_string(&path)
+        .await
+        .map_err(|error| format!("theme json unreadable at {}: {}", path.display(), error))?;
+    let catalog: ThemeCatalog = serde_json::from_str(&raw)
+        .map_err(|error| format!("theme json invalid at {}: {}", path.display(), error))?;
+    validate_theme_catalog(&catalog)?;
+    Ok((path.display().to_string(), catalog))
+}
+
+fn theme_catalog_path() -> PathBuf {
+    if let Ok(path) = env::var("CORONATIO_THEME_JSON") {
+        return PathBuf::from(path);
+    }
+    let local = PathBuf::from(DEFAULT_THEME_JSON);
+    if local.exists() {
+        return local;
+    }
+    PathBuf::from(INSTALLED_THEME_JSON)
+}
+
+fn validate_theme_catalog(catalog: &ThemeCatalog) -> Result<(), String> {
+    if catalog.schema != "coronatio.theme-catalog.v1" {
+        return Err(format!("unexpected theme catalog schema {}", catalog.schema));
+    }
+    if catalog.themes.is_empty() {
+        return Err("theme catalog has no themes".to_string());
+    }
+    if !catalog.themes.contains_key(&catalog.default) {
+        return Err(format!("default theme {} is absent", catalog.default));
+    }
+    for (name, theme) in &catalog.themes {
+        if name.trim().is_empty() || !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-') {
+            return Err(format!("theme name {} is not forward-safe", name));
+        }
+        for key in REQUIRED_THEME_KEYS {
+            let value = theme
+                .get(*key)
+                .ok_or_else(|| format!("theme {} missing key {}", name, key))?;
+            if value.trim().is_empty() {
+                return Err(format!("theme {} key {} is empty", name, key));
+            }
+        }
+    }
+    Ok(())
 }
