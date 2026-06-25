@@ -12,6 +12,7 @@ use std::{
     env,
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
+    os::unix::net::UnixStream,
     path::PathBuf,
     sync::Arc,
     thread,
@@ -22,6 +23,7 @@ use tower_http::services::ServeDir;
 
 const DEFAULT_TAB_ROOT: &str = "/var/lib/coronatio/tabs";
 const PRIMARY_TABS: [&str; 4] = ["admin", "stats", "portals", "upload"];
+const LEGACY_HOMESERVER_ASSET_ROOT: &str = "/var/www/homeserver/build/assets";
 
 #[derive(Clone)]
 struct AppState {
@@ -693,8 +695,8 @@ fn app(state: AppState) -> Router {
         )
         .route("/api/tabs", any(legacy_homeserver_proxy_route))
         .route("/api/*path", any(legacy_homeserver_proxy_route))
-        .route("/assets/*path", any(legacy_homeserver_proxy_route))
         .route("/socket.io/*path", any(legacy_homeserver_proxy_route))
+        .nest_service("/assets", ServeDir::new(legacy_homeserver_asset_root()))
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
         .fallback(route_boundary_fallback)
         .with_state(state)
@@ -747,7 +749,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/coronatio/tabs/:tab_id/manifest".to_string(),
             "/api/tabs (legacy HomeServer proxy)".to_string(),
             "/api/*path (legacy HomeServer proxy)".to_string(),
-            "/assets/*path (legacy HomeServer proxy)".to_string(),
+            "/assets/*path (legacy HomeServer build assets)".to_string(),
             "/socket.io/*path (legacy HomeServer proxy)".to_string(),
             "/tabs/<tab-id>/static/...".to_string(),
         ],
@@ -1115,6 +1117,21 @@ fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+trait ReadWrite: Read + Write {}
+impl<T: Read + Write> ReadWrite for T {}
+
+fn legacy_homeserver_asset_root() -> PathBuf {
+    env::var("CORONATIO_LEGACY_HOMESERVER_ASSET_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(LEGACY_HOMESERVER_ASSET_ROOT))
+}
+
+fn legacy_homeserver_proxy_socket() -> PathBuf {
+    env::var("CORONATIO_LEGACY_HOMESERVER_SOCKET")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/mnt/ramdisk/homeserver.sock"))
+}
+
 fn legacy_homeserver_proxy_host() -> String {
     env::var("CORONATIO_LEGACY_HOMESERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string())
 }
@@ -1134,19 +1151,37 @@ fn legacy_homeserver_http_request(
     content_type: Option<&str>,
     authorization: Option<&str>,
 ) -> Result<LegacyHttpResponse, String> {
-    let mut stream = TcpStream::connect((
-        legacy_homeserver_proxy_host().as_str(),
-        legacy_homeserver_proxy_port(),
-    ))
-    .map_err(|error| format!("connect legacy HomeServer: {error}"))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(20)))
-        .map_err(|error| format!("set read timeout: {error}"))?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(20)))
-        .map_err(|error| format!("set write timeout: {error}"))?;
+    let socket = legacy_homeserver_proxy_socket();
+    let mut stream: Box<dyn ReadWrite> = if socket.exists() {
+        let stream = UnixStream::connect(&socket).map_err(|error| {
+            format!(
+                "connect legacy HomeServer socket {}: {error}",
+                socket.display()
+            )
+        })?;
+        stream
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .map_err(|error| format!("set socket read timeout: {error}"))?;
+        stream
+            .set_write_timeout(Some(Duration::from_secs(20)))
+            .map_err(|error| format!("set socket write timeout: {error}"))?;
+        Box::new(stream)
+    } else {
+        let stream = TcpStream::connect((
+            legacy_homeserver_proxy_host().as_str(),
+            legacy_homeserver_proxy_port(),
+        ))
+        .map_err(|error| format!("connect legacy HomeServer: {error}"))?;
+        stream
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .map_err(|error| format!("set tcp read timeout: {error}"))?;
+        stream
+            .set_write_timeout(Some(Duration::from_secs(20)))
+            .map_err(|error| format!("set tcp write timeout: {error}"))?;
+        Box::new(stream)
+    };
     let mut request = format!(
-        "{method} {path_and_query} HTTP/1.1\r\nHost: home.arpa\r\nConnection: close\r\nContent-Length: {}\r\n",
+        "{method} {path_and_query} HTTP/1.1\r\nHost: home.arpa\r\nConnection: close\r\nX-Forwarded-Proto: https\r\nContent-Length: {}\r\n",
         body.len()
     );
     if let Some(value) = accept {
@@ -2161,9 +2196,9 @@ fn monitor_topic(
 fn boundary_readback() -> BoundaryReadback {
     BoundaryReadback {
         schema: "coronatio.route-boundary.v1".to_string(),
-        api_unknown_path_policy: "legacy HomeServer /api/* paths proxy to the Flask/React authority so the served UX is identical; Coronatio-native contract routes stay exact under /api/coronatio/* and named /api routes".to_string(),
+        api_unknown_path_policy: "legacy HomeServer /api/* paths proxy to the Flask/React Unix-socket authority so the served UX is identical; Coronatio-native contract routes stay exact under /api/coronatio/* and named /api routes".to_string(),
         static_shell_policy: "non-API unknown GET paths return the exact Flask/React HomeServer shell for client-side routing".to_string(),
-        cartridge_static_policy: "/tabs/<tab-id>/... is served from the configured tab root through safe tab ids and manifest validation; legacy /assets/* proxy to HomeServer build assets".to_string(),
+        cartridge_static_policy: "/tabs/<tab-id>/... is served from the configured tab root through safe tab ids and manifest validation; legacy /assets/* is served from the exact HomeServer build asset root".to_string(),
         cors_source: "homeserver.json global.cors.allowed_origins becomes Coronatio config law in the later config tranche".to_string(),
         premium_blueprint_replacement: "dynamic Flask blueprint injection is replaced by dynamic-cartridge, source-injection-recompile, or first-party-native lanes".to_string(),
     }
@@ -2980,6 +3015,14 @@ mod tests {
         assert_eq!(boundary.schema, "coronatio.route-boundary.v1");
         assert!(boundary.api_unknown_path_policy.contains("proxy"));
         assert!(boundary.static_shell_policy.contains("exact Flask/React"));
+        assert_eq!(
+            legacy_homeserver_asset_root(),
+            PathBuf::from(LEGACY_HOMESERVER_ASSET_ROOT)
+        );
+        assert_eq!(
+            legacy_homeserver_proxy_socket(),
+            PathBuf::from("/mnt/ramdisk/homeserver.sock")
+        );
         assert_eq!(legacy_homeserver_proxy_host(), "127.0.0.1".to_string());
         assert_eq!(legacy_homeserver_proxy_port(), 8001);
     }
