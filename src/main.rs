@@ -421,6 +421,78 @@ struct InstallerLaneMapping {
     rejected_shape: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct RegistryTransactionReadback {
+    schema: String,
+    status: String,
+    route: String,
+    source_contract: String,
+    transaction_sequence: Vec<RegistryTransactionPhase>,
+    deep_merge_law: DeepMergeLaw,
+    starred_tab_law: StarredTabLaw,
+    validation_law: ConfigValidationLaw,
+    persistence_law: ConfigPersistenceLaw,
+    rollback_law: ConfigRollbackLaw,
+    first_missing_live_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct RegistryTransactionPhase {
+    sequence: u64,
+    id: String,
+    source_law: String,
+    coronatio_contract: String,
+    mutation_authority: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct DeepMergeLaw {
+    object_merge: String,
+    scalar_merge: String,
+    array_merge: String,
+    tab_merge: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StarredTabLaw {
+    source_behavior: String,
+    preservation_rule: String,
+    invalid_starred_resolution: String,
+    transaction_requirement: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ConfigValidationLaw {
+    syntax_gate: String,
+    factory_fallback_gate: String,
+    temp_validation: String,
+    failure_posture: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ConfigPersistenceLaw {
+    backup_policy: String,
+    write_policy: String,
+    permission_restore: String,
+    missing_config_fallback: String,
+    read_only_factory_posture: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ConfigRollbackLaw {
+    backup_restore: String,
+    patch_revert: String,
+    complete_tab_removal: String,
+    mismatch_policy: String,
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -455,6 +527,7 @@ fn app(state: AppState) -> Router {
         .route("/api/panes", get(panes_route))
         .route("/api/panes/:pane_id", get(pane_route))
         .route("/api/registry", get(registry_route))
+        .route("/api/registry/transaction", get(registry_transaction_route))
         .route("/api/startup", get(startup_route))
         .route("/api/lanes", get(lane_policy_route))
         .route("/api/fallback", get(fallback_route))
@@ -501,6 +574,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/panes".to_string(),
             "/api/panes/:pane_id".to_string(),
             "/api/registry".to_string(),
+            "/api/registry/transaction".to_string(),
             "/api/startup".to_string(),
             "/api/lanes".to_string(),
             "/api/fallback".to_string(),
@@ -537,6 +611,10 @@ async fn stats_route() -> impl IntoResponse {
 
 async fn registry_route() -> impl IntoResponse {
     Json(registry_readback())
+}
+
+async fn registry_transaction_route() -> impl IntoResponse {
+    Json(registry_transaction_readback())
 }
 
 async fn startup_route() -> impl IntoResponse {
@@ -888,6 +966,76 @@ fn initial_tab(connection_ok: bool, forced_tab: Option<&str>, is_admin: bool) ->
             .first()
             .cloned()
             .unwrap_or_else(|| "fallback".to_string())
+    }
+}
+
+fn registry_transaction_readback() -> RegistryTransactionReadback {
+    RegistryTransactionReadback {
+        schema: "coronatio.registry.transaction.v1".to_string(),
+        status: "contract-only".to_string(),
+        route: "/api/registry/transaction".to_string(),
+        source_contract: "premium/utils/config_manager.py apply_config_patch, deep_merge, deep_merge_tabs, validate_config_with_factory_fallback, restore_backup, revert_config_patch".to_string(),
+        transaction_sequence: registry_transaction_phases(),
+        deep_merge_law: DeepMergeLaw {
+            object_merge: "when target and patch values are objects, merge recursively".to_string(),
+            scalar_merge: "when either side is not an object, patch value replaces target value".to_string(),
+            array_merge: "arrays are scalar values in this quarry law and are replaced, not appended".to_string(),
+            tab_merge: "tabs object uses deep_merge_tabs so tab entries merge while starred is preserved and restored after new tab keys".to_string(),
+        },
+        starred_tab_law: StarredTabLaw {
+            source_behavior: "deep_merge_tabs pops existing tabs.starred before merging source tabs and restores it at the end".to_string(),
+            preservation_rule: "a package patch may add or update tab objects without displacing the existing starred pointer".to_string(),
+            invalid_starred_resolution: "registry/startup law resolves invalid, hidden, disabled, or missing starred to first visible tab then fallback".to_string(),
+            transaction_requirement: "later live mutation must preserve starred unless the patch explicitly carries an authorized starred transition".to_string(),
+        },
+        validation_law: ConfigValidationLaw {
+            syntax_gate: "JSON syntax must parse before merge and before write".to_string(),
+            factory_fallback_gate: "factoryFallback.sh equivalent validates candidate config and rejects .factory fallback output".to_string(),
+            temp_validation: "candidate is written to a temp path, temporarily validated through the factory fallback path, then original config is restored before promote".to_string(),
+            failure_posture: "validation failure removes candidate temp file and leaves current config standing".to_string(),
+        },
+        persistence_law: ConfigPersistenceLaw {
+            backup_policy: "create timestamped backup before mutation when current config exists".to_string(),
+            write_policy: "write merged candidate to temp config, validate it, then move temp into the live config path".to_string(),
+            permission_restore: "after promote or restore, set owner www-data:www-data and mode 664 in the old host; Coronatio records desired owner/mode and leaves privileged chmod/chown to Caduceus".to_string(),
+            missing_config_fallback: "if live config is absent, read /etc/homeserver.factory; if absent, use minimal tabs/global.cors.allowed_origins structure".to_string(),
+            read_only_factory_posture: "factory fallback is source material for a candidate, not a durable replacement for the live config unless validation and promotion succeed".to_string(),
+        },
+        rollback_law: ConfigRollbackLaw {
+            backup_restore: "restore backup to target path and restore permissions".to_string(),
+            patch_revert: "remove keys matching patch values; nested objects recurse".to_string(),
+            complete_tab_removal: "under tabs, patch-owned tab keys are removed as whole tab entries during revert".to_string(),
+            mismatch_policy: "if current value differs from the patch value, do not remove it; report mismatch rather than deleting user state".to_string(),
+        },
+        first_missing_live_signal: "Caduceus registry transaction actuator is not wired; Coronatio does not write homeserver.json, run factoryFallback.sh, chown, chmod, or move temp configs".to_string(),
+    }
+}
+
+fn registry_transaction_phases() -> Vec<RegistryTransactionPhase> {
+    vec![
+        registry_transaction_phase(1, "backup-current", "create_backup copies current config to /tmp/<name>.installer_backup.<timestamp>", "record backup policy and receipt fields before mutation", "Caduceus later"),
+        registry_transaction_phase(2, "load-current-or-factory", "read homeserver.json, else /etc/homeserver.factory, else minimal valid structure", "classify live config, factory config, or minimal recovery candidate", "read-only Coronatio contract now; Caduceus later"),
+        registry_transaction_phase(3, "deep-merge-patch", "deep_merge recursively merges objects and replaces scalars; tabs.starred is popped and restored", "merge patch into candidate while preserving default route law", "pure typed transaction primitive later"),
+        registry_transaction_phase(4, "write-temp-candidate", "json.dump candidate to homeserver.json.temp", "candidate lives outside live path until validation succeeds", "Caduceus later"),
+        registry_transaction_phase(5, "validate-candidate", "validate_config_with_factory_fallback(temp_config) rejects factory fallback output", "candidate must pass syntax and factory fallback validation before promotion", "Caduceus later"),
+        registry_transaction_phase(6, "atomic-promote", "shutil.move(temp_config, homeserver_config_path)", "promote only the validated candidate into the live registry path", "Caduceus later"),
+        registry_transaction_phase(7, "restore-owner-mode", "chown www-data:www-data and chmod 664", "permission restoration is part of the transaction receipt, not an afterthought", "Caduceus only"),
+    ]
+}
+
+fn registry_transaction_phase(
+    sequence: u64,
+    id: &str,
+    source_law: &str,
+    coronatio_contract: &str,
+    mutation_authority: &str,
+) -> RegistryTransactionPhase {
+    RegistryTransactionPhase {
+        sequence,
+        id: id.to_string(),
+        source_law: source_law.to_string(),
+        coronatio_contract: coronatio_contract.to_string(),
+        mutation_authority: mutation_authority.to_string(),
     }
 }
 
@@ -2107,6 +2255,53 @@ mod tests {
                 |mapping| mapping.install_mode == InstallMode::FirstPartyNative
                     && mapping.rejected_shape.contains("premium package")
             ));
+    }
+
+    #[tokio::test]
+    async fn registry_transaction_route_encodes_config_patch_persistence_law() {
+        let temp = test_tab_root("registry-transaction");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/registry/transaction")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let transaction: RegistryTransactionReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(transaction.schema, "coronatio.registry.transaction.v1");
+        assert_eq!(transaction.status, "contract-only");
+        assert!(transaction.deep_merge_law.tab_merge.contains("starred"));
+        assert!(transaction
+            .starred_tab_law
+            .preservation_rule
+            .contains("without displacing"));
+        assert!(transaction
+            .validation_law
+            .factory_fallback_gate
+            .contains("factoryFallback"));
+        assert!(transaction
+            .persistence_law
+            .permission_restore
+            .contains("www-data:www-data"));
+        assert!(transaction
+            .rollback_law
+            .mismatch_policy
+            .contains("do not remove"));
+        assert!(transaction
+            .transaction_sequence
+            .iter()
+            .any(|phase| phase.id == "atomic-promote" && phase.source_law.contains("shutil.move")));
+        assert!(transaction
+            .first_missing_live_signal
+            .contains("Caduceus registry transaction actuator"));
     }
 
     #[tokio::test]

@@ -64,6 +64,10 @@ The scaffolding SHALL make these decisions visible before they harden:
 7. Sandboxing: systemd service first; WASI only when pure plugin code wants stronger sandboxing.
 8. Promotion path: dynamic cartridge to first-party native when a tab becomes crown law.
 
+## Config patch and persistence tranche law
+
+The old `ConfigManager` registry writer is behavior quarry, not runtime authority. Coronatio currently exposes it as `/api/registry/transaction`, a typed readback/state-machine contract. The route records object-recursive deep merge, scalar/array replacement, `tabs.starred` preservation, factory fallback validation, temp-candidate write/promote, `www-data:www-data`/`664` permission restoration, backup restore, patch-key revert, and mismatch preservation. It does not write live config, execute `factoryFallback.sh`, move temp files, or change ownership/mode. Those live mutations require a later Caduceus actuator with non-secret receipts.
+
 ## Premium installer tranche law
 
 The old Flask premium installer is behavior quarry, not runtime authority. Coronatio currently exposes it as `/api/installer`, a typed readback/state-machine contract. The route records the package schema (`name`, `version`, `config.repository`, `git_managed`, `files`), component operation schema (`source`, `target`, `type`, `identifier`, `marker`, `description`), validation order, install order, rollback order, uninstall/reinstall/batch law, and lane mapping. It does not copy files, append blueprints, install dependencies, patch config, rebuild frontend assets, or restart services. Those live mutations require a later Caduceus actuator with non-secret receipts.
@@ -78,6 +82,7 @@ The first scaffold proves:
 - `/api/panes` exposes the first-party native crown pane registry;
 - native crown panes are exactly `admin`, `stats`, `portals`, and `upload`;
 - `/api/registry` exposes extracted registry/tab law from `homeserver.json`, including config, visibility, data, starred/default route, admin gating, enabled state, order, and validation rules;
+- `/api/registry/transaction` exposes config patch and persistence law: deep merge, `tabs.starred` preservation, factory fallback validation, temp candidate promotion, owner/mode restoration, backup, and rollback;
 - `/api/startup` exposes startup and initial-tab law: forced tab, failed connection fallback, valid visible starred tab, first visible tab, and tab-bar visibility;
 - `/api/lanes` exposes dynamic cartridge, source-injection/recompile, and first-party native failure/recovery policy;
 - `/api/fallback` exposes the safe fallback pane, activation reasons, recovery sequence, and receipt fields;
