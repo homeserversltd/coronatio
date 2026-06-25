@@ -80,6 +80,11 @@ The old `ConfigManager` registry writer is behavior quarry, not runtime authorit
 
 The old Flask premium installer is behavior quarry, not runtime authority. Coronatio currently exposes it as `/api/installer`, a typed readback/state-machine contract. The route records the package schema (`name`, `version`, `config.repository`, `git_managed`, `files`), component operation schema (`source`, `target`, `type`, `identifier`, `marker`, `description`), validation order, install order, rollback order, uninstall/reinstall/batch law, and lane mapping. It does not copy files, append blueprints, install dependencies, patch config, rebuild frontend assets, or restart services. Those live mutations require a later Caduceus actuator with non-secret receipts.
 
+
+## Theme system tranche law
+
+The old Flask/React theme system is behavior quarry and visual contract. Coronatio implements it as Rust-delivered firmware with the same browser-visible theme membrane: `preferred-theme`, `themeData`, `style[data-theme-styles]`, `data-theme`, and `--theme-*` CSS variables. Light, dark, and radioactive themes must apply through one token catalog and produce identical token-driven styling across Admin, Stats, Portals, Upload, header controls, modals, cards, and tab controls. A theme switch is real only when the DOM dataset, injected style membrane, local persistence, theme button label, and all pane card computed styles move together.
+
 ## Current scaffold proof
 
 The first scaffold proves:

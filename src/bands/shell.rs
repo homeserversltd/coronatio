@@ -10,22 +10,112 @@ fn render_crown_shell() -> String {
   <style>
     :root {
       color-scheme: dark;
-      --background: #1a1a1a;
-      --surface: #2a2a2a;
-      --surface-soft: #222;
-      --text: #ffffff;
-      --text-secondary: #dddddd;
-      --accent: #00f2fe;
-      --accent-soft: rgba(0, 242, 254, .16);
-      --primary: #4CAF50;
-      --border: rgba(255,255,255,.14);
-      --error: #f44336;
-      --warning: #ff9800;
-      --success: #4CAF50;
-      --shadow: 0 2px 4px rgba(0,0,0,.35);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --theme-color-primary: #00f2fe;
+      --theme-color-secondary: #4CAF50;
+      --theme-bg-primary: #2a2a2a;
+      --theme-bg-secondary: #1a1a1a;
+      --theme-bg-tertiary: #222222;
+      --theme-bg-hover: #333333;
+      --theme-bg-active: #3a3a3a;
+      --theme-text-primary: #ffffff;
+      --theme-text-secondary: #dddddd;
+      --theme-text-tertiary: #a7a7a7;
+      --theme-text-disabled: #777777;
+      --theme-text-accent: #00f2fe;
+      --theme-status-success: #4CAF50;
+      --theme-status-error: #f44336;
+      --theme-status-warning: #ff9800;
+      --theme-status-info: #2196f3;
+      --theme-spacing-xs: 0.25rem;
+      --theme-spacing-sm: 0.5rem;
+      --theme-spacing-md: 1rem;
+      --theme-spacing-lg: 1.5rem;
+      --theme-spacing-xl: 2rem;
+      --theme-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --theme-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --theme-font-size-xs: 12px;
+      --theme-font-size-sm: 0.875rem;
+      --theme-font-size-base: 16px;
+      --theme-font-size-md: 16px;
+      --theme-font-size-lg: 1.125rem;
+      --theme-font-size-xl: 24px;
+      --theme-font-weight-normal: 400;
+      --theme-font-weight-medium: 500;
+      --theme-font-weight-bold: 600;
+      --theme-line-height-tight: 1.2;
+      --theme-line-height-normal: 1.5;
+      --theme-line-height-loose: 1.8;
+      --theme-transition-fast: 150ms ease;
+      --theme-transition-normal: 250ms ease;
+      --theme-transition-slow: 350ms ease;
+      --theme-shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
+      --theme-shadow-md: 0 2px 4px rgba(0,0,0,0.1);
+      --theme-shadow-lg: 0 4px 8px rgba(0,0,0,0.1);
+      --theme-radius: 4px;
+      --background: var(--theme-bg-secondary);
+      --surface: var(--theme-bg-primary);
+      --surface-soft: var(--theme-bg-tertiary);
+      --text: var(--theme-text-primary);
+      --text-secondary: var(--theme-text-secondary);
+      --accent: var(--theme-color-primary);
+      --accent-soft: color-mix(in srgb, var(--theme-color-primary) 16%, transparent);
+      --primary: var(--theme-color-secondary);
+      --border: color-mix(in srgb, var(--theme-text-primary) 14%, transparent);
+      --error: var(--theme-status-error);
+      --warning: var(--theme-status-warning);
+      --success: var(--theme-status-success);
+      --shadow: var(--theme-shadow-md);
+      font-family: var(--theme-font-family);
       background: var(--background);
       color: var(--text);
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --theme-color-primary: #1976d2;
+      --theme-color-secondary: #f5f5f5;
+      --theme-bg-primary: #ffffff;
+      --theme-bg-secondary: #f5f5f5;
+      --theme-bg-tertiary: #e0e0e0;
+      --theme-bg-hover: #eeeeee;
+      --theme-bg-active: #d5d5d5;
+      --theme-text-primary: #000000;
+      --theme-text-secondary: #666666;
+      --theme-text-tertiary: #999999;
+      --theme-text-disabled: #cccccc;
+      --theme-text-accent: #1976d2;
+      --theme-shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --theme-color-primary: #00f2fe;
+      --theme-color-secondary: #4CAF50;
+      --theme-bg-primary: #2a2a2a;
+      --theme-bg-secondary: #1a1a1a;
+      --theme-bg-tertiary: #222222;
+      --theme-bg-hover: #333333;
+      --theme-bg-active: #3a3a3a;
+      --theme-text-primary: #ffffff;
+      --theme-text-secondary: #dddddd;
+      --theme-text-tertiary: #a7a7a7;
+      --theme-text-disabled: #777777;
+      --theme-text-accent: #00f2fe;
+      --theme-shadow-md: 0 2px 4px rgba(0,0,0,0.35);
+    }
+    :root[data-theme="radioactive"] {
+      color-scheme: dark;
+      --theme-color-primary: #39ff14;
+      --theme-color-secondary: #00d084;
+      --theme-bg-primary: #101510;
+      --theme-bg-secondary: #050805;
+      --theme-bg-tertiary: #0b210b;
+      --theme-bg-hover: #123112;
+      --theme-bg-active: #163d16;
+      --theme-text-primary: #f3fff2;
+      --theme-text-secondary: #b6f5b1;
+      --theme-text-tertiary: #7ccf76;
+      --theme-text-disabled: #477047;
+      --theme-text-accent: #39ff14;
+      --theme-shadow-md: 0 2px 8px rgba(57,255,20,0.18);
     }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: var(--background); color: var(--text); }
@@ -210,9 +300,9 @@ fn render_crown_shell() -> String {
         <h2 id="info-modal-title">Status</h2>
         <div class="modal-body" data-info-modal-body></div>
         <div class="theme-choice-row" data-theme-choice-row hidden>
-          <button type="button" class="theme-choice" data-theme-choice="dark">dark</button>
-          <button type="button" class="theme-choice" data-theme-choice="light">light</button>
-          <button type="button" class="theme-choice" data-theme-choice="blue">blue</button>
+          <button type="button" class="theme-choice" data-theme-choice="light">Light</button>
+          <button type="button" class="theme-choice" data-theme-choice="dark">Dark</button>
+          <button type="button" class="theme-choice" data-theme-choice="radioactive">Radioactive</button>
         </div>
         <div class="modal-actions"><button type="button" class="secondary" data-info-modal-close>Close</button></div>
       </section>
@@ -263,9 +353,23 @@ fn render_crown_shell() -> String {
     const saveTabState = state => localStorage.setItem(storageKey, JSON.stringify(state));
     const tabState = Object.assign({ starredTab: 'portals', hiddenTabs: [] }, loadTabState());
     const headerStateKey = 'coronatio.flask-react-header.v1';
-    const headerState = Object.assign({ theme: 'dark', isAdmin: false }, (() => { try { return JSON.parse(localStorage.getItem(headerStateKey) || '{}'); } catch (_) { return {}; } })());
-    const saveHeaderState = () => localStorage.setItem(headerStateKey, JSON.stringify(headerState));
-    const themes = ['dark', 'light', 'blue'];
+    const preferredThemeKey = 'preferred-theme';
+    const themeDataKey = 'themeData';
+    const themeCatalog = {
+      light: { name: 'light', colors: { colorPrimary: '#1976d2', colorSecondary: '#f5f5f5', bgPrimary: '#ffffff', bgSecondary: '#f5f5f5', bgTertiary: '#e0e0e0', bgHover: '#eeeeee', bgActive: '#d5d5d5', textPrimary: '#000000', textSecondary: '#666666', textTertiary: '#999999', textDisabled: '#cccccc', textAccent: '#1976d2', statusSuccess: '#4CAF50', statusError: '#f44336', statusWarning: '#ff9800', statusInfo: '#2196f3' } },
+      dark: { name: 'dark', colors: { colorPrimary: '#00f2fe', colorSecondary: '#4CAF50', bgPrimary: '#2a2a2a', bgSecondary: '#1a1a1a', bgTertiary: '#222222', bgHover: '#333333', bgActive: '#3a3a3a', textPrimary: '#ffffff', textSecondary: '#dddddd', textTertiary: '#a7a7a7', textDisabled: '#777777', textAccent: '#00f2fe', statusSuccess: '#4CAF50', statusError: '#f44336', statusWarning: '#ff9800', statusInfo: '#2196f3' } },
+      radioactive: { name: 'radioactive', colors: { colorPrimary: '#39ff14', colorSecondary: '#00d084', bgPrimary: '#101510', bgSecondary: '#050805', bgTertiary: '#0b210b', bgHover: '#123112', bgActive: '#163d16', textPrimary: '#f3fff2', textSecondary: '#b6f5b1', textTertiary: '#7ccf76', textDisabled: '#477047', textAccent: '#39ff14', statusSuccess: '#4CAF50', statusError: '#f44336', statusWarning: '#ff9800', statusInfo: '#2196f3' } }
+    };
+    const themes = Object.keys(themeCatalog);
+    const savedHeaderState = (() => { try { return JSON.parse(localStorage.getItem(headerStateKey) || '{}'); } catch (_) { return {}; } })();
+    const savedPreferredTheme = localStorage.getItem(preferredThemeKey);
+    const initialTheme = themes.includes(savedPreferredTheme) ? savedPreferredTheme : (themes.includes(savedHeaderState.theme) ? savedHeaderState.theme : 'dark');
+    const headerState = Object.assign({ theme: initialTheme, isAdmin: false }, savedHeaderState, { theme: initialTheme });
+    const saveHeaderState = () => {
+      localStorage.setItem(headerStateKey, JSON.stringify(headerState));
+      localStorage.setItem(preferredThemeKey, headerState.theme);
+      localStorage.setItem(themeDataKey, JSON.stringify(themeCatalog[headerState.theme]));
+    };
     const themeButton = document.querySelector('[data-theme-button]');
     const adminButton = document.querySelector('[data-admin-button]');
     const changePinButton = document.querySelector('[data-change-pin-button]');
@@ -281,12 +385,49 @@ fn render_crown_shell() -> String {
     const newPinInput = document.querySelector('[data-pin-new]');
     const confirmPinInput = document.querySelector('[data-pin-confirm]');
     let modalMode = 'enter';
-    function applyTheme() {
-      document.documentElement.dataset.theme = headerState.theme;
-      if (themeButton) {
-        themeButton.querySelector('span').textContent = headerState.theme;
-        themeButton.title = 'Current theme: ' + headerState.theme + '. Open theme selector.';
+    function themeToCss(theme) {
+      if (!theme || !theme.colors) return '';
+      const cssVars = {
+        '--theme-color-primary': theme.colors.colorPrimary,
+        '--theme-color-secondary': theme.colors.colorSecondary,
+        '--theme-bg-primary': theme.colors.bgPrimary,
+        '--theme-bg-secondary': theme.colors.bgSecondary,
+        '--theme-bg-tertiary': theme.colors.bgTertiary,
+        '--theme-bg-hover': theme.colors.bgHover,
+        '--theme-bg-active': theme.colors.bgActive,
+        '--theme-text-primary': theme.colors.textPrimary,
+        '--theme-text-secondary': theme.colors.textSecondary,
+        '--theme-text-tertiary': theme.colors.textTertiary,
+        '--theme-text-disabled': theme.colors.textDisabled,
+        '--theme-text-accent': theme.colors.textAccent,
+        '--theme-status-success': theme.colors.statusSuccess,
+        '--theme-status-error': theme.colors.statusError,
+        '--theme-status-warning': theme.colors.statusWarning,
+        '--theme-status-info': theme.colors.statusInfo
+      };
+      return ':root {\n' + Object.entries(cssVars).map(([key, value]) => '  ' + key + ': ' + value + ';').join('\n') + '\n}';
+    }
+    function ensureThemeStyleElement() {
+      let style = document.querySelector('style[data-theme-styles]');
+      if (!style) {
+        style = document.createElement('style');
+        style.setAttribute('data-theme-styles', '');
+        document.head.appendChild(style);
       }
+      return style;
+    }
+    function applyTheme() {
+      if (!themes.includes(headerState.theme)) headerState.theme = 'dark';
+      const theme = themeCatalog[headerState.theme];
+      document.documentElement.dataset.theme = headerState.theme;
+      ensureThemeStyleElement().textContent = themeToCss(theme);
+      saveHeaderState();
+      if (themeButton) {
+        const label = headerState.theme.charAt(0).toUpperCase() + headerState.theme.slice(1);
+        themeButton.querySelector('span').textContent = label;
+        themeButton.title = 'Current theme: ' + label + '. Open theme selector.';
+      }
+      document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === headerState.theme)));
     }
     function setAdminMode(value) {
       headerState.isAdmin = Boolean(value);
@@ -330,7 +471,7 @@ fn render_crown_shell() -> String {
       if (kind === 'services') return `<div class="services-status-modal"><div class="loading-section">Loading service status...</div><ul class="service-status-list" data-route-read="/api/status/services"><li>No status data available</li></ul><div class="button-row"><button data-modal-fetch="/api/status/services">Refresh</button><button data-modal-fetch="/api/services/data">Service Data</button></div><pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'openvpn') return `<div class="vpn-status-modal"><div class="status-section"><div class="service-statuses"><div class="status-item loading"><span>VPN Status:</span><span class="status-value">LOADING</span></div><div class="status-item loading"><span>Transmission Status:</span><span class="status-value">LOADING</span></div><div class="status-item"><span>Systemd Service:</span><span class="status-value">LOADING</span></div></div></div><div class="credentials-section"><div class="modal-grid"><div class="credential-group"><input placeholder="PIA Username"><input type="password" placeholder="PIA Password"><button data-modal-fetch="/api/status/vpn/updatekey/pia" data-method="POST">Create PIA Key</button></div><div class="credential-group"><input placeholder="Transmission Username"><input type="password" placeholder="Transmission Password"><button data-modal-fetch="/api/status/vpn/updatekey/transmission" data-method="POST">Create Transmission</button></div></div></div><div class="service-controls"><div class="button-row"><button data-modal-fetch="/api/status/vpn/enable" data-method="POST">Enable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/disable" data-method="POST">Disable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/pia/exists">PIA Key Exists</button><button data-modal-fetch="/api/status/vpn/transmission/exists">Transmission Key Exists</button></div></div><div class="restart-notice"><p>Note: Service changes require a restart to take effect.</p></div><pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'power-meter') return `<div class="power-meter-modal"><div class="power-usage-display"><div class="power-value"><span class="power-value-number">—</span><span class="power-value-unit">Watts</span></div></div><div class="power-history-section"><div class="power-averages"><div class="power-average-row"><div class="power-average-label">5s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">30s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">60s average:</div><div class="power-average-value">—W</div></div></div></div><div class="button-row"><button data-modal-fetch="/api/status/power/usage">Refresh</button></div><pre class="readout action-output" data-modal-output></pre></div>`;
-      if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p></div>`;
+      if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p><p>Theme variables are applied through the same legacy ThemeComponent CSS variable membrane used by the React quarry.</p></div>`;
       return '';
     }
     function wireModalFetches() {
