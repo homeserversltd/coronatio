@@ -397,8 +397,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn themes_route_reads_runtime_theme_json_catalog() {
-        let temp = test_tab_root("theme-json-catalog");
+    async fn themes_route_reads_homeserver_json_theme_selection() {
+        let temp = test_tab_root("homeserver-json-theme");
         let response = app(AppState {
             tab_root: Arc::new(temp),
         })
@@ -411,7 +411,10 @@ mod tests {
             .unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("coronatio.theme-catalog.response.v1"));
-        assert!(body.contains("static/themes/theme.json"));
+        assert!(body.contains("homeserver.json"));
+        assert!(body.contains("global.theme.name"));
+        assert!(!body.contains("static/themes/theme.json"));
+        assert!(!body.contains("CORONATIO_THEME_JSON"));
         assert!(body.contains("radioactive"));
         assert!(body.contains("color-primary"));
         assert!(body.contains("bg-primary"));
@@ -627,6 +630,31 @@ mod tests {
         assert!(body.contains("DoughnutController"));
     }
 
+
+    #[test]
+    fn coronatio_config_authority_is_single_homeserver_json_not_sidecar_jsons() {
+        let contracts = std::fs::read_to_string("src/bands/contracts.rs").unwrap();
+        let routes = std::fs::read_to_string("src/bands/routes.rs").unwrap();
+        assert!(contracts.contains("INSTALLED_HOMESERVER_JSON"));
+        assert!(contracts.contains("LEGACY_HOMESERVER_JSON"));
+        assert!(routes.contains("fn homeserver_json_path()"));
+        assert!(routes.contains("homeserver.json tabs.{config,visibility,starred}"));
+        assert!(routes.contains("global.theme.name"));
+        for obsolete in [
+            "DEFAULT_THEME_JSON",
+            "INSTALLED_THEME_JSON",
+            "DEFAULT_FAVORITES_JSON",
+            "INSTALLED_FAVORITES_JSON",
+            "CORONATIO_THEME_JSON",
+            "CORONATIO_FAVORITES_JSON",
+            "theme_catalog_path()",
+            "favorite_manifest_path()",
+        ] {
+            assert!(!contracts.contains(obsolete), "obsolete config authority survived in contracts: {obsolete}");
+            assert!(!routes.contains(obsolete), "obsolete config authority survived in routes: {obsolete}");
+        }
+    }
+
     #[tokio::test]
     async fn favorite_manifest_drives_original_first_load_starred_tab() {
         let temp = test_tab_root("favorite-manifest");
@@ -636,15 +664,18 @@ mod tests {
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("coronatio.favorite-manifest.response.v1"));
-        assert!(body.contains("\"starredTab\":\"upload\""));
-        assert!(body.contains("flask-0-6-tabstate.md"));
+        assert!(body.contains("\"starredTab\":\"portals\""));
+        assert!(body.contains("homeserver.json"));
+        assert!(body.contains("tabs.{config,visibility,starred}"));
+        assert!(!body.contains("static/favorites"));
+        assert!(!body.contains("CORONATIO_FAVORITES_JSON"));
         assert!(body.contains("get_starred_tab() or get_first_visible_tab()"));
         let response = app.clone().oneshot(Request::builder().uri("/api/get_starred_tab").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("coronatio.starred-tab.response.v1"));
-        assert!(body.contains("\"starred_tab\":\"upload\""));
+        assert!(body.contains("\"starred_tab\":\"portals\""));
         let response = app.oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let shell = String::from_utf8(bytes.to_vec()).unwrap();

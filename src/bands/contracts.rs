@@ -1,8 +1,8 @@
 const DEFAULT_TAB_ROOT: &str = "/var/lib/coronatio/tabs";
-const DEFAULT_THEME_JSON: &str = "static/themes/theme.json";
-const INSTALLED_THEME_JSON: &str = "/opt/coronatio/source/static/themes/theme.json";
-const DEFAULT_FAVORITES_JSON: &str = "static/favorites/favorites.json";
-const INSTALLED_FAVORITES_JSON: &str = "/opt/coronatio/source/static/favorites/favorites.json";
+const INSTALLED_HOMESERVER_JSON: &str = "/etc/homeserver.json";
+const LEGACY_HOMESERVER_JSON: &str = "/var/www/homeserver/src/config/homeserver.json";
+const QUARRY_HOMESERVER_JSON: &str = "../homeserver/initialization/flask/inject/src/config/homeserver.json";
+const LOCAL_QUARRY_HOMESERVER_JSON: &str = "/fulcrum/attachments/homeserver/initialization/flask/inject/src/config/homeserver.json";
 const INSTALLED_STATIC_ROOT: &str = "/opt/coronatio/source/static";
 const DEFAULT_STATIC_ROOT: &str = "static";
 const PRIMARY_TABS: [&str; 4] = ["admin", "stats", "portals", "upload"];
