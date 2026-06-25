@@ -33,6 +33,8 @@ fn shell_document_3() -> &'static str {
       document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === headerState.theme)));
     }
     function setAdminMode(value) {
+      const wasAdmin = headerState.isAdmin;
+      const previousActive = currentActiveTabId();
       headerState.isAdmin = Boolean(value);
       saveHeaderState();
       if (adminButton) {
@@ -46,6 +48,9 @@ fn shell_document_3() -> &'static str {
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
       if (changePinButton) changePinButton.hidden = !headerState.isAdmin;
+      applyTabBarVisibility();
+      if (wasAdmin && !headerState.isAdmin) reconcileActiveTabAfterAdminExit(previousActive);
+      else if (headerState.isAdmin && previousActive === fallbackTab) showPane(firstVisibleTab());
     }
     function openPinModal(mode) {
       modalMode = mode;
@@ -190,13 +195,37 @@ fn shell_document_3() -> &'static str {
     });
     loadThemeCatalog();
     setAdminMode(headerState.isAdmin);
-    function visibleTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
-    function firstVisibleTab() { return visibleTabs()[0]?.dataset.pane || fallbackTab; }
+    function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
+    function visibleTabs() { return headerState.isAdmin ? tabs.filter(tab => tab.dataset.pane !== fallbackTab) : eligibleRegularTabs(); }
+    function firstVisibleTab() { return eligibleRegularTabs()[0]?.dataset.pane || fallbackTab; }
+    function currentActiveTabId() { return tabs.find(tab => tab.getAttribute('aria-selected') === 'true')?.dataset.pane || fallbackTab; }
+    function canStarTab(id) { return eligibleRegularTabs().some(tab => tab.dataset.pane === id); }
+    function lawfulPaneCandidate(id) {
+      const tab = tabs.find(candidate => candidate.dataset.pane === id);
+      if (!tab) return firstVisibleTab();
+      if (tab.dataset.adminOnly === 'true') return headerState.isAdmin ? id : firstVisibleTab();
+      if (tab.dataset.visibility === 'hidden') return firstVisibleTab();
+      return id;
+    }
+    function applyTabBarVisibility() {
+      if (!tabBar) return;
+      const selected = currentActiveTabId();
+      const hidden = !headerState.isAdmin && (selected === fallbackTab || eligibleRegularTabs().length <= 2);
+      tabBar.classList.toggle('hidden', hidden);
+      tabBar.dataset.hidden = String(hidden);
+    }
+    function reconcileActiveTabAfterAdminExit(previousActive) {
+      if (eligibleRegularTabs().length === 0) { showPane(fallbackTab); return; }
+      if (canStarTab(previousActive)) { showPane(previousActive); return; }
+      if (canStarTab(tabState.starredTab)) { showPane(tabState.starredTab); return; }
+      showPane(firstVisibleTab());
+    }
     function setStarredTab(id) {
-      tabState.starredTab = id;
+      const selected = canStarTab(id) ? id : firstVisibleTab();
+      tabState.starredTab = selected;
       saveTabState(tabState);
       tabs.forEach(tab => {
-        const starred = tab.dataset.pane === id;
+        const starred = tab.dataset.pane === selected;
         const button = tab.querySelector('[data-tab-star]');
         if (button) {
           button.classList.toggle('fas', starred);
@@ -218,15 +247,17 @@ fn shell_document_3() -> &'static str {
           button.querySelector('.eye-icon').textContent = hidden ? '🙈' : '👁';
         }
       });
+      applyTabBarVisibility();
     }
     function showPane(id) {
-      const selected = panes.some(pane => pane.dataset.panePanel === id) ? id : firstVisibleTab();
+      const selected = lawfulPaneCandidate(id);
       tabs.forEach(tab => {
         const active = tab.dataset.pane === selected;
         tab.setAttribute('aria-selected', String(active));
         tab.classList.toggle('active', active);
       });
       panes.forEach(pane => pane.classList.toggle('active', pane.dataset.panePanel === selected));
+      applyTabBarVisibility();
       if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
     }
     tabs.forEach(tab => {
@@ -239,6 +270,7 @@ fn shell_document_3() -> &'static str {
     });
     document.querySelectorAll('[data-tab-star]').forEach(button => button.addEventListener('click', async event => {
       event.stopPropagation();
+      if (!canStarTab(button.dataset.tabStar)) return;
       setStarredTab(button.dataset.tabStar);
       try {
         await fetch('/api/set_starred_tab', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tabName: button.dataset.tabStar }) });

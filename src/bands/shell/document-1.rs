@@ -152,6 +152,8 @@ fn shell_document_1() -> &'static str {
     }
     .tab[data-visibility="hidden"] { opacity: .48; border-style: dashed; }
     .tab[data-visibility="hidden"] .tab-name { text-decoration: line-through; }
+    [data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }
+    [data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; }
     .tab-visibility-column, .tab-star-column { display: grid; place-items: center; min-width: 24px; }
     .visibility-toggle, .star-button {
       display: grid;

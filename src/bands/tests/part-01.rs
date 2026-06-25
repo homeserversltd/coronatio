@@ -199,6 +199,43 @@
     }
 
     #[test]
+    fn admin_regular_transition_ladder_is_cemented_in_rust_shell() {
+        let shell = render_crown_shell();
+        for marker in [
+            "function eligibleRegularTabs()",
+            "function lawfulPaneCandidate(id)",
+            "function reconcileActiveTabAfterAdminExit(previousActive)",
+            "function applyTabBarVisibility()",
+            "if (wasAdmin && !headerState.isAdmin) reconcileActiveTabAfterAdminExit(previousActive)",
+            "if (!canStarTab(button.dataset.tabStar)) return;",
+            r#"[data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }"#,
+            r#"[data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; }"#,
+        ] {
+            assert!(shell.contains(marker), "missing tab ladder marker: {marker}");
+        }
+        assert!(shell.contains("eligibleRegularTabs().length <= 2"));
+        assert!(shell.contains("tab.dataset.adminOnly === 'true') return headerState.isAdmin ? id : firstVisibleTab()"));
+        assert!(shell.contains("tab.dataset.visibility === 'hidden') return firstVisibleTab()"));
+    }
+
+    #[test]
+    fn registry_admin_mode_includes_hidden_regular_tabs_for_restoration() {
+        let mut contracts = native_tab_contracts();
+        contracts
+            .iter_mut()
+            .find(|tab| tab.id == "upload")
+            .expect("upload tab exists")
+            .visibility
+            .tab = false;
+        let regular = visible_tab_ids(&contracts, false);
+        let admin = visible_tab_ids(&contracts, true);
+        assert!(!regular.contains(&"upload".to_string()));
+        assert!(admin.contains(&"upload".to_string()));
+        assert!(admin.contains(&"admin".to_string()));
+        assert!(!eligible_starred_tab_ids(&contracts).contains(&"upload".to_string()));
+    }
+
+    #[test]
     fn crown_tabbar_recreates_flask_react_star_eye_and_hide_controls() {
         let shell = render_crown_shell();
         assert!(shell.contains("class=\"tab-bar\""));
