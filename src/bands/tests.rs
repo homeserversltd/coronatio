@@ -247,7 +247,6 @@ mod tests {
             "5s average:",
             "30s average:",
             "60s average:",
-            "/api/status/power/usage",
         ] {
             assert!(shell.contains(preserved), "original header feature missing: {}", preserved);
         }
@@ -674,6 +673,30 @@ mod tests {
 
 
 
+
+
+    #[test]
+    fn indicator_modals_gate_admin_enhancements_from_regular_mode() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("function indicatorAdminSection(inner)"));
+        assert!(shell.contains(r#"data-admin-surface="indicator-modal""#));
+        assert!(shell.contains(r#"headerState.isAdmin ? `<div class="status-item" data-admin-only"#));
+        assert!(shell.contains("!headerState.isAdmin && button.closest('[data-admin-only]')"));
+        for admin_action in ["Update Tailnet", "Authenticate", "Run Speed Test", "Create PIA Key", "Create Transmission", "Enable Transmission over PIA VPN", "PIA Key Exists", "Service Data"] {
+            assert!(shell.contains(admin_action), "missing gated admin action {admin_action}");
+        }
+    }
+
+    #[test]
+    fn power_indicator_modal_has_no_invented_admin_refresh_control() {
+        let shell = render_crown_shell();
+        let power_start = shell.find("if (kind === 'power-meter')").unwrap();
+        let power_end = shell[power_start..].find("if (kind === 'theme')").unwrap() + power_start;
+        let power = &shell[power_start..power_end];
+        assert!(!power.contains("data-modal-fetch"));
+        assert!(!power.contains("Refresh"));
+        assert!(!power.contains("data-admin-only"));
+    }
 
     #[test]
     fn header_status_indicators_are_packed_react_icon_port_not_text_pills() {
