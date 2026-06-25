@@ -268,7 +268,13 @@ fn shell_document_2() -> &'static str {
     let modalMode = 'enter';
     function themeToCss(theme) {
       if (!theme) return '';
-      return ':root {\n' + Object.entries(theme).map(([key, value]) => '  --theme-' + key + ': ' + value + ';').join('\n') + '\n}';
+      const aliasMap = { background: '--background', text: '--text', primary: '--primary', primaryHover: '--primaryHover', secondary: '--secondary', accent: '--accent', error: '--error', success: '--success', warning: '--warning', border: '--border', statusUp: '--status-up', statusDown: '--status-down', statusPartial: '--status-partial', statusUnknown: '--status-unknown', hiddenTabBackground: '--hiddenTabBackground', hiddenTabText: '--hiddenTabText' };
+      const lines = [];
+      Object.entries(theme).forEach(([key, value]) => {
+        lines.push('  --theme-' + key + ': ' + value + ';');
+        if (aliasMap[key]) lines.push('  ' + aliasMap[key] + ': ' + value + ';');
+      });
+      return ':root {\n' + lines.join('\n') + '\n}';
     }
     function themeLabel(name) {
       return name.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');

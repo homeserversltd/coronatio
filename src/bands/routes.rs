@@ -338,144 +338,175 @@ async fn load_theme_catalog() -> Result<(String, ThemeCatalog), String> {
     Ok((format!("{} global.theme.name", source), catalog))
 }
 
+fn insert_theme_tokens(theme: &mut BTreeMap<String, String>, tokens: &[(&str, &str)]) {
+    for (key, value) in tokens {
+        theme.insert((*key).to_string(), (*value).to_string());
+    }
+}
+
+fn insert_system_theme_tokens(theme: &mut BTreeMap<String, String>) {
+    insert_theme_tokens(theme, &[
+        ("spacing-xxs", "0.125rem"),
+        ("spacing-xs", "0.25rem"),
+        ("spacing-sm", "0.5rem"),
+        ("spacing-md", "1rem"),
+        ("spacing-lg", "1.5rem"),
+        ("spacing-xl", "2rem"),
+        ("spacing-2xl", "3rem"),
+        ("font-family", "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif"),
+        ("font-mono", "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"),
+        ("font-size-xs", "12px"),
+        ("font-size-sm", "0.875rem"),
+        ("font-size-base", "16px"),
+        ("font-size-md", "16px"),
+        ("font-size-lg", "1.125rem"),
+        ("font-size-xl", "24px"),
+        ("font-size-2xl", "32px"),
+        ("font-weight-normal", "400"),
+        ("font-weight-medium", "500"),
+        ("font-weight-bold", "600"),
+        ("line-height-tight", "1.2"),
+        ("line-height-normal", "1.5"),
+        ("line-height-loose", "1.8"),
+        ("transition-fast", "150ms ease"),
+        ("transition-normal", "250ms ease"),
+        ("transition-slow", "350ms ease"),
+        ("shadow-sm", "0 1px 2px rgba(0,0,0,0.1)"),
+        ("shadow-md", "0 2px 4px rgba(0,0,0,0.1)"),
+        ("shadow-lg", "0 4px 8px rgba(0,0,0,0.1)"),
+        ("radius", "4px"),
+        ("radius-sm", "4px"),
+        ("radius-md", "6px"),
+        ("radius-lg", "8px"),
+        ("radius-pill", "999px"),
+        ("border-width", "1px"),
+        ("focus-ring", "0 0 0 2px color-mix(in srgb, var(--theme-color-primary) 30%, transparent)"),
+        ("header-height", "48px"),
+        ("tab-height", "48px"),
+        ("control-height", "34px"),
+        ("control-padding-x", "0.9rem"),
+        ("control-padding-y", "0.55rem"),
+        ("content-padding", "20px"),
+        ("card-padding", "1rem"),
+        ("card-min-height", "112px"),
+        ("card-radius", "8px"),
+        ("modal-radius", "10px"),
+        ("portal-icon-size", "96px"),
+        ("chart-height", "200px"),
+        ("grid-gap", "16px"),
+    ]);
+}
+
+fn insert_legacy_alias_tokens(
+    theme: &mut BTreeMap<String, String>,
+    background: &str,
+    text: &str,
+    primary: &str,
+    primary_hover: &str,
+    secondary: &str,
+    accent: &str,
+    error: &str,
+    success: &str,
+    warning: &str,
+    border: &str,
+    status_unknown: &str,
+    hidden_tab_background: &str,
+    hidden_tab_text: &str,
+) {
+    insert_theme_tokens(theme, &[
+        ("background", background),
+        ("text", text),
+        ("primary", primary),
+        ("primaryHover", primary_hover),
+        ("secondary", secondary),
+        ("accent", accent),
+        ("error", error),
+        ("success", success),
+        ("warning", warning),
+        ("border", border),
+        ("statusUp", success),
+        ("statusDown", error),
+        ("statusPartial", warning),
+        ("statusUnknown", status_unknown),
+        ("hiddenTabBackground", hidden_tab_background),
+        ("hiddenTabText", hidden_tab_text),
+    ]);
+}
+
 fn firmware_theme_catalog(default: String) -> ThemeCatalog {
     let mut themes = BTreeMap::new();
     {
         let mut theme = BTreeMap::new();
-        theme.insert("color-primary".to_string(), "#1976d2".to_string());
-        theme.insert("color-secondary".to_string(), "#f5f5f5".to_string());
-        theme.insert("bg-primary".to_string(), "#ffffff".to_string());
-        theme.insert("bg-secondary".to_string(), "#f5f5f5".to_string());
-        theme.insert("bg-tertiary".to_string(), "#e0e0e0".to_string());
-        theme.insert("bg-hover".to_string(), "#eeeeee".to_string());
-        theme.insert("bg-active".to_string(), "#d5d5d5".to_string());
-        theme.insert("text-primary".to_string(), "#000000".to_string());
-        theme.insert("text-secondary".to_string(), "#666666".to_string());
-        theme.insert("text-tertiary".to_string(), "#999999".to_string());
-        theme.insert("text-disabled".to_string(), "#cccccc".to_string());
-        theme.insert("text-accent".to_string(), "#1976d2".to_string());
-        theme.insert("status-success".to_string(), "#4CAF50".to_string());
-        theme.insert("status-error".to_string(), "#f44336".to_string());
-        theme.insert("status-warning".to_string(), "#ff9800".to_string());
-        theme.insert("status-info".to_string(), "#2196f3".to_string());
-        theme.insert("spacing-xs".to_string(), "0.25rem".to_string());
-        theme.insert("spacing-sm".to_string(), "0.5rem".to_string());
-        theme.insert("spacing-md".to_string(), "1rem".to_string());
-        theme.insert("spacing-lg".to_string(), "1.5rem".to_string());
-        theme.insert("spacing-xl".to_string(), "2rem".to_string());
-        theme.insert("font-family".to_string(), "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif".to_string());
-        theme.insert("font-mono".to_string(), "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace".to_string());
-        theme.insert("font-size-xs".to_string(), "12px".to_string());
-        theme.insert("font-size-sm".to_string(), "0.875rem".to_string());
-        theme.insert("font-size-base".to_string(), "16px".to_string());
-        theme.insert("font-size-md".to_string(), "16px".to_string());
-        theme.insert("font-size-lg".to_string(), "1.125rem".to_string());
-        theme.insert("font-size-xl".to_string(), "24px".to_string());
-        theme.insert("font-weight-normal".to_string(), "400".to_string());
-        theme.insert("font-weight-medium".to_string(), "500".to_string());
-        theme.insert("font-weight-bold".to_string(), "600".to_string());
-        theme.insert("line-height-tight".to_string(), "1.2".to_string());
-        theme.insert("line-height-normal".to_string(), "1.5".to_string());
-        theme.insert("line-height-loose".to_string(), "1.8".to_string());
-        theme.insert("transition-fast".to_string(), "150ms ease".to_string());
-        theme.insert("transition-normal".to_string(), "250ms ease".to_string());
-        theme.insert("transition-slow".to_string(), "350ms ease".to_string());
-        theme.insert("shadow-sm".to_string(), "0 1px 2px rgba(0,0,0,0.1)".to_string());
-        theme.insert("shadow-md".to_string(), "0 4px 6px rgba(0,0,0,0.1)".to_string());
-        theme.insert("shadow-lg".to_string(), "0 4px 8px rgba(0,0,0,0.1)".to_string());
-        theme.insert("radius".to_string(), "4px".to_string());
+        insert_theme_tokens(&mut theme, &[
+            ("color-primary", "#A0AEC0"),
+            ("color-secondary", "#4A5568"),
+            ("bg-primary", "#F7F7F7"),
+            ("bg-secondary", "#FFFFFF"),
+            ("bg-tertiary", "#E2E8F0"),
+            ("bg-hover", "#BCCCDC"),
+            ("bg-active", "#E2E8F0"),
+            ("text-primary", "#1A1A1A"),
+            ("text-secondary", "#4A5568"),
+            ("text-tertiary", "#6B7280"),
+            ("text-disabled", "#A0AEC0"),
+            ("text-accent", "#90cff3"),
+            ("status-success", "#059669"),
+            ("status-error", "#df0a3f"),
+            ("status-warning", "#F59E0B"),
+            ("status-info", "#2196f3"),
+        ]);
+        insert_system_theme_tokens(&mut theme);
+        insert_legacy_alias_tokens(&mut theme, "#F7F7F7", "#1A1A1A", "#A0AEC0", "#BCCCDC", "#4A5568", "#90cff3", "#df0a3f", "#059669", "#F59E0B", "#E5E7EB", "#6B7280", "#E2E8F0", "#A0AEC0");
         themes.insert("light".to_string(), theme);
     }
     {
         let mut theme = BTreeMap::new();
-        theme.insert("color-primary".to_string(), "#00f2fe".to_string());
-        theme.insert("color-secondary".to_string(), "#4CAF50".to_string());
-        theme.insert("bg-primary".to_string(), "#2a2a2a".to_string());
-        theme.insert("bg-secondary".to_string(), "#1a1a1a".to_string());
-        theme.insert("bg-tertiary".to_string(), "#222222".to_string());
-        theme.insert("bg-hover".to_string(), "#333333".to_string());
-        theme.insert("bg-active".to_string(), "#3a3a3a".to_string());
-        theme.insert("text-primary".to_string(), "#ffffff".to_string());
-        theme.insert("text-secondary".to_string(), "#dddddd".to_string());
-        theme.insert("text-tertiary".to_string(), "#a7a7a7".to_string());
-        theme.insert("text-disabled".to_string(), "#777777".to_string());
-        theme.insert("text-accent".to_string(), "#00f2fe".to_string());
-        theme.insert("status-success".to_string(), "#4CAF50".to_string());
-        theme.insert("status-error".to_string(), "#f44336".to_string());
-        theme.insert("status-warning".to_string(), "#ff9800".to_string());
-        theme.insert("status-info".to_string(), "#2196f3".to_string());
-        theme.insert("spacing-xs".to_string(), "0.25rem".to_string());
-        theme.insert("spacing-sm".to_string(), "0.5rem".to_string());
-        theme.insert("spacing-md".to_string(), "1rem".to_string());
-        theme.insert("spacing-lg".to_string(), "1.5rem".to_string());
-        theme.insert("spacing-xl".to_string(), "2rem".to_string());
-        theme.insert("font-family".to_string(), "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif".to_string());
-        theme.insert("font-mono".to_string(), "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace".to_string());
-        theme.insert("font-size-xs".to_string(), "12px".to_string());
-        theme.insert("font-size-sm".to_string(), "0.875rem".to_string());
-        theme.insert("font-size-base".to_string(), "16px".to_string());
-        theme.insert("font-size-md".to_string(), "16px".to_string());
-        theme.insert("font-size-lg".to_string(), "1.125rem".to_string());
-        theme.insert("font-size-xl".to_string(), "24px".to_string());
-        theme.insert("font-weight-normal".to_string(), "400".to_string());
-        theme.insert("font-weight-medium".to_string(), "500".to_string());
-        theme.insert("font-weight-bold".to_string(), "600".to_string());
-        theme.insert("line-height-tight".to_string(), "1.2".to_string());
-        theme.insert("line-height-normal".to_string(), "1.5".to_string());
-        theme.insert("line-height-loose".to_string(), "1.8".to_string());
-        theme.insert("transition-fast".to_string(), "150ms ease".to_string());
-        theme.insert("transition-normal".to_string(), "250ms ease".to_string());
-        theme.insert("transition-slow".to_string(), "350ms ease".to_string());
-        theme.insert("shadow-sm".to_string(), "0 1px 2px rgba(0,0,0,0.1)".to_string());
+        insert_theme_tokens(&mut theme, &[
+            ("color-primary", "#00f2fe"),
+            ("color-secondary", "#4CAF50"),
+            ("bg-primary", "#2a2a2a"),
+            ("bg-secondary", "#1a1a1a"),
+            ("bg-tertiary", "#222222"),
+            ("bg-hover", "#333333"),
+            ("bg-active", "#3a3a3a"),
+            ("text-primary", "#ffffff"),
+            ("text-secondary", "#dddddd"),
+            ("text-tertiary", "#a7a7a7"),
+            ("text-disabled", "#777777"),
+            ("text-accent", "#00f2fe"),
+            ("status-success", "#4CAF50"),
+            ("status-error", "#f44336"),
+            ("status-warning", "#ff9800"),
+            ("status-info", "#2196f3"),
+        ]);
+        insert_system_theme_tokens(&mut theme);
         theme.insert("shadow-md".to_string(), "0 2px 4px rgba(0,0,0,0.35)".to_string());
-        theme.insert("shadow-lg".to_string(), "0 4px 8px rgba(0,0,0,0.1)".to_string());
-        theme.insert("radius".to_string(), "4px".to_string());
+        insert_legacy_alias_tokens(&mut theme, "#1a1a1a", "#ffffff", "#4CAF50", "#333333", "#dddddd", "#00f2fe", "#f44336", "#4CAF50", "#ff9800", "rgba(255,255,255,0.14)", "#777777", "#222222", "#a7a7a7");
         themes.insert("dark".to_string(), theme);
     }
     {
         let mut theme = BTreeMap::new();
-        theme.insert("color-primary".to_string(), "#39ff14".to_string());
-        theme.insert("color-secondary".to_string(), "#00d084".to_string());
-        theme.insert("bg-primary".to_string(), "#101510".to_string());
-        theme.insert("bg-secondary".to_string(), "#050805".to_string());
-        theme.insert("bg-tertiary".to_string(), "#0b210b".to_string());
-        theme.insert("bg-hover".to_string(), "#123112".to_string());
-        theme.insert("bg-active".to_string(), "#163d16".to_string());
-        theme.insert("text-primary".to_string(), "#f3fff2".to_string());
-        theme.insert("text-secondary".to_string(), "#b6f5b1".to_string());
-        theme.insert("text-tertiary".to_string(), "#7ccf76".to_string());
-        theme.insert("text-disabled".to_string(), "#477047".to_string());
-        theme.insert("text-accent".to_string(), "#39ff14".to_string());
-        theme.insert("status-success".to_string(), "#4CAF50".to_string());
-        theme.insert("status-error".to_string(), "#f44336".to_string());
-        theme.insert("status-warning".to_string(), "#ff9800".to_string());
-        theme.insert("status-info".to_string(), "#2196f3".to_string());
-        theme.insert("spacing-xs".to_string(), "0.25rem".to_string());
-        theme.insert("spacing-sm".to_string(), "0.5rem".to_string());
-        theme.insert("spacing-md".to_string(), "1rem".to_string());
-        theme.insert("spacing-lg".to_string(), "1.5rem".to_string());
-        theme.insert("spacing-xl".to_string(), "2rem".to_string());
-        theme.insert("font-family".to_string(), "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif".to_string());
-        theme.insert("font-mono".to_string(), "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace".to_string());
-        theme.insert("font-size-xs".to_string(), "12px".to_string());
-        theme.insert("font-size-sm".to_string(), "0.875rem".to_string());
-        theme.insert("font-size-base".to_string(), "16px".to_string());
-        theme.insert("font-size-md".to_string(), "16px".to_string());
-        theme.insert("font-size-lg".to_string(), "1.125rem".to_string());
-        theme.insert("font-size-xl".to_string(), "24px".to_string());
-        theme.insert("font-weight-normal".to_string(), "400".to_string());
-        theme.insert("font-weight-medium".to_string(), "500".to_string());
-        theme.insert("font-weight-bold".to_string(), "600".to_string());
-        theme.insert("line-height-tight".to_string(), "1.2".to_string());
-        theme.insert("line-height-normal".to_string(), "1.5".to_string());
-        theme.insert("line-height-loose".to_string(), "1.8".to_string());
-        theme.insert("transition-fast".to_string(), "150ms ease".to_string());
-        theme.insert("transition-normal".to_string(), "250ms ease".to_string());
-        theme.insert("transition-slow".to_string(), "350ms ease".to_string());
-        theme.insert("shadow-sm".to_string(), "0 1px 2px rgba(0,0,0,0.1)".to_string());
+        insert_theme_tokens(&mut theme, &[
+            ("color-primary", "#39ff14"),
+            ("color-secondary", "#00d084"),
+            ("bg-primary", "#101510"),
+            ("bg-secondary", "#050805"),
+            ("bg-tertiary", "#0b210b"),
+            ("bg-hover", "#123112"),
+            ("bg-active", "#163d16"),
+            ("text-primary", "#f3fff2"),
+            ("text-secondary", "#b6f5b1"),
+            ("text-tertiary", "#7ccf76"),
+            ("text-disabled", "#477047"),
+            ("text-accent", "#39ff14"),
+            ("status-success", "#4CAF50"),
+            ("status-error", "#f44336"),
+            ("status-warning", "#ff9800"),
+            ("status-info", "#2196f3"),
+        ]);
+        insert_system_theme_tokens(&mut theme);
         theme.insert("shadow-md".to_string(), "0 2px 8px rgba(57,255,20,0.18)".to_string());
-        theme.insert("shadow-lg".to_string(), "0 4px 8px rgba(0,0,0,0.1)".to_string());
-        theme.insert("radius".to_string(), "4px".to_string());
+        insert_legacy_alias_tokens(&mut theme, "#050805", "#f3fff2", "#00d084", "#123112", "#b6f5b1", "#39ff14", "#f44336", "#4CAF50", "#ff9800", "rgba(57,255,20,0.28)", "#477047", "#0b210b", "#7ccf76");
         themes.insert("radioactive".to_string(), theme);
     }
     let selected = if themes.contains_key(&default) { default } else { "dark".to_string() };
