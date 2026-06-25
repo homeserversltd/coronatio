@@ -69,7 +69,10 @@ The scaffolding SHALL make these decisions visible before they harden:
 The first scaffold proves:
 
 - the repo is Coronatio, not Arcadia;
+- `/` renders the initial Rust crown shell;
 - `/api` names the Coronatio root;
-- `/api/tabs` loads installed tab manifests dynamically;
+- `/api/panes` exposes the first-party native crown pane registry;
+- native crown panes are exactly `admin`, `stats`, `portals`, and `upload`;
+- `/api/tabs` loads installed tab manifests dynamically while preserving native pane readback;
 - unsafe tab ids are rejected;
 - the architecture keeps both options alive: runtime cartridges and full-host recompilation.
