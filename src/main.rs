@@ -696,6 +696,7 @@ fn app(state: AppState) -> Router {
         )
         .route("/api/tabs", any(legacy_homeserver_proxy_route))
         .route("/api/*path", any(legacy_homeserver_proxy_route))
+        .route("/socket.io/", any(legacy_homeserver_proxy_route))
         .route("/socket.io/*path", any(legacy_homeserver_proxy_route))
         .route(
             "/assets/index-BRoXzIjg.js",
