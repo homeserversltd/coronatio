@@ -87,6 +87,45 @@ struct TabList {
     tabs: Vec<TabManifest>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct StatsSnapshot {
+    schema: String,
+    pane_id: String,
+    product: String,
+    transport: StatsTransport,
+    telemetry: StatsTelemetry,
+    next_routes: StatsNextRoutes,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsTransport {
+    snapshot_route: String,
+    event_route: String,
+    renew_route: String,
+    stream_status: String,
+    stream_reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct StatsTelemetry {
+    load1: Option<f64>,
+    cpu_temperature_celsius: Option<f64>,
+    service_health: Option<String>,
+    storage_posture: Option<String>,
+    first_missing_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsNextRoutes {
+    snapshot: String,
+    events: String,
+    renew: String,
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -120,6 +159,7 @@ fn app(state: AppState) -> Router {
         .route("/api", get(api_root_route))
         .route("/api/panes", get(panes_route))
         .route("/api/panes/:pane_id", get(pane_route))
+        .route("/api/stats", get(stats_route))
         .route("/api/tabs", get(tabs_route))
         .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
@@ -149,6 +189,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api".to_string(),
             "/api/panes".to_string(),
             "/api/panes/:pane_id".to_string(),
+            "/api/stats".to_string(),
             "/api/tabs".to_string(),
             "/api/tabs/:tab_id/manifest".to_string(),
             "/tabs/<tab-id>/static/...".to_string(),
@@ -165,6 +206,10 @@ async fn panes_route() -> impl IntoResponse {
         "product": "Coronatio",
         "panes": native_crown_panes()
     }))
+}
+
+async fn stats_route() -> impl IntoResponse {
+    Json(stats_snapshot())
 }
 
 async fn pane_route(Path(pane_id): Path<String>) -> impl IntoResponse {
@@ -300,7 +345,7 @@ fn native_crown_panes() -> Vec<CrownPane> {
             admin_only: false,
             install_mode: InstallMode::FirstPartyNative,
             route: "/#stats".to_string(),
-            state_route: "/api/panes/stats".to_string(),
+            state_route: "/api/stats".to_string(),
         },
         CrownPane {
             id: "portals".to_string(),
@@ -325,6 +370,33 @@ fn native_crown_panes() -> Vec<CrownPane> {
             state_route: "/api/panes/upload".to_string(),
         },
     ]
+}
+
+fn stats_snapshot() -> StatsSnapshot {
+    StatsSnapshot {
+        schema: "coronatio.stats.snapshot.v1".to_string(),
+        pane_id: "stats".to_string(),
+        product: "Coronatio".to_string(),
+        transport: StatsTransport {
+            snapshot_route: "/api/stats".to_string(),
+            event_route: "/api/stats/events".to_string(),
+            renew_route: "/api/stats/events/renew".to_string(),
+            stream_status: "planned".to_string(),
+            stream_reason: "stats SSE lease route is the next Coronatio tranche; snapshot is the current authority".to_string(),
+        },
+        telemetry: StatsTelemetry {
+            load1: None,
+            cpu_temperature_celsius: None,
+            service_health: None,
+            storage_posture: None,
+            first_missing_signal: "stats collectors not wired".to_string(),
+        },
+        next_routes: StatsNextRoutes {
+            snapshot: "/api/stats".to_string(),
+            events: "/api/stats/events".to_string(),
+            renew: "/api/stats/events/renew".to_string(),
+        },
+    }
 }
 
 fn render_crown_shell() -> String {
@@ -559,6 +631,49 @@ mod tests {
         assert_eq!(list.tabs.len(), 1);
         assert_eq!(list.tabs[0].id, "service-card");
         assert_eq!(list.tabs[0].install_mode, InstallMode::DynamicCartridge);
+    }
+
+    #[tokio::test]
+    async fn stats_snapshot_is_honest_first_party_readback() {
+        let temp = test_tab_root("stats-snapshot");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/stats")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let snapshot: StatsSnapshot = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(snapshot.schema, "coronatio.stats.snapshot.v1");
+        assert_eq!(snapshot.pane_id, "stats");
+        assert_eq!(snapshot.product, "Coronatio");
+        assert_eq!(snapshot.transport.snapshot_route, "/api/stats");
+        assert_eq!(snapshot.transport.event_route, "/api/stats/events");
+        assert_eq!(snapshot.transport.renew_route, "/api/stats/events/renew");
+        assert_eq!(snapshot.transport.stream_status, "planned");
+        assert_eq!(snapshot.telemetry.load1, None);
+        assert_eq!(snapshot.telemetry.cpu_temperature_celsius, None);
+        assert_eq!(
+            snapshot.telemetry.first_missing_signal,
+            "stats collectors not wired"
+        );
+    }
+
+    #[test]
+    fn stats_native_pane_points_to_stats_snapshot_route() {
+        let stats = native_crown_panes()
+            .into_iter()
+            .find(|pane| pane.id == "stats")
+            .unwrap();
+        assert_eq!(stats.state_route, "/api/stats");
     }
 
     fn test_tab_root(name: &str) -> PathBuf {

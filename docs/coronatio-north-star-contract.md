@@ -73,6 +73,7 @@ The first scaffold proves:
 - `/api` names the Coronatio root;
 - `/api/panes` exposes the first-party native crown pane registry;
 - native crown panes are exactly `admin`, `stats`, `portals`, and `upload`;
+- `/api/stats` exposes the first honest Stats snapshot readback and names the future SSE lease routes;
 - `/api/tabs` loads installed tab manifests dynamically while preserving native pane readback;
 - unsafe tab ids are rejected;
 - the architecture keeps both options alive: runtime cartridges and full-host recompilation.
