@@ -187,6 +187,7 @@ mod tests {
         assert!(shell.contains(r#"data-modal-title="Tailscale""#));
         assert!(shell.contains(r#"data-modal-body="Tailscale status"#));
         assert!(shell.contains("data-info-modal-backdrop"));
+        assert!(shell.contains(".theme-choice-row[hidden]"));
         assert!(shell.contains("openInfoModal"));
         assert!(shell.contains("document.querySelectorAll('[data-indicator]')"));
         assert!(shell.contains("data-uptime-indicator"));
