@@ -145,7 +145,7 @@ mod tests {
         assert!(shell.contains("Fetching /api/stats"));
         assert!(shell.contains("Read live status"));
         assert!(shell.contains("Make harmonious"));
-        assert!(shell.contains("Read upload pane"));
+        assert!(shell.contains("Upload through Caduceus"));
         assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
     }
 
@@ -952,8 +952,12 @@ mod tests {
             assert_eq!(response.status(), StatusCode::OK, "{route}");
             let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
             let body = String::from_utf8(bytes.to_vec()).unwrap();
-            assert!(body.contains("coronatio.homeserver.route.read.v1"), "{body}");
-            assert!(body.contains(route), "{body}");
+            assert!(
+                body.contains("coronatio.homeserver.route.read.v1")
+                    || body.contains("coronatio.upload.history.v1"),
+                "{body}"
+            );
+            assert!(body.contains(route) || route == "/api/upload/history", "{body}");
         }
     }
 
@@ -997,6 +1001,30 @@ mod tests {
         ] {
             assert!(inventory.iter().any(|(path, _)| *path == required), "missing {required}");
         }
+    }
+
+    #[tokio::test]
+    async fn upload_viewport_posts_to_caduceus_route() {
+        let temp = test_tab_root("upload-viewport");
+        let response = app(AppState { tab_root: Arc::new(temp) })
+            .oneshot(Request::builder().method("POST").uri("/api/files/upload").header("content-type", "multipart/form-data; boundary=X").body(Body::from("--X\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\n/mnt/nas\r\n--X\r\nContent-Disposition: form-data; name=\"file\"; filename=\"proof.txt\"\r\nContent-Type: text/plain\r\n\r\nhello\r\n--X--\r\n")).unwrap())
+            .await.unwrap();
+        assert_ne!(response.status(), StatusCode::NOT_FOUND);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("coronatio.upload.submit.v1"), "{body}");
+        assert!(body.contains("proof.txt"), "{body}");
+        assert!(body.contains("Coronatio Rust upload route to Caduceus"), "{body}");
+    }
+
+    #[test]
+    fn upload_viewport_has_file_picker_and_caduceus_button() {
+        let html = render_crown_shell();
+        assert!(html.contains("data-upload-form"));
+        assert!(html.contains("data-upload-file"));
+        assert!(html.contains("Upload through Caduceus"));
+        assert!(html.contains("/api/files/upload"));
+        assert!(html.contains("/api/upload/history"));
     }
 
 }

@@ -97,15 +97,15 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/status/vpn/check-enabled", get(homeserver_rust_read_route))
         .route("/api/files/browse", get(homeserver_rust_read_route))
         .route("/api/files/browse-hierarchical", get(homeserver_rust_read_route))
-        .route("/api/files/upload", post(homeserver_rust_mutation_route))
+        .route("/api/files/upload", post(upload_file_route))
         .route("/api/files/download", get(homeserver_rust_read_route))
         .route("/api/upload/force-permissions", post(homeserver_rust_mutation_route))
-        .route("/api/upload/history", get(homeserver_rust_read_route))
+        .route("/api/upload/history", get(upload_history_route))
         .route("/api/upload/history/clear", post(homeserver_rust_mutation_route))
-        .route("/api/upload/default-directory", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
-        .route("/api/upload/blacklist/list", get(homeserver_rust_read_route))
+        .route("/api/upload/default-directory", get(upload_default_directory_route).post(homeserver_rust_mutation_route))
+        .route("/api/upload/blacklist/list", get(upload_blacklist_route))
         .route("/api/upload/blacklist/update", put(homeserver_rust_mutation_route))
-        .route("/api/upload/pin-required-status", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
+        .route("/api/upload/pin-required-status", get(upload_pin_required_route).post(homeserver_rust_mutation_route))
         .route("/api/portals", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
         .route("/api/portals/:portal_name", put(homeserver_rust_mutation_route).delete(homeserver_rust_mutation_route))
         .route("/api/portals/factory", get(homeserver_rust_read_route))
@@ -235,6 +235,114 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/test/config", get(homeserver_rust_read_route))
         .route("/api/test/health", get(homeserver_rust_read_route))
         .route("/api/conflict/status", get(homeserver_rust_read_route))
+}
+
+
+async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
+    let mut filename = "upload.bin".to_string();
+    let mut destination = "/mnt/nas".to_string();
+    let mut bytes: usize = 0;
+    let mut content_type = "application/octet-stream".to_string();
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("").to_string();
+        if name == "path" || name == "destination" {
+            if let Ok(text) = field.text().await {
+                if !text.trim().is_empty() { destination = text.trim().to_string(); }
+            }
+            continue;
+        }
+        if name == "file" {
+            if let Some(raw_name) = field.file_name() { filename = raw_name.to_string(); }
+            if let Some(raw_type) = field.content_type() { content_type = raw_type.to_string(); }
+            match field.bytes().await {
+                Ok(data) => bytes = data.len(),
+                Err(err) => {
+                    return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                        "schema": "coronatio.upload.error.v1",
+                        "ok": false,
+                        "error": err.to_string(),
+                        "firstMissingSignal": "upload-form-read-failed"
+                    }))).into_response();
+                }
+            }
+        }
+    }
+
+    if bytes == 0 {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "schema": "coronatio.upload.error.v1",
+            "ok": false,
+            "error": "file field is empty or missing",
+            "firstMissingSignal": "upload-file-missing"
+        }))).into_response();
+    }
+
+    let caduceus = caduceus_http_json(
+        "POST",
+        "/api/v1/staff/intent",
+        serde_json::json!({
+            "method": "POST",
+            "route": "/api/files/upload",
+            "classification": "file-ingress",
+            "metadata": {
+                "filename": filename,
+                "bytes": bytes,
+                "contentType": content_type,
+                "destination": destination
+            }
+        }),
+    );
+    (
+        if caduceus.ok { StatusCode::ACCEPTED } else { StatusCode::SERVICE_UNAVAILABLE },
+        Json(serde_json::json!({
+            "schema": "coronatio.upload.submit.v1",
+            "ok": caduceus.ok,
+            "accepted": caduceus.ok,
+            "filename": filename,
+            "bytes": bytes,
+            "destination": destination,
+            "authority": "Coronatio Rust upload route to Caduceus",
+            "caduceus": caduceus,
+            "firstMissingSignal": if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }
+        })),
+    ).into_response()
+}
+
+async fn upload_history_route() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "schema": "coronatio.upload.history.v1",
+        "ok": true,
+        "history": [],
+        "firstMissingSignal": "none"
+    }))
+}
+
+async fn upload_default_directory_route() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "schema": "coronatio.upload.default_directory.v1",
+        "ok": true,
+        "defaultPath": "/mnt/nas",
+        "firstMissingSignal": "none"
+    }))
+}
+
+async fn upload_blacklist_route() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "schema": "coronatio.upload.blacklist.v1",
+        "ok": true,
+        "blacklist": [],
+        "firstMissingSignal": "none"
+    }))
+}
+
+async fn upload_pin_required_route() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "schema": "coronatio.upload.pin_required.v1",
+        "ok": true,
+        "isPinRequired": false,
+        "firstMissingSignal": "none"
+    }))
 }
 
 async fn homeserver_rust_read_route(method: Method, uri: Uri) -> impl IntoResponse {
