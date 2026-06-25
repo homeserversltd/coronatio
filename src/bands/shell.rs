@@ -49,10 +49,15 @@ fn render_crown_shell() -> String {
     .header-right { justify-content: flex-end; flex-wrap: wrap; }
     .uptime { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; padding: .24rem .5rem; border-radius: 6px; background: rgba(255,255,255,.06); color: var(--text); }
     .status-indicators { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .4rem; }
-    .indicator { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid var(--border); border-radius: 999px; padding: .18rem .55rem; background: rgba(255,255,255,.045); color: var(--text-secondary); font-size: .78rem; }
+    .indicator { display: inline-flex; cursor: pointer; align-items: center; gap: .3rem; border: 1px solid var(--border); border-radius: 999px; padding: .18rem .55rem; background: rgba(255,255,255,.045); color: var(--text-secondary); font-size: .78rem; }
     .indicator::before { content: ''; width: .5rem; height: .5rem; border-radius: 999px; background: var(--warning); box-shadow: 0 0 0 2px rgba(255,152,0,.14); }
     .indicator.ok::before { background: var(--success); box-shadow: 0 0 0 2px rgba(76,175,80,.14); }
     .indicator.warn::before { background: var(--warning); }
+    .indicator:hover { background: rgba(255,255,255,.1); color: var(--text); }
+    .modal-body { display: grid; gap: .65rem; color: var(--text-secondary); }
+    .modal-body ul { margin: .25rem 0 0; padding-left: 1.15rem; }
+    .theme-choice-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+    .theme-choice { min-width: 90px; }
     .header-control, .admin-button, .theme-button, .change-admin-pin-button { min-height: 34px; min-width: 120px; padding: 0 .9rem; border: none; border-radius: 6px; background: var(--primary); color: #061006; font-size: .86rem; font-weight: 700; box-shadow: inset 0 2px 4px rgba(0,0,0,.2); }
     .header-control:hover, .admin-button:hover, .theme-button:hover, .change-admin-pin-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
     .modal-backdrop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.55); z-index: 2000; padding: 1rem; }
@@ -162,15 +167,15 @@ fn render_crown_shell() -> String {
         <div class="header-left"><span class="uptime" data-uptime-indicator title="Server uptime">connecting...</span></div>
         <div class="header-center">
           <div class="status-indicators" aria-label="Status indicators">
-            <span class="indicator ok" data-indicator="tailscale">Tailscale</span>
-            <span class="indicator ok" data-indicator="internet">Internet</span>
-            <span class="indicator warn" data-indicator="openvpn">OpenVPN</span>
-            <span class="indicator ok" data-indicator="services">Services</span>
-            <span class="indicator warn" data-indicator="power-meter">Power Meter</span>
+            <button type="button" class="indicator ok" data-indicator="tailscale" data-modal-title="Tailscale" data-modal-body="Tailscale status, tailnet posture, service enablement, and connect/disconnect controls.">Tailscale</button>
+            <button type="button" class="indicator ok" data-indicator="internet" data-modal-title="Internet" data-modal-body="Internet status, public IP posture, and speed-test/diagnostic controls.">Internet</button>
+            <button type="button" class="indicator warn" data-indicator="openvpn" data-modal-title="OpenVPN" data-modal-body="OpenVPN tunnel state, client profile posture, and recovery controls.">OpenVPN</button>
+            <button type="button" class="indicator ok" data-indicator="services" data-modal-title="Services" data-modal-body="Service health summary with per-service running/enabled detail.">Services</button>
+            <button type="button" class="indicator warn" data-indicator="power-meter" data-modal-title="Power Meter" data-modal-body="Power meter readback, energy telemetry, and device availability.">Power Meter</button>
           </div>
         </div>
         <div class="header-right">
-          <button type="button" class="theme-button" data-theme-button title="Current theme: dark. Click to cycle themes."><span>dark</span></button>
+          <button type="button" class="theme-button" data-theme-button title="Current theme: dark. Open theme selector."><span>dark</span></button>
           <button type="button" class="change-admin-pin-button" data-change-pin-button hidden>Change PIN</button>
           <button type="button" class="admin-button" data-admin-button data-admin-state="logged-out">Enter Admin Mode</button>
         </div>
@@ -193,6 +198,18 @@ fn render_crown_shell() -> String {
         </form>
         <div class="toast-slot" data-pin-modal-message></div>
         <div class="modal-actions"><button type="button" class="secondary" data-pin-cancel>Cancel</button><button type="button" data-pin-confirm-button>Confirm</button></div>
+      </section>
+    </div>
+    <div class="modal-backdrop" data-info-modal-backdrop aria-hidden="true">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="info-modal-title">
+        <h2 id="info-modal-title">Status</h2>
+        <div class="modal-body" data-info-modal-body></div>
+        <div class="theme-choice-row" data-theme-choice-row hidden>
+          <button type="button" class="theme-choice" data-theme-choice="dark">dark</button>
+          <button type="button" class="theme-choice" data-theme-choice="light">light</button>
+          <button type="button" class="theme-choice" data-theme-choice="blue">blue</button>
+        </div>
+        <div class="modal-actions"><button type="button" class="secondary" data-info-modal-close>Close</button></div>
       </section>
     </div>
     <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist" data-admin-mode="true" data-hidden="false">__NAV__</nav>
@@ -248,6 +265,10 @@ fn render_crown_shell() -> String {
     const modalBackdrop = document.querySelector('[data-pin-modal-backdrop]');
     const modalTitle = document.getElementById('pin-modal-title');
     const modalMessage = document.querySelector('[data-pin-modal-message]');
+    const infoBackdrop = document.querySelector('[data-info-modal-backdrop]');
+    const infoTitle = document.getElementById('info-modal-title');
+    const infoBody = document.querySelector('[data-info-modal-body]');
+    const themeChoiceRow = document.querySelector('[data-theme-choice-row]');
     const currentPinInput = document.querySelector('[data-pin-current]');
     const changeCurrentPinInput = document.querySelector('[data-pin-change-current]');
     const newPinInput = document.querySelector('[data-pin-new]');
@@ -257,7 +278,7 @@ fn render_crown_shell() -> String {
       document.documentElement.dataset.theme = headerState.theme;
       if (themeButton) {
         themeButton.querySelector('span').textContent = headerState.theme;
-        themeButton.title = 'Current theme: ' + headerState.theme + '. Click to cycle themes.';
+        themeButton.title = 'Current theme: ' + headerState.theme + '. Open theme selector.';
       }
     }
     function setAdminMode(value) {
@@ -286,12 +307,28 @@ fn render_crown_shell() -> String {
       modalBackdrop.classList.remove('open');
       modalBackdrop.setAttribute('aria-hidden', 'true');
     }
+    function openInfoModal(title, body, mode = 'status') {
+      infoTitle.textContent = title;
+      infoBody.innerHTML = '<p>' + body + '</p>' + (mode === 'theme' ? '<p>Choose the active HOMESERVER theme.</p>' : '<ul><li>Live Rust header control</li><li>Detailed backend wiring continues through Coronatio/Caduceus routes</li></ul>');
+      themeChoiceRow.hidden = mode !== 'theme';
+      infoBackdrop.classList.add('open');
+      infoBackdrop.setAttribute('aria-hidden', 'false');
+    }
+    function closeInfoModal() {
+      infoBackdrop.classList.remove('open');
+      infoBackdrop.setAttribute('aria-hidden', 'true');
+    }
+    document.querySelector('[data-info-modal-close]')?.addEventListener('click', closeInfoModal);
+    document.querySelectorAll('[data-indicator]').forEach(button => button.addEventListener('click', () => openInfoModal(button.dataset.modalTitle, button.dataset.modalBody)));
     themeButton?.addEventListener('click', () => {
-      const next = themes[(themes.indexOf(headerState.theme) + 1) % themes.length] || 'dark';
-      headerState.theme = next;
+      openInfoModal('Theme', 'Current theme: ' + headerState.theme + '.', 'theme');
+    });
+    document.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click', () => {
+      headerState.theme = button.dataset.themeChoice;
       saveHeaderState();
       applyTheme();
-    });
+      closeInfoModal();
+    }));
     adminButton?.addEventListener('click', () => {
       if (headerState.isAdmin) setAdminMode(false);
       else openPinModal('enter');
