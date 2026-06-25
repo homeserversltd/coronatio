@@ -183,6 +183,10 @@ fn shell_document_1() -> &'static str {
     .portal-description { margin: 0; color: var(--text-secondary); font-size: .9rem; line-height: 1.35; }
     .portal-service-row { display: flex; gap: .35rem; justify-content: center; flex-wrap: wrap; color: var(--text-secondary); font-size: .78rem; }
     .portal-chip { border: 1px solid var(--border); border-radius: 999px; padding: .18rem .45rem; background: rgba(255,255,255,.05); }
+    .portal-admin-controls { width: 100%; display: flex; flex-direction: column; gap: .3rem; }
+    .admin-controls-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: .25rem; width: 100%; }
+    .admin-controls-row button { min-height: 32px; padding: .35rem .45rem; font-size: .82rem; }
+
 
     .card {
       background: var(--surface);

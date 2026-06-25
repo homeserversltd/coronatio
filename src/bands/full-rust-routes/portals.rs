@@ -140,3 +140,94 @@ fn extract_portals(value: &serde_json::Value) -> Vec<PortalEntry> {
         .unwrap_or_default()
 }
 
+
+async fn portal_service_control_route(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
+    let service = match payload.get("service").and_then(serde_json::Value::as_str).map(str::trim) {
+        Some(service) if is_safe_service_name(service) => service.to_string(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "schema": "coronatio.portals.service_control.v1",
+                    "success": false,
+                    "ok": false,
+                    "accepted": false,
+                    "error": "Invalid service name",
+                    "firstMissingSignal": "invalid-service-name"
+                })),
+            )
+                .into_response();
+        }
+    };
+    let action = match payload.get("action").and_then(serde_json::Value::as_str).map(str::trim) {
+        Some(action) if portal_service_action_allowed(action) => action.to_string(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "schema": "coronatio.portals.service_control.v1",
+                    "success": false,
+                    "ok": false,
+                    "accepted": false,
+                    "service": service,
+                    "error": "Invalid action",
+                    "firstMissingSignal": "invalid-service-action"
+                })),
+            )
+                .into_response();
+        }
+    };
+    let systemd_service = if service.ends_with(".service") { service.clone() } else { format!("{service}.service") };
+    let caduceus = caduceus_http_json(
+        "POST",
+        "/api/v1/staff/intent",
+        serde_json::json!({
+            "method": "POST",
+            "route": "/api/service/control",
+            "classification": "portal-service",
+            "metadata": {
+                "service": service,
+                "action": action,
+                "systemdService": systemd_service,
+                "source": "coronatio-portals-admin-mode",
+                "originalQuarry": "Flask portals service_control execute_systemctl_command"
+            }
+        }),
+    );
+    let accepted = caduceus.ok;
+    let status = if accepted { StatusCode::ACCEPTED } else { StatusCode::SERVICE_UNAVAILABLE };
+    (
+        status,
+        Json(serde_json::json!({
+            "schema": "coronatio.portals.service_control.v1",
+            "success": accepted,
+            "ok": accepted,
+            "accepted": accepted,
+            "message": if accepted { format!("Service {action} accepted for {service}") } else { format!("Service {action} for {service} could not reach Caduceus staff") },
+            "route": "/api/service/control",
+            "classification": "portal-service",
+            "service": service,
+            "action": action,
+            "systemdService": systemd_service,
+            "active": serde_json::Value::Null,
+            "output": "Caduceus staff intent membrane accepted the portal service command".to_string(),
+            "authority": "Caduceus staff intent membrane",
+            "caduceus": caduceus,
+            "firstMissingSignal": if accepted { "none".to_string() } else { caduceus.first_missing_signal }
+        })),
+    )
+        .into_response()
+}
+
+fn portal_service_action_allowed(action: &str) -> bool {
+    matches!(action, "start" | "stop" | "restart" | "enable" | "disable" | "status")
+}
+
+fn is_safe_service_name(service: &str) -> bool {
+    !service.is_empty()
+        && !service.contains("..")
+        && service
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'@'))
+}
+

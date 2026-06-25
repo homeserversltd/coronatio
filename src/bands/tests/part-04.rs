@@ -430,6 +430,73 @@
         assert!(!shell.contains("Privileged actuator membrane, port 3014"));
     }
 
+
+    #[test]
+    fn portals_admin_mode_ports_original_service_controls() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("data-service-action=\"start\""));
+        assert!(shell.contains("data-service-action=\"stop\""));
+        assert!(shell.contains("data-service-action=\"restart\""));
+        assert!(shell.contains("data-service-action=\"enable\""));
+        assert!(shell.contains("data-service-action=\"disable\""));
+        assert!(shell.contains("data-service-action=\"status\""));
+        assert!(shell.contains("data-portal-services"));
+        assert!(shell.contains("function handlePortalServiceAction(event)"));
+        assert!(shell.contains("fetch('/api/service/control'"));
+        assert!(shell.contains("data-admin-only data-admin-viewport=\"portals\""));
+    }
+
+    #[tokio::test]
+    async fn portals_service_control_validates_and_enters_caduceus_staff_intent() {
+        let temp = test_tab_root("portal-service-control");
+        let response = app(AppState { tab_root: Arc::new(temp) })
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/service/control")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"service":"jellyfin","action":"restart"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("coronatio.portals.service_control.v1"), "{body}");
+        assert!(body.contains("/api/v1/staff/intent"), "{body}");
+        assert!(body.contains("/api/service/control"), "{body}");
+        assert!(body.contains("portal-service"), "{body}");
+        assert!(body.contains("jellyfin.service"), "{body}");
+        assert!(body.contains("caduceus-unreachable"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn portals_service_control_rejects_shell_injection_and_unknown_actions() {
+        let temp = test_tab_root("portal-service-control-invalid");
+        for body in [
+            r#"{"service":"jellyfin;rm -rf /","action":"restart"}"#,
+            r#"{"service":"jellyfin","action":"reformat"}"#,
+        ] {
+            let response = app(AppState { tab_root: Arc::new(temp.clone()) })
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/service/control")
+                        .header("content-type", "application/json")
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let text = String::from_utf8(bytes.to_vec()).unwrap();
+            assert!(text.contains("coronatio.portals.service_control.v1"), "{text}");
+            assert!(!text.contains("/api/v1/staff/intent"), "{text}");
+        }
+    }
+
     fn test_tab_root(name: &str) -> PathBuf {
         let root =
             std::env::temp_dir().join(format!("coronatio-test-{name}-{}", std::process::id()));
