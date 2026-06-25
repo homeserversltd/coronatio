@@ -194,6 +194,11 @@ fn render_crown_shell() -> String {
     .stats-resource-grid, .drives-grid, .network-grid, .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem; }
     .stats-resource-card, .drive-info, .network-interface, .service-info, .connections-summary { background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.08); border-radius: 8px; padding: .75rem; }
     .stats-resource-card h3, .drive-info h3, .network-interface h3, .service-info h3 { margin: 0 0 .45rem; font-size: .95rem; }
+    .chart-container { position: relative; width: 100%; height: 200px; margin: .5rem 0 1rem; }
+    .cpu-gauge-container { position: relative; width: 100%; height: 170px; margin: .35rem 0 .75rem; }
+    .cpu-temp { position: absolute; inset: auto 0 16px; text-align: center; font-weight: 800; color: var(--accent); pointer-events: none; }
+    .cpu-details { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .35rem; color: var(--text-secondary); font-size: .78rem; text-align: center; }
+    .chart-fallback { color: var(--warning); font-size: .82rem; margin: .5rem 0; }
     .progress-bar { width: 100%; height: 8px; background: var(--background); border-radius: 999px; overflow: hidden; margin: .55rem 0; }
     .progress-bar .progress { height: 100%; width: 0%; background: var(--accent); transition: width .18s ease; }
     .details, .traffic, .counts, .service-info .details { display: flex; justify-content: space-between; gap: .65rem; color: var(--text-secondary); font-size: .84rem; flex-wrap: wrap; }
@@ -228,6 +233,8 @@ fn render_crown_shell() -> String {
       .portal-grid, .pane-grid { grid-template-columns: 1fr; }
     }
   </style>
+  <script src="/static/vendor/chart.umd.min.js" data-chart-dependency="chartjs-4.4.0"></script>
+  <script src="/static/vendor/chartjs-plugin-datalabels.min.js" data-chart-dependency="chartjs-plugin-datalabels-2.2.0"></script>
 </head>
 <body>
   <main class="app" data-product="Coronatio" data-source-material="homeserver-main-site" data-admin-mode="false">
@@ -406,8 +413,8 @@ fn render_crown_shell() -> String {
           <section class="stats-section resources" aria-label="Resources">
             <h2>Resources</h2>
             <div class="stats-resource-grid">
-              <article class="stats-resource-card"><h3>CPU Load</h3><div class="metric" id="stats-load">—</div><p class="muted">1 / 5 / 15 minute load</p><div class="details"><span id="stats-load-5">5m —</span><span id="stats-load-15">15m —</span></div></article>
-              <article class="stats-resource-card"><h3>Memory</h3><div class="metric" id="stats-memory">—</div><div class="progress-bar"><div class="progress" id="stats-memory-progress"></div></div><div class="details"><span id="stats-memory-used">Used —</span><span id="stats-memory-total">Total —</span></div></article>
+              <article class="stats-resource-card chart-card" data-chart-card="cpu"><h3>CPU</h3><div class="cpu-gauge-container"><canvas id="cpu-gauge" data-chart-canvas="cpu-gauge"></canvas><div id="cpu-temp" class="cpu-temp">—°C</div></div><div id="cpu-details" class="cpu-details"><span>5s <strong id="cpu-5s">—</strong>%</span><span>1m <strong id="cpu-1m">—</strong>%</span><span>5m <strong id="cpu-5m">—</strong>%</span><span>Cores <strong id="cpu-cores">—</strong></span></div></article>
+              <article class="stats-resource-card chart-card" data-chart-card="memory"><h3>Memory</h3><div class="chart-container"><canvas id="memory-chart" data-chart-canvas="memory-chart"></canvas></div><div class="metric" id="stats-memory">—</div><div class="progress-bar"><div class="progress" id="stats-memory-progress"></div></div><div class="details"><span id="stats-memory-used">Used —</span><span id="stats-memory-total">Total —</span></div></article>
               <article class="stats-resource-card"><h3>Swap</h3><div class="metric" id="stats-swap">—</div><div class="progress-bar"><div class="progress" id="stats-swap-progress"></div></div><div class="details"><span id="stats-swap-used">Used —</span><span id="stats-swap-total">Total —</span></div></article>
             </div>
           </section>
@@ -417,6 +424,7 @@ fn render_crown_shell() -> String {
           </section>
           <section class="stats-section network" aria-label="Network">
             <h2>Network</h2>
+            <div class="chart-container"><canvas id="network-chart" data-chart-canvas="network-chart"></canvas></div>
             <div class="network-grid" data-stats-network></div>
             <div class="connections-summary" data-stats-connections></div>
           </section>
@@ -768,6 +776,105 @@ fn render_crown_shell() -> String {
       if (el) el.style.width = (percent ?? 0) + '%';
     }
     function metricPercent(value) { return value === null || value === undefined ? '—' : value + '%'; }
+    const statsChartState = {
+      labels: [],
+      cpu: [],
+      temp: [],
+      memory: [],
+      rx: [],
+      tx: [],
+      lastRx: null,
+      lastTx: null,
+      lastStamp: null,
+      charts: {}
+    };
+    function chartReady() { return typeof Chart !== 'undefined'; }
+    function pushChartPoint(label, data) {
+      const now = Date.now();
+      const totalRx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.rxBytes || 0), 0);
+      const totalTx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.txBytes || 0), 0);
+      const seconds = statsChartState.lastStamp ? Math.max(1, (now - statsChartState.lastStamp) / 1000) : 1;
+      const rxRate = statsChartState.lastRx === null ? 0 : Math.max(0, (totalRx - statsChartState.lastRx) / seconds);
+      const txRate = statsChartState.lastTx === null ? 0 : Math.max(0, (totalTx - statsChartState.lastTx) / seconds);
+      statsChartState.lastRx = totalRx;
+      statsChartState.lastTx = totalTx;
+      statsChartState.lastStamp = now;
+      statsChartState.labels.push(label);
+      statsChartState.cpu.push(Number(data.resources?.load?.one || 0));
+      statsChartState.temp.push(Number(data.resources?.load?.cpuTemperatureCelsius || 0));
+      statsChartState.memory.push(Number(data.resources?.memory?.percent || 0));
+      statsChartState.rx.push(rxRate);
+      statsChartState.tx.push(txRate);
+      if (statsChartState.labels.length > 60) {
+        ['labels', 'cpu', 'temp', 'memory', 'rx', 'tx'].forEach(key => statsChartState[key].shift());
+      }
+    }
+    function chartColors(ctx, top, bottom, height = 200) {
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, top);
+      gradient.addColorStop(1, bottom);
+      return gradient;
+    }
+    function ensureStatsCharts(data) {
+      if (!chartReady()) {
+        document.querySelectorAll('.chart-card').forEach(card => {
+          if (!card.querySelector('.chart-fallback')) card.insertAdjacentHTML('beforeend', '<p class="chart-fallback">Chart.js dependency unavailable.</p>');
+        });
+        return;
+      }
+      if (window.ChartDataLabels && Chart.register) Chart.register(window.ChartDataLabels);
+      const cpuCanvas = document.getElementById('cpu-gauge');
+      if (cpuCanvas && !statsChartState.charts.cpuGauge) {
+        const ctx = cpuCanvas.getContext('2d');
+        statsChartState.charts.cpuGauge = new Chart(ctx, {
+          type: 'doughnut',
+          data: { datasets: [
+            { data: [0, 100], backgroundColor: ['rgba(78, 121, 167, 0.8)', 'rgba(78, 121, 167, 0.2)'], borderWidth: 0, circumference: 180, rotation: -90, cutout: '70%' },
+            { data: [0, 100], backgroundColor: ['rgba(242, 142, 44, 0.8)', 'rgba(242, 142, 44, 0.2)'], borderWidth: 0, circumference: 180, rotation: -90, cutout: '55%' },
+            { data: [0, 100], backgroundColor: ['rgba(225, 87, 89, 0.8)', 'rgba(225, 87, 89, 0.2)'], borderWidth: 0, circumference: 180, rotation: -90, cutout: '40%' }
+          ] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: { enabled: false }, legend: { display: false }, datalabels: { color: 'white', formatter: (value, ctx) => ctx.dataIndex === 0 ? Number(value).toFixed(1) + '%' : '', anchor: 'end', align: 'start', offset: 10, font: { size: 10 } } } }
+        });
+      }
+      const memoryCanvas = document.getElementById('memory-chart');
+      if (memoryCanvas && !statsChartState.charts.memory) {
+        const ctx = memoryCanvas.getContext('2d');
+        statsChartState.charts.memory = new Chart(ctx, {
+          type: 'line',
+          data: { labels: statsChartState.labels, datasets: [{ label: 'Memory Usage', data: statsChartState.memory, borderColor: chartColors(ctx, 'rgba(99, 179, 237, 0.9)', 'rgba(99, 179, 237, 0.25)'), backgroundColor: 'rgba(99, 179, 237, 0.14)', borderWidth: 2, fill: true, tension: 0.4 }] },
+          options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, scales: { x: { ticks: { maxTicksLimit: 5, color: '#9ca3af' }, grid: { display: false } }, y: { beginAtZero: true, max: 100, ticks: { callback: value => value + '%', color: '#9ca3af' }, grid: { color: 'rgba(156,163,175,0.1)' } } }, plugins: { legend: { display: false }, datalabels: { display: false } } }
+        });
+      }
+      const networkCanvas = document.getElementById('network-chart');
+      if (networkCanvas && !statsChartState.charts.network) {
+        const ctx = networkCanvas.getContext('2d');
+        statsChartState.charts.network = new Chart(ctx, {
+          type: 'line',
+          data: { labels: statsChartState.labels, datasets: [
+            { label: 'Download', data: statsChartState.rx, borderColor: '#63b3ed', backgroundColor: 'rgba(99, 179, 237, 0.2)', fill: true, tension: 0.4 },
+            { label: 'Upload', data: statsChartState.tx, borderColor: '#f6ad55', backgroundColor: 'rgba(246, 173, 85, 0.2)', fill: true, tension: 0.4 }
+          ] },
+          options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, scales: { x: { display: true, grid: { display: false }, ticks: { maxTicksLimit: 5, color: '#9ca3af' } }, y: { beginAtZero: true, ticks: { callback: value => fmtBytes(value) + '/s', color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.1)' } } }, plugins: { legend: { display: false }, datalabels: { display: false }, tooltip: { callbacks: { label: context => context.dataset.label + ': ' + fmtBytes(context.parsed.y) + '/s' } } } }
+        });
+      }
+      updateStatsCharts(data);
+    }
+    function updateStatsCharts(data) {
+      if (!chartReady()) return;
+      const load = data.resources?.load || {};
+      const cpuNow = Number(load.one || 0);
+      const cpu1m = Number(load.five || cpuNow);
+      const cpu5m = Number(load.fifteen || cpu1m);
+      const gauge = statsChartState.charts.cpuGauge;
+      if (gauge) {
+        gauge.data.datasets[0].data = [cpuNow, Math.max(0, 100 - cpuNow)];
+        gauge.data.datasets[1].data = [cpu1m, Math.max(0, 100 - cpu1m)];
+        gauge.data.datasets[2].data = [cpu5m, Math.max(0, 100 - cpu5m)];
+        gauge.update();
+      }
+      if (statsChartState.charts.memory) statsChartState.charts.memory.update();
+      if (statsChartState.charts.network) statsChartState.charts.network.update();
+    }
     async function hydrateStats() {
       try {
         const data = await fetch('/api/stats').then(r => r.json());
@@ -775,9 +882,13 @@ fn render_crown_shell() -> String {
         const load = data.resources?.load || {};
         const memory = data.resources?.memory || {};
         const swap = data.resources?.swap || {};
-        document.getElementById('stats-load').textContent = load.one ?? '—';
-        document.getElementById('stats-load-5').textContent = '5m ' + (load.five ?? '—');
-        document.getElementById('stats-load-15').textContent = '15m ' + (load.fifteen ?? '—');
+        const label = new Date().toLocaleTimeString();
+        pushChartPoint(label, data);
+        document.getElementById('cpu-temp').textContent = (load.cpuTemperatureCelsius ?? '—') + '°C';
+        document.getElementById('cpu-5s').textContent = load.one ?? '—';
+        document.getElementById('cpu-1m').textContent = load.five ?? '—';
+        document.getElementById('cpu-5m').textContent = load.fifteen ?? '—';
+        document.getElementById('cpu-cores').textContent = navigator.hardwareConcurrency || '—';
         document.getElementById('stats-memory').textContent = metricPercent(memory.percent);
         document.getElementById('stats-memory-used').textContent = 'Used ' + fmtBytes(memory.usedBytes);
         document.getElementById('stats-memory-total').textContent = 'Total ' + fmtBytes(memory.totalBytes);
@@ -794,6 +905,7 @@ fn render_crown_shell() -> String {
         document.querySelector('[data-stats-connections]').innerHTML = `<div class="counts"><span>Established: ${counts.established ?? 0}</span><span>Listening: ${counts.listening ?? 0}</span><span>Total: ${counts.total ?? 0}</span></div>`;
         const services = document.querySelector('[data-stats-services]');
         services.innerHTML = (data.services || []).map(service => `<article class="service-info"><h3><span class="status-dot ${service.status}"></span>${service.name}</h3><div class="details"><span>${service.status}</span><span>${service.route}</span></div><p class="muted">${service.details}</p></article>`).join('');
+        ensureStatsCharts(data);
         document.getElementById('stats-stream').textContent = (data.transport?.streamStatus || 'unknown') + ' — ' + (data.transport?.streamReason || '');
         document.getElementById('stats-missing').textContent = caduceus?.firstMissingSignal || data.telemetry?.firstMissingSignal || 'none';
         document.getElementById('stats-readout').textContent = JSON.stringify({ stats: data, caduceus }, null, 2);
@@ -802,6 +914,7 @@ fn render_crown_shell() -> String {
     showPane((location.hash || '#' + (tabState.starredTab || firstVisibleTab())).slice(1));
     hydrateUptime();
     hydrateStats();
+    setInterval(hydrateStats, 5000);
   </script>
 </body>
 </html>"###;
