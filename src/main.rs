@@ -2580,7 +2580,7 @@ fn render_crown_shell() -> String {
         };
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-BRoXzIjg.js"></script>
+    <script type="module" crossorigin src="/assets/index-BRoXzIjg.js?coronatio-identical=20260625"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-Co-PYpJ8.css">
   </head>
   <body>
