@@ -104,11 +104,11 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/upload/blacklist/list", get(upload_blacklist_route))
         .route("/api/upload/blacklist/update", put(homeserver_rust_mutation_route))
         .route("/api/upload/pin-required-status", get(upload_pin_required_route).post(homeserver_rust_mutation_route))
-        .route("/api/portals", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
+        .route("/api/portals", get(portals_config_route).post(homeserver_rust_mutation_route))
         .route("/api/portals/:portal_name", put(homeserver_rust_mutation_route).delete(homeserver_rust_mutation_route))
-        .route("/api/portals/factory", get(homeserver_rust_read_route))
+        .route("/api/portals/factory", get(portals_factory_route))
         .route("/api/service/control", post(homeserver_rust_mutation_route))
-        .route("/api/portals/images/:filename", get(homeserver_rust_read_route))
+        .route("/api/portals/images/:filename", get(portal_image_route))
         .route("/api/status/internet/speedtest", post(homeserver_rust_mutation_route))
         .route("/status/power/usage", get(homeserver_rust_read_route))
         .route("/api/status/power/usage", get(homeserver_rust_read_route))
@@ -400,6 +400,9 @@ fn homeserver_mutation_response(method: &str, path: &str) -> Response {
     )
         .into_response()
 }
+
+
+include!("full-rust-routes/portals.rs");
 
 fn homeserver_route_family(path: &str) -> &'static str {
     if path.contains("/diskman") || path.contains("/vault") || path.contains("/crypto") || path.contains("/keyman") {

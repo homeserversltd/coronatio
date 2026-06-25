@@ -187,12 +187,11 @@ fn shell_document_2() -> &'static str {
         </div>
       </section>
       <section class="pane" id="pane-portals" data-pane-panel="portals" role="tabpanel" aria-label="Portals">
-        <div class="portal-grid">
-          <article class="card portal-card"><div><h2>Admitted services</h2><p>Portal cards follow the main HomeServer service-grid pattern and expose the live config contract.</p></div><div class="button-row"><button data-fetch="/api/services/data" data-target="portals-readout">Read service contract</button><a class="action-link secondary" href="https://home.arpa/">Open main HomeServer</a></div></article>
-          <article class="card portal-card"><div><h2>Coronatio</h2><p>Rust crown preview, port 3013.</p></div><div class="button-row" data-admin-only data-admin-viewport="portals"><button data-fetch="/api/portals" data-method="POST" data-target="portals-readout">Add portal</button><button class="secondary" data-fetch="/api/portals/coronatio" data-method="PUT" data-target="portals-readout">Edit portal</button></div><span class="status-pill ok">online</span></article>
-          <article class="card portal-card"><div><h2>Caduceus</h2><p>Privileged actuator membrane, port 3014.</p></div><div class="button-row"><button data-fetch="/api/caduceus/status" data-target="portals-readout">Status</button><a class="action-link secondary" href="http://home.arpa:3014/health">Health</a></div></article>
+        <div class="portal-grid" data-portals-grid data-portals-source="/api/portals">
+          <article class="card portal-card portal-loading" data-portals-loading><div><h2>Admitted services</h2><p>Reading homeserver.json portal entries.</p></div></article>
         </div>
-        <pre class="readout" id="portals-readout">Service contract readback will appear here.</pre>
+        <div class="button-row"><a class="action-link secondary" href="https://home.arpa/">Open main HomeServer</a><button data-fetch="/api/services/data" data-target="portals-readout">Read service contract</button><button data-fetch="/api/portals/factory" data-target="portals-readout">Factory portals</button><button data-admin-only data-admin-viewport="portals" data-fetch="/api/portals" data-method="POST" data-target="portals-readout">Add portal</button></div>
+        <pre class="readout" id="portals-readout">Portal cards load from homeserver.json through /api/portals for HomeServer.</pre>
       </section>
       <section class="pane" id="pane-upload" data-pane-panel="upload" role="tabpanel" aria-label="Upload">
         <div class="pane-grid upload-viewport" data-upload-viewport>

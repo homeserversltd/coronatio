@@ -241,6 +241,48 @@ fn shell_document_4() -> &'static str {
         document.getElementById('stats-readout').textContent = JSON.stringify({ stats: data, caduceus }, null, 2);
       } catch (error) { document.getElementById('stats-readout').textContent = String(error); }
     }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    }
+    function portalDestination(portal) {
+      return portal.localURL || portal.remoteURL || '#';
+    }
+    function renderPortalCard(portal, factoryNames) {
+      const destination = portalDestination(portal);
+      const factory = factoryNames.includes(portal.name);
+      const services = (portal.services || []).map(service => `<span class="portal-chip">${escapeHtml(service)}</span>`).join('');
+      const port = portal.port ? `<span class="portal-chip">:${escapeHtml(portal.port)}</span>` : '';
+      return `<article class="card portal-card ${escapeHtml(portal.status || 'unknown')}" data-portal-card data-portal-name="${escapeHtml(portal.name)}" data-portal-url="${escapeHtml(destination)}" role="link" tabindex="0">
+        <div class="portal-card-header">
+          <img src="/api/portals/images/${encodeURIComponent(portal.name)}.png" alt="${escapeHtml(portal.name)} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">
+          <h2 class="portal-name">${escapeHtml(portal.name)}</h2>
+          <p class="portal-description">${escapeHtml(portal.description || '')}</p>
+        </div>
+        <div class="portal-service-row">${factory ? '<span class="portal-chip">factory</span>' : '<span class="portal-chip">custom</span>'}${port}${services}</div>
+      </article>`;
+    }
+    async function hydratePortals() {
+      const grid = document.querySelector('[data-portals-grid]');
+      const readout = document.getElementById('portals-readout');
+      if (!grid) return;
+      try {
+        const data = await fetch(grid.dataset.portalsSource || '/api/portals').then(r => r.json());
+        const portals = data.portals || [];
+        const factoryNames = data.factoryPortals || [];
+        grid.innerHTML = portals.length ? portals.map(portal => renderPortalCard(portal, factoryNames)).join('') : '<article class="card portal-card"><h2>No portals configured</h2><p>homeserver.json has no portal entries.</p></article>';
+        grid.querySelectorAll('[data-portal-card]').forEach(card => {
+          const open = () => { const url = card.dataset.portalUrl; if (url && url !== '#') window.open(url, '_blank', 'noopener,noreferrer'); };
+          card.addEventListener('click', open);
+          card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+        });
+        if (readout) readout.textContent = JSON.stringify({ source: data.source, count: portals.length, firstMissingSignal: data.firstMissingSignal }, null, 2);
+      } catch (error) {
+        grid.innerHTML = '<article class="card portal-card error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>';
+        if (readout) readout.textContent = 'portal load failed: ' + error;
+      }
+    }
+
     async function hydrateFavoriteManifest() {
       try {
         const favorite = await fetch('/api/favorites').then(r => r.json());
@@ -255,6 +297,7 @@ fn shell_document_4() -> &'static str {
     hydrateFavoriteManifest();
     hydrateUptime();
     hydrateStats();
+    hydratePortals();
     setInterval(hydrateStats, 5000);
   </script>
 </body>

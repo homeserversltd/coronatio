@@ -356,6 +356,80 @@
         assert!(root.routes.contains(&"/api/installer".to_string()));
     }
 
+
+    #[tokio::test]
+    async fn portals_route_reads_homeserver_json_portals_like_original_surface() {
+        let temp = test_tab_root("portals-json-read");
+        let config_path = temp.join("homeserver.json");
+        let factory_path = temp.join("homeserver.factory");
+        std::fs::write(&config_path, r#"{
+          "tabs": { "portals": { "data": { "portals": [
+            { "name": "Coronatio", "description": "Rust crown", "services": ["coronatio"], "type": "systemd", "port": 3013, "localURL": "http://home.arpa:3013/", "remoteURL": "https://home.tail13aff.ts.net:13013/" },
+            { "name": "Docs", "description": "Reference", "services": [], "type": "link", "localURL": "https://docs.home.arpa/" }
+          ] } } }
+        }"#).unwrap();
+        std::fs::write(&factory_path, r#"{
+          "tabs": { "portals": { "data": { "portals": [
+            { "name": "Coronatio", "description": "Rust crown", "services": ["coronatio"], "type": "systemd", "port": 3013, "localURL": "http://home.arpa:3013/" }
+          ] } } }
+        }"#).unwrap();
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config_path);
+        std::env::set_var("CORONATIO_HOMESERVER_FACTORY_JSON", &factory_path);
+        let response = app(AppState { tab_root: Arc::new(temp) })
+            .oneshot(Request::builder().uri("/api/portals").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let data: PortalConfigResponse = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(data.schema, "coronatio.portals.config.v1");
+        assert_eq!(data.route, "/api/portals");
+        assert!(data.success);
+        assert_eq!(data.portals.len(), 2);
+        assert_eq!(data.portals[0].name, "Coronatio");
+        assert_eq!(data.portals[0].port, Some(3013));
+        assert_eq!(data.portals[0].local_url, "http://home.arpa:3013/");
+        assert_eq!(data.portals[0].remote_url.as_deref(), Some("https://home.tail13aff.ts.net:13013/"));
+        assert_eq!(data.portals[1].r#type, "link");
+        assert!(data.factory_portals.contains(&"Coronatio".to_string()));
+        assert_eq!(data.first_missing_signal, "none");
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+        std::env::remove_var("CORONATIO_HOMESERVER_FACTORY_JSON");
+    }
+
+    #[tokio::test]
+    async fn portal_image_route_serves_original_portal_icons() {
+        let temp = test_tab_root("portal-images");
+        let images = temp.join("images");
+        std::fs::create_dir_all(&images).unwrap();
+        std::fs::write(images.join("Coronatio.png"), b"png-bytes").unwrap();
+        std::env::set_var("CORONATIO_PORTAL_IMAGE_ROOT", &images);
+        let response = app(AppState { tab_root: Arc::new(temp) })
+            .oneshot(Request::builder().uri("/api/portals/images/Coronatio.png").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(axum::http::header::CONTENT_TYPE).unwrap(),
+            "image/png"
+        );
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(&bytes[..], b"png-bytes");
+        std::env::remove_var("CORONATIO_PORTAL_IMAGE_ROOT");
+    }
+
+    #[test]
+    fn portals_viewport_hydrates_cards_from_api_not_static_scaffold() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("data-portals-grid"));
+        assert!(shell.contains("data-portals-source=\"/api/portals\""));
+        assert!(shell.contains("function hydratePortals()"));
+        assert!(shell.contains("renderPortalCard(portal, factoryNames)"));
+        assert!(shell.contains("/api/portals/images/${encodeURIComponent(portal.name)}.png"));
+        assert!(!shell.contains("Rust crown preview, port 3013"));
+        assert!(!shell.contains("Privileged actuator membrane, port 3014"));
+    }
+
     fn test_tab_root(name: &str) -> PathBuf {
         let root =
             std::env::temp_dir().join(format!("coronatio-test-{name}-{}", std::process::id()));

@@ -308,6 +308,54 @@ struct ConfigRollbackLaw {
     mismatch_policy: String,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct PortalConfigResponse {
+    schema: String,
+    route: String,
+    success: bool,
+    source: String,
+    factory_source: Option<String>,
+    portals: Vec<PortalEntry>,
+    factory_portals: Vec<String>,
+    first_missing_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct PortalFactoryResponse {
+    schema: String,
+    success: bool,
+    source: Option<String>,
+    factory_portals: Vec<String>,
+    first_missing_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct PortalEntry {
+    name: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    services: Vec<String>,
+    #[serde(default = "default_portal_type")]
+    r#type: String,
+    #[serde(default)]
+    port: Option<u16>,
+    #[serde(default, rename = "localURL")]
+    local_url: String,
+    #[serde(default, rename = "remoteURL")]
+    remote_url: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+}
+
+fn default_portal_type() -> String {
+    "systemd".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct ServiceDataReadback {
