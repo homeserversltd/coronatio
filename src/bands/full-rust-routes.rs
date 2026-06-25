@@ -107,7 +107,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/portals", get(portals_config_route).post(homeserver_rust_mutation_route))
         .route("/api/portals/:portal_name", put(homeserver_rust_mutation_route).delete(homeserver_rust_mutation_route))
         .route("/api/portals/factory", get(portals_factory_route))
-        .route("/api/service/control", post(homeserver_rust_mutation_route))
+        .route("/api/service/control", post(portal_service_control_route))
         .route("/api/portals/images/:filename", get(portal_image_route))
         .route("/api/status/internet/speedtest", post(homeserver_rust_mutation_route))
         .route("/status/power/usage", get(homeserver_rust_read_route))

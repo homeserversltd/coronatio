@@ -253,6 +253,11 @@ fn shell_document_4() -> &'static str {
       const factory = factoryNames.includes(portal.name);
       const services = (portal.services || []).map(service => `<span class="portal-chip">${escapeHtml(service)}</span>`).join('');
       const port = portal.port ? `<span class="portal-chip">:${escapeHtml(portal.port)}</span>` : '';
+      const serviceData = encodeURIComponent(JSON.stringify(portal.services || []));
+      const adminControls = portal.type === 'link' ? '' : `<div class="portal-admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="${serviceData}">
+        <div class="admin-controls-row"><button data-service-action="start">Start</button><button data-service-action="stop">Stop</button><button data-service-action="restart">Restart</button></div>
+        <div class="admin-controls-row"><button data-service-action="enable">Enable</button><button data-service-action="disable">Disable</button><button data-service-action="status">Status</button></div>
+      </div>`;
       return `<article class="card portal-card ${escapeHtml(portal.status || 'unknown')}" data-portal-card data-portal-name="${escapeHtml(portal.name)}" data-portal-url="${escapeHtml(destination)}" role="link" tabindex="0">
         <div class="portal-card-header">
           <img src="/api/portals/images/${encodeURIComponent(portal.name)}.png" alt="${escapeHtml(portal.name)} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">
@@ -260,8 +265,40 @@ fn shell_document_4() -> &'static str {
           <p class="portal-description">${escapeHtml(portal.description || '')}</p>
         </div>
         <div class="portal-service-row">${factory ? '<span class="portal-chip">factory</span>' : '<span class="portal-chip">custom</span>'}${port}${services}</div>
+        ${adminControls}
       </article>`;
     }
+
+    async function handlePortalServiceAction(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const button = event.currentTarget;
+      const controls = button.closest('[data-portal-services]');
+      const readout = document.getElementById('portals-readout');
+      const action = button.dataset.serviceAction;
+      let services = [];
+      try { services = JSON.parse(decodeURIComponent(controls?.dataset.portalServices || '%5B%5D')); } catch (_) { services = []; }
+      if (!services.length) {
+        if (readout) readout.textContent = 'No services specified for this portal.';
+        return;
+      }
+      const results = [];
+      for (const service of services) {
+        try {
+          const response = await fetch('/api/service/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ service, action })
+          });
+          const text = await response.text();
+          try { results.push(JSON.parse(text)); } catch (_) { results.push({ service, action, raw: text }); }
+        } catch (error) {
+          results.push({ service, action, error: String(error) });
+        }
+      }
+      if (readout) readout.textContent = JSON.stringify({ schema: 'coronatio.portals.admin.service_controls.ui.v1', action, results }, null, 2);
+    }
+
     async function hydratePortals() {
       const grid = document.querySelector('[data-portals-grid]');
       const readout = document.getElementById('portals-readout');
@@ -276,6 +313,8 @@ fn shell_document_4() -> &'static str {
           card.addEventListener('click', open);
           card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
         });
+        grid.querySelectorAll('[data-service-action]').forEach(button => button.addEventListener('click', handlePortalServiceAction));
+        applyAdminMode();
         if (readout) readout.textContent = JSON.stringify({ source: data.source, count: portals.length, firstMissingSignal: data.firstMissingSignal }, null, 2);
       } catch (error) {
         grid.innerHTML = '<article class="card portal-card error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>';
