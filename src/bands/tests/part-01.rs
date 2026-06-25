@@ -128,7 +128,7 @@
         assert!(body.contains("data-pane-panel=\"upload\""));
         assert!(body.contains("function showPane(id)"));
         assert!(body.contains("fetch('/api/stats')"));
-        assert!(body.contains(r#"data-admin-quarry-button-total="90""#));
+        assert!(body.contains(r#"data-admin-quarry-button-total="87""#));
         assert!(body.contains("Hard Drive Test"));
         assert!(body.contains("Force Update"));
         assert!(body.contains("HomeServer"));
@@ -154,7 +154,7 @@
         assert!(shell.contains("data-stats-services"));
         assert!(shell.contains("Fetching /api/stats"));
         assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
-        assert!(shell.contains(r#"data-admin-quarry-button-total="90""#));
+        assert!(shell.contains(r#"data-admin-quarry-button-total="87""#));
         assert!(shell.contains("data-upload-regular=\"file-ingress\""));
         assert!(shell.contains("Admin upload controls"));
         assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));

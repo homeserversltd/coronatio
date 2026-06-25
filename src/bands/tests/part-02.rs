@@ -2,14 +2,13 @@
     fn admin_pane_stubs_original_flask_react_admin_button_inventory() {
         let shell = render_crown_shell();
         assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
-        assert!(shell.contains(r#"data-admin-quarry-button-total="90""#));
-        assert_eq!(shell.matches("data-admin-quarry-button").count(), 91);
-        assert_eq!(shell.matches("data-admin-quarry-index=").count(), 90);
+        assert!(shell.contains(r#"data-admin-quarry-button-total="87""#));
+        assert_eq!(shell.matches("data-admin-quarry-button").count(), 88);
+        assert_eq!(shell.matches("data-admin-quarry-index=").count(), 87);
         for (group, count) in [
             ("system-controls", 7),
             ("disk-manager", 12),
             ("key-manager", 4),
-            ("debug-subscriptions", 3),
             ("admin-password-modal", 2),
             ("create-key-modal", 2),
             ("hard-drive-test-modal", 6),
@@ -46,6 +45,10 @@
         assert!(shell.contains("view-tabs"));
         assert!(shell.contains("modules-table"));
         assert!(shell.contains("data-stub-action=\"true\""));
+        assert!(!shell.contains("WebSocket Subscriptions"));
+        assert!(!shell.contains("debug-subscriptions"));
+        assert!(!shell.contains("components/DebugSubscriptions.tsx"));
+        assert!(!shell.contains("subscription-debug-panel"));
         assert!(!shell.contains("Front-end stubs mirror the original Flask/React admin-page button inventory from the quarry."));
     }
 
