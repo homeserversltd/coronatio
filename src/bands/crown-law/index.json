@@ -1,0 +1,10 @@
+{
+  "schema": "coronatio.crown-law.index.v1",
+  "children": [
+    "registry-startup.rs",
+    "session-topics-frontend.rs",
+    "service-installer.rs",
+    "stats-tabbar.rs"
+  ],
+  "purpose": "Thin crown-law face; child bands group readback and rendering laws under line pressure."
+}

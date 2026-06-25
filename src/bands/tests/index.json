@@ -1,0 +1,11 @@
+{
+  "schema": "coronatio.tests.index.v1",
+  "children": [
+    "part-01.rs",
+    "part-02.rs",
+    "part-03.rs",
+    "part-04.rs",
+    "part-05.rs"
+  ],
+  "purpose": "Thin test face; child test bands preserve crate-private access while staying under line pressure."
+}

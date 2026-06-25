@@ -1,0 +1,12 @@
+{
+  "schema": "coronatio.shell.index.v1",
+  "children": [
+    "document-1.rs",
+    "document-2.rs",
+    "document-3.rs",
+    "document-4.rs",
+    "render.rs",
+    "runtime.rs"
+  ],
+  "purpose": "Thin shell face; Rust-delivered document chunks recompose through render.rs with runtime helpers separate."
+}
