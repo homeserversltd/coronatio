@@ -199,7 +199,8 @@ mod tests {
         assert!(shell.contains("data-uptime-indicator"));
         assert!(shell.contains(r#"class="theme-button""#));
         assert!(shell.contains("data-theme-button"));
-        assert!(shell.contains("Open theme selector"));
+        assert!(shell.contains("Click to switch theme"));
+        assert!(!shell.contains("Open theme selector"));
         assert!(shell.contains(r#"data-theme-json-source="/api/themes""#));
         assert!(shell.contains("loadThemeCatalog()"));
         assert!(shell.contains("fetch('/api/themes')"));

@@ -244,7 +244,7 @@ fn render_crown_shell() -> String {
           </div>
         </div>
         <div class="header-right">
-          <button type="button" class="theme-button" data-theme-button title="Current theme: dark. Open theme selector."><span>dark</span></button>
+          <button type="button" class="theme-button" data-theme-button title="Current theme: dark. Click to switch theme."><span>dark</span></button>
           <button type="button" class="change-admin-pin-button" data-change-pin-button hidden>Change PIN</button>
           <button type="button" class="admin-button" data-admin-button data-admin-state="logged-out">Enter Admin Mode</button>
         </div>
@@ -534,7 +534,7 @@ fn render_crown_shell() -> String {
       if (themeButton) {
         const label = themeLabel(headerState.theme);
         themeButton.querySelector('span').textContent = label;
-        themeButton.title = 'Current theme: ' + label + '. Open theme selector.';
+        themeButton.title = 'Current theme: ' + label + '. Click to switch theme.';
       }
       document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === headerState.theme)));
     }
@@ -608,9 +608,14 @@ fn render_crown_shell() -> String {
     }
     document.querySelector('[data-info-modal-close]')?.addEventListener('click', closeInfoModal);
     document.querySelectorAll('[data-indicator]').forEach(button => button.addEventListener('click', () => openInfoModal(button.dataset.modalTitle, button.dataset.modalKind)));
-    themeButton?.addEventListener('click', () => {
-      openInfoModal('Theme', 'theme');
-    });
+    function cycleTheme() {
+      if (!themes.length) return;
+      const currentIndex = Math.max(0, themes.indexOf(headerState.theme));
+      headerState.theme = themes[(currentIndex + 1) % themes.length];
+      saveHeaderState();
+      applyTheme();
+    }
+    themeButton?.addEventListener('click', cycleTheme);
     async function loadThemeCatalog() {
       try {
         const catalog = await fetch('/api/themes').then(response => response.json());
