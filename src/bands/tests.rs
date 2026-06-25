@@ -121,10 +121,9 @@ mod tests {
         assert!(body.contains("data-pane-panel=\"upload\""));
         assert!(body.contains("function showPane(id)"));
         assert!(body.contains("fetch('/api/stats')"));
-        assert!(body.contains("/api/caduceus/status"));
-        assert!(body.contains("/api/caduceus/update/check"));
-        assert!(body.contains("/api/caduceus/update/now"));
-        assert!(body.contains("Make harmonious"));
+        assert!(body.contains(r#"data-admin-quarry-button-total="90""#));
+        assert!(body.contains("Hard Drive Test"));
+        assert!(body.contains("Force Update"));
         assert!(body.contains("HomeServer"));
         assert!(body.contains("Admitted services"));
         assert!(body.contains("Safe file ingress"));
@@ -143,8 +142,8 @@ mod tests {
         }
         assert!(shell.contains("Read service contract"));
         assert!(shell.contains("Fetching /api/stats"));
-        assert!(shell.contains("Read live status"));
-        assert!(shell.contains("Make harmonious"));
+        assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
+        assert!(shell.contains(r#"data-admin-quarry-button-total="90""#));
         assert!(shell.contains("Upload through Caduceus"));
         assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
     }
@@ -260,7 +259,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn crown_theme_system_uses_legacy_react_variable_membrane_across_panes() {
         let shell = render_crown_shell();
@@ -289,6 +287,48 @@ mod tests {
         assert!(shell.contains("aria-pressed"));
         assert!(!shell.contains("Choose the active HOMESERVER theme."));
     }
+
+    #[test]
+    fn admin_pane_stubs_original_flask_react_admin_button_inventory() {
+        let shell = render_crown_shell();
+        assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
+        assert!(shell.contains(r#"data-admin-quarry-button-total="90""#));
+        assert_eq!(shell.matches("data-admin-quarry-button").count(), 91);
+        assert_eq!(shell.matches("data-admin-quarry-index=").count(), 90);
+        for (group, count) in [
+            ("system-controls", 7),
+            ("disk-manager", 12),
+            ("key-manager", 4),
+            ("debug-subscriptions", 3),
+            ("admin-password-modal", 2),
+            ("create-key-modal", 2),
+            ("hard-drive-test-modal", 6),
+            ("log-viewer-modal", 6),
+            ("password-input-modal", 3),
+            ("premium-tab-modal", 16),
+            ("root-ca-modal", 5),
+            ("sync-schedule-modal", 2),
+            ("system-action-modal", 1),
+            ("update-key-modal", 2),
+            ("update-manager-modal", 19),
+        ] {
+            assert!(shell.contains(&format!(r#"data-admin-quarry-group="{}""#, group)));
+            assert!(shell.contains(&format!("{} buttons", count)));
+        }
+        for label in [
+            "Hard Drive Test",
+            "Restart Website",
+            "Install Certificate",
+            "Assign as primary NAS",
+            "Auto Sync Schedule",
+            "Create New Key",
+            "View Full Guide & Critical Warnings",
+            "Validate & Clone",
+            "Force Update",
+        ] {
+            assert!(shell.contains(label), "missing admin quarry button label: {}", label);
+        }
+        assert!(shell.contains("Buttons are intentionally disabled until their Rust/Caduceus handlers are wired."));    }
 
     #[tokio::test]
     async fn caduceus_routes_are_exposed_by_coronatio_api_root() {
@@ -618,10 +658,10 @@ mod tests {
         for viewport in ["admin", "stats", "portals", "upload"] {
             assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing admin viewport {viewport}");
         }
-        for admin_action in ["Check machine", "Make harmonious", "Renew lease", "Add portal", "PIN requirement", "Blacklist"] {
+        for admin_action in ["Hard Drive Test", "Force Update", "Renew lease", "Add portal", "PIN requirement", "Blacklist"] {
             assert!(shell.contains(admin_action), "missing {admin_action}");
         }
-        assert!(shell.contains("Read live status"));
+        assert!(shell.contains("90 buttons"));
         assert!(shell.contains("History"));
         assert!(shell.contains("Open main HomeServer"));
     }
