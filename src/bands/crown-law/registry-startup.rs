@@ -115,7 +115,37 @@ fn native_tab_contracts() -> Vec<CoronatioTabContract> {
 fn visible_tab_ids(tabs: &[CoronatioTabContract], is_admin: bool) -> Vec<String> {
     let mut visible = tabs
         .iter()
-        .filter(|tab| tab.enabled && tab.visibility.tab && (!tab.admin_only || is_admin))
+        .filter(|tab| tab.enabled && tab_accessible_in_mode(tab, is_admin))
+        .collect::<Vec<_>>();
+    visible.sort_by(|left, right| left.order.cmp(&right.order).then(left.id.cmp(&right.id)));
+    visible.into_iter().map(|tab| tab.id.clone()).collect()
+}
+
+fn tab_accessible_in_mode(tab: &CoronatioTabContract, is_admin: bool) -> bool {
+    if is_admin {
+        !tab.id.eq("fallback")
+    } else {
+        tab.visibility.tab && !tab.admin_only
+    }
+}
+
+fn selectable_tab_ids(tabs: &[CoronatioTabContract], is_admin: bool) -> Vec<String> {
+    let mut visible = tabs
+        .iter()
+        .filter(|tab| {
+            tab.enabled && tab.visibility.tab && (!tab.admin_only || is_admin) && !tab.id.eq("fallback")
+        })
+        .collect::<Vec<_>>();
+    visible.sort_by(|left, right| left.order.cmp(&right.order).then(left.id.cmp(&right.id)));
+    visible.into_iter().map(|tab| tab.id.clone()).collect()
+}
+
+fn eligible_starred_tab_ids(tabs: &[CoronatioTabContract]) -> Vec<String> {
+    let mut visible = tabs
+        .iter()
+        .filter(|tab| {
+            tab.enabled && tab.visibility.tab && !tab.admin_only && !tab.id.eq("fallback")
+        })
         .collect::<Vec<_>>();
     visible.sort_by(|left, right| left.order.cmp(&right.order).then(left.id.cmp(&right.id)));
     visible.into_iter().map(|tab| tab.id.clone()).collect()
@@ -125,27 +155,31 @@ fn registry_validation_rules() -> Vec<ValidationRule> {
     vec![
         ValidationRule { field: "id".to_string(), rule: "lowercase ascii letters, digits, and hyphen only; @ is normalized away before lookup".to_string() },
         ValidationRule { field: "displayName/title".to_string(), rule: "human visible title is required".to_string() },
-        ValidationRule { field: "visibility.tab".to_string(), rule: "regular users see only enabled visible non-admin tabs; admins see enabled visible tabs including admin-only".to_string() },
+        ValidationRule { field: "visibility.tab".to_string(), rule: "regular users see only enabled visible non-admin tabs; admin sessions render enabled non-fallback tabs, including hidden regular tabs as restorable rows and admin-only tabs".to_string() },
         ValidationRule { field: "order".to_string(), rule: "non-negative sort key; ties sort by tab id for deterministic recovery".to_string() },
-        ValidationRule { field: "starred".to_string(), rule: "default route pointer; invalid, disabled, hidden, or fallback resolves to first visible tab then fallback".to_string() },
+        ValidationRule { field: "starred".to_string(), rule: "default route pointer; invalid, disabled, hidden, admin-only, or fallback resolves to first visible non-admin tab then fallback".to_string() },
         ValidationRule { field: "installMode".to_string(), rule: "dynamic-cartridge for runtime tabs, source-injection-recompile for trusted source lanes, first-party-native only for compiled crown panes".to_string() },
     ]
 }
 
 fn initial_tab(connection_ok: bool, forced_tab: Option<&str>, is_admin: bool) -> String {
-    if let Some(tab) = forced_tab {
-        return normalize_tab_id(tab);
-    }
     if !connection_ok {
         return "fallback".to_string();
     }
     let contracts = native_tab_contracts();
-    let visible = visible_tab_ids(&contracts, is_admin);
+    let selectable = selectable_tab_ids(&contracts, is_admin);
+    if let Some(tab) = forced_tab {
+        let normalized = normalize_tab_id(tab);
+        if selectable.iter().any(|candidate| candidate == &normalized) {
+            return normalized;
+        }
+    }
     let starred = normalize_tab_id("upload");
-    if visible.iter().any(|tab| tab == &starred) {
+    let starred_candidates = eligible_starred_tab_ids(&contracts);
+    if starred_candidates.iter().any(|tab| tab == &starred) {
         starred
     } else {
-        visible
+        selectable
             .first()
             .cloned()
             .unwrap_or_else(|| "fallback".to_string())
