@@ -175,6 +175,35 @@ mod tests {
         assert!(!shell.contains("class=\"tab-button\""));
     }
 
+    #[test]
+    fn crown_header_recreates_flask_react_indicators_pin_and_theme_controls() {
+        let shell = render_crown_shell();
+        assert!(shell.contains(r#"data-flask-react-quarry="Header""#));
+        assert!(shell.contains(r#"class="status-indicators""#));
+        for indicator in ["tailscale", "internet", "openvpn", "services", "power-meter"] {
+            assert!(shell.contains(&format!(r#"data-indicator="{}""#, indicator)));
+        }
+        assert!(shell.contains("data-uptime-indicator"));
+        assert!(shell.contains(r#"class="theme-button""#));
+        assert!(shell.contains("data-theme-button"));
+        assert!(shell.contains("Current theme:"));
+        assert!(shell.contains(r#"class="admin-button""#));
+        assert!(shell.contains("Enter Admin Mode"));
+        assert!(shell.contains("Exit Admin Mode"));
+        assert!(shell.contains(r#"class="change-admin-pin-button""#));
+        assert!(shell.contains("Change PIN"));
+        assert!(shell.contains(r#"id="pin-modal-title""#));
+        assert!(shell.contains("Enter Admin Mode"));
+        assert!(shell.contains("Change Admin PIN"));
+        assert!(shell.contains(r#"placeholder="Enter PIN""#));
+        assert!(shell.contains(r#"placeholder="Current PIN""#));
+        assert!(shell.contains(r#"placeholder="New PIN""#));
+        assert!(shell.contains(r#"placeholder="Confirm new PIN""#));
+        assert!(shell.contains("coronatio.flask-react-header.v1"));
+        assert!(shell.contains("setAdminMode"));
+        assert!(shell.contains("applyTheme"));
+    }
+
     #[tokio::test]
     async fn caduceus_routes_are_exposed_by_coronatio_api_root() {
         let temp = test_tab_root("caduceus-routes");

@@ -43,6 +43,27 @@ fn render_crown_shell() -> String {
     }
     .brand { display: flex; align-items: center; gap: .65rem; font-weight: 700; letter-spacing: .02em; }
     .brand-mark { width: 26px; height: 26px; border-radius: 7px; border: 2px solid var(--accent); display: grid; place-items: center; color: var(--accent); font-size: .82rem; }
+    .header-top-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-width: 0; flex: 1 1 auto; }
+    .header-left, .header-center, .header-right { display: flex; align-items: center; gap: .5rem; }
+    .header-center { justify-content: center; flex: 2 1 auto; min-width: 0; }
+    .header-right { justify-content: flex-end; flex-wrap: wrap; }
+    .uptime { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; padding: .24rem .5rem; border-radius: 6px; background: rgba(255,255,255,.06); color: var(--text); }
+    .status-indicators { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .4rem; }
+    .indicator { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid var(--border); border-radius: 999px; padding: .18rem .55rem; background: rgba(255,255,255,.045); color: var(--text-secondary); font-size: .78rem; }
+    .indicator::before { content: ''; width: .5rem; height: .5rem; border-radius: 999px; background: var(--warning); box-shadow: 0 0 0 2px rgba(255,152,0,.14); }
+    .indicator.ok::before { background: var(--success); box-shadow: 0 0 0 2px rgba(76,175,80,.14); }
+    .indicator.warn::before { background: var(--warning); }
+    .header-control, .admin-button, .theme-button, .change-admin-pin-button { min-height: 34px; min-width: 120px; padding: 0 .9rem; border: none; border-radius: 6px; background: var(--primary); color: #061006; font-size: .86rem; font-weight: 700; box-shadow: inset 0 2px 4px rgba(0,0,0,.2); }
+    .header-control:hover, .admin-button:hover, .theme-button:hover, .change-admin-pin-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .modal-backdrop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.55); z-index: 2000; padding: 1rem; }
+    .modal-backdrop.open { display: grid; }
+    .modal { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.45); padding: 1rem; }
+    .modal h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
+    .pin-modal { display: flex; flex-direction: column; gap: 16px; padding: 16px 0 0; }
+    .pin-modal input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--background); color: var(--text); font-size: 14px; outline: none; }
+    .pin-modal input:focus { border-color: var(--primary); }
+    .modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+    .toast-slot { min-height: 1.2rem; color: var(--warning); font-size: .84rem; margin-top: .5rem; }
     .status-strip { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .45rem; color: var(--text-secondary); font-size: .82rem; }
     .status-pill { border: 1px solid var(--border); border-radius: 999px; padding: .18rem .55rem; background: rgba(255,255,255,.045); }
     .status-pill.ok { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
@@ -124,7 +145,10 @@ fn render_crown_shell() -> String {
     .success { color: var(--success); }
     .drop-zone { border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 8px; padding: 1.2rem; background: rgba(0,242,254,.07); }
     @media (max-width: 760px) {
-      .top-bar { align-items: flex-start; flex-direction: column; padding: .75rem 1rem; }
+      .top-bar { align-items: stretch; flex-direction: column; padding: .75rem 1rem; }
+      .header-top-row { flex-direction: column; align-items: stretch; }
+      .header-left, .header-center, .header-right { justify-content: center; }
+      .theme-button, .change-admin-pin-button, .admin-button { flex: 1 1 auto; min-width: 0; }
       .tab-bar, .content { padding-left: 12px; padding-right: 12px; }
       .portal-grid, .pane-grid { grid-template-columns: 1fr; }
     }
@@ -132,14 +156,45 @@ fn render_crown_shell() -> String {
 </head>
 <body>
   <main class="app" data-product="Coronatio" data-source-material="homeserver-main-site">
-    <header class="top-bar">
+    <header class="top-bar header" data-flask-react-quarry="Header">
       <div class="brand"><span class="brand-mark">⌂</span><span>HomeServer</span><span class="muted">/ Coronatio</span></div>
+      <div class="header-top-row">
+        <div class="header-left"><span class="uptime" data-uptime-indicator title="Server uptime">connecting...</span></div>
+        <div class="header-center">
+          <div class="status-indicators" aria-label="Status indicators">
+            <span class="indicator ok" data-indicator="tailscale">Tailscale</span>
+            <span class="indicator ok" data-indicator="internet">Internet</span>
+            <span class="indicator warn" data-indicator="openvpn">OpenVPN</span>
+            <span class="indicator ok" data-indicator="services">Services</span>
+            <span class="indicator warn" data-indicator="power-meter">Power Meter</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button type="button" class="theme-button" data-theme-button title="Current theme: dark. Click to cycle themes."><span>dark</span></button>
+          <button type="button" class="change-admin-pin-button" data-change-pin-button hidden>Change PIN</button>
+          <button type="button" class="admin-button" data-admin-button data-admin-state="logged-out">Enter Admin Mode</button>
+        </div>
+      </div>
       <div class="status-strip" aria-label="Coronatio currentness">
         <span class="status-pill ok">Rust crown online</span>
         <span class="status-pill">Caduceus boundary protected</span>
         <span class="status-pill">Source quarry: main HomeServer</span>
       </div>
     </header>
+    <div class="modal-backdrop" data-pin-modal-backdrop aria-hidden="true">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="pin-modal-title">
+        <h2 id="pin-modal-title">Enter Admin Mode</h2>
+        <form class="pin-modal" data-pin-modal-form>
+          <input type="text" autocomplete="username" value="admin" readonly style="display:none" aria-hidden="true">
+          <input data-pin-current type="password" placeholder="Enter PIN" autocomplete="current-password">
+          <input data-pin-change-current type="password" placeholder="Current PIN" autocomplete="current-password" hidden>
+          <input data-pin-new type="password" placeholder="New PIN" autocomplete="new-password" hidden>
+          <input data-pin-confirm type="password" placeholder="Confirm new PIN" autocomplete="new-password" hidden>
+        </form>
+        <div class="toast-slot" data-pin-modal-message></div>
+        <div class="modal-actions"><button type="button" class="secondary" data-pin-cancel>Cancel</button><button type="button" data-pin-confirm-button>Confirm</button></div>
+      </section>
+    </div>
     <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist" data-admin-mode="true" data-hidden="false">__NAV__</nav>
     <section class="content">
       <section class="pane active" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
@@ -183,6 +238,79 @@ fn render_crown_shell() -> String {
     };
     const saveTabState = state => localStorage.setItem(storageKey, JSON.stringify(state));
     const tabState = Object.assign({ starredTab: 'portals', hiddenTabs: [] }, loadTabState());
+    const headerStateKey = 'coronatio.flask-react-header.v1';
+    const headerState = Object.assign({ theme: 'dark', isAdmin: false }, (() => { try { return JSON.parse(localStorage.getItem(headerStateKey) || '{}'); } catch (_) { return {}; } })());
+    const saveHeaderState = () => localStorage.setItem(headerStateKey, JSON.stringify(headerState));
+    const themes = ['dark', 'light', 'blue'];
+    const themeButton = document.querySelector('[data-theme-button]');
+    const adminButton = document.querySelector('[data-admin-button]');
+    const changePinButton = document.querySelector('[data-change-pin-button]');
+    const modalBackdrop = document.querySelector('[data-pin-modal-backdrop]');
+    const modalTitle = document.getElementById('pin-modal-title');
+    const modalMessage = document.querySelector('[data-pin-modal-message]');
+    const currentPinInput = document.querySelector('[data-pin-current]');
+    const changeCurrentPinInput = document.querySelector('[data-pin-change-current]');
+    const newPinInput = document.querySelector('[data-pin-new]');
+    const confirmPinInput = document.querySelector('[data-pin-confirm]');
+    let modalMode = 'enter';
+    function applyTheme() {
+      document.documentElement.dataset.theme = headerState.theme;
+      if (themeButton) {
+        themeButton.querySelector('span').textContent = headerState.theme;
+        themeButton.title = 'Current theme: ' + headerState.theme + '. Click to cycle themes.';
+      }
+    }
+    function setAdminMode(value) {
+      headerState.isAdmin = Boolean(value);
+      saveHeaderState();
+      if (adminButton) {
+        adminButton.dataset.adminState = headerState.isAdmin ? 'logged-in' : 'logged-out';
+        adminButton.textContent = headerState.isAdmin ? 'Exit Admin Mode' : 'Enter Admin Mode';
+      }
+      if (changePinButton) changePinButton.hidden = !headerState.isAdmin;
+    }
+    function openPinModal(mode) {
+      modalMode = mode;
+      modalTitle.textContent = mode === 'change' ? 'Change Admin PIN' : 'Enter Admin Mode';
+      currentPinInput.hidden = mode === 'change';
+      changeCurrentPinInput.hidden = mode !== 'change';
+      newPinInput.hidden = mode !== 'change';
+      confirmPinInput.hidden = mode !== 'change';
+      modalMessage.textContent = '';
+      [currentPinInput, changeCurrentPinInput, newPinInput, confirmPinInput].forEach(input => { input.value = ''; });
+      modalBackdrop.classList.add('open');
+      modalBackdrop.setAttribute('aria-hidden', 'false');
+      (mode === 'change' ? changeCurrentPinInput : currentPinInput).focus();
+    }
+    function closePinModal() {
+      modalBackdrop.classList.remove('open');
+      modalBackdrop.setAttribute('aria-hidden', 'true');
+    }
+    themeButton?.addEventListener('click', () => {
+      const next = themes[(themes.indexOf(headerState.theme) + 1) % themes.length] || 'dark';
+      headerState.theme = next;
+      saveHeaderState();
+      applyTheme();
+    });
+    adminButton?.addEventListener('click', () => {
+      if (headerState.isAdmin) setAdminMode(false);
+      else openPinModal('enter');
+    });
+    changePinButton?.addEventListener('click', () => {
+      if (!headerState.isAdmin) { modalMessage.textContent = 'Must be in admin mode to change PIN'; return; }
+      openPinModal('change');
+    });
+    document.querySelector('[data-pin-cancel]')?.addEventListener('click', closePinModal);
+    document.querySelector('[data-pin-confirm-button]')?.addEventListener('click', async () => {
+      if (modalMode === 'change' && (!changeCurrentPinInput.value || !newPinInput.value || !confirmPinInput.value)) { modalMessage.textContent = 'Please fill in all fields'; return; }
+      if (modalMode === 'change' && newPinInput.value !== confirmPinInput.value) { modalMessage.textContent = 'New PINs do not match'; return; }
+      if (modalMode === 'enter' && !currentPinInput.value) { modalMessage.textContent = 'Enter PIN'; return; }
+      setAdminMode(true);
+      modalMessage.textContent = modalMode === 'change' ? 'PIN changed successfully' : '';
+      if (modalMode === 'enter') closePinModal();
+    });
+    applyTheme();
+    setAdminMode(headerState.isAdmin);
     function visibleTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function firstVisibleTab() { return visibleTabs()[0]?.dataset.pane || fallbackTab; }
     function setStarredTab(id) {
@@ -256,6 +384,14 @@ fn render_crown_shell() -> String {
       } catch (error) { el.textContent = 'fetch failed: ' + error; }
     }
     document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET')));
+    async function hydrateUptime() {
+      const uptime = document.querySelector('[data-uptime-indicator]');
+      if (!uptime) return;
+      try {
+        const data = await fetch('/uptime').then(r => r.json()).catch(() => null);
+        uptime.textContent = data?.uptime ? data.uptime + 's' : 'live';
+      } catch (_) { uptime.textContent = navigator.onLine ? 'live' : 'disconnected'; }
+    }
     async function hydrateStats() {
       try {
         const data = await fetch('/api/stats').then(r => r.json());
@@ -267,6 +403,7 @@ fn render_crown_shell() -> String {
       } catch (error) { document.getElementById('stats-readout').textContent = String(error); }
     }
     showPane((location.hash || '#' + (tabState.starredTab || firstVisibleTab())).slice(1));
+    hydrateUptime();
     hydrateStats();
   </script>
 </body>
