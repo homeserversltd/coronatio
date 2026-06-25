@@ -104,6 +104,18 @@ Coronatio does not need one installation strategy. It needs a lawful membrane fo
 
 The acceptance law is not “never recompile.” The acceptance law is: choose the lane that preserves infinite installation while making the membrane explicit, typed, reversible, and provable.
 
+## Service, portal, monitor, and data contract
+
+`/api/services/data` is a contract/readback route only. It extracts old portal and monitor behavior without running systemctl, network checks, VPN/Tailscale commands, disk probes, sync jobs, or drive tests. The readback names:
+
+- portal shape from `tabs.portals.data.portals[]`: `name`, `description`, `services`, `type`, `port`, `localURL`, `remoteURL`;
+- service-card status fields: `systemdName`, `isEnabled`, `isActive`, `status`, `statusDetails`, `isScriptManaged`, `port`, `needsReboot`;
+- monitor topics: services, power, system, internet, tailscale, VPN, sync, hard-drive-test, admin disk, and admin system;
+- admin field filters and admin-only topic boundaries;
+- old broadcast change predicates and their Coronatio SSE/readback replacement.
+
+Live collectors and privileged actions remain behind later Caduceus/Coronatio actuator receipts.
+
 ## Registry transaction contract
 
 `/api/registry/transaction` is a contract/readback route only. It extracts old `ConfigManager` behavior without writing `homeserver.json` or touching permissions. The readback names:
