@@ -69,6 +69,7 @@ fn app(state: AppState) -> Router {
         .route("/api/tabs", get(tabs_route))
         .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
         .merge(full_rust_route_table())
+        .nest_service("/static", ServeDir::new("static"))
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
         .fallback(route_boundary_fallback)
         .with_state(state)

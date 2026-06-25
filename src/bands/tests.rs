@@ -520,6 +520,15 @@ mod tests {
             r#"/api/stats/events/renew"#,
             r#"function fmtBytes(value)"#,
             r#"data.resources?.memory"#,
+            r#"data-chart-dependency="chartjs-4.4.0""#,
+            r#"data-chart-dependency="chartjs-plugin-datalabels-2.2.0""#,
+            r#"<canvas id="cpu-gauge""#,
+            r#"<canvas id="memory-chart""#,
+            r#"<canvas id="network-chart""#,
+            r#"new Chart(ctx"#,
+            r#"type: 'doughnut'"#,
+            r#"label: 'Download'"#,
+            r#"setInterval(hydrateStats, 5000)"#,
         ] {
             assert!(shell.contains(marker), "stats viewport marker missing: {}", marker);
         }
@@ -530,6 +539,31 @@ mod tests {
         ] {
             assert!(!shell.contains(placeholder), "old stats scaffold survived: {}", placeholder);
         }
+    }
+
+
+    #[tokio::test]
+    async fn chartjs_dependency_is_served_as_first_party_static_asset() {
+        let temp = test_tab_root("chartjs-static");
+        let router = app(AppState {
+            tab_root: Arc::new(temp),
+        });
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/static/vendor/chart.umd.min.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("Chart.js"));
+        assert!(body.contains("DoughnutController"));
     }
 
     #[tokio::test]
