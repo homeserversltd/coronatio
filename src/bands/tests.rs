@@ -139,7 +139,7 @@ mod tests {
         assert!(body.contains("Force Update"));
         assert!(body.contains("HomeServer"));
         assert!(body.contains("Admitted services"));
-        assert!(body.contains("Safe file ingress"));
+        assert!(body.contains("Upload files"));
         assert!(!body.contains("Coronatio crown shell"));
         assert!(!body.contains("class=\"crown-card\""));
         assert!(!body.contains("Arcadia"));
@@ -161,7 +161,8 @@ mod tests {
         assert!(shell.contains("Fetching /api/stats"));
         assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
         assert!(shell.contains(r#"data-admin-quarry-button-total="90""#));
-        assert!(shell.contains("Upload through Caduceus"));
+        assert!(shell.contains("data-upload-regular=\"file-ingress\""));
+        assert!(shell.contains("Admin upload controls"));
         assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
     }
 
@@ -1457,13 +1458,46 @@ mod tests {
     }
 
     #[test]
-    fn upload_viewport_has_file_picker_and_caduceus_button() {
+    fn upload_viewport_has_regular_upload_and_admin_enhancement_split() {
         let html = render_crown_shell();
+        assert!(html.contains("data-upload-regular=\"file-ingress\""));
         assert!(html.contains("data-upload-form"));
         assert!(html.contains("data-upload-file"));
-        assert!(html.contains("Upload through Caduceus"));
+        assert!(html.contains(">Upload</button>"));
+        assert!(html.contains("data-upload-regular=\"directory-browser\""));
+        assert!(html.contains("Browse directory"));
+        assert!(html.contains("Refresh tree"));
+        assert!(html.contains("data-upload-regular=\"progress\""));
         assert!(html.contains("/api/files/upload"));
-        assert!(html.contains("/api/upload/history"));
+        assert!(html.contains("/api/files/browse-hierarchical"));
+        assert!(html.contains("/api/files/browse"));
+        assert!(html.contains("data-admin-only data-admin-viewport=\"upload\""));
+        for enhanced in [
+            "Force Allow Upload",
+            "Default directory",
+            "Set Default Directory",
+            "PIN requirement",
+            "Manage Blacklist",
+            "Upload History",
+            "Clear History",
+        ] {
+            assert!(html.contains(enhanced), "missing upload admin enhancement {enhanced}");
+        }
+    }
+
+    #[test]
+    fn upload_admin_controls_are_hidden_until_admin_mode_but_regular_upload_remains() {
+        let html = render_crown_shell();
+        assert!(html.contains(r#"class="card upload-admin-card" data-admin-only data-admin-viewport="upload""#));
+        assert!(html.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));
+        let regular_upload = html.find(r#"data-upload-regular="file-ingress""#).expect("regular upload card present");
+        let admin_upload = html.find(r#"class="card upload-admin-card""#).expect("admin upload card present");
+        assert!(regular_upload < admin_upload);
+        let regular_region = &html[regular_upload..admin_upload];
+        assert!(!regular_region.contains("data-admin-only"), "regular upload surface must not be admin-gated");
+        assert!(regular_region.contains("Destination"));
+        assert!(regular_region.contains("data-upload-file"));
+        assert!(regular_region.contains(">Upload</button>"));
     }
 
 }
