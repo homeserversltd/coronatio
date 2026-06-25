@@ -29,6 +29,7 @@ This scaffold provides the first host surface:
 - `GET /api/panes` — first-party native pane registry for `admin`, `stats`, `portals`, and `upload`.
 - `GET /api/panes/:pane_id` — one native pane readback.
 - `GET /api/registry` — extracted HOMESERVER tab registry law: visibility, admin gating, enabled state, order, starred/default route, and validation rules.
+- `GET /api/registry/transaction` — config patch and persistence law: deep merge, `tabs.starred` preservation, factory fallback validation, temp candidate promotion, permission restoration, backup, and rollback contract.
 - `GET /api/startup` — extracted startup and initial-tab law: phases, connection fallback, forced tab, starred tab, first visible tab, and tab-bar rule.
 - `GET /api/lanes` — dynamic cartridge, source-injection/recompile, and first-party native failure/recovery policy.
 - `GET /api/fallback` — safe fallback pane, activation reasons, recovery sequence, and receipt fields.
@@ -103,6 +104,18 @@ Coronatio does not need one installation strategy. It needs a lawful membrane fo
 
 The acceptance law is not “never recompile.” The acceptance law is: choose the lane that preserves infinite installation while making the membrane explicit, typed, reversible, and provable.
 
+## Registry transaction contract
+
+`/api/registry/transaction` is a contract/readback route only. It extracts old `ConfigManager` behavior without writing `homeserver.json` or touching permissions. The readback names:
+
+- deep-merge law: object recursion, scalar/array replacement, and tab-specific merge handling;
+- `tabs.starred` law: preserve the current starred pointer while package patches add or update tab records;
+- validation law: JSON syntax, temporary candidate validation, and factory fallback rejection;
+- persistence law: backup current config, write temp candidate, promote only after validation, restore owner/mode;
+- rollback law: backup restore, patch-key removal, whole-tab revert under `tabs`, and mismatch preservation.
+
+Live config writes, `factoryFallback.sh`, `chown`, `chmod`, and temp-file promotion remain outside this tranche until Caduceus owns the actuator and receipt ledger.
+
 ## Premium installer contract
 
 `/api/installer` is a contract/readback route only. It extracts the old premium installer’s manifest and lifecycle law without executing third-party premium code or mutating the host. The readback names:
@@ -134,6 +147,7 @@ This scaffold is accepted when:
 - Tests prove the native crown panes are exactly `admin`, `stats`, `portals`, and `upload`.
 - Tests prove the shell renders those primary panes without platform-owned brand navigation.
 - Tests prove `/api/registry` captures old `homeserver.json` tab law: config, visibility, data, starred, admin gating, enabled state, order, and default route behavior.
+- Tests prove `/api/registry/transaction` captures config patch persistence law: deep merge, starred preservation, factory fallback validation, temp promotion, permission restoration, backup, and rollback.
 - Tests prove `/api/startup` captures forced tab, connection failure, starred/default route, first-visible fallback, and tab-bar behavior.
 - Tests prove `/api/lanes` captures dynamic cartridge, source-injection/recompile, and first-party native failure policy.
 - Tests prove `/api/fallback` captures safe fallback pane, activation reasons, recovery sequence, and receipt fields.
