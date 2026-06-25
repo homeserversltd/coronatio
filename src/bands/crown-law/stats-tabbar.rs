@@ -143,6 +143,47 @@ fn connection_counts_for(path: &str) -> (u64, u64, u64) {
     (established, listening, total)
 }
 
+
+fn stats_kea_leases() -> Vec<StatsKeaLease> {
+    let mut leases = Vec::new();
+    for path in ["/var/lib/kea/kea-leases4.csv", "/var/lib/kea/dhcp4.leases"] {
+        if let Ok(raw) = std::fs::read_to_string(path) {
+            for line in raw.lines().take(20) {
+                if line.trim().is_empty() || line.starts_with("address") || line.starts_with('#') {
+                    continue;
+                }
+                let parts: Vec<&str> = line.split(',').collect();
+                if parts.len() >= 2 {
+                    leases.push(StatsKeaLease {
+                        ip: parts.first().unwrap_or(&"").trim().to_string(),
+                        mac: parts.get(1).unwrap_or(&"").trim().to_string(),
+                        hostname: parts.get(8).or_else(|| parts.get(3)).unwrap_or(&"N/A").trim().trim_matches('"').to_string(),
+                        note: String::new(),
+                    });
+                }
+            }
+            if !leases.is_empty() { break; }
+        }
+    }
+    leases
+}
+
+fn stats_processes() -> Vec<StatsProcess> {
+    let output = Command::new("ps").args(["-eo", "comm,pcpu,rss", "--sort=-pcpu"]).output();
+    let mut processes = Vec::new();
+    if let Ok(output) = output {
+        let raw = String::from_utf8_lossy(&output.stdout);
+        for line in raw.lines().skip(1).take(10) {
+            let mut parts = line.split_whitespace();
+            let Some(name) = parts.next() else { continue; };
+            let cpu_percent = parts.next().and_then(|value| value.parse::<f64>().ok()).unwrap_or(0.0);
+            let memory_bytes = parts.next().and_then(|value| value.parse::<u64>().ok()).unwrap_or(0).saturating_mul(1024);
+            processes.push(StatsProcess { name: name.to_string(), cpu_percent, memory_bytes, process_count: 1 });
+        }
+    }
+    processes
+}
+
 fn stats_services() -> Vec<StatsService> {
     [
         ("Coronatio", "/health"),

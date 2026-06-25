@@ -188,13 +188,18 @@
         assert_eq!(snapshot.transport.event_route, "/api/stats/events");
         assert_eq!(snapshot.transport.renew_route, "/api/stats/events/renew");
         assert_eq!(snapshot.transport.stream_status, "available");
-        assert!(snapshot.doctrine.preserved_sections.contains(&"resources".to_string()));
-        assert!(snapshot.doctrine.preserved_sections.contains(&"storage".to_string()));
-        assert!(snapshot.doctrine.preserved_sections.contains(&"network".to_string()));
-        assert!(snapshot.doctrine.preserved_sections.contains(&"services".to_string()));
+        for section in ["cpu-chart", "network", "io-section", "memory", "disk-usage", "kea-leases", "process-usage"] {
+            assert!(
+                snapshot.doctrine.preserved_sections.contains(&section.to_string()),
+                "missing React Stats preserved section {section}"
+            );
+        }
+        assert!(!snapshot.doctrine.preserved_sections.contains(&"services".to_string()));
         assert_eq!(snapshot.doctrine.refresh_seconds, 5);
         assert!(!snapshot.storage.is_empty());
         assert!(!snapshot.io.devices.is_empty());
+        assert!(snapshot.leases.len() <= 20);
+        assert!(snapshot.processes.len() <= 10);
         assert!(snapshot.services.iter().any(|service| service.name == "Coronatio"));
         assert!(snapshot.telemetry.service_health.is_some());
         assert!(snapshot.telemetry.storage_posture.is_some());
@@ -210,50 +215,80 @@
     }
 
     #[test]
-    fn stats_viewport_preserves_resources_storage_network_services_and_stream_controls() {
+    fn stats_viewport_is_react_tablet_one_to_one_inventory() {
         let shell = render_crown_shell();
         for marker in [
-            r#"data-stats-viewport"#,
+            r#"class="stats-tablet""#,
+            r#"data-react-quarry="StatsTablet""#,
+            r#"data-identity-standard="one-to-one""#,
+            r#"data-stat-element-id="cpu-chart""#,
+            r#"data-stat-element-id="network""#,
+            r#"data-stat-element-id="io-section""#,
+            r#"data-stat-element-id="memory""#,
+            r#"data-stat-element-id="disk-usage""#,
+            r#"data-stat-element-id="kea-leases""#,
+            r#"data-stat-element-id="process-usage""#,
+            r#"class="stat-header""#,
+            r#"class="stat-title""#,
+            r#"class="stat-content""#,
+            r#"CPU Usage &amp; Load"#,
+            r#"Network Traffic (WAN)"#,
+            r#"Disk I/O"#,
+            r#"Memory Usage"#,
+            r#"Disk Usage"#,
+            r#"DHCP Leases"#,
+            r#"CPU Usage by Process"#,
+            r#"class="cpu-stats-container""#,
+            r#"class="cpu-chart""#,
+            r#"class="load-averages""#,
+            r#"1 min:"#,
+            r#"5 min:"#,
+            r#"15 min:"#,
+            r#"class="network-stats-container""#,
+            r#"class="network-speed-chart""#,
+            r#"class="network-interfaces-table""#,
+            r#"<th>Interface</th><th>Total Received</th><th>Total Sent</th>"#,
+            r#"class="disk-io-chart""#,
+            r#"class="device-controls""#,
+            r#"name="read-"#,
+            r#"name="write-"#,
+            r#"class="memory-stats""#,
+            r#"class="memory-current""#,
+            r#"class="memory-label">RAM"#,
+            r#"class="memory-label">Swap"#,
+            r#"class="disk-usage-stats""#,
+            r#"class="disk-usage-item"#,
+            r#"class="kea-leases-table""#,
+            r#"<th>Device Note</th><th>Hostname</th><th>IP Address</th><th>MAC Address</th>"#,
+            r#"class="process-usage-list""#,
+            r#"class="process-bar"#,
+            r#"renderRechartsLine"#,
+            r#"recharts-wrapper"#,
+            r#"recharts-surface"#,
+        ] {
+            assert!(shell.contains(marker), "React Stats identity marker missing: {}", marker);
+        }
+        assert_eq!(shell.matches("class=\"stat-element\"").count(), 7, "Stats must render exactly seven React StatElement blocks");
+        for extra_or_old in [
+            r#"class="stats-section services""#,
+            r#"aria-label="Stats stream""#,
+            r#"Stream lane"#,
+            r#"Read event frame"#,
+            r#"Renew lease"#,
+            r#"stats-readout"#,
+            r#"id="cpu-gauge""#,
+            r#"id="memory-chart""#,
+            r#"<canvas id="cpuChart""#,
+            r#"<canvas id="networkChart""#,
+            r#"<canvas id="io-chart""#,
+            r#"type: 'doughnut'"#,
             r#"class="stats-section resources""#,
             r#"class="stats-section drives""#,
             r#"class="stats-section network""#,
-            r#"class="stats-section services""#,
-            r#"data-stats-connections"#,
-            r#"/api/stats/events"#,
-            r#"/api/stats/events/renew"#,
-            r#"function fmtBytes(value)"#,
-            r#"data.resources?.memory"#,
-            r#"data-chart-dependency="chartjs-4.4.0""#,
-            r#"data-chart-dependency="chartjs-plugin-datalabels-2.2.0""#,
-            r#"<canvas id="cpuChart""#,
-            r#"<canvas id="io-chart""#,
-            r#"<canvas id="networkChart""#,
-            r#"new Chart(ctx"#,
-            r#"label: 'CPU Usage'"#,
-            r#"label: 'Upload Speed'"#,
-            r#"label: 'Download Speed'"#,
-            r#"label: 'Temperature'"#,
-            r#"data-io-drive-selector"#,
-            r#"data-io-chart-legend"#,
-            r#"label: `${device.mount} Read`"#,
-            r#"label: `${device.mount} Write`"#,
-            r#"setInterval(hydrateStats, 5000)"#,
         ] {
-            assert!(shell.contains(marker), "stats viewport marker missing: {}", marker);
-        }
-        for placeholder in [
-            r#"Stats stream state pending.</p><div class="button-row""#,
-            r#"System telemetry</h2><div class="metric" id="stats-load">—</div><p>Load average</p>"#,
-            r#"stats collectors not wired"#,
-            r#"id="cpu-gauge""#,
-            r#"id="memory-chart""#,
-            r#"type: 'doughnut'"#,
-        ] {
-            assert!(!shell.contains(placeholder), "old stats scaffold survived: {}", placeholder);
+            assert!(!shell.contains(extra_or_old), "non-React Stats divergence survived: {}", extra_or_old);
         }
     }
-
-
 
     #[test]
     fn static_root_prefers_installed_source_and_allows_env_override() {

@@ -45,201 +45,137 @@ fn shell_document_4() -> &'static str {
       while (next >= 1024 && unit < units.length - 1) { next = next / 1024; unit += 1; }
       return next.toFixed(next >= 10 || unit === 0 ? 0 : 1) + ' ' + units[unit];
     }
-    function setProgress(id, percent) {
-      const el = document.getElementById(id);
-      if (el) el.style.width = (percent ?? 0) + '%';
+    function metricPercent(value) { return value === null || value === undefined ? '—' : Number(value).toFixed(1) + '%'; }
+    function loadToPercent(load) {
+      const cores = navigator.hardwareConcurrency || 4;
+      return Math.max(0, Math.min(100, (Number(load || 0) / cores) * 100));
     }
-    function metricPercent(value) { return value === null || value === undefined ? '—' : value + '%'; }
-    const selectedDrivesKey = 'selectedDrives';
-    const statsChartState = {
-      labels: [],
-      cpu: [],
-      temp: [],
-      upload: [],
-      download: [],
-      lastRx: null,
-      lastTx: null,
-      lastIo: {},
-      lastStamp: null,
-      selectedDrives: [],
-      charts: {}
-    };
-    function chartReady() { return typeof Chart !== 'undefined'; }
-    function smoothData(data, windowSize) {
-      return data.map((_, index) => {
-        const slice = data.slice(Math.max(0, index - windowSize + 1), index + 1);
-        return slice.reduce((sum, value) => sum + value, 0) / Math.max(1, slice.length);
-      });
-    }
-    function reduceDataPoints(data, labels, maxPoints) {
-      if (data.length <= maxPoints) return { data, labels };
-      const step = Math.ceil(data.length / maxPoints);
-      return { data: data.filter((_, index) => index % step === 0), labels: labels.filter((_, index) => index % step === 0) };
-    }
-    function chartColors(ctx, top, bottom, height = 200) {
-      const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, top);
-      gradient.addColorStop(1, bottom);
-      return gradient;
-    }
-    function selectedDriveMounts(data) {
-      const mounts = (data.io?.devices || []).map(device => device.mount);
-      if (!statsChartState.selectedDrives.length) {
-        try { statsChartState.selectedDrives = JSON.parse(localStorage.getItem(selectedDrivesKey) || '[]'); } catch (_) { statsChartState.selectedDrives = []; }
-      }
-      if (!statsChartState.selectedDrives.length) statsChartState.selectedDrives = mounts;
-      return statsChartState.selectedDrives.filter(mount => mounts.includes(mount));
-    }
-    function saveSelectedDrives() { localStorage.setItem(selectedDrivesKey, JSON.stringify(statsChartState.selectedDrives)); }
-    function renderDriveSelector(data) {
-      const selector = document.getElementById('io-drive-selector');
-      if (!selector) return;
-      const mounts = (data.io?.devices || []).map(device => device.mount);
-      const selected = selectedDriveMounts(data);
-      selector.innerHTML = mounts.map(mount => `<label class="drive-checkbox"><input type="checkbox" value="${mount}" ${selected.includes(mount) ? 'checked' : ''}>${mount}</label>`).join('');
-      selector.querySelectorAll('input').forEach(input => input.addEventListener('change', () => {
-        if (input.checked && !statsChartState.selectedDrives.includes(input.value)) statsChartState.selectedDrives.push(input.value);
-        if (!input.checked) statsChartState.selectedDrives = statsChartState.selectedDrives.filter(mount => mount !== input.value);
-        saveSelectedDrives();
-        updateStatsCharts(data);
-      }));
-    }
+    const statsChartState = { labels: [], cpu: [], temp: [], upload: [], download: [], lastRx: null, lastTx: null, lastIo: {}, lastStamp: null, ioSeries: {} };
     function pushChartPoint(label, data) {
       const now = Date.now();
       const totalRx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.rxBytes || 0), 0);
       const totalTx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.txBytes || 0), 0);
       const seconds = statsChartState.lastStamp ? Math.max(1, (now - statsChartState.lastStamp) / 1000) : 1;
-      const downloadRateKb = statsChartState.lastRx === null ? 0 : Math.max(0, (totalRx - statsChartState.lastRx) / seconds / 1024);
-      const uploadRateKb = statsChartState.lastTx === null ? 0 : Math.max(0, (totalTx - statsChartState.lastTx) / seconds / 1024);
+      const downloadRate = statsChartState.lastRx === null ? 0 : Math.max(0, (totalRx - statsChartState.lastRx) / seconds);
+      const uploadRate = statsChartState.lastTx === null ? 0 : Math.max(0, (totalTx - statsChartState.lastTx) / seconds);
       statsChartState.lastRx = totalRx;
       statsChartState.lastTx = totalTx;
       statsChartState.lastStamp = now;
       statsChartState.labels.push(label);
-      statsChartState.cpu.push(Number(data.resources?.load?.one || 0));
+      statsChartState.cpu.push(loadToPercent(data.resources?.load?.one));
       statsChartState.temp.push(Number(data.resources?.load?.cpuTemperatureCelsius || 0));
-      statsChartState.upload.push(uploadRateKb);
-      statsChartState.download.push(downloadRateKb);
+      statsChartState.upload.push(uploadRate);
+      statsChartState.download.push(downloadRate);
       (data.io?.devices || []).forEach(device => {
-        const previous = statsChartState.lastIo[device.mount];
-        const readSpeed = previous ? Math.max(0, (Number(device.readBytes || 0) - previous.readBytes) / seconds) : 0;
-        const writeSpeed = previous ? Math.max(0, (Number(device.writeBytes || 0) - previous.writeBytes) / seconds) : 0;
-        statsChartState.lastIo[device.mount] = { readBytes: Number(device.readBytes || 0), writeBytes: Number(device.writeBytes || 0), readSpeed, writeSpeed };
+        const key = device.device || device.mount;
+        const previous = statsChartState.lastIo[key];
+        const read = previous ? Math.max(0, (Number(device.readBytes || 0) - previous.readBytes) / seconds) : 0;
+        const write = previous ? Math.max(0, (Number(device.writeBytes || 0) - previous.writeBytes) / seconds) : 0;
+        statsChartState.lastIo[key] = { readBytes: Number(device.readBytes || 0), writeBytes: Number(device.writeBytes || 0) };
+        if (!statsChartState.ioSeries[key]) statsChartState.ioSeries[key] = { read: [], write: [], label: key };
+        statsChartState.ioSeries[key].read.push(read);
+        statsChartState.ioSeries[key].write.push(write);
       });
       if (statsChartState.labels.length > 60) {
         ['labels', 'cpu', 'temp', 'upload', 'download'].forEach(key => statsChartState[key].shift());
+        Object.values(statsChartState.ioSeries).forEach(series => { series.read.shift(); series.write.shift(); });
       }
     }
-    function createCPUChart(ctx, labels, cpuData, tempData) {
-      const cpuGradient = chartColors(ctx.getContext('2d'), 'rgba(75, 192, 192, 0.8)', 'rgba(75, 192, 192, 0.2)', 400);
-      const tempGradient = chartColors(ctx.getContext('2d'), 'rgba(255, 99, 132, 0.8)', 'rgba(255, 99, 132, 0.2)', 400);
-      return new Chart(ctx, {
-        type: 'line',
-        data: { labels, datasets: [
-          { label: 'CPU Usage', data: cpuData, borderColor: cpuGradient, backgroundColor: 'rgba(75, 192, 192, 0.1)', borderWidth: 2, fill: true, tension: 0.4, yAxisID: 'y-cpu' },
-          { label: 'Temperature', data: tempData, borderColor: tempGradient, backgroundColor: 'rgba(255, 99, 132, 0.1)', borderWidth: 2, fill: true, tension: 0.4, yAxisID: 'y-temp' }
-        ] },
-        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { tooltip: { enabled: true, mode: 'index', intersect: false }, legend: { position: 'top' }, datalabels: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 10, autoSkip: true, color: '#888' }, grid: { display: false } }, 'y-cpu': { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, title: { display: true, text: 'CPU Usage (%)', color: '#888' }, ticks: { color: '#888' }, grid: { color: 'rgba(200, 200, 200, 0.1)' } }, 'y-temp': { type: 'linear', display: true, position: 'right', beginAtZero: true, max: 100, title: { display: true, text: 'Temperature (°C)', color: '#888' }, ticks: { color: '#888' }, grid: { display: false } } } }
+    function points(values, width, height, maxValue) {
+      const max = Math.max(maxValue || 0, ...values, 1);
+      const step = values.length > 1 ? width / (values.length - 1) : width;
+      return values.map((value, index) => `${(index * step).toFixed(1)},${(height - (Number(value || 0) / max) * (height - 20) - 10).toFixed(1)}`).join(' ');
+    }
+    function renderRechartsLine(containerId, datasets, opts = {}) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const width = 640;
+      const height = opts.height || 200;
+      const maxValue = opts.maxValue || Math.max(...datasets.flatMap(ds => ds.values), 1);
+      const lines = datasets.map(ds => `<polyline class="recharts-line-curve" points="${points(ds.values, width - 40, height - 40, maxValue)}" fill="none" stroke="${ds.color}" stroke-width="2" stroke-dasharray="${ds.dash || ''}" transform="translate(20 20)" data-series="${ds.name}"></polyline>`).join('');
+      const legend = datasets.map(ds => `<span class="recharts-legend-item"><span style="display:inline-block;width:18px;border-top:2px ${ds.dash ? 'dashed' : 'solid'} ${ds.color};margin-right:4px"></span>${ds.name}</span>`).join('');
+      container.innerHTML = `<div class="recharts-wrapper"><svg class="recharts-surface" viewBox="0 0 ${width} ${height}" role="img" aria-label="${opts.label || 'chart'}"><g class="recharts-cartesian-grid"><line x1="20" x2="620" y1="180" y2="180" stroke="var(--border)"></line><line x1="20" x2="20" y1="20" y2="180" stroke="var(--border)"></line></g>${lines}</svg><div class="recharts-legend-wrapper">${legend}</div></div>`;
+    }
+    function renderCpuChart(data) {
+      renderRechartsLine('cpu-chart-container', [
+        { name: 'CPU Usage', values: statsChartState.cpu, color: 'var(--secondary)' },
+        { name: 'Temperature', values: statsChartState.temp, color: 'var(--accent)' }
+      ], { label: 'CPU Usage & Load', maxValue: 100 });
+      document.getElementById('load-1min').textContent = metricPercent(loadToPercent(data.resources?.load?.one));
+      document.getElementById('load-5min').textContent = metricPercent(loadToPercent(data.resources?.load?.five));
+      document.getElementById('load-15min').textContent = metricPercent(loadToPercent(data.resources?.load?.fifteen));
+    }
+    function renderNetwork(data) {
+      renderRechartsLine('network-chart-container', [
+        { name: 'Download Speed', values: statsChartState.download, color: 'var(--secondary)' },
+        { name: 'Upload Speed', values: statsChartState.upload, color: 'var(--accent)' }
+      ], { label: 'Network Traffic (WAN)' });
+      const tbody = document.querySelector('[data-network-interfaces]');
+      if (tbody) tbody.innerHTML = (data.network?.interfaces || []).map(iface => `<tr><td><span class="interface-name">${iface.name}</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr><td colspan="3">Loading network data...</td></tr>';
+    }
+    function renderDiskIo(data) {
+      const controls = document.querySelector('[data-device-controls]');
+      const devices = data.io?.devices || [];
+      if (controls) controls.innerHTML = devices.map(device => `<div class="device-control"><div class="device-name">${device.device}</div><div class="device-checkboxes"><label><input type="checkbox" name="read-${device.device}" checked>Read</label><label><input type="checkbox" name="write-${device.device}" checked>Write</label></div></div>`).join('') || '<div class="io-loading"><p>Loading disk I/O data...</p></div>';
+      const datasets = devices.flatMap((device, index) => {
+        const series = statsChartState.ioSeries[device.device] || { read: [0], write: [0] };
+        const colors = ['var(--secondary)', 'var(--accent)', 'var(--warning)', 'var(--success)', 'var(--error)'];
+        const color = colors[index % colors.length];
+        return [
+          { name: `${device.device} (Read)`, values: series.read, color },
+          { name: `${device.device} (Write)`, values: series.write, color, dash: '3 3' }
+        ];
       });
+      renderRechartsLine('disk-io-chart-container', datasets.length ? datasets : [{ name: 'disk (Read)', values: [0], color: 'var(--secondary)' }, { name: 'disk (Write)', values: [0], color: 'var(--secondary)', dash: '3 3' }], { label: 'Disk I/O' });
     }
-    function createNetworkChart(ctx, labels, uploadData, downloadData) {
-      const uploadGradient = chartColors(ctx.getContext('2d'), 'rgba(75, 192, 192, 0.8)', 'rgba(75, 192, 192, 0.2)');
-      const downloadGradient = chartColors(ctx.getContext('2d'), 'rgba(255, 99, 132, 0.8)', 'rgba(255, 99, 132, 0.2)');
-      return new Chart(ctx, {
-        type: 'line',
-        data: { labels, datasets: [
-          { label: 'Upload Speed', data: uploadData, borderColor: uploadGradient, backgroundColor: 'rgba(75, 192, 192, 0.1)', borderWidth: 2, fill: true, tension: 0.4 },
-          { label: 'Download Speed', data: downloadData, borderColor: downloadGradient, backgroundColor: 'rgba(255, 99, 132, 0.1)', borderWidth: 2, fill: true, tension: 0.4 }
-        ] },
-        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { tooltip: { enabled: true, mode: 'index', intersect: false }, legend: { position: 'top' }, datalabels: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 10, autoSkip: true, color: '#888' }, grid: { display: false } }, y: { beginAtZero: true, suggestedMin: 0, suggestedMax: 1000, title: { display: true, text: 'Speed (KB/s)', color: '#888' }, ticks: { color: '#888', callback: value => value + ' KB/s' }, grid: { color: 'rgba(200, 200, 200, 0.1)' } } } }
-      });
+    function renderMemory(data) {
+      const memory = data.resources?.memory || {};
+      const swap = data.resources?.swap || {};
+      const memoryPercent = Number(memory.percent || 0);
+      const swapPercent = Number(swap.percent || 0);
+      document.getElementById('memory-bar-fill').style.width = memoryPercent + '%';
+      document.getElementById('memory-percent').textContent = metricPercent(memoryPercent);
+      document.getElementById('memory-used').textContent = 'Used: ' + fmtBytes(memory.usedBytes);
+      document.getElementById('memory-available').textContent = 'Available: ' + fmtBytes(memory.freeBytes);
+      document.getElementById('memory-total').textContent = 'Total: ' + fmtBytes(memory.totalBytes);
+      document.getElementById('swap-bar-fill').style.width = swapPercent + '%';
+      document.getElementById('swap-percent').textContent = metricPercent(swapPercent);
+      document.getElementById('swap-used').textContent = 'Used: ' + fmtBytes(swap.usedBytes);
+      document.getElementById('swap-free').textContent = 'Free: ' + fmtBytes(swap.freeBytes);
+      document.getElementById('swap-total').textContent = 'Total: ' + fmtBytes(swap.totalBytes);
     }
-    function createIOChart(ctx) {
-      return new Chart(ctx, {
-        type: 'line',
-        data: { labels: [], datasets: [] },
-        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { left: 10, right: 10, top: 20, bottom: 20 } }, scales: { x: { title: { display: true, text: 'Time', padding: { top: 10, bottom: 10 } }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } }, y: { title: { display: true, text: 'Speed (MB/s)' }, ticks: { callback: value => Number(value).toFixed(2) } } }, plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false }, datalabels: { display: false } } }
-      });
+    function renderDiskUsage(data) {
+      const target = document.querySelector('[data-disk-usage-stats]');
+      if (!target) return;
+      target.innerHTML = (data.storage || []).map(drive => `<div class="disk-usage-item"><div class="disk-usage-header"><div class="disk-device">${drive.name} (${Number(drive.usagePercent || 0).toFixed(1)}%)</div><div class="disk-mountpoint">Mount: ${drive.mount}</div></div><div class="disk-usage-bar"><div class="disk-usage-fill" style="width:${drive.usagePercent || 0}%"></div></div><div class="disk-usage-details"><div>Used: ${fmtBytes(drive.usedBytes)}</div><div>Free: ${fmtBytes(drive.freeBytes)}</div><div>Total: ${fmtBytes(drive.totalBytes)}</div></div></div>`).join('') || '<div class="disk-usage-loading"><p>Loading disk usage data...</p></div>';
     }
-    function ensureStatsCharts(data) {
-      if (!chartReady()) {
-        document.querySelectorAll('.chart-card').forEach(card => {
-          if (!card.querySelector('.chart-fallback')) card.insertAdjacentHTML('beforeend', '<p class="chart-fallback">Chart.js dependency unavailable.</p>');
-        });
-        return;
-      }
-      if (window.ChartDataLabels && Chart.register) Chart.register(window.ChartDataLabels);
-      if (!statsChartState.charts.cpu) {
-        const ctx = document.getElementById('cpuChart');
-        if (ctx) statsChartState.charts.cpu = createCPUChart(ctx, statsChartState.labels, statsChartState.cpu, statsChartState.temp);
-      }
-      if (!statsChartState.charts.network) {
-        const ctx = document.getElementById('networkChart');
-        if (ctx) statsChartState.charts.network = createNetworkChart(ctx, statsChartState.labels, statsChartState.upload, statsChartState.download);
-      }
-      if (!statsChartState.charts.io) {
-        const ctx = document.getElementById('io-chart');
-        if (ctx) statsChartState.charts.io = createIOChart(ctx);
-      }
-      renderDriveSelector(data);
-      updateStatsCharts(data);
+    function renderKeaLeases(data) {
+      const tbody = document.querySelector('[data-kea-leases]');
+      if (!tbody) return;
+      const leases = data.leases || [];
+      tbody.innerHTML = leases.length ? leases.map(lease => `<tr><td class="device-note-cell" data-label="Note:"><span class="note-text">${lease.note || ''}</span><button class="edit-note-button" data-admin-only="true" title="Edit device note">✎</button></td><td data-label="Hostname:">${lease.hostname || 'N/A'}</td><td data-label="IP:">${lease.ip}</td><td data-label="MAC:" title="${lease.mac}">${lease.mac}</td></tr>`).join('') : '<tr><td colspan="4">No Kea leases found.</td></tr>';
     }
-    function updateStatsCharts(data) {
-      if (!chartReady()) return;
-      if (statsChartState.charts.cpu) statsChartState.charts.cpu.update();
-      if (statsChartState.charts.network) statsChartState.charts.network.update();
-      const selected = selectedDriveMounts(data);
-      const colors = { '/': '#FF6384', '/home': '#36A2EB', '/boot': '#FFCE56', '/boot/efi': '#4BC0C0', '/vault': '#9966FF', '/mnt/elements': '#FF9F40', '/mnt/wd-drive': '#FF6384' };
-      const ioChart = statsChartState.charts.io;
-      if (ioChart) {
-        ioChart.data.labels = statsChartState.labels.slice();
-        ioChart.data.datasets = (data.io?.devices || []).flatMap(device => {
-          if (!selected.includes(device.mount)) return [];
-          const color = colors[device.mount] || '#00f2fe';
-          const current = statsChartState.lastIo[device.mount] || { readSpeed: 0, writeSpeed: 0 };
-          return [
-            { label: `${device.mount} Read`, data: statsChartState.labels.map((_, idx) => idx === statsChartState.labels.length - 1 ? current.readSpeed / (1024 * 1024) : 0), borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0 },
-            { label: `${device.mount} Write`, data: statsChartState.labels.map((_, idx) => idx === statsChartState.labels.length - 1 ? current.writeSpeed / (1024 * 1024) : 0), borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0 }
-          ];
-        });
-        ioChart.update();
-        const legend = document.getElementById('io-chart-legend');
-        if (legend) legend.innerHTML = selected.map(mount => `<span><span style="display:inline-block;width:20px;border-top:2px solid ${colors[mount] || '#00f2fe'};margin-right:5px"></span>Read <span style="display:inline-block;width:20px;border-top:2px dotted ${colors[mount] || '#00f2fe'};margin:0 5px"></span>Write ${mount}</span>`).join('');
-      }
+    function renderProcesses(data) {
+      const target = document.querySelector('[data-process-usage-list]');
+      if (!target) return;
+      const processes = data.processes || [];
+      target.innerHTML = processes.length ? processes.map(process => `<div class="process-bar" title="Process: ${process.name}\nMemory: ${fmtBytes(process.memoryBytes)}\nCPU: ${Number(process.cpuPercent || 0).toFixed(1)}%\nInstances: ${process.processCount || 1}"><div class="process-bar-fill" style="width:${Math.max(Number(process.cpuPercent || 0), 1)}%"></div><div class="process-text-container"><span class="process-name">${process.name}</span><span class="process-usage">${Number(process.cpuPercent || 0).toFixed(1)}%</span></div></div>`).join('') : '<div class="process-usage-empty"><p>No process data available</p></div>';
     }
     async function hydrateStats() {
       try {
         const data = await fetch('/api/stats').then(r => r.json());
-        const caduceus = await fetch('/api/caduceus/status').then(r => r.json()).catch(() => null);
-        const load = data.resources?.load || {};
-        const memory = data.resources?.memory || {};
-        const swap = data.resources?.swap || {};
         const label = new Date().toLocaleTimeString();
         pushChartPoint(label, data);
-        document.getElementById('cpu-current').textContent = load.one ?? '—';
-        document.getElementById('cpu-temp').textContent = load.cpuTemperatureCelsius ?? '—';
-        document.getElementById('cpu-5m').textContent = load.five ?? '—';
-        document.getElementById('cpu-cores').textContent = navigator.hardwareConcurrency || '—';
-        document.getElementById('memory-usage').textContent = metricPercent(memory.percent);
-        document.getElementById('stats-memory-used').textContent = 'Used ' + fmtBytes(memory.usedBytes);
-        document.getElementById('stats-memory-total').textContent = 'Total ' + fmtBytes(memory.totalBytes);
-        setProgress('stats-memory-progress', memory.percent);
-        document.getElementById('stats-swap').textContent = metricPercent(swap.percent);
-        document.getElementById('stats-swap-used').textContent = 'Used ' + fmtBytes(swap.usedBytes);
-        document.getElementById('stats-swap-total').textContent = 'Total ' + fmtBytes(swap.totalBytes);
-        setProgress('stats-swap-progress', swap.percent);
-        const drives = document.querySelector('[data-stats-drives]');
-        drives.innerHTML = (data.storage || []).map(drive => `<article class="drive-info"><h3>${drive.mount}</h3><div class="progress-bar"><div class="progress" style="width:${drive.usagePercent ?? 0}%"></div></div><div class="details"><span>${fmtBytes(drive.usedBytes)} / ${fmtBytes(drive.totalBytes)}</span><span>${drive.usagePercent ?? '—'}%</span></div><p class="muted">${drive.name}</p></article>`).join('') || '<article class="drive-info"><h3>No storage readback</h3><p class="muted">df readback unavailable.</p></article>';
-        const network = document.querySelector('[data-stats-network]');
-        network.innerHTML = (data.network?.interfaces || []).map(iface => `<article class="network-interface"><h3><span class="status-dot ${iface.status}"></span>${iface.name}</h3><div class="traffic"><span>↓ ${fmtBytes(iface.rxBytes)}</span><span>↑ ${fmtBytes(iface.txBytes)}</span></div></article>`).join('') || '<article class="network-interface"><h3>No network readback</h3><p class="muted">/proc/net/dev unavailable.</p></article>';
-        const counts = data.network?.connections || {};
-        document.querySelector('[data-stats-connections]').innerHTML = `<div class="counts"><span>Established: ${counts.established ?? 0}</span><span>Listening: ${counts.listening ?? 0}</span><span>Total: ${counts.total ?? 0}</span></div>`;
-        const services = document.querySelector('[data-stats-services]');
-        services.innerHTML = (data.services || []).map(service => `<article class="service-info"><h3><span class="status-dot ${service.status}"></span>${service.name}</h3><div class="details"><span>${service.status}</span><span>${service.route}</span></div><p class="muted">${service.details}</p></article>`).join('');
-        ensureStatsCharts(data);
-        document.getElementById('stats-stream').textContent = (data.transport?.streamStatus || 'unknown') + ' — ' + (data.transport?.streamReason || '');
-        document.getElementById('stats-missing').textContent = caduceus?.firstMissingSignal || data.telemetry?.firstMissingSignal || 'none';
-        document.getElementById('stats-readout').textContent = JSON.stringify({ stats: data, caduceus }, null, 2);
-      } catch (error) { document.getElementById('stats-readout').textContent = String(error); }
+        renderCpuChart(data);
+        renderNetwork(data);
+        renderDiskIo(data);
+        renderMemory(data);
+        renderDiskUsage(data);
+        renderKeaLeases(data);
+        renderProcesses(data);
+      } catch (error) {
+        document.querySelector('[data-process-usage-list]').innerHTML = '<div class="process-usage-empty"><p>' + String(error) + '</p></div>';
+      }
     }
 
     function escapeHtml(value) {

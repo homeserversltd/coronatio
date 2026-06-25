@@ -149,10 +149,11 @@
         }
         assert!(shell.contains("Read service contract"));
         assert!(shell.contains("data-stats-viewport"));
-        assert!(shell.contains("data-stats-drives"));
-        assert!(shell.contains("data-stats-network"));
-        assert!(shell.contains("data-stats-services"));
-        assert!(shell.contains("Fetching /api/stats"));
+        assert!(shell.contains(r#"class="stats-tablet""#));
+        assert!(shell.contains(r#"data-stat-element-id="disk-usage""#));
+        assert!(shell.contains(r#"data-stat-element-id="network""#));
+        assert!(shell.contains(r#"data-stat-element-id="kea-leases""#));
+        assert!(shell.contains(r#"data-stat-element-id="process-usage""#));
         assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
         assert!(shell.contains(r#"data-admin-quarry-button-total="90""#));
         assert!(shell.contains("data-upload-regular=\"file-ingress\""));

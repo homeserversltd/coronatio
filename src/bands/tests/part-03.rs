@@ -275,7 +275,7 @@
         for viewport in ["admin", "stats", "portals", "upload"] {
             assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing admin viewport {viewport}");
         }
-        for admin_action in ["Hard Drive Test", "Force Update", "Renew lease", "Add portal", "PIN requirement", "Blacklist"] {
+        for admin_action in ["Hard Drive Test", "Force Update", "Hide CPU Usage & Load", "Add portal", "PIN requirement", "Blacklist"] {
             assert!(shell.contains(admin_action), "missing {admin_action}");
         }
         assert!(shell.contains("90 buttons"));

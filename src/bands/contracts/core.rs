@@ -21,6 +21,8 @@ struct StatsSnapshot {
     storage: Vec<StatsDrive>,
     network: StatsNetwork,
     io: StatsIo,
+    leases: Vec<StatsKeaLease>,
+    processes: Vec<StatsProcess>,
     services: Vec<StatsService>,
     telemetry: StatsTelemetry,
     next_routes: StatsNextRoutes,
@@ -121,6 +123,25 @@ struct StatsIoDevice {
     mount: String,
     read_bytes: u64,
     write_bytes: u64,
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsKeaLease {
+    hostname: String,
+    ip: String,
+    mac: String,
+    note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct StatsProcess {
+    name: String,
+    cpu_percent: f64,
+    memory_bytes: u64,
+    process_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
