@@ -72,6 +72,14 @@
         assert!(body.contains("color-primary"));
         assert!(body.contains("bg-primary"));
         assert!(body.contains("font-family"));
+        assert!(body.contains("font-mono"));
+        assert!(body.contains("font-size-2xl"));
+        assert!(body.contains("spacing-2xl"));
+        assert!(body.contains("control-height"));
+        assert!(body.contains("content-padding"));
+        assert!(body.contains("card-radius"));
+        assert!(body.contains("primaryHover"));
+        assert!(body.contains("hiddenTabBackground"));
     }
 
     #[tokio::test]
@@ -294,6 +302,26 @@
     }
 
 
+
+    #[test]
+    fn shell_projects_expanded_theme_tokens_and_legacy_aliases() {
+        let shell = ["src/bands/shell/document-1.rs", "src/bands/shell/document-2.rs", "src/bands/shell/document-3.rs"]
+            .iter()
+            .map(|path| std::fs::read_to_string(path).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        for marker in [
+            "--theme-control-height",
+            "--theme-content-padding",
+            "--theme-card-radius",
+            "--theme-font-mono",
+            "--primaryHover",
+            "--hiddenTabBackground",
+            "aliasMap",
+        ] {
+            assert!(shell.contains(marker), "expanded theme marker missing: {marker}");
+        }
+    }
 
     #[test]
     fn docs_and_shell_do_not_advertise_sidecar_config_authority() {
