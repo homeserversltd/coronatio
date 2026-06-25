@@ -582,17 +582,51 @@ fn render_crown_shell() -> String {
       return headerState.isAdmin ? `<div data-admin-only data-admin-surface="indicator-modal" data-admin-enhanced="true">${inner}</div>` : '';
     }
     function modalTemplate(kind) {
-      if (kind === 'tailscale') return `<div class="tailscale-status-modal">
-        <div class="status-section"><p class="status-text loading">LOADING...</p></div>
+      if (kind === 'tailscale') return `<div class="tailscale-status-modal" data-modal-kind-body="tailscale">
+        <div class="status-section"><p class="status-text loading" data-modal-status data-route-read="/api/status/tailscale">Loading Tailscale status…</p></div>
         ${indicatorAdminSection(`<div class="config-section"><div class="current-tailnet"><span class="label">Current Tailnet:</span><span class="value" data-route-read="/api/status/tailscale/config">Loading...</span></div><input data-tailnet-input placeholder="Enter Tailnet name"><div class="button-row"><button data-modal-fetch="/api/status/tailscale/update-tailnet" data-method="POST">Update Tailnet</button><button data-modal-fetch="/api/status/tailscale/connect" data-method="POST">Connect</button><button data-modal-fetch="/api/status/tailscale/disconnect" data-method="POST">Disconnect</button><button data-modal-fetch="/api/status/tailscale/enable" data-method="POST">Enable Service</button><button data-modal-fetch="/api/status/tailscale/disable" data-method="POST">Disable Service</button></div></div>
         <div class="authkey-section"><input class="authkey-input" placeholder="Enter your tskey-auth-... or tskey-client-... key"><div class="button-row"><button data-modal-fetch="/api/status/tailscale/authkey" data-method="POST">Authenticate</button></div></div>`)}<pre class="readout action-output" data-modal-output></pre>
       </div>`;
-      if (kind === 'internet') return `<div class="internet-status-modal"><div class="status-section"><p class="status-text loading">CHECKING...</p></div>${indicatorAdminSection(`<div class="admin-details-section" data-admin-details-section><div class="ip-details"><p><strong>Location:</strong> —</p><p><strong>ISP:</strong> —</p><p><strong>Timezone:</strong> —</p></div></div><div class="speed-test-section"><div class="button-row"><button data-modal-fetch="/api/status/internet/speedtest" data-method="POST">Run Speed Test</button></div><div class="speed-results"><p>Download: — Mbps</p><p>Upload: — Mbps</p><p>Latency: — ms</p></div></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
-      if (kind === 'services') return `<div class="services-status-modal"><div class="loading-section">Loading service status...</div><ul class="service-status-list" data-route-read="/api/status/services"><li>No status data available</li></ul>${indicatorAdminSection(`<div class="admin-service-grid"><div class="admin-service-description">Description</div><div class="admin-service-name">Service</div><div class="admin-service-right"><span class="admin-service-status">enabled</span></div></div><div class="button-row"><button data-modal-fetch="/api/status/services">Refresh</button><button data-modal-fetch="/api/services/data">Service Data</button></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
-      if (kind === 'openvpn') return `<div class="vpn-status-modal"><div class="status-section"><div class="service-statuses"><div class="status-item loading"><span>VPN Status:</span><span class="status-value">LOADING</span></div><div class="status-item loading"><span>Transmission Status:</span><span class="status-value">LOADING</span></div>${headerState.isAdmin ? `<div class="status-item" data-admin-only data-admin-surface="indicator-modal"><span>Systemd Service:</span><span class="status-value">LOADING</span></div>` : ''}</div></div>${indicatorAdminSection(`<div class="credentials-section"><div class="modal-grid"><div class="credential-group"><input placeholder="PIA Username"><input type="password" placeholder="PIA Password"><button data-modal-fetch="/api/status/vpn/updatekey/pia" data-method="POST">Create PIA Key</button></div><div class="credential-group"><input placeholder="Transmission Username"><input type="password" placeholder="Transmission Password"><button data-modal-fetch="/api/status/vpn/updatekey/transmission" data-method="POST">Create Transmission</button></div></div></div><div class="service-controls"><div class="button-row"><button data-modal-fetch="/api/status/vpn/enable" data-method="POST">Enable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/disable" data-method="POST">Disable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/pia/exists">PIA Key Exists</button><button data-modal-fetch="/api/status/vpn/transmission/exists">Transmission Key Exists</button></div></div><div class="restart-notice"><p>Note: Service changes require a restart to take effect.</p></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
-      if (kind === 'power-meter') return `<div class="power-meter-modal"><div class="power-usage-display"><div class="power-value"><span class="power-value-number">—</span><span class="power-value-unit">Watts</span></div></div><div class="power-history-section"><div class="power-averages"><div class="power-average-row"><div class="power-average-label">5s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">30s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">60s average:</div><div class="power-average-value">—W</div></div></div></div><pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'internet') return `<div class="internet-status-modal" data-modal-kind-body="internet"><div class="status-section"><p class="status-text loading" data-modal-status data-route-read="/api/status">Checking internet status…</p></div>${indicatorAdminSection(`<div class="admin-details-section" data-admin-details-section><div class="ip-details"><p><strong>Location:</strong> —</p><p><strong>ISP:</strong> —</p><p><strong>Timezone:</strong> —</p></div></div><div class="speed-test-section"><div class="button-row"><button data-modal-fetch="/api/status/internet/speedtest" data-method="POST">Run Speed Test</button></div><div class="speed-results"><p>Download: — Mbps</p><p>Upload: — Mbps</p><p>Latency: — ms</p></div></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'services') return `<div class="services-status-modal" data-modal-kind-body="services"><div class="loading-section" data-modal-status data-route-read="/api/status/services">Loading service status…</div><ul class="service-status-list" data-route-read="/api/status/services"><li>No status data available</li></ul>${indicatorAdminSection(`<div class="admin-service-grid"><div class="admin-service-description">Description</div><div class="admin-service-name">Service</div><div class="admin-service-right"><span class="admin-service-status">enabled</span></div></div><div class="button-row"><button data-modal-fetch="/api/status/services">Refresh</button><button data-modal-fetch="/api/services/data">Service Data</button></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'openvpn') return `<div class="vpn-status-modal" data-modal-kind-body="openvpn"><div class="status-section"><div class="service-statuses"><div class="status-item loading"><span>VPN Status:</span><span class="status-value" data-modal-status data-route-read="/api/status/vpn/pia">Loading VPN…</span></div><div class="status-item loading"><span>Transmission Status:</span><span class="status-value" data-modal-secondary-status data-route-read="/api/status/vpn/transmission">Loading Transmission…</span></div>${headerState.isAdmin ? `<div class="status-item" data-admin-only data-admin-surface="indicator-modal"><span>Systemd Service:</span><span class="status-value">LOADING</span></div>` : ''}</div></div>${indicatorAdminSection(`<div class="credentials-section"><div class="modal-grid"><div class="credential-group"><input placeholder="PIA Username"><input type="password" placeholder="PIA Password"><button data-modal-fetch="/api/status/vpn/updatekey/pia" data-method="POST">Create PIA Key</button></div><div class="credential-group"><input placeholder="Transmission Username"><input type="password" placeholder="Transmission Password"><button data-modal-fetch="/api/status/vpn/updatekey/transmission" data-method="POST">Create Transmission</button></div></div></div><div class="service-controls"><div class="button-row"><button data-modal-fetch="/api/status/vpn/enable" data-method="POST">Enable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/disable" data-method="POST">Disable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/pia/exists">PIA Key Exists</button><button data-modal-fetch="/api/status/vpn/transmission/exists">Transmission Key Exists</button></div></div><div class="restart-notice"><p>Note: Service changes require a restart to take effect.</p></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'power-meter') return `<div class="power-meter-modal" data-modal-kind-body="power-meter"><div class="power-usage-display"><div class="power-value" data-route-read="/api/status/power/usage"><span class="power-value-number" data-modal-status>Loading power…</span><span class="power-value-unit">Watts</span></div></div><div class="power-history-section"><div class="power-averages"><div class="power-average-row"><div class="power-average-label">5s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">30s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">60s average:</div><div class="power-average-value">—W</div></div></div></div><pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p><p>Themes are loaded from /api/themes backed by static/themes/theme.json.</p></div>`;
       return '';
+    }
+    function routeReadLabel(route, data) {
+      const ok = data && (data.ok === true || data.success === true);
+      const status = data?.status || (ok ? 'ok' : 'unavailable');
+      const missing = data?.firstMissingSignal && data.firstMissingSignal !== 'none' ? ' · ' + data.firstMissingSignal : '';
+      if (route.includes('tailscale')) return ok ? 'Tailscale status: ' + status + missing : 'Tailscale status unavailable';
+      if (route.includes('/api/status/vpn/pia')) return ok ? 'VPN status: ' + status + missing : 'VPN status unavailable';
+      if (route.includes('/api/status/vpn/transmission')) return ok ? 'Transmission status: ' + status + missing : 'Transmission status unavailable';
+      if (route.includes('services')) return ok ? 'Services status: ' + status + missing : 'Services status unavailable';
+      if (route.includes('power')) return ok ? 'Power readback: ' + status + missing : 'Power readback unavailable';
+      return ok ? 'Internet status: ' + status + missing : 'Internet status unavailable';
+    }
+    async function hydrateModalRouteReads(kind) {
+      const nodes = [...infoBody.querySelectorAll('[data-route-read]')];
+      await Promise.all(nodes.map(async node => {
+        const route = node.dataset.routeRead;
+        try {
+          const response = await fetch(route, { cache: 'no-store' });
+          const data = await response.json();
+          const label = routeReadLabel(route, data);
+          if (node.matches('ul')) node.innerHTML = `<li>${label}</li>`;
+          else if (node.classList.contains('power-value')) node.querySelector('[data-modal-status]').textContent = label.replace('Power readback: ', '').replace('Power readback unavailable', 'unavailable');
+          else node.textContent = label;
+          node.classList.remove('loading');
+          node.dataset.hydrated = 'true';
+        } catch (error) {
+          const fallback = 'Status unavailable: ' + route;
+          if (node.matches('ul')) node.innerHTML = `<li>${fallback}</li>`;
+          else if (node.classList.contains('power-value')) node.querySelector('[data-modal-status]').textContent = 'unavailable';
+          else node.textContent = fallback;
+          node.classList.remove('loading');
+          node.dataset.hydrated = 'false';
+        }
+      }));
     }
     function wireModalFetches() {
       infoBody.querySelectorAll('[data-modal-fetch]').forEach(button => button.addEventListener('click', async () => {
@@ -613,6 +647,7 @@ fn render_crown_shell() -> String {
       infoBackdrop.classList.add('open');
       infoBackdrop.setAttribute('aria-hidden', 'false');
       wireModalFetches();
+      hydrateModalRouteReads(kind);
     }
     function closeInfoModal() {
       infoBackdrop.classList.remove('open');
