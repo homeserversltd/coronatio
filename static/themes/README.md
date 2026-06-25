@@ -25,3 +25,5 @@ The file is one JSON catalog with this shape:
 Every theme under `themes` must contain the complete required variable set used by `src/bands/crown-law.rs`. Theme names are the object keys and propagate into `/api/themes`, `<html data-theme>`, localStorage `preferred-theme`, browser `themeData`, the header theme button, and `style[data-theme-styles]`.
 
 To add a user theme, add a new object under `themes`, preserve all required keys as CSS value strings, save the file, and reload Coronatio. No Rust source edit is required for a new theme entry.
+
+Theme behavior remains governed by the one-to-one port doctrine: the JSON catalog supplies the Rust implementation substrate, while the visible theme control and persistence behavior must match the original Flask/React Header and ThemeComponent behavior unless an explicit divergence is recorded.
