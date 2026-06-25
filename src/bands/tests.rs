@@ -619,6 +619,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn favorite_manifest_drives_original_first_load_starred_tab() {
+        let temp = test_tab_root("favorite-manifest");
+        let app = app(AppState { tab_root: Arc::new(temp) });
+        let response = app.clone().oneshot(Request::builder().uri("/api/favorites").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("coronatio.favorite-manifest.response.v1"));
+        assert!(body.contains("\"starredTab\":\"upload\""));
+        assert!(body.contains("flask-0-6-tabstate.md"));
+        assert!(body.contains("get_starred_tab() or get_first_visible_tab()"));
+        let response = app.clone().oneshot(Request::builder().uri("/api/get_starred_tab").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("coronatio.starred-tab.response.v1"));
+        assert!(body.contains("\"starred_tab\":\"upload\""));
+        let response = app.oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let shell = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(shell.contains("const tabState = Object.assign({ starredTab: 'upload'"));
+        assert!(shell.contains("fetch('/api/favorites')"));
+        assert!(shell.contains("fetch('/api/set_starred_tab'"));
+        assert!(shell.contains("Upload tab is starred"));
+    }
+
+    #[tokio::test]
     async fn registry_route_encodes_tab_visibility_and_starred_law() {
         let temp = test_tab_root("registry-law");
         let response = app(AppState {
@@ -638,8 +665,8 @@ mod tests {
             .unwrap();
         let registry: RegistryReadback = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(registry.schema, "coronatio.registry.v1");
-        assert_eq!(registry.starred_tab, "portals");
-        assert_eq!(registry.default_route_tab, "portals");
+        assert_eq!(registry.starred_tab, "upload");
+        assert_eq!(registry.default_route_tab, "upload");
         assert_eq!(registry.visible_tabs_user, ["stats", "portals", "upload"]);
         assert_eq!(
             registry.visible_tabs_admin,
@@ -671,7 +698,7 @@ mod tests {
             .unwrap();
         let startup: StartupReadback = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(startup.schema, "coronatio.startup.v1");
-        assert_eq!(startup.initial_tab, "portals");
+        assert_eq!(startup.initial_tab, "upload");
         assert_eq!(initial_tab(false, None, false), "fallback");
         assert_eq!(initial_tab(true, Some("@stats"), false), "stats");
         assert!(startup.default_route_law.contains("forced tab wins"));

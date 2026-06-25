@@ -470,7 +470,7 @@ fn render_crown_shell() -> String {
       catch (_) { return {}; }
     };
     const saveTabState = state => localStorage.setItem(storageKey, JSON.stringify(state));
-    const tabState = Object.assign({ starredTab: 'portals', hiddenTabs: [] }, loadTabState());
+    const tabState = Object.assign({ starredTab: 'upload', hiddenTabs: [] }, loadTabState());
     const headerStateKey = 'coronatio.flask-react-header.v1';
     const preferredThemeKey = 'preferred-theme';
     const themeDataKey = 'themeData';
@@ -716,7 +716,13 @@ fn render_crown_shell() -> String {
       });
       tab.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showPane(tab.dataset.pane); } });
     });
-    document.querySelectorAll('[data-tab-star]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); setStarredTab(button.dataset.tabStar); }));
+    document.querySelectorAll('[data-tab-star]').forEach(button => button.addEventListener('click', async event => {
+      event.stopPropagation();
+      setStarredTab(button.dataset.tabStar);
+      try {
+        await fetch('/api/set_starred_tab', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tabName: button.dataset.tabStar }) });
+      } catch (_) {}
+    }));
     document.querySelectorAll('[data-tab-visibility-toggle]').forEach(button => button.addEventListener('click', event => {
       event.stopPropagation();
       const id = button.dataset.tabVisibilityToggle;
@@ -918,7 +924,18 @@ fn render_crown_shell() -> String {
         document.getElementById('stats-readout').textContent = JSON.stringify({ stats: data, caduceus }, null, 2);
       } catch (error) { document.getElementById('stats-readout').textContent = String(error); }
     }
-    showPane((location.hash || '#' + (tabState.starredTab || firstVisibleTab())).slice(1));
+    async function hydrateFavoriteManifest() {
+      try {
+        const favorite = await fetch('/api/favorites').then(r => r.json());
+        if (favorite?.starredTab) {
+          tabState.starredTab = favorite.starredTab;
+          saveTabState(tabState);
+          setStarredTab(favorite.starredTab);
+        }
+      } catch (_) { setStarredTab(tabState.starredTab); }
+      showPane((location.hash || '#' + (tabState.starredTab || firstVisibleTab())).slice(1));
+    }
+    hydrateFavoriteManifest();
     hydrateUptime();
     hydrateStats();
     setInterval(hydrateStats, 5000);

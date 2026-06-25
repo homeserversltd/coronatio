@@ -1,6 +1,8 @@
 const DEFAULT_TAB_ROOT: &str = "/var/lib/coronatio/tabs";
 const DEFAULT_THEME_JSON: &str = "static/themes/theme.json";
 const INSTALLED_THEME_JSON: &str = "/opt/coronatio/source/static/themes/theme.json";
+const DEFAULT_FAVORITES_JSON: &str = "static/favorites/favorites.json";
+const INSTALLED_FAVORITES_JSON: &str = "/opt/coronatio/source/static/favorites/favorites.json";
 const INSTALLED_STATIC_ROOT: &str = "/opt/coronatio/source/static";
 const DEFAULT_STATIC_ROOT: &str = "static";
 const PRIMARY_TABS: [&str; 4] = ["admin", "stats", "portals", "upload"];
@@ -49,6 +51,53 @@ const REQUIRED_THEME_KEYS: &[&str] = &[
     "shadow-lg",
     "radius",
 ];
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FavoriteManifest {
+    schema: String,
+    starred_tab: String,
+    source_quarry: Vec<String>,
+    tabs: Vec<FavoriteTabManifest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FavoriteTabManifest {
+    id: String,
+    display_name: String,
+    starred: bool,
+    visible: bool,
+    admin_only: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FavoriteManifestResponse {
+    schema: String,
+    source: String,
+    starred_tab: String,
+    source_quarry: Vec<String>,
+    tabs: Vec<FavoriteTabManifest>,
+    first_load_law: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct StarredTabResponse {
+    schema: String,
+    success: bool,
+    starred_tab: String,
+    source: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetStarredTabRequest {
+    tab_name: Option<String>,
+    tab: Option<String>,
+    is_starred: Option<bool>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ThemeCatalog {

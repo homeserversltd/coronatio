@@ -1,0 +1,15 @@
+{
+  "schema": "coronatio.favorite-manifest.v1",
+  "starredTab": "upload",
+  "sourceQuarry": [
+    "serverGenesis/depreciated/dark-place/flask-0-6-tabstate.md",
+    "serverGenesis/depreciated/dark-place/flask-0-7-tabdrawing.md",
+    "serverGenesis/depreciated/dark-place/flask-0-8-favoritecomponent.md"
+  ],
+  "tabs": [
+    { "id": "stats", "displayName": "Stats", "starred": false, "visible": true, "adminOnly": false },
+    { "id": "portals", "displayName": "Portals", "starred": false, "visible": true, "adminOnly": false },
+    { "id": "upload", "displayName": "Upload", "starred": true, "visible": true, "adminOnly": false },
+    { "id": "admin", "displayName": "Admin", "starred": false, "visible": true, "adminOnly": true }
+  ]
+}

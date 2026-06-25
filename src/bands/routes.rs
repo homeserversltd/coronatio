@@ -37,6 +37,9 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/services/data".to_string(),
             "/api/frontend/storage".to_string(),
             "/api/themes".to_string(),
+            "/api/favorites".to_string(),
+            "/api/get_starred_tab".to_string(),
+            "/api/set_starred_tab".to_string(),
             "/api/boundary".to_string(),
             "/api/installer".to_string(),
             "/api/stats/events".to_string(),
@@ -97,6 +100,130 @@ async fn session_renew_route() -> impl IntoResponse {
         "leaseSeconds": 1800,
         "authority": "Caduceus must mint or refresh privileged mutation capability before live mutation is enabled"
     }))
+}
+
+async fn favorites_route() -> impl IntoResponse {
+    match load_favorite_manifest().await {
+        Ok((source, manifest)) => Json(FavoriteManifestResponse {
+            schema: "coronatio.favorite-manifest.response.v1".to_string(),
+            source,
+            starred_tab: manifest.starred_tab,
+            source_quarry: manifest.source_quarry,
+            tabs: manifest.tabs,
+            first_load_law: "original Flask root loads get_starred_tab() or get_first_visible_tab(); Coronatio opens the manifest starred tab unless an explicit hash names a valid visible tab".to_string(),
+        })
+        .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "schema": "coronatio.favorite-manifest.error.v1",
+                "ok": false,
+                "error": error,
+                "expected": DEFAULT_FAVORITES_JSON,
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn get_starred_tab_route() -> impl IntoResponse {
+    match load_favorite_manifest().await {
+        Ok((source, manifest)) => Json(StarredTabResponse {
+            schema: "coronatio.starred-tab.response.v1".to_string(),
+            success: true,
+            starred_tab: manifest.starred_tab,
+            source,
+        })
+        .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "schema": "coronatio.starred-tab.error.v1",
+                "success": false,
+                "error": error,
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn set_starred_tab_route(Json(request): Json<SetStarredTabRequest>) -> impl IntoResponse {
+    let requested = request.tab_name.or(request.tab).unwrap_or_default();
+    let requested = normalize_tab_id(&requested);
+    match load_favorite_manifest().await {
+        Ok((source, mut manifest)) => {
+            if request.is_starred == Some(false) {
+                return Json(serde_json::json!({
+                    "schema": "coronatio.starred-tab.mutation.v1",
+                    "success": false,
+                    "error": "one-to-one port preserves one active favorite; choose another visible non-admin tab instead of clearing all favorites",
+                    "starred_tab": manifest.starred_tab,
+                    "source": source,
+                })).into_response();
+            }
+            let allowed = manifest.tabs.iter().any(|tab| tab.id == requested && tab.visible && !tab.admin_only);
+            if !allowed {
+                return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                    "schema": "coronatio.starred-tab.mutation.v1",
+                    "success": false,
+                    "error": "favorite target must be visible, enabled, and non-admin",
+                    "requested": requested,
+                    "starred_tab": manifest.starred_tab,
+                    "source": source,
+                }))).into_response();
+            }
+            manifest.starred_tab = requested.clone();
+            for tab in manifest.tabs.iter_mut() { tab.starred = tab.id == requested; }
+            let write_result = save_favorite_manifest(&manifest).await;
+            Json(serde_json::json!({
+                "schema": "coronatio.starred-tab.mutation.v1",
+                "success": write_result.is_ok(),
+                "starred_tab": requested,
+                "source": source,
+                "write_error": write_result.err(),
+            })).into_response()
+        }
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
+            "schema": "coronatio.starred-tab.mutation.v1",
+            "success": false,
+            "error": error,
+        }))).into_response(),
+    }
+}
+
+async fn load_favorite_manifest() -> Result<(String, FavoriteManifest), String> {
+    let path = favorite_manifest_path();
+    let raw = fs::read_to_string(&path).await.map_err(|error| format!("favorite manifest unreadable at {}: {}", path.display(), error))?;
+    let manifest: FavoriteManifest = serde_json::from_str(&raw).map_err(|error| format!("favorite manifest invalid at {}: {}", path.display(), error))?;
+    validate_favorite_manifest(&manifest)?;
+    Ok((path.display().to_string(), manifest))
+}
+
+async fn save_favorite_manifest(manifest: &FavoriteManifest) -> Result<(), String> {
+    let path = favorite_manifest_path();
+    let body = serde_json::to_string_pretty(manifest).map_err(|error| error.to_string())? + "\n";
+    fs::write(&path, body).await.map_err(|error| format!("favorite manifest not writable at {}: {}", path.display(), error))
+}
+
+fn favorite_manifest_path() -> PathBuf {
+    if let Ok(path) = env::var("CORONATIO_FAVORITES_JSON") { return PathBuf::from(path); }
+    let local = PathBuf::from(DEFAULT_FAVORITES_JSON);
+    if local.exists() { return local; }
+    PathBuf::from(INSTALLED_FAVORITES_JSON)
+}
+
+fn validate_favorite_manifest(manifest: &FavoriteManifest) -> Result<(), String> {
+    if manifest.schema != "coronatio.favorite-manifest.v1" { return Err(format!("unexpected favorite manifest schema {}", manifest.schema)); }
+    let mut starred_count = 0;
+    let mut starred_valid = false;
+    for tab in &manifest.tabs {
+        if !is_safe_tab_id(&tab.id) { return Err(format!("favorite tab id {} is not forward-safe", tab.id)); }
+        if tab.starred { starred_count += 1; }
+        if tab.id == manifest.starred_tab && tab.visible && !tab.admin_only { starred_valid = true; }
+    }
+    if starred_count != 1 { return Err(format!("favorite manifest must carry exactly one starred tab, found {}", starred_count)); }
+    if !starred_valid { return Err(format!("starred tab {} is absent, hidden, or admin-only", manifest.starred_tab)); }
+    Ok(())
 }
 
 async fn themes_route() -> impl IntoResponse {
