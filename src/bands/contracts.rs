@@ -290,7 +290,12 @@ struct StatsSnapshot {
     schema: String,
     pane_id: String,
     product: String,
+    doctrine: StatsViewportDoctrine,
     transport: StatsTransport,
+    resources: StatsResources,
+    storage: Vec<StatsDrive>,
+    network: StatsNetwork,
+    services: Vec<StatsService>,
     telemetry: StatsTelemetry,
     next_routes: StatsNextRoutes,
 }
@@ -303,6 +308,86 @@ struct StatsTransport {
     renew_route: String,
     stream_status: String,
     stream_reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsViewportDoctrine {
+    quarry_sources: Vec<String>,
+    preserved_sections: Vec<String>,
+    refresh_seconds: u64,
+    authority: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct StatsResources {
+    load: StatsLoad,
+    memory: StatsMemory,
+    swap: StatsMemory,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct StatsLoad {
+    one: Option<f64>,
+    five: Option<f64>,
+    fifteen: Option<f64>,
+    cpu_temperature_celsius: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsMemory {
+    total_bytes: Option<u64>,
+    used_bytes: Option<u64>,
+    free_bytes: Option<u64>,
+    percent: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsDrive {
+    name: String,
+    mount: String,
+    total_bytes: Option<u64>,
+    used_bytes: Option<u64>,
+    free_bytes: Option<u64>,
+    usage_percent: Option<u8>,
+    source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsNetwork {
+    interfaces: Vec<StatsNetworkInterface>,
+    connections: StatsConnectionCounts,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsNetworkInterface {
+    name: String,
+    status: String,
+    rx_bytes: u64,
+    tx_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsConnectionCounts {
+    established: u64,
+    listening: u64,
+    total: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsService {
+    name: String,
+    status: String,
+    details: String,
+    route: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

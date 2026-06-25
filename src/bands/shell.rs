@@ -236,6 +236,19 @@ fn render_crown_shell() -> String {
     .card h2, .card h3 { margin: 0 0 .65rem; font-size: 1rem; color: var(--text); }
     .card p { margin: .25rem 0; color: var(--text-secondary); font-size: .92rem; }
     .metric { font-size: 1.65rem; font-weight: 750; color: var(--accent); line-height: 1.1; }
+    .stats-viewport { display: grid; gap: 16px; }
+    .stats-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; box-shadow: var(--shadow); }
+    .stats-section h2 { margin: 0 0 .75rem; font-size: 1rem; }
+    .stats-resource-grid, .drives-grid, .network-grid, .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem; }
+    .stats-resource-card, .drive-info, .network-interface, .service-info, .connections-summary { background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.08); border-radius: 8px; padding: .75rem; }
+    .stats-resource-card h3, .drive-info h3, .network-interface h3, .service-info h3 { margin: 0 0 .45rem; font-size: .95rem; }
+    .progress-bar { width: 100%; height: 8px; background: var(--background); border-radius: 999px; overflow: hidden; margin: .55rem 0; }
+    .progress-bar .progress { height: 100%; width: 0%; background: var(--accent); transition: width .18s ease; }
+    .details, .traffic, .counts, .service-info .details { display: flex; justify-content: space-between; gap: .65rem; color: var(--text-secondary); font-size: .84rem; flex-wrap: wrap; }
+    .status-dot { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; margin-right: .35rem; background: var(--warning); }
+    .status-dot.up, .status-dot.running { background: var(--success); }
+    .status-dot.down, .status-dot.stopped { background: var(--error); }
+    .stats-transport-card .button-row { margin-top: .65rem; }
     .muted { color: var(--text-secondary); }
     .readout { margin-top: .75rem; padding: .75rem; border-radius: 6px; background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.08); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; color: #cdefff; overflow: auto; max-height: 220px; white-space: pre-wrap; }
     .button-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .85rem; }
@@ -441,10 +454,36 @@ fn render_crown_shell() -> String {
         </div>
       </section>
       <section class="pane" id="pane-stats" data-pane-panel="stats" role="tabpanel" aria-label="Stats">
-        <div class="pane-grid">
-          <article class="card"><h2>System telemetry</h2><div class="metric" id="stats-load">—</div><p>Load average</p><pre class="readout" id="stats-readout">Fetching /api/stats…</pre></article>
-          <article class="card"><h2>Stream lane</h2><p id="stats-stream">Stats stream state pending.</p><div class="button-row"><button data-fetch="/api/stats/events" data-target="stats-event">Read event frame</button><button class="secondary" data-admin-only data-admin-viewport="stats" data-fetch="/api/stats/events/renew" data-target="stats-event" data-method="POST">Renew lease</button></div><pre class="readout" id="stats-event">No event readback yet.</pre></article>
-          <article class="card"><h2>Missing signal</h2><p id="stats-missing" class="warning">Checking collector status…</p></article>
+        <div class="stats-viewport" data-stats-viewport>
+          <section class="stats-section resources" aria-label="Resources">
+            <h2>Resources</h2>
+            <div class="stats-resource-grid">
+              <article class="stats-resource-card"><h3>CPU Load</h3><div class="metric" id="stats-load">—</div><p class="muted">1 / 5 / 15 minute load</p><div class="details"><span id="stats-load-5">5m —</span><span id="stats-load-15">15m —</span></div></article>
+              <article class="stats-resource-card"><h3>Memory</h3><div class="metric" id="stats-memory">—</div><div class="progress-bar"><div class="progress" id="stats-memory-progress"></div></div><div class="details"><span id="stats-memory-used">Used —</span><span id="stats-memory-total">Total —</span></div></article>
+              <article class="stats-resource-card"><h3>Swap</h3><div class="metric" id="stats-swap">—</div><div class="progress-bar"><div class="progress" id="stats-swap-progress"></div></div><div class="details"><span id="stats-swap-used">Used —</span><span id="stats-swap-total">Total —</span></div></article>
+            </div>
+          </section>
+          <section class="stats-section drives" aria-label="Storage">
+            <h2>Storage</h2>
+            <div class="drives-grid" data-stats-drives></div>
+          </section>
+          <section class="stats-section network" aria-label="Network">
+            <h2>Network</h2>
+            <div class="network-grid" data-stats-network></div>
+            <div class="connections-summary" data-stats-connections></div>
+          </section>
+          <section class="stats-section services" aria-label="Services">
+            <h2>Services</h2>
+            <div class="services-grid" data-stats-services></div>
+          </section>
+          <section class="stats-section stats-transport-card" aria-label="Stats stream">
+            <h2>Stream lane</h2>
+            <p id="stats-stream">Stats stream state pending.</p>
+            <p id="stats-missing" class="warning">Checking collector status…</p>
+            <div class="button-row"><button data-fetch="/api/stats/events" data-target="stats-event">Read event frame</button><button class="secondary" data-admin-only data-admin-viewport="stats" data-fetch="/api/stats/events/renew" data-target="stats-event" data-method="POST">Renew lease</button></div>
+            <pre class="readout" id="stats-event">No event readback yet.</pre>
+            <pre class="readout" id="stats-readout">Fetching /api/stats…</pre>
+          </section>
         </div>
       </section>
       <section class="pane" id="pane-portals" data-pane-panel="portals" role="tabpanel" aria-label="Portals">
@@ -752,11 +791,45 @@ fn render_crown_shell() -> String {
         uptime.textContent = data?.uptime ? data.uptime + 's' : 'connecting...';
       } catch (_) { uptime.textContent = navigator.onLine ? 'connecting...' : 'disconnected'; }
     }
+    function fmtBytes(value) {
+      if (value === null || value === undefined) return '—';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let next = Number(value);
+      let unit = 0;
+      while (next >= 1024 && unit < units.length - 1) { next = next / 1024; unit += 1; }
+      return next.toFixed(next >= 10 || unit === 0 ? 0 : 1) + ' ' + units[unit];
+    }
+    function setProgress(id, percent) {
+      const el = document.getElementById(id);
+      if (el) el.style.width = (percent ?? 0) + '%';
+    }
+    function metricPercent(value) { return value === null || value === undefined ? '—' : value + '%'; }
     async function hydrateStats() {
       try {
         const data = await fetch('/api/stats').then(r => r.json());
         const caduceus = await fetch('/api/caduceus/status').then(r => r.json()).catch(() => null);
-        document.getElementById('stats-load').textContent = caduceus?.ok ? 'connected' : (data.telemetry?.load1 ?? 'unwired');
+        const load = data.resources?.load || {};
+        const memory = data.resources?.memory || {};
+        const swap = data.resources?.swap || {};
+        document.getElementById('stats-load').textContent = load.one ?? '—';
+        document.getElementById('stats-load-5').textContent = '5m ' + (load.five ?? '—');
+        document.getElementById('stats-load-15').textContent = '15m ' + (load.fifteen ?? '—');
+        document.getElementById('stats-memory').textContent = metricPercent(memory.percent);
+        document.getElementById('stats-memory-used').textContent = 'Used ' + fmtBytes(memory.usedBytes);
+        document.getElementById('stats-memory-total').textContent = 'Total ' + fmtBytes(memory.totalBytes);
+        setProgress('stats-memory-progress', memory.percent);
+        document.getElementById('stats-swap').textContent = metricPercent(swap.percent);
+        document.getElementById('stats-swap-used').textContent = 'Used ' + fmtBytes(swap.usedBytes);
+        document.getElementById('stats-swap-total').textContent = 'Total ' + fmtBytes(swap.totalBytes);
+        setProgress('stats-swap-progress', swap.percent);
+        const drives = document.querySelector('[data-stats-drives]');
+        drives.innerHTML = (data.storage || []).map(drive => `<article class="drive-info"><h3>${drive.mount}</h3><div class="progress-bar"><div class="progress" style="width:${drive.usagePercent ?? 0}%"></div></div><div class="details"><span>${fmtBytes(drive.usedBytes)} / ${fmtBytes(drive.totalBytes)}</span><span>${drive.usagePercent ?? '—'}%</span></div><p class="muted">${drive.name}</p></article>`).join('') || '<article class="drive-info"><h3>No storage readback</h3><p class="muted">df readback unavailable.</p></article>';
+        const network = document.querySelector('[data-stats-network]');
+        network.innerHTML = (data.network?.interfaces || []).map(iface => `<article class="network-interface"><h3><span class="status-dot ${iface.status}"></span>${iface.name}</h3><div class="traffic"><span>↓ ${fmtBytes(iface.rxBytes)}</span><span>↑ ${fmtBytes(iface.txBytes)}</span></div></article>`).join('') || '<article class="network-interface"><h3>No network readback</h3><p class="muted">/proc/net/dev unavailable.</p></article>';
+        const counts = data.network?.connections || {};
+        document.querySelector('[data-stats-connections]').innerHTML = `<div class="counts"><span>Established: ${counts.established ?? 0}</span><span>Listening: ${counts.listening ?? 0}</span><span>Total: ${counts.total ?? 0}</span></div>`;
+        const services = document.querySelector('[data-stats-services]');
+        services.innerHTML = (data.services || []).map(service => `<article class="service-info"><h3><span class="status-dot ${service.status}"></span>${service.name}</h3><div class="details"><span>${service.status}</span><span>${service.route}</span></div><p class="muted">${service.details}</p></article>`).join('');
         document.getElementById('stats-stream').textContent = (data.transport?.streamStatus || 'unknown') + ' — ' + (data.transport?.streamReason || '');
         document.getElementById('stats-missing').textContent = caduceus?.firstMissingSignal || data.telemetry?.firstMissingSignal || 'none';
         document.getElementById('stats-readout').textContent = JSON.stringify({ stats: data, caduceus }, null, 2);

@@ -531,8 +531,8 @@ fn stats_event_payload() -> StatsEventPayload {
         event_id: "stats-system-bootstrap-1".to_string(),
         event: "snapshot".to_string(),
         lease_seconds: 30,
-        payload_state: "placeholder-unavailable".to_string(),
-        first_missing_signal: "stats collectors not wired".to_string(),
+        payload_state: "snapshot-available".to_string(),
+        first_missing_signal: stats_snapshot().telemetry.first_missing_signal,
     }
 }
 
@@ -992,23 +992,49 @@ fn installer_lane_mapping() -> Vec<InstallerLaneMapping> {
 }
 
 fn stats_snapshot() -> StatsSnapshot {
+    let resources = stats_resources();
+    let storage = stats_storage();
+    let network = stats_network();
+    let services = stats_services();
+    let first_missing_signal = stats_first_missing_signal(&storage, &services);
     StatsSnapshot {
         schema: "coronatio.stats.snapshot.v1".to_string(),
         pane_id: "stats".to_string(),
         product: "Coronatio".to_string(),
+        doctrine: StatsViewportDoctrine {
+            quarry_sources: vec![
+                "serverGenesis deprecated flask-0-7 StatsTablet.ts".to_string(),
+                "serverGenesis deprecated flask-0-7 stats.css".to_string(),
+                "Coronatio North Star first-party native lane".to_string(),
+            ],
+            preserved_sections: vec![
+                "resources".to_string(),
+                "storage".to_string(),
+                "network".to_string(),
+                "connections".to_string(),
+                "services".to_string(),
+                "SSE lease controls".to_string(),
+            ],
+            refresh_seconds: 5,
+            authority: "read-only Rust snapshot from /proc and df; host mutation remains behind Caduceus".to_string(),
+        },
         transport: StatsTransport {
             snapshot_route: "/api/stats".to_string(),
             event_route: "/api/stats/events".to_string(),
             renew_route: "/api/stats/events/renew".to_string(),
-            stream_status: "planned".to_string(),
-            stream_reason: "stats SSE lease route is the next Coronatio tranche; snapshot is the current authority".to_string(),
+            stream_status: "available".to_string(),
+            stream_reason: "stats SSE event frame and renewal route are registered; the viewport can read snapshot and event authority".to_string(),
         },
+        resources: resources.clone(),
+        storage: storage.clone(),
+        network: network.clone(),
+        services: services.clone(),
         telemetry: StatsTelemetry {
-            load1: None,
-            cpu_temperature_celsius: None,
-            service_health: None,
-            storage_posture: None,
-            first_missing_signal: "stats collectors not wired".to_string(),
+            load1: resources.load.one,
+            cpu_temperature_celsius: resources.load.cpu_temperature_celsius,
+            service_health: Some(service_health_summary(&services)),
+            storage_posture: Some(storage_posture_summary(&storage)),
+            first_missing_signal,
         },
         next_routes: StatsNextRoutes {
             snapshot: "/api/stats".to_string(),
@@ -1017,6 +1043,227 @@ fn stats_snapshot() -> StatsSnapshot {
         },
     }
 }
+
+fn stats_resources() -> StatsResources {
+    let load = std::fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|raw| {
+            let mut parts = raw.split_whitespace();
+            Some(StatsLoad {
+                one: parts.next().and_then(|value| value.parse().ok()),
+                five: parts.next().and_then(|value| value.parse().ok()),
+                fifteen: parts.next().and_then(|value| value.parse().ok()),
+                cpu_temperature_celsius: read_cpu_temperature_celsius(),
+            })
+        })
+        .unwrap_or(StatsLoad {
+            one: None,
+            five: None,
+            fifteen: None,
+            cpu_temperature_celsius: read_cpu_temperature_celsius(),
+        });
+    let meminfo = parse_meminfo();
+    StatsResources {
+        load,
+        memory: memory_from_meminfo(&meminfo, "MemTotal", "MemAvailable"),
+        swap: memory_from_meminfo(&meminfo, "SwapTotal", "SwapFree"),
+    }
+}
+
+fn parse_meminfo() -> BTreeMap<String, u64> {
+    let mut map = BTreeMap::new();
+    if let Ok(raw) = std::fs::read_to_string("/proc/meminfo") {
+        for line in raw.lines() {
+            if let Some((key, rest)) = line.split_once(':') {
+                if let Some(value) = rest.split_whitespace().next().and_then(|v| v.parse::<u64>().ok()) {
+                    map.insert(key.to_string(), value * 1024);
+                }
+            }
+        }
+    }
+    map
+}
+
+fn memory_from_meminfo(meminfo: &BTreeMap<String, u64>, total_key: &str, free_key: &str) -> StatsMemory {
+    let total = meminfo.get(total_key).copied();
+    let free = meminfo.get(free_key).copied();
+    let used = match (total, free) {
+        (Some(total), Some(free)) if total >= free => Some(total - free),
+        _ => None,
+    };
+    let percent = match (used, total) {
+        (Some(used), Some(total)) if total > 0 => Some(((used.saturating_mul(100)) / total).min(100) as u8),
+        _ => None,
+    };
+    StatsMemory { total_bytes: total, used_bytes: used, free_bytes: free, percent }
+}
+
+fn read_cpu_temperature_celsius() -> Option<f64> {
+    for path in [
+        "/sys/class/thermal/thermal_zone0/temp",
+        "/sys/class/hwmon/hwmon0/temp1_input",
+        "/sys/class/hwmon/hwmon1/temp1_input",
+    ] {
+        if let Ok(raw) = std::fs::read_to_string(path) {
+            if let Ok(value) = raw.trim().parse::<f64>() {
+                return Some((value / 1000.0 * 10.0).round() / 10.0);
+            }
+        }
+    }
+    None
+}
+
+fn stats_storage() -> Vec<StatsDrive> {
+    let output = Command::new("df").args(["-B1", "-P", "/", "/home", "/vault", "/mnt/nas"]).output();
+    let mut drives = Vec::new();
+    if let Ok(output) = output {
+        let raw = String::from_utf8_lossy(&output.stdout);
+        for line in raw.lines().skip(1) {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 6 {
+                continue;
+            }
+            let total = parts[1].parse::<u64>().ok();
+            let used = parts[2].parse::<u64>().ok();
+            let free = parts[3].parse::<u64>().ok();
+            let percent = parts[4].trim_end_matches('%').parse::<u8>().ok();
+            let mount = parts[5].to_string();
+            if drives.iter().any(|drive: &StatsDrive| drive.mount == mount) {
+                continue;
+            }
+            drives.push(StatsDrive {
+                name: parts[0].to_string(),
+                mount,
+                total_bytes: total,
+                used_bytes: used,
+                free_bytes: free,
+                usage_percent: percent,
+                source: "df -B1 -P".to_string(),
+            });
+        }
+    }
+    if drives.is_empty() {
+        drives.push(StatsDrive {
+            name: "root".to_string(),
+            mount: "/".to_string(),
+            total_bytes: None,
+            used_bytes: None,
+            free_bytes: None,
+            usage_percent: None,
+            source: "df unavailable".to_string(),
+        });
+    }
+    drives
+}
+
+fn stats_network() -> StatsNetwork {
+    StatsNetwork {
+        interfaces: network_interfaces(),
+        connections: connection_counts(),
+    }
+}
+
+fn network_interfaces() -> Vec<StatsNetworkInterface> {
+    let mut interfaces = Vec::new();
+    if let Ok(raw) = std::fs::read_to_string("/proc/net/dev") {
+        for line in raw.lines().skip(2) {
+            let Some((name, rest)) = line.split_once(':') else { continue; };
+            let name = name.trim();
+            if name == "lo" || name.is_empty() {
+                continue;
+            }
+            let values: Vec<&str> = rest.split_whitespace().collect();
+            if values.len() < 16 {
+                continue;
+            }
+            let rx_bytes = values[0].parse::<u64>().unwrap_or(0);
+            let tx_bytes = values[8].parse::<u64>().unwrap_or(0);
+            let operstate = std::fs::read_to_string(format!("/sys/class/net/{name}/operstate"))
+                .unwrap_or_else(|_| "unknown".to_string())
+                .trim()
+                .to_string();
+            interfaces.push(StatsNetworkInterface { name: name.to_string(), status: operstate, rx_bytes, tx_bytes });
+        }
+    }
+    interfaces.sort_by(|left, right| left.name.cmp(&right.name));
+    interfaces
+}
+
+fn connection_counts() -> StatsConnectionCounts {
+    let (tcp_established, tcp_listening, tcp_total) = connection_counts_for("/proc/net/tcp");
+    let (tcp6_established, tcp6_listening, tcp6_total) = connection_counts_for("/proc/net/tcp6");
+    StatsConnectionCounts {
+        established: tcp_established + tcp6_established,
+        listening: tcp_listening + tcp6_listening,
+        total: tcp_total + tcp6_total,
+    }
+}
+
+fn connection_counts_for(path: &str) -> (u64, u64, u64) {
+    let Ok(raw) = std::fs::read_to_string(path) else { return (0, 0, 0); };
+    let mut established = 0;
+    let mut listening = 0;
+    let mut total = 0;
+    for line in raw.lines().skip(1) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() <= 3 {
+            continue;
+        }
+        total += 1;
+        match parts[3] {
+            "01" => established += 1,
+            "0A" => listening += 1,
+            _ => {}
+        }
+    }
+    (established, listening, total)
+}
+
+fn stats_services() -> Vec<StatsService> {
+    [
+        ("Coronatio", "/health"),
+        ("Caduceus", "/api/caduceus/status"),
+        ("Harmonia", "/api/caduceus/receipts/latest"),
+        ("HomeServer", "/api/services/data"),
+    ]
+    .into_iter()
+    .map(|(name, route)| StatsService {
+        name: name.to_string(),
+        status: if name == "Coronatio" { "running" } else { "readback" }.to_string(),
+        details: if name == "Coronatio" {
+            "same-process Rust crown health route is registered".to_string()
+        } else {
+            "status resolves through the named Coronatio/Caduceus route; privileged systemctl polling is a later Caduceus collector".to_string()
+        },
+        route: route.to_string(),
+    })
+    .collect()
+}
+
+fn stats_first_missing_signal(storage: &[StatsDrive], services: &[StatsService]) -> String {
+    if storage.iter().any(|drive| drive.total_bytes.is_none()) {
+        return "storage df readback unavailable".to_string();
+    }
+    if services.iter().any(|service| service.status == "readback") {
+        return "service systemctl collector deferred to Caduceus; route readbacks are present".to_string();
+    }
+    "none".to_string()
+}
+
+fn service_health_summary(services: &[StatsService]) -> String {
+    let running = services.iter().filter(|service| service.status == "running").count();
+    format!("{running}/{} same-process services running; remaining services use route readback", services.len())
+}
+
+fn storage_posture_summary(storage: &[StatsDrive]) -> String {
+    let max_percent = storage.iter().filter_map(|drive| drive.usage_percent).max();
+    match max_percent {
+        Some(percent) if percent >= 90 => format!("attention: storage peak {percent}%"),
+        Some(percent) => format!("ok: storage peak {percent}%"),
+        None => "storage usage unknown".to_string(),
+    }
+}
+
 
 fn render_flask_react_tabbar_quarry() -> String {
     let starred_tab = registry_readback().starred_tab;

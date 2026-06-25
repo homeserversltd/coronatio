@@ -141,6 +141,10 @@ mod tests {
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
         }
         assert!(shell.contains("Read service contract"));
+        assert!(shell.contains("data-stats-viewport"));
+        assert!(shell.contains("data-stats-drives"));
+        assert!(shell.contains("data-stats-network"));
+        assert!(shell.contains("data-stats-services"));
         assert!(shell.contains("Fetching /api/stats"));
         assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
         assert!(shell.contains(r#"data-admin-quarry-button-total="90""#));
@@ -443,13 +447,16 @@ mod tests {
         assert_eq!(snapshot.transport.snapshot_route, "/api/stats");
         assert_eq!(snapshot.transport.event_route, "/api/stats/events");
         assert_eq!(snapshot.transport.renew_route, "/api/stats/events/renew");
-        assert_eq!(snapshot.transport.stream_status, "planned");
-        assert_eq!(snapshot.telemetry.load1, None);
-        assert_eq!(snapshot.telemetry.cpu_temperature_celsius, None);
-        assert_eq!(
-            snapshot.telemetry.first_missing_signal,
-            "stats collectors not wired"
-        );
+        assert_eq!(snapshot.transport.stream_status, "available");
+        assert!(snapshot.doctrine.preserved_sections.contains(&"resources".to_string()));
+        assert!(snapshot.doctrine.preserved_sections.contains(&"storage".to_string()));
+        assert!(snapshot.doctrine.preserved_sections.contains(&"network".to_string()));
+        assert!(snapshot.doctrine.preserved_sections.contains(&"services".to_string()));
+        assert_eq!(snapshot.doctrine.refresh_seconds, 5);
+        assert!(!snapshot.storage.is_empty());
+        assert!(snapshot.services.iter().any(|service| service.name == "Coronatio"));
+        assert!(snapshot.telemetry.service_health.is_some());
+        assert!(snapshot.telemetry.storage_posture.is_some());
     }
 
     #[test]
@@ -459,6 +466,32 @@ mod tests {
             .find(|pane| pane.id == "stats")
             .unwrap();
         assert_eq!(stats.state_route, "/api/stats");
+    }
+
+    #[test]
+    fn stats_viewport_preserves_resources_storage_network_services_and_stream_controls() {
+        let shell = render_crown_shell();
+        for marker in [
+            r#"data-stats-viewport"#,
+            r#"class="stats-section resources""#,
+            r#"class="stats-section drives""#,
+            r#"class="stats-section network""#,
+            r#"class="stats-section services""#,
+            r#"data-stats-connections"#,
+            r#"/api/stats/events"#,
+            r#"/api/stats/events/renew"#,
+            r#"function fmtBytes(value)"#,
+            r#"data.resources?.memory"#,
+        ] {
+            assert!(shell.contains(marker), "stats viewport marker missing: {}", marker);
+        }
+        for placeholder in [
+            r#"Stats stream state pending.</p><div class="button-row""#,
+            r#"System telemetry</h2><div class="metric" id="stats-load">—</div><p>Load average</p>"#,
+            r#"stats collectors not wired"#,
+        ] {
+            assert!(!shell.contains(placeholder), "old stats scaffold survived: {}", placeholder);
+        }
     }
 
     #[tokio::test]
