@@ -6,7 +6,15 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, env, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    env,
+    io::{Read, Write},
+    net::{SocketAddr, TcpStream},
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::fs;
 use tower_http::services::ServeDir;
 
@@ -657,6 +665,16 @@ fn app(state: AppState) -> Router {
             "/api/admin/session",
             get(session_route).post(session_renew_route),
         )
+        .route("/api/caduceus/status", get(caduceus_status_route))
+        .route(
+            "/api/caduceus/update/check",
+            post(caduceus_update_check_route),
+        )
+        .route("/api/caduceus/update/now", post(caduceus_update_now_route))
+        .route(
+            "/api/caduceus/receipts/latest",
+            get(caduceus_receipts_latest_route),
+        )
         .route("/api/topics", get(topics_route))
         .route("/api/monitor/pulse", get(monitor_pulse_route))
         .route("/api/services/data", get(service_data_route))
@@ -703,6 +721,10 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/fallback".to_string(),
             "/api/session".to_string(),
             "/api/admin/session".to_string(),
+            "/api/caduceus/status".to_string(),
+            "/api/caduceus/update/check".to_string(),
+            "/api/caduceus/update/now".to_string(),
+            "/api/caduceus/receipts/latest".to_string(),
             "/api/topics".to_string(),
             "/api/monitor/pulse".to_string(),
             "/api/services/data".to_string(),
@@ -765,6 +787,177 @@ async fn session_renew_route() -> impl IntoResponse {
         "leaseSeconds": 1800,
         "authority": "Caduceus must mint or refresh privileged mutation capability before live mutation is enabled"
     }))
+}
+
+async fn caduceus_status_route() -> impl IntoResponse {
+    let health = caduceus_http("GET", "/api/v1/health");
+    let update = caduceus_http("GET", "/api/v1/update/status");
+    let staff = caduceus_http("GET", "/api/v1/staff/status");
+    let ok = health.ok && update.ok && staff.ok;
+    let first_missing_signal = if ok {
+        "none".to_string()
+    } else if !health.ok {
+        health.first_missing_signal.clone()
+    } else if !update.ok {
+        update.first_missing_signal.clone()
+    } else {
+        staff.first_missing_signal.clone()
+    };
+    (
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        },
+        Json(serde_json::json!({
+            "schema": "coronatio.caduceus.status.v1",
+            "ok": ok,
+            "caduceusBase": caduceus_base(),
+            "health": health,
+            "update": update,
+            "staff": staff,
+            "firstMissingSignal": first_missing_signal
+        })),
+    )
+}
+
+async fn caduceus_update_check_route() -> impl IntoResponse {
+    caduceus_mutation_route("update_check", "/api/v1/update/check")
+}
+
+async fn caduceus_update_now_route() -> impl IntoResponse {
+    caduceus_mutation_route("update_now", "/api/v1/update/now")
+}
+
+async fn caduceus_receipts_latest_route() -> impl IntoResponse {
+    let readback = caduceus_http("GET", "/api/v1/receipts/latest");
+    (
+        if readback.ok {
+            StatusCode::OK
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        },
+        Json(serde_json::json!({
+            "schema": "coronatio.caduceus.receipts.latest.v1",
+            "ok": readback.ok,
+            "readback": readback,
+            "firstMissingSignal": readback.first_missing_signal
+        })),
+    )
+}
+
+fn caduceus_mutation_route(route: &str, path: &str) -> (StatusCode, Json<serde_json::Value>) {
+    let readback = caduceus_http("POST", path);
+    (
+        if readback.ok {
+            StatusCode::OK
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        },
+        Json(serde_json::json!({
+            "schema": "coronatio.caduceus.mutation.v1",
+            "ok": readback.ok,
+            "route": route,
+            "readback": readback,
+            "firstMissingSignal": readback.first_missing_signal
+        })),
+    )
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct CaduceusHttpReadback {
+    ok: bool,
+    status: u16,
+    path: String,
+    body: serde_json::Value,
+    first_missing_signal: String,
+}
+
+fn caduceus_base() -> String {
+    env::var("CADUCEUS_URL").unwrap_or_else(|_| "http://127.0.0.1:3014".to_string())
+}
+
+fn caduceus_authority() -> (String, String) {
+    let base = caduceus_base();
+    let without_scheme = base
+        .strip_prefix("http://")
+        .or_else(|| base.strip_prefix("https://"))
+        .unwrap_or(base.as_str());
+    let authority = without_scheme.trim_end_matches('/').to_string();
+    (base, authority)
+}
+
+fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
+    let (_base, authority) = caduceus_authority();
+    let mut stream = match TcpStream::connect(&authority) {
+        Ok(stream) => stream,
+        Err(err) => {
+            return CaduceusHttpReadback {
+                ok: false,
+                status: 0,
+                path: path.to_string(),
+                body: serde_json::json!({"error": err.to_string()}),
+                first_missing_signal: "caduceus-unreachable".to_string(),
+            };
+        }
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+    );
+    if let Err(err) = stream.write_all(request.as_bytes()) {
+        return CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: path.to_string(),
+            body: serde_json::json!({"error": err.to_string()}),
+            first_missing_signal: "caduceus-write-failed".to_string(),
+        };
+    }
+    let mut response = String::new();
+    if let Err(err) = stream.read_to_string(&mut response) {
+        return CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: path.to_string(),
+            body: serde_json::json!({"error": err.to_string()}),
+            first_missing_signal: "caduceus-read-failed".to_string(),
+        };
+    }
+    let (head, body_text) = response
+        .split_once("\r\n\r\n")
+        .unwrap_or(("", response.as_str()));
+    let status = head
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|raw| raw.parse::<u16>().ok())
+        .unwrap_or(0);
+    let body =
+        serde_json::from_str(body_text).unwrap_or_else(|_| serde_json::json!({"raw": body_text}));
+    let body_ok = body
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(status < 400);
+    let first_missing_signal = body
+        .get("firstMissingSignal")
+        .or_else(|| body.get("first_missing_signal"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(if status < 400 && body_ok {
+            "none"
+        } else {
+            "caduceus-http-not-ok"
+        })
+        .to_string();
+    CaduceusHttpReadback {
+        ok: status < 400 && body_ok,
+        status,
+        path: path.to_string(),
+        body,
+        first_missing_signal,
+    }
 }
 
 async fn topics_route() -> impl IntoResponse {
@@ -2100,9 +2293,9 @@ fn render_crown_shell() -> String {
     <section class="content">
       <section class="pane active" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
         <div class="pane-grid">
-          <article class="card"><h2>Admin authority</h2><p>Session, capability, and install authority are visible here instead of hidden behind scaffold copy.</p><div class="button-row"><button data-fetch="/api/session" data-target="admin-session">Read session law</button><button class="secondary" data-fetch="/api/installer" data-target="admin-installer">Read installer law</button></div><pre class="readout" id="admin-session">Waiting for session readback.</pre></article>
-          <article class="card"><h2>Caduceus membrane</h2><p>Privileged host mutation remains behind Caduceus. Coronatio shows capability state and receipts, not fake root controls.</p><pre class="readout" id="admin-installer">Installer and mutation contract readback will appear here.</pre></article>
-          <article class="card"><h2>Visible contract</h2><p><span class="warning">Not complete:</span> live mutation endpoints are still being wired. This pane now states that honestly and exposes the boundary.</p></article>
+          <article class="card"><h2>Admin authority</h2><p>Caduceus is the live privileged membrane; Coronatio reads and triggers it through same-origin receipts.</p><div class="button-row"><button data-fetch="/api/caduceus/status" data-target="admin-session">Read live status</button><button class="secondary" data-fetch="/api/caduceus/update/check" data-target="admin-installer" data-method="POST">Check machine</button></div><pre class="readout" id="admin-session">Waiting for Caduceus status.</pre></article>
+          <article class="card"><h2>Caduceus membrane</h2><p>Host mutation now enters Caduceus and Harmonia; policy still gates each command before root work runs.</p><div class="button-row"><button data-fetch="/api/caduceus/update/now" data-target="admin-installer" data-method="POST">Make harmonious</button><button class="secondary" data-fetch="/api/caduceus/receipts/latest" data-target="admin-installer">Latest receipt</button></div><pre class="readout" id="admin-installer">Harmonia receipt readback will appear here.</pre></article>
+          <article class="card"><h2>Visible contract</h2><p><span class="success">On:</span> Caduceus/Harmonia routes are live; any blocked action names the first missing signal instead of pretending completion.</p></article>
         </div>
       </section>
       <section class="pane" id="pane-stats" data-pane-panel="stats" role="tabpanel" aria-label="Stats">
@@ -2116,7 +2309,7 @@ fn render_crown_shell() -> String {
         <div class="portal-grid">
           <article class="card portal-card"><div><h2>Admitted services</h2><p>Portal cards follow the main HomeServer service-grid pattern and expose the live config contract.</p></div><div class="button-row"><button data-fetch="/api/services/data" data-target="portals-readout">Read service contract</button><a class="action-link secondary" href="https://home.arpa/">Open main HomeServer</a></div></article>
           <article class="card portal-card"><div><h2>Coronatio</h2><p>Rust crown preview, port 3013.</p></div><span class="status-pill ok">online</span></article>
-          <article class="card portal-card"><div><h2>Caduceus</h2><p>Privileged actuator membrane, port 3014.</p></div><a class="action-link" href="http://home.arpa:3014/health">Health</a></article>
+          <article class="card portal-card"><div><h2>Caduceus</h2><p>Privileged actuator membrane, port 3014.</p></div><div class="button-row"><button data-fetch="/api/caduceus/status" data-target="portals-readout">Status</button><a class="action-link secondary" href="http://home.arpa:3014/health">Health</a></div></article>
         </div>
         <pre class="readout" id="portals-readout">Service contract readback will appear here.</pre>
       </section>
@@ -2153,10 +2346,11 @@ fn render_crown_shell() -> String {
     async function hydrateStats() {
       try {
         const data = await fetch('/api/stats').then(r => r.json());
-        document.getElementById('stats-load').textContent = data.telemetry?.load1 ?? 'unwired';
+        const caduceus = await fetch('/api/caduceus/status').then(r => r.json()).catch(() => null);
+        document.getElementById('stats-load').textContent = caduceus?.ok ? 'live' : (data.telemetry?.load1 ?? 'unwired');
         document.getElementById('stats-stream').textContent = (data.transport?.streamStatus || 'unknown') + ' — ' + (data.transport?.streamReason || '');
-        document.getElementById('stats-missing').textContent = data.telemetry?.firstMissingSignal || 'none';
-        document.getElementById('stats-readout').textContent = JSON.stringify(data, null, 2);
+        document.getElementById('stats-missing').textContent = caduceus?.firstMissingSignal || data.telemetry?.firstMissingSignal || 'none';
+        document.getElementById('stats-readout').textContent = JSON.stringify({ stats: data, caduceus }, null, 2);
       } catch (error) { document.getElementById('stats-readout').textContent = String(error); }
     }
     showPane((location.hash || '#admin').slice(1));
@@ -2302,6 +2496,10 @@ mod tests {
         assert!(body.contains("data-pane-panel=\"upload\""));
         assert!(body.contains("function showPane(id)"));
         assert!(body.contains("fetch('/api/stats')"));
+        assert!(body.contains("/api/caduceus/status"));
+        assert!(body.contains("/api/caduceus/update/check"));
+        assert!(body.contains("/api/caduceus/update/now"));
+        assert!(body.contains("Make harmonious"));
         assert!(body.contains("HomeServer"));
         assert!(body.contains("Admitted services"));
         assert!(body.contains("Safe file ingress"));
@@ -2320,9 +2518,30 @@ mod tests {
         }
         assert!(shell.contains("Read service contract"));
         assert!(shell.contains("Fetching /api/stats"));
-        assert!(shell.contains("Read session law"));
+        assert!(shell.contains("Read live status"));
+        assert!(shell.contains("Make harmonious"));
         assert!(shell.contains("Read upload pane"));
         assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
+    }
+
+    #[tokio::test]
+    async fn caduceus_routes_are_exposed_by_coronatio_api_root() {
+        let temp = test_tab_root("caduceus-routes");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(Request::builder().uri("/api").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(body.contains("/api/caduceus/status"));
+        assert!(body.contains("/api/caduceus/update/check"));
+        assert!(body.contains("/api/caduceus/update/now"));
+        assert!(body.contains("/api/caduceus/receipts/latest"));
     }
 
     #[tokio::test]
