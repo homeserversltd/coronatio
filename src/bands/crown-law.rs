@@ -995,6 +995,7 @@ fn stats_snapshot() -> StatsSnapshot {
     let resources = stats_resources();
     let storage = stats_storage();
     let network = stats_network();
+    let io = stats_io(&storage);
     let services = stats_services();
     let first_missing_signal = stats_first_missing_signal(&storage, &services);
     StatsSnapshot {
@@ -1003,8 +1004,8 @@ fn stats_snapshot() -> StatsSnapshot {
         product: "Coronatio".to_string(),
         doctrine: StatsViewportDoctrine {
             quarry_sources: vec![
-                "serverGenesis deprecated flask-0-7 StatsTablet.ts".to_string(),
-                "serverGenesis deprecated flask-0-7 stats.css".to_string(),
+                "serverGenesis original var-www-homeserver app/tabs/stats/stats.js".to_string(),
+                "serverGenesis original serverbox basic tabs stats.html".to_string(),
                 "Coronatio North Star first-party native lane".to_string(),
             ],
             preserved_sections: vec![
@@ -1012,6 +1013,7 @@ fn stats_snapshot() -> StatsSnapshot {
                 "storage".to_string(),
                 "network".to_string(),
                 "connections".to_string(),
+                "disk I/O chart".to_string(),
                 "services".to_string(),
                 "SSE lease controls".to_string(),
             ],
@@ -1028,6 +1030,7 @@ fn stats_snapshot() -> StatsSnapshot {
         resources: resources.clone(),
         storage: storage.clone(),
         network: network.clone(),
+        io,
         services: services.clone(),
         telemetry: StatsTelemetry {
             load1: resources.load.one,
@@ -1154,6 +1157,45 @@ fn stats_storage() -> Vec<StatsDrive> {
         });
     }
     drives
+}
+
+
+fn stats_io(storage: &[StatsDrive]) -> StatsIo {
+    let mut mount_by_device = BTreeMap::new();
+    for drive in storage {
+        let device = drive.name.rsplit('/').next().unwrap_or(&drive.name).to_string();
+        mount_by_device.insert(device, drive.mount.clone());
+    }
+    let mut devices = Vec::new();
+    if let Ok(raw) = std::fs::read_to_string("/proc/diskstats") {
+        for line in raw.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 14 {
+                continue;
+            }
+            let device = parts[2].to_string();
+            let Some(mount) = mount_by_device.get(&device).cloned() else { continue; };
+            let sectors_read = parts[5].parse::<u64>().unwrap_or(0);
+            let sectors_written = parts[9].parse::<u64>().unwrap_or(0);
+            devices.push(StatsIoDevice {
+                device,
+                mount,
+                read_bytes: sectors_read.saturating_mul(512),
+                write_bytes: sectors_written.saturating_mul(512),
+            });
+        }
+    }
+    if devices.is_empty() {
+        for drive in storage {
+            devices.push(StatsIoDevice {
+                device: drive.name.rsplit('/').next().unwrap_or(&drive.name).to_string(),
+                mount: drive.mount.clone(),
+                read_bytes: 0,
+                write_bytes: 0,
+            });
+        }
+    }
+    StatsIo { devices }
 }
 
 fn stats_network() -> StatsNetwork {

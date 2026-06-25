@@ -409,6 +409,7 @@ struct StatsSnapshot {
     resources: StatsResources,
     storage: Vec<StatsDrive>,
     network: StatsNetwork,
+    io: StatsIo,
     services: Vec<StatsService>,
     telemetry: StatsTelemetry,
     next_routes: StatsNextRoutes,
@@ -493,6 +494,22 @@ struct StatsConnectionCounts {
     established: u64,
     listening: u64,
     total: u64,
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsIo {
+    devices: Vec<StatsIoDevice>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsIoDevice {
+    device: String,
+    mount: String,
+    read_bytes: u64,
+    write_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

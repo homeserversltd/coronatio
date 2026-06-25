@@ -538,6 +538,7 @@ mod tests {
         assert!(snapshot.doctrine.preserved_sections.contains(&"services".to_string()));
         assert_eq!(snapshot.doctrine.refresh_seconds, 5);
         assert!(!snapshot.storage.is_empty());
+        assert!(!snapshot.io.devices.is_empty());
         assert!(snapshot.services.iter().any(|service| service.name == "Coronatio"));
         assert!(snapshot.telemetry.service_health.is_some());
         assert!(snapshot.telemetry.storage_posture.is_some());
@@ -568,12 +569,18 @@ mod tests {
             r#"data.resources?.memory"#,
             r#"data-chart-dependency="chartjs-4.4.0""#,
             r#"data-chart-dependency="chartjs-plugin-datalabels-2.2.0""#,
-            r#"<canvas id="cpu-gauge""#,
-            r#"<canvas id="memory-chart""#,
-            r#"<canvas id="network-chart""#,
+            r#"<canvas id="cpuChart""#,
+            r#"<canvas id="io-chart""#,
+            r#"<canvas id="networkChart""#,
             r#"new Chart(ctx"#,
-            r#"type: 'doughnut'"#,
-            r#"label: 'Download'"#,
+            r#"label: 'CPU Usage'"#,
+            r#"label: 'Upload Speed'"#,
+            r#"label: 'Download Speed'"#,
+            r#"label: 'Temperature'"#,
+            r#"data-io-drive-selector"#,
+            r#"data-io-chart-legend"#,
+            r#"label: `${device.mount} Read`"#,
+            r#"label: `${device.mount} Write`"#,
             r#"setInterval(hydrateStats, 5000)"#,
         ] {
             assert!(shell.contains(marker), "stats viewport marker missing: {}", marker);
@@ -582,6 +589,9 @@ mod tests {
             r#"Stats stream state pending.</p><div class="button-row""#,
             r#"System telemetry</h2><div class="metric" id="stats-load">—</div><p>Load average</p>"#,
             r#"stats collectors not wired"#,
+            r#"id="cpu-gauge""#,
+            r#"id="memory-chart""#,
+            r#"type: 'doughnut'"#,
         ] {
             assert!(!shell.contains(placeholder), "old stats scaffold survived: {}", placeholder);
         }

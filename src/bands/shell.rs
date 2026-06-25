@@ -195,9 +195,11 @@ fn render_crown_shell() -> String {
     .stats-resource-card, .drive-info, .network-interface, .service-info, .connections-summary { background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.08); border-radius: 8px; padding: .75rem; }
     .stats-resource-card h3, .drive-info h3, .network-interface h3, .service-info h3 { margin: 0 0 .45rem; font-size: .95rem; }
     .chart-container { position: relative; width: 100%; height: 200px; margin: .5rem 0 1rem; }
-    .cpu-gauge-container { position: relative; width: 100%; height: 170px; margin: .35rem 0 .75rem; }
-    .cpu-temp { position: absolute; inset: auto 0 16px; text-align: center; font-weight: 800; color: var(--accent); pointer-events: none; }
+    .cpu-temp { font-weight: 800; color: var(--accent); }
     .cpu-details { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .35rem; color: var(--text-secondary); font-size: .78rem; text-align: center; }
+    .drive-checkboxes { display: flex; flex-wrap: wrap; gap: .55rem; margin: .35rem 0 .75rem; color: var(--text-secondary); font-size: .84rem; }
+    .drive-checkboxes label { display: inline-flex; align-items: center; gap: .25rem; }
+    .io-chart-legend { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .5rem; color: var(--text-secondary); font-size: .82rem; }
     .chart-fallback { color: var(--warning); font-size: .82rem; margin: .5rem 0; }
     .progress-bar { width: 100%; height: 8px; background: var(--background); border-radius: 999px; overflow: hidden; margin: .55rem 0; }
     .progress-bar .progress { height: 100%; width: 0%; background: var(--accent); transition: width .18s ease; }
@@ -413,18 +415,21 @@ fn render_crown_shell() -> String {
           <section class="stats-section resources" aria-label="Resources">
             <h2>Resources</h2>
             <div class="stats-resource-grid">
-              <article class="stats-resource-card chart-card" data-chart-card="cpu"><h3>CPU</h3><div class="cpu-gauge-container"><canvas id="cpu-gauge" data-chart-canvas="cpu-gauge"></canvas><div id="cpu-temp" class="cpu-temp">—°C</div></div><div id="cpu-details" class="cpu-details"><span>5s <strong id="cpu-5s">—</strong>%</span><span>1m <strong id="cpu-1m">—</strong>%</span><span>5m <strong id="cpu-5m">—</strong>%</span><span>Cores <strong id="cpu-cores">—</strong></span></div></article>
-              <article class="stats-resource-card chart-card" data-chart-card="memory"><h3>Memory</h3><div class="chart-container"><canvas id="memory-chart" data-chart-canvas="memory-chart"></canvas></div><div class="metric" id="stats-memory">—</div><div class="progress-bar"><div class="progress" id="stats-memory-progress"></div></div><div class="details"><span id="stats-memory-used">Used —</span><span id="stats-memory-total">Total —</span></div></article>
+              <article class="stats-resource-card chart-card" data-chart-card="cpu"><h3>CPU</h3><div class="chart-container"><canvas id="cpuChart" data-chart-canvas="cpuChart"></canvas></div><div id="cpu-details" class="cpu-details"><span>CPU <strong id="cpu-current">—</strong>%</span><span>Temp <strong id="cpu-temp">—</strong>°C</span><span>5m <strong id="cpu-5m">—</strong></span><span>Cores <strong id="cpu-cores">—</strong></span></div></article>
+              <article class="stats-resource-card"><h3>Memory</h3><div id="memory-usage" class="metric">—</div><div class="progress-bar"><div class="progress" id="stats-memory-progress"></div></div><div class="details"><span id="stats-memory-used">Used —</span><span id="stats-memory-total">Total —</span></div></article>
               <article class="stats-resource-card"><h3>Swap</h3><div class="metric" id="stats-swap">—</div><div class="progress-bar"><div class="progress" id="stats-swap-progress"></div></div><div class="details"><span id="stats-swap-used">Used —</span><span id="stats-swap-total">Total —</span></div></article>
             </div>
           </section>
           <section class="stats-section drives" aria-label="Storage">
             <h2>Storage</h2>
+            <div id="io-drive-selector" class="drive-checkboxes" data-io-drive-selector></div>
+            <div class="chart-container"><canvas id="io-chart" data-chart-canvas="io-chart"></canvas></div>
+            <div id="io-chart-legend" class="io-chart-legend" data-io-chart-legend></div>
             <div class="drives-grid" data-stats-drives></div>
           </section>
           <section class="stats-section network" aria-label="Network">
             <h2>Network</h2>
-            <div class="chart-container"><canvas id="network-chart" data-chart-canvas="network-chart"></canvas></div>
+            <div class="chart-container"><canvas id="networkChart" data-chart-canvas="networkChart"></canvas></div>
             <div class="network-grid" data-stats-network></div>
             <div class="connections-summary" data-stats-connections></div>
           </section>
@@ -824,44 +829,115 @@ fn render_crown_shell() -> String {
       if (el) el.style.width = (percent ?? 0) + '%';
     }
     function metricPercent(value) { return value === null || value === undefined ? '—' : value + '%'; }
+    const selectedDrivesKey = 'selectedDrives';
     const statsChartState = {
       labels: [],
       cpu: [],
       temp: [],
-      memory: [],
-      rx: [],
-      tx: [],
+      upload: [],
+      download: [],
       lastRx: null,
       lastTx: null,
+      lastIo: {},
       lastStamp: null,
+      selectedDrives: [],
       charts: {}
     };
     function chartReady() { return typeof Chart !== 'undefined'; }
-    function pushChartPoint(label, data) {
-      const now = Date.now();
-      const totalRx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.rxBytes || 0), 0);
-      const totalTx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.txBytes || 0), 0);
-      const seconds = statsChartState.lastStamp ? Math.max(1, (now - statsChartState.lastStamp) / 1000) : 1;
-      const rxRate = statsChartState.lastRx === null ? 0 : Math.max(0, (totalRx - statsChartState.lastRx) / seconds);
-      const txRate = statsChartState.lastTx === null ? 0 : Math.max(0, (totalTx - statsChartState.lastTx) / seconds);
-      statsChartState.lastRx = totalRx;
-      statsChartState.lastTx = totalTx;
-      statsChartState.lastStamp = now;
-      statsChartState.labels.push(label);
-      statsChartState.cpu.push(Number(data.resources?.load?.one || 0));
-      statsChartState.temp.push(Number(data.resources?.load?.cpuTemperatureCelsius || 0));
-      statsChartState.memory.push(Number(data.resources?.memory?.percent || 0));
-      statsChartState.rx.push(rxRate);
-      statsChartState.tx.push(txRate);
-      if (statsChartState.labels.length > 60) {
-        ['labels', 'cpu', 'temp', 'memory', 'rx', 'tx'].forEach(key => statsChartState[key].shift());
-      }
+    function smoothData(data, windowSize) {
+      return data.map((_, index) => {
+        const slice = data.slice(Math.max(0, index - windowSize + 1), index + 1);
+        return slice.reduce((sum, value) => sum + value, 0) / Math.max(1, slice.length);
+      });
+    }
+    function reduceDataPoints(data, labels, maxPoints) {
+      if (data.length <= maxPoints) return { data, labels };
+      const step = Math.ceil(data.length / maxPoints);
+      return { data: data.filter((_, index) => index % step === 0), labels: labels.filter((_, index) => index % step === 0) };
     }
     function chartColors(ctx, top, bottom, height = 200) {
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
       gradient.addColorStop(0, top);
       gradient.addColorStop(1, bottom);
       return gradient;
+    }
+    function selectedDriveMounts(data) {
+      const mounts = (data.io?.devices || []).map(device => device.mount);
+      if (!statsChartState.selectedDrives.length) {
+        try { statsChartState.selectedDrives = JSON.parse(localStorage.getItem(selectedDrivesKey) || '[]'); } catch (_) { statsChartState.selectedDrives = []; }
+      }
+      if (!statsChartState.selectedDrives.length) statsChartState.selectedDrives = mounts;
+      return statsChartState.selectedDrives.filter(mount => mounts.includes(mount));
+    }
+    function saveSelectedDrives() { localStorage.setItem(selectedDrivesKey, JSON.stringify(statsChartState.selectedDrives)); }
+    function renderDriveSelector(data) {
+      const selector = document.getElementById('io-drive-selector');
+      if (!selector) return;
+      const mounts = (data.io?.devices || []).map(device => device.mount);
+      const selected = selectedDriveMounts(data);
+      selector.innerHTML = mounts.map(mount => `<label class="drive-checkbox"><input type="checkbox" value="${mount}" ${selected.includes(mount) ? 'checked' : ''}>${mount}</label>`).join('');
+      selector.querySelectorAll('input').forEach(input => input.addEventListener('change', () => {
+        if (input.checked && !statsChartState.selectedDrives.includes(input.value)) statsChartState.selectedDrives.push(input.value);
+        if (!input.checked) statsChartState.selectedDrives = statsChartState.selectedDrives.filter(mount => mount !== input.value);
+        saveSelectedDrives();
+        updateStatsCharts(data);
+      }));
+    }
+    function pushChartPoint(label, data) {
+      const now = Date.now();
+      const totalRx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.rxBytes || 0), 0);
+      const totalTx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.txBytes || 0), 0);
+      const seconds = statsChartState.lastStamp ? Math.max(1, (now - statsChartState.lastStamp) / 1000) : 1;
+      const downloadRateKb = statsChartState.lastRx === null ? 0 : Math.max(0, (totalRx - statsChartState.lastRx) / seconds / 1024);
+      const uploadRateKb = statsChartState.lastTx === null ? 0 : Math.max(0, (totalTx - statsChartState.lastTx) / seconds / 1024);
+      statsChartState.lastRx = totalRx;
+      statsChartState.lastTx = totalTx;
+      statsChartState.lastStamp = now;
+      statsChartState.labels.push(label);
+      statsChartState.cpu.push(Number(data.resources?.load?.one || 0));
+      statsChartState.temp.push(Number(data.resources?.load?.cpuTemperatureCelsius || 0));
+      statsChartState.upload.push(uploadRateKb);
+      statsChartState.download.push(downloadRateKb);
+      (data.io?.devices || []).forEach(device => {
+        const previous = statsChartState.lastIo[device.mount];
+        const readSpeed = previous ? Math.max(0, (Number(device.readBytes || 0) - previous.readBytes) / seconds) : 0;
+        const writeSpeed = previous ? Math.max(0, (Number(device.writeBytes || 0) - previous.writeBytes) / seconds) : 0;
+        statsChartState.lastIo[device.mount] = { readBytes: Number(device.readBytes || 0), writeBytes: Number(device.writeBytes || 0), readSpeed, writeSpeed };
+      });
+      if (statsChartState.labels.length > 60) {
+        ['labels', 'cpu', 'temp', 'upload', 'download'].forEach(key => statsChartState[key].shift());
+      }
+    }
+    function createCPUChart(ctx, labels, cpuData, tempData) {
+      const cpuGradient = chartColors(ctx.getContext('2d'), 'rgba(75, 192, 192, 0.8)', 'rgba(75, 192, 192, 0.2)', 400);
+      const tempGradient = chartColors(ctx.getContext('2d'), 'rgba(255, 99, 132, 0.8)', 'rgba(255, 99, 132, 0.2)', 400);
+      return new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [
+          { label: 'CPU Usage', data: cpuData, borderColor: cpuGradient, backgroundColor: 'rgba(75, 192, 192, 0.1)', borderWidth: 2, fill: true, tension: 0.4, yAxisID: 'y-cpu' },
+          { label: 'Temperature', data: tempData, borderColor: tempGradient, backgroundColor: 'rgba(255, 99, 132, 0.1)', borderWidth: 2, fill: true, tension: 0.4, yAxisID: 'y-temp' }
+        ] },
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { tooltip: { enabled: true, mode: 'index', intersect: false }, legend: { position: 'top' }, datalabels: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 10, autoSkip: true, color: '#888' }, grid: { display: false } }, 'y-cpu': { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, title: { display: true, text: 'CPU Usage (%)', color: '#888' }, ticks: { color: '#888' }, grid: { color: 'rgba(200, 200, 200, 0.1)' } }, 'y-temp': { type: 'linear', display: true, position: 'right', beginAtZero: true, max: 100, title: { display: true, text: 'Temperature (°C)', color: '#888' }, ticks: { color: '#888' }, grid: { display: false } } } }
+      });
+    }
+    function createNetworkChart(ctx, labels, uploadData, downloadData) {
+      const uploadGradient = chartColors(ctx.getContext('2d'), 'rgba(75, 192, 192, 0.8)', 'rgba(75, 192, 192, 0.2)');
+      const downloadGradient = chartColors(ctx.getContext('2d'), 'rgba(255, 99, 132, 0.8)', 'rgba(255, 99, 132, 0.2)');
+      return new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [
+          { label: 'Upload Speed', data: uploadData, borderColor: uploadGradient, backgroundColor: 'rgba(75, 192, 192, 0.1)', borderWidth: 2, fill: true, tension: 0.4 },
+          { label: 'Download Speed', data: downloadData, borderColor: downloadGradient, backgroundColor: 'rgba(255, 99, 132, 0.1)', borderWidth: 2, fill: true, tension: 0.4 }
+        ] },
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { tooltip: { enabled: true, mode: 'index', intersect: false }, legend: { position: 'top' }, datalabels: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 10, autoSkip: true, color: '#888' }, grid: { display: false } }, y: { beginAtZero: true, suggestedMin: 0, suggestedMax: 1000, title: { display: true, text: 'Speed (KB/s)', color: '#888' }, ticks: { color: '#888', callback: value => value + ' KB/s' }, grid: { color: 'rgba(200, 200, 200, 0.1)' } } } }
+      });
+    }
+    function createIOChart(ctx) {
+      return new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: [] },
+        options: { responsive: true, maintainAspectRatio: false, layout: { padding: { left: 10, right: 10, top: 20, bottom: 20 } }, scales: { x: { title: { display: true, text: 'Time', padding: { top: 10, bottom: 10 } }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } }, y: { title: { display: true, text: 'Speed (MB/s)' }, ticks: { callback: value => Number(value).toFixed(2) } } }, plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false }, datalabels: { display: false } } }
+      });
     }
     function ensureStatsCharts(data) {
       if (!chartReady()) {
@@ -871,57 +947,43 @@ fn render_crown_shell() -> String {
         return;
       }
       if (window.ChartDataLabels && Chart.register) Chart.register(window.ChartDataLabels);
-      const cpuCanvas = document.getElementById('cpu-gauge');
-      if (cpuCanvas && !statsChartState.charts.cpuGauge) {
-        const ctx = cpuCanvas.getContext('2d');
-        statsChartState.charts.cpuGauge = new Chart(ctx, {
-          type: 'doughnut',
-          data: { datasets: [
-            { data: [0, 100], backgroundColor: ['rgba(78, 121, 167, 0.8)', 'rgba(78, 121, 167, 0.2)'], borderWidth: 0, circumference: 180, rotation: -90, cutout: '70%' },
-            { data: [0, 100], backgroundColor: ['rgba(242, 142, 44, 0.8)', 'rgba(242, 142, 44, 0.2)'], borderWidth: 0, circumference: 180, rotation: -90, cutout: '55%' },
-            { data: [0, 100], backgroundColor: ['rgba(225, 87, 89, 0.8)', 'rgba(225, 87, 89, 0.2)'], borderWidth: 0, circumference: 180, rotation: -90, cutout: '40%' }
-          ] },
-          options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: { enabled: false }, legend: { display: false }, datalabels: { color: 'white', formatter: (value, ctx) => ctx.dataIndex === 0 ? Number(value).toFixed(1) + '%' : '', anchor: 'end', align: 'start', offset: 10, font: { size: 10 } } } }
-        });
+      if (!statsChartState.charts.cpu) {
+        const ctx = document.getElementById('cpuChart');
+        if (ctx) statsChartState.charts.cpu = createCPUChart(ctx, statsChartState.labels, statsChartState.cpu, statsChartState.temp);
       }
-      const memoryCanvas = document.getElementById('memory-chart');
-      if (memoryCanvas && !statsChartState.charts.memory) {
-        const ctx = memoryCanvas.getContext('2d');
-        statsChartState.charts.memory = new Chart(ctx, {
-          type: 'line',
-          data: { labels: statsChartState.labels, datasets: [{ label: 'Memory Usage', data: statsChartState.memory, borderColor: chartColors(ctx, 'rgba(99, 179, 237, 0.9)', 'rgba(99, 179, 237, 0.25)'), backgroundColor: 'rgba(99, 179, 237, 0.14)', borderWidth: 2, fill: true, tension: 0.4 }] },
-          options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, scales: { x: { ticks: { maxTicksLimit: 5, color: '#9ca3af' }, grid: { display: false } }, y: { beginAtZero: true, max: 100, ticks: { callback: value => value + '%', color: '#9ca3af' }, grid: { color: 'rgba(156,163,175,0.1)' } } }, plugins: { legend: { display: false }, datalabels: { display: false } } }
-        });
+      if (!statsChartState.charts.network) {
+        const ctx = document.getElementById('networkChart');
+        if (ctx) statsChartState.charts.network = createNetworkChart(ctx, statsChartState.labels, statsChartState.upload, statsChartState.download);
       }
-      const networkCanvas = document.getElementById('network-chart');
-      if (networkCanvas && !statsChartState.charts.network) {
-        const ctx = networkCanvas.getContext('2d');
-        statsChartState.charts.network = new Chart(ctx, {
-          type: 'line',
-          data: { labels: statsChartState.labels, datasets: [
-            { label: 'Download', data: statsChartState.rx, borderColor: '#63b3ed', backgroundColor: 'rgba(99, 179, 237, 0.2)', fill: true, tension: 0.4 },
-            { label: 'Upload', data: statsChartState.tx, borderColor: '#f6ad55', backgroundColor: 'rgba(246, 173, 85, 0.2)', fill: true, tension: 0.4 }
-          ] },
-          options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, scales: { x: { display: true, grid: { display: false }, ticks: { maxTicksLimit: 5, color: '#9ca3af' } }, y: { beginAtZero: true, ticks: { callback: value => fmtBytes(value) + '/s', color: '#9ca3af' }, grid: { color: 'rgba(156, 163, 175, 0.1)' } } }, plugins: { legend: { display: false }, datalabels: { display: false }, tooltip: { callbacks: { label: context => context.dataset.label + ': ' + fmtBytes(context.parsed.y) + '/s' } } } }
-        });
+      if (!statsChartState.charts.io) {
+        const ctx = document.getElementById('io-chart');
+        if (ctx) statsChartState.charts.io = createIOChart(ctx);
       }
+      renderDriveSelector(data);
       updateStatsCharts(data);
     }
     function updateStatsCharts(data) {
       if (!chartReady()) return;
-      const load = data.resources?.load || {};
-      const cpuNow = Number(load.one || 0);
-      const cpu1m = Number(load.five || cpuNow);
-      const cpu5m = Number(load.fifteen || cpu1m);
-      const gauge = statsChartState.charts.cpuGauge;
-      if (gauge) {
-        gauge.data.datasets[0].data = [cpuNow, Math.max(0, 100 - cpuNow)];
-        gauge.data.datasets[1].data = [cpu1m, Math.max(0, 100 - cpu1m)];
-        gauge.data.datasets[2].data = [cpu5m, Math.max(0, 100 - cpu5m)];
-        gauge.update();
-      }
-      if (statsChartState.charts.memory) statsChartState.charts.memory.update();
+      if (statsChartState.charts.cpu) statsChartState.charts.cpu.update();
       if (statsChartState.charts.network) statsChartState.charts.network.update();
+      const selected = selectedDriveMounts(data);
+      const colors = { '/': '#FF6384', '/home': '#36A2EB', '/boot': '#FFCE56', '/boot/efi': '#4BC0C0', '/vault': '#9966FF', '/mnt/elements': '#FF9F40', '/mnt/wd-drive': '#FF6384' };
+      const ioChart = statsChartState.charts.io;
+      if (ioChart) {
+        ioChart.data.labels = statsChartState.labels.slice();
+        ioChart.data.datasets = (data.io?.devices || []).flatMap(device => {
+          if (!selected.includes(device.mount)) return [];
+          const color = colors[device.mount] || '#00f2fe';
+          const current = statsChartState.lastIo[device.mount] || { readSpeed: 0, writeSpeed: 0 };
+          return [
+            { label: `${device.mount} Read`, data: statsChartState.labels.map((_, idx) => idx === statsChartState.labels.length - 1 ? current.readSpeed / (1024 * 1024) : 0), borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0 },
+            { label: `${device.mount} Write`, data: statsChartState.labels.map((_, idx) => idx === statsChartState.labels.length - 1 ? current.writeSpeed / (1024 * 1024) : 0), borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0 }
+          ];
+        });
+        ioChart.update();
+        const legend = document.getElementById('io-chart-legend');
+        if (legend) legend.innerHTML = selected.map(mount => `<span><span style="display:inline-block;width:20px;border-top:2px solid ${colors[mount] || '#00f2fe'};margin-right:5px"></span>Read <span style="display:inline-block;width:20px;border-top:2px dotted ${colors[mount] || '#00f2fe'};margin:0 5px"></span>Write ${mount}</span>`).join('');
+      }
     }
     async function hydrateStats() {
       try {
@@ -932,12 +994,11 @@ fn render_crown_shell() -> String {
         const swap = data.resources?.swap || {};
         const label = new Date().toLocaleTimeString();
         pushChartPoint(label, data);
-        document.getElementById('cpu-temp').textContent = (load.cpuTemperatureCelsius ?? '—') + '°C';
-        document.getElementById('cpu-5s').textContent = load.one ?? '—';
-        document.getElementById('cpu-1m').textContent = load.five ?? '—';
-        document.getElementById('cpu-5m').textContent = load.fifteen ?? '—';
+        document.getElementById('cpu-current').textContent = load.one ?? '—';
+        document.getElementById('cpu-temp').textContent = load.cpuTemperatureCelsius ?? '—';
+        document.getElementById('cpu-5m').textContent = load.five ?? '—';
         document.getElementById('cpu-cores').textContent = navigator.hardwareConcurrency || '—';
-        document.getElementById('stats-memory').textContent = metricPercent(memory.percent);
+        document.getElementById('memory-usage').textContent = metricPercent(memory.percent);
         document.getElementById('stats-memory-used').textContent = 'Used ' + fmtBytes(memory.usedBytes);
         document.getElementById('stats-memory-total').textContent = 'Total ' + fmtBytes(memory.totalBytes);
         setProgress('stats-memory-progress', memory.percent);
