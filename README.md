@@ -28,6 +28,7 @@ This scaffold provides the first host surface:
 - `GET /api` — root Coronatio object with native-pane readback.
 - `GET /api/panes` — first-party native pane registry for `admin`, `stats`, `portals`, and `upload`.
 - `GET /api/panes/:pane_id` — one native pane readback.
+- `GET /api/stats` — honest first-party Stats snapshot readback with future SSE route posture.
 - `GET /api/tabs` — dynamic tab registry read from installed cartridges plus native-pane readback.
 - `GET /api/tabs/:tab_id/manifest` — one cartridge manifest readback.
 - `/tabs/<tab-id>/...` — static installed tab assets under the configured tab root.
@@ -108,5 +109,6 @@ This scaffold is accepted when:
 - Tests prove the host names Coronatio, not Arcadia.
 - Tests prove the native crown panes are exactly `admin`, `stats`, `portals`, and `upload`.
 - Tests prove the shell renders those primary panes without platform-owned brand navigation.
+- Tests prove `/api/stats` returns an honest snapshot with unavailable telemetry and planned SSE routes.
 - Tests prove dynamic cartridge manifests load without host recompile.
 - Paligenesis carries the North Star contract and open decisions.
