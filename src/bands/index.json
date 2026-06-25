@@ -1,0 +1,14 @@
+{
+  "schema": "coronatio.bands.index.v1",
+  "children": [
+    "contracts",
+    "runtime",
+    "routes",
+    "caduceus",
+    "router-readback",
+    "crown-law",
+    "shell",
+    "tests"
+  ],
+  "authority": "src/main.rs is the thin process face; behavior lives in ordered include bands."
+}
