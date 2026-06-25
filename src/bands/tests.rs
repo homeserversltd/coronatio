@@ -541,6 +541,25 @@ mod tests {
             .contains("compiled crown law"));
     }
 
+
+    #[test]
+    fn admin_mode_binary_contract_gates_viewport_enhancements() {
+        let shell = render_crown_shell();
+        assert!(shell.contains(r#"data-admin-mode="false""#));
+        assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]"#));
+        assert!(shell.contains("appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
+        assert!(shell.contains("tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
+        for viewport in ["admin", "stats", "portals", "upload"] {
+            assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing admin viewport {viewport}");
+        }
+        for admin_action in ["Check machine", "Make harmonious", "Renew lease", "Add portal", "PIN requirement", "Blacklist"] {
+            assert!(shell.contains(admin_action), "missing {admin_action}");
+        }
+        assert!(shell.contains("Read live status"));
+        assert!(shell.contains("History"));
+        assert!(shell.contains("Open main HomeServer"));
+    }
+
     #[tokio::test]
     async fn session_route_encodes_admin_and_caduceus_membrane() {
         let temp = test_tab_root("session-law");

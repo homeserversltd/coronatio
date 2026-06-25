@@ -156,6 +156,9 @@ fn render_crown_shell() -> String {
     .error { color: var(--error); }
     .success { color: var(--success); }
     .drop-zone { border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 8px; padding: 1.2rem; background: rgba(0,242,254,.07); }
+    [data-admin-mode="false"] [data-admin-only] { display: none !important; }
+    [data-admin-mode="true"] [data-admin-only] { display: revert; }
+    [data-admin-only] { border-style: dashed; border-color: color-mix(in srgb, var(--warning) 42%, var(--border)); }
     @media (max-width: 760px) {
       .top-bar { align-items: stretch; flex-direction: column; padding: .75rem 1rem; }
       .header-top-row { flex-direction: column; align-items: stretch; }
@@ -167,7 +170,7 @@ fn render_crown_shell() -> String {
   </style>
 </head>
 <body>
-  <main class="app" data-product="Coronatio" data-source-material="homeserver-main-site">
+  <main class="app" data-product="Coronatio" data-source-material="homeserver-main-site" data-admin-mode="false">
     <header class="top-bar header" data-flask-react-quarry="Header">
       <div class="brand"><span class="brand-mark">⌂</span><span>HomeServer</span><span class="muted">/ Coronatio</span></div>
       <div class="header-top-row">
@@ -214,39 +217,41 @@ fn render_crown_shell() -> String {
         <div class="modal-actions"><button type="button" class="secondary" data-info-modal-close>Close</button></div>
       </section>
     </div>
-    <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist" data-admin-mode="true" data-hidden="false">__NAV__</nav>
+    <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist" data-admin-mode="false" data-hidden="false">__NAV__</nav>
     <section class="content">
       <section class="pane active" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
         <div class="pane-grid">
-          <article class="card"><h2>Admin authority</h2><p>Caduceus is the live privileged membrane; Coronatio reads and triggers it through same-origin receipts.</p><div class="button-row"><button data-fetch="/api/caduceus/status" data-target="admin-session">Read live status</button><button class="secondary" data-fetch="/api/caduceus/update/check" data-target="admin-installer" data-method="POST">Check machine</button></div><pre class="readout" id="admin-session">Waiting for Caduceus status.</pre></article>
-          <article class="card"><h2>Caduceus membrane</h2><p>Host mutation now enters Caduceus and Harmonia; policy still gates each command before root work runs.</p><div class="button-row"><button data-fetch="/api/caduceus/update/now" data-target="admin-installer" data-method="POST">Make harmonious</button><button class="secondary" data-fetch="/api/caduceus/receipts/latest" data-target="admin-installer">Latest receipt</button></div><pre class="readout" id="admin-installer">Harmonia receipt readback will appear here.</pre></article>
+          <article class="card"><h2>Admin authority</h2><p>Caduceus is the live privileged membrane; Coronatio reads and triggers it through same-origin receipts.</p><div class="button-row"><button data-fetch="/api/caduceus/status" data-target="admin-session">Read live status</button><button class="secondary" data-admin-only data-admin-viewport="admin" data-fetch="/api/caduceus/update/check" data-target="admin-installer" data-method="POST">Check machine</button></div><pre class="readout" id="admin-session">Waiting for Caduceus status.</pre></article>
+          <article class="card"><h2>Caduceus membrane</h2><p>Host mutation now enters Caduceus and Harmonia; policy still gates each command before root work runs.</p><div class="button-row"><button data-admin-only data-admin-viewport="admin" data-fetch="/api/caduceus/update/now" data-target="admin-installer" data-method="POST">Make harmonious</button><button class="secondary" data-fetch="/api/caduceus/receipts/latest" data-target="admin-installer">Latest receipt</button></div><pre class="readout" id="admin-installer">Harmonia receipt readback will appear here.</pre></article>
           <article class="card"><h2>Visible contract</h2><p><span class="success">On:</span> Caduceus/Harmonia routes are live; any blocked action names the first missing signal instead of pretending completion.</p></article>
         </div>
       </section>
       <section class="pane" id="pane-stats" data-pane-panel="stats" role="tabpanel" aria-label="Stats">
         <div class="pane-grid">
           <article class="card"><h2>System telemetry</h2><div class="metric" id="stats-load">—</div><p>Load average</p><pre class="readout" id="stats-readout">Fetching /api/stats…</pre></article>
-          <article class="card"><h2>Stream lane</h2><p id="stats-stream">Stats stream state pending.</p><div class="button-row"><button data-fetch="/api/stats/events" data-target="stats-event">Read event frame</button><button class="secondary" data-fetch="/api/stats/events/renew" data-target="stats-event" data-method="POST">Renew lease</button></div><pre class="readout" id="stats-event">No event readback yet.</pre></article>
+          <article class="card"><h2>Stream lane</h2><p id="stats-stream">Stats stream state pending.</p><div class="button-row"><button data-fetch="/api/stats/events" data-target="stats-event">Read event frame</button><button class="secondary" data-admin-only data-admin-viewport="stats" data-fetch="/api/stats/events/renew" data-target="stats-event" data-method="POST">Renew lease</button></div><pre class="readout" id="stats-event">No event readback yet.</pre></article>
           <article class="card"><h2>Missing signal</h2><p id="stats-missing" class="warning">Checking collector status…</p></article>
         </div>
       </section>
       <section class="pane" id="pane-portals" data-pane-panel="portals" role="tabpanel" aria-label="Portals">
         <div class="portal-grid">
           <article class="card portal-card"><div><h2>Admitted services</h2><p>Portal cards follow the main HomeServer service-grid pattern and expose the live config contract.</p></div><div class="button-row"><button data-fetch="/api/services/data" data-target="portals-readout">Read service contract</button><a class="action-link secondary" href="https://home.arpa/">Open main HomeServer</a></div></article>
-          <article class="card portal-card"><div><h2>Coronatio</h2><p>Rust crown preview, port 3013.</p></div><span class="status-pill ok">online</span></article>
+          <article class="card portal-card"><div><h2>Coronatio</h2><p>Rust crown preview, port 3013.</p></div><div class="button-row" data-admin-only data-admin-viewport="portals"><button data-fetch="/api/portals" data-method="POST" data-target="portals-readout">Add portal</button><button class="secondary" data-fetch="/api/portals/coronatio" data-method="PUT" data-target="portals-readout">Edit portal</button></div><span class="status-pill ok">online</span></article>
           <article class="card portal-card"><div><h2>Caduceus</h2><p>Privileged actuator membrane, port 3014.</p></div><div class="button-row"><button data-fetch="/api/caduceus/status" data-target="portals-readout">Status</button><a class="action-link secondary" href="http://home.arpa:3014/health">Health</a></div></article>
         </div>
         <pre class="readout" id="portals-readout">Service contract readback will appear here.</pre>
       </section>
       <section class="pane" id="pane-upload" data-pane-panel="upload" role="tabpanel" aria-label="Upload">
         <div class="pane-grid upload-viewport" data-upload-viewport>
-          <article class="card upload-card"><h2>Safe file ingress</h2><form class="upload-form" data-upload-form><label>Destination <input class="field" name="path" data-upload-path value="/mnt/nas" autocomplete="off"></label><label>File <input class="field" name="file" data-upload-file type="file"></label><div class="button-row"><button type="submit">Upload through Caduceus</button><button type="button" class="secondary" data-fetch="/api/upload/default-directory" data-target="upload-readout">Default directory</button></div></form><div class="drop-zone" data-upload-drop><strong>Choose a file</strong><p>Coronatio reads the browser file and sends upload metadata through the Caduceus staff membrane.</p></div></article>
-          <article class="card"><h2>Upload controls</h2><div class="button-row"><button data-fetch="/api/upload/pin-required-status" data-target="upload-readout">PIN requirement</button><button class="secondary" data-fetch="/api/upload/history" data-target="upload-readout">History</button><button class="secondary" data-fetch="/api/upload/blacklist/list" data-target="upload-readout">Blacklist</button></div><pre class="readout" id="upload-readout">Select a file to send the upload intent to Caduceus.</pre></article>
+          <article class="card upload-card"><h2>Safe file ingress</h2><form class="upload-form" data-upload-form><label>Destination <input class="field" name="path" data-upload-path value="/mnt/nas" autocomplete="off"></label><label>File <input class="field" name="file" data-upload-file type="file"></label><div class="button-row"><button type="submit">Upload through Caduceus</button><button type="button" class="secondary" data-admin-only data-admin-viewport="upload" data-fetch="/api/upload/default-directory" data-target="upload-readout">Default directory</button></div></form><div class="drop-zone" data-upload-drop><strong>Choose a file</strong><p>Coronatio reads the browser file and sends upload metadata through the Caduceus staff membrane.</p></div></article>
+          <article class="card"><h2>Upload controls</h2><div class="button-row"><button class="secondary" data-fetch="/api/upload/history" data-target="upload-readout">History</button><button data-admin-only data-admin-viewport="upload" data-fetch="/api/upload/pin-required-status" data-target="upload-readout">PIN requirement</button><button class="secondary" data-admin-only data-admin-viewport="upload" data-fetch="/api/upload/blacklist/list" data-target="upload-readout">Blacklist</button></div><pre class="readout" id="upload-readout">Select a file to send the upload intent to Caduceus.</pre></article>
         </div>
       </section>
     </section>
   </main>
   <script>
+    const appRoot = document.querySelector('[data-product="Coronatio"]');
+    const tabBar = document.querySelector('[role="tablist"]');
     const tabs = [...document.querySelectorAll('[data-pane]')];
     const panes = [...document.querySelectorAll('[data-pane-panel]')];
     const fallbackTab = 'admin';
@@ -290,6 +295,12 @@ fn render_crown_shell() -> String {
         adminButton.dataset.adminState = headerState.isAdmin ? 'logged-in' : 'logged-out';
         adminButton.textContent = headerState.isAdmin ? 'Exit Admin Mode' : 'Enter Admin Mode';
       }
+      if (appRoot) appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
+      if (tabBar) tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
+      document.querySelectorAll('[data-admin-only]').forEach(el => {
+        el.hidden = !headerState.isAdmin;
+        el.setAttribute('aria-hidden', String(!headerState.isAdmin));
+      });
       if (changePinButton) changePinButton.hidden = !headerState.isAdmin;
     }
     function openPinModal(mode) {
