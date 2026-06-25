@@ -379,13 +379,22 @@ mod tests {
             "Assign as primary NAS",
             "Auto Sync Schedule",
             "Create New Key",
-            "View Full Guide & Critical Warnings",
-            "Validate & Clone",
+            "View Full Guide &amp; Critical Warnings",
+            "Validate &amp; Clone",
             "Force Update",
         ] {
             assert!(shell.contains(label), "missing admin quarry button label: {}", label);
         }
-        assert!(shell.contains("Buttons are intentionally disabled until their Rust/Caduceus handlers are wired."));    }
+        assert!(shell.contains(r#"data-admin-visual-port="one-to-one-best-effort""#));
+        assert!(shell.contains("system-controls-btn"));
+        assert!(shell.contains("key-manager-content"));
+        assert!(shell.contains("disk-manager-container"));
+        assert!(shell.contains("modal-window update-manager-modal"));
+        assert!(shell.contains("view-tabs"));
+        assert!(shell.contains("modules-table"));
+        assert!(shell.contains("data-stub-action=\"true\""));
+        assert!(!shell.contains("Front-end stubs mirror the original Flask/React admin-page button inventory from the quarry."));
+    }
 
     #[tokio::test]
     async fn themes_route_reads_runtime_theme_json_catalog() {
