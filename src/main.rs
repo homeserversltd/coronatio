@@ -696,6 +696,7 @@ fn app(state: AppState) -> Router {
         )
         .route("/api/tabs", any(legacy_homeserver_proxy_route))
         .route("/api/*path", any(legacy_homeserver_proxy_route))
+        .route("/socket.io", any(legacy_homeserver_proxy_route))
         .route("/socket.io/", any(legacy_homeserver_proxy_route))
         .route("/socket.io/*path", any(legacy_homeserver_proxy_route))
         .route(
@@ -1301,25 +1302,67 @@ fn legacy_homeserver_http_request(
     let status = StatusCode::from_u16(status_code)
         .map_err(|error| format!("legacy response status conversion: {error}"))?;
     let mut response_headers = Vec::new();
+    let mut chunked = false;
     for line in lines {
         if line.is_empty() {
             continue;
         }
         if let Some((name, value)) = line.split_once(':') {
             let normalized = name.to_ascii_lowercase();
+            let trimmed = value.trim().to_string();
+            if normalized == "transfer-encoding" && trimmed.to_ascii_lowercase().contains("chunked")
+            {
+                chunked = true;
+                continue;
+            }
             if matches!(
                 normalized.as_str(),
                 "content-type" | "cache-control" | "etag" | "last-modified"
             ) {
-                response_headers.push((normalized, value.trim().to_string()));
+                response_headers.push((normalized, trimmed));
             }
         }
     }
+    let body = if chunked {
+        decode_chunked_body(body_part)?
+    } else {
+        body_part.to_vec()
+    };
     Ok(LegacyHttpResponse {
         status,
         headers: response_headers,
-        body: body_part.to_vec(),
+        body,
     })
+}
+
+fn decode_chunked_body(input: &[u8]) -> Result<Vec<u8>, String> {
+    let mut cursor = 0usize;
+    let mut decoded = Vec::new();
+    loop {
+        let line_end = input[cursor..]
+            .windows(2)
+            .position(|window| window == b"\r\n")
+            .ok_or_else(|| "chunked response missing chunk-size delimiter".to_string())?
+            + cursor;
+        let size_text = String::from_utf8_lossy(&input[cursor..line_end]);
+        let size_token = size_text.split(';').next().unwrap_or("").trim();
+        let size = usize::from_str_radix(size_token, 16)
+            .map_err(|error| format!("chunked response size parse: {error}"))?;
+        cursor = line_end + 2;
+        if size == 0 {
+            break;
+        }
+        if cursor + size > input.len() {
+            return Err("chunked response body shorter than declared chunk".to_string());
+        }
+        decoded.extend_from_slice(&input[cursor..cursor + size]);
+        cursor += size;
+        if input.get(cursor..cursor + 2) != Some(b"\r\n") {
+            return Err("chunked response missing trailing CRLF".to_string());
+        }
+        cursor += 2;
+    }
+    Ok(decoded)
 }
 
 async fn route_boundary_fallback(uri: Uri) -> impl IntoResponse {
