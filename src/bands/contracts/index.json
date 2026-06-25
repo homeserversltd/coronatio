@@ -1,0 +1,9 @@
+{
+  "schema": "coronatio.contracts.index.v1",
+  "children": [
+    "constants.rs",
+    "core.rs",
+    "registry.rs"
+  ],
+  "purpose": "Thin contract face; child bands group constants and data contracts under line pressure."
+}

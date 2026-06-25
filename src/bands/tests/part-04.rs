@@ -1,0 +1,365 @@
+    #[tokio::test]
+    async fn stats_sse_and_monitor_pulse_prove_first_topic() {
+        let temp = test_tab_root("stats-sse");
+        let router = app(AppState {
+            tab_root: Arc::new(temp),
+        });
+        let pulse_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/monitor/pulse")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(pulse_response.status(), StatusCode::OK);
+        let pulse_bytes = axum::body::to_bytes(pulse_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let pulse: MonitorPulseReadback = serde_json::from_slice(&pulse_bytes).unwrap();
+        assert_eq!(pulse.schema, "coronatio.monitor-pulse.v1");
+        assert_eq!(pulse.topic.id, "stats.system");
+        assert_eq!(pulse.first_event.schema, "coronatio.stats.event.v1");
+        assert_eq!(pulse.event_route, "/api/stats/events");
+
+        let event_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/stats/events")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(event_response.status(), StatusCode::OK);
+        assert_eq!(
+            event_response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "text/event-stream"
+        );
+        let event_body = String::from_utf8(
+            axum::body::to_bytes(event_response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(event_body.contains("event: stats.system"));
+        assert!(event_body.contains("coronatio.stats.event.v1"));
+
+        let renew_response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/stats/events/renew")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(renew_response.status(), StatusCode::OK);
+        let renew: LeaseRenewalReadback = serde_json::from_slice(
+            &axum::body::to_bytes(renew_response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(renew.schema, "coronatio.stats.events.renewal.v1");
+        assert_eq!(renew.topic, "stats.system");
+    }
+
+    #[tokio::test]
+    async fn route_boundary_returns_json_for_api_misses_and_shell_for_static_fallback() {
+        let temp = test_tab_root("boundary-law");
+        let router = app(AppState {
+            tab_root: Arc::new(temp),
+        });
+        let api_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/missing-route")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(api_response.status(), StatusCode::NOT_FOUND);
+        let api_body = String::from_utf8(
+            axum::body::to_bytes(api_response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(api_body.contains("coronatio.api.error.v1"));
+        assert!(!api_body.contains("<html"));
+
+        let shell_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/some/client/route")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(shell_response.status(), StatusCode::OK);
+        let shell_body = String::from_utf8(
+            axum::body::to_bytes(shell_response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(shell_body.contains("data-product=\"Coronatio\""));
+
+        let boundary_response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/api/boundary")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(boundary_response.status(), StatusCode::OK);
+        let boundary: BoundaryReadback = serde_json::from_slice(
+            &axum::body::to_bytes(boundary_response.into_body(), usize::MAX)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(boundary.schema, "coronatio.route-boundary.v1");
+        assert!(boundary.api_unknown_path_policy.contains("JSON 404"));
+    }
+
+    #[tokio::test]
+    async fn installer_route_encodes_premium_installer_law_without_live_mutation() {
+        let temp = test_tab_root("installer-law");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/installer")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let installer: InstallerReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(installer.schema, "coronatio.installer.contract.v1");
+        assert_eq!(installer.status, "contract-only");
+        assert!(installer
+            .root_manifest_schema
+            .required_fields
+            .contains(&"name".to_string()));
+        assert!(installer
+            .component_manifest_schema
+            .operation_types
+            .contains(&"append".to_string()));
+        assert!(installer
+            .validation_phases
+            .iter()
+            .any(|phase| phase.id == "version-conflict"));
+        assert!(installer
+            .install_phases
+            .iter()
+            .any(|phase| phase.id == "frontend-rebuild"));
+        assert_eq!(
+            installer.rollback_law.order,
+            [
+                "config rollback",
+                "package rollback",
+                "file operation rollback",
+                "service state rollback"
+            ]
+        );
+        assert!(installer
+            .first_missing_live_signal
+            .contains("Caduceus installer actuator"));
+        assert!(installer
+            .lane_mapping
+            .iter()
+            .any(
+                |mapping| mapping.install_mode == InstallMode::FirstPartyNative
+                    && mapping.rejected_shape.contains("premium package")
+            ));
+    }
+
+    #[tokio::test]
+    async fn frontend_storage_route_encodes_browser_persistence_and_migration_law() {
+        let temp = test_tab_root("frontend-storage");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/frontend/storage")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let data: FrontendStorageReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(data.schema, "coronatio.frontend-storage.contract.v1");
+        assert_eq!(data.status, "contract-only");
+        assert!(data
+            .persisted_stores
+            .iter()
+            .any(|store| store.storage_key == "homeserver-store"
+                && store.persisted_fields.contains(&"activeTab".to_string())));
+        assert!(data
+            .persisted_stores
+            .iter()
+            .any(|store| store.storage_key == "auth-storage"
+                && store.boundary.contains("never localStorage")));
+        assert!(data
+            .persistence_fields
+            .iter()
+            .any(|field| field.field == "isInitialized"
+                && field.coronatio_owner == "startup receipt"));
+        assert!(data
+            .debounce_law
+            .iter()
+            .any(|law| law.interval_ms == 500 && law.source.contains("debouncedSetItem")));
+        assert!(data
+            .stale_state_law
+            .iter()
+            .any(|law| law.coronatio_rule.contains("malformed browser snapshot")));
+        assert!(data
+            .forbidden_persistence
+            .contains(&"adminToken".to_string()));
+        assert!(data
+            .first_missing_live_signal
+            .contains("storage migration adapter"));
+    }
+
+    #[tokio::test]
+    async fn service_data_route_encodes_portal_monitor_and_broadcast_law() {
+        let temp = test_tab_root("service-data");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/services/data")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let data: ServiceDataReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(data.schema, "coronatio.service-data.contract.v1");
+        assert_eq!(data.status, "contract-only");
+        assert!(data.portal_schema.fields.contains(&"remoteURL".to_string()));
+        assert!(data
+            .portal_schema
+            .portal_types
+            .contains(&"link".to_string()));
+        assert!(data
+            .service_card_schema
+            .fields
+            .contains(&"isScriptManaged".to_string()));
+        assert!(data
+            .monitor_topics
+            .iter()
+            .any(|topic| topic.topic == "admin.disk.info" && topic.admin_only));
+        assert!(data
+            .monitor_topics
+            .iter()
+            .any(|topic| topic.topic == "services.status"
+                && topic.admin_fields.contains(&"isEnabled".to_string())));
+        assert!(data.broadcast_law.transport_replacement.contains("SSE"));
+        assert!(data
+            .first_missing_live_signal
+            .contains("service collectors and monitor broadcasters are not wired"));
+    }
+
+    #[tokio::test]
+    async fn registry_transaction_route_encodes_config_patch_persistence_law() {
+        let temp = test_tab_root("registry-transaction");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(
+            Request::builder()
+                .uri("/api/registry/transaction")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let transaction: RegistryTransactionReadback = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(transaction.schema, "coronatio.registry.transaction.v1");
+        assert_eq!(transaction.status, "contract-only");
+        assert!(transaction.deep_merge_law.tab_merge.contains("starred"));
+        assert!(transaction
+            .starred_tab_law
+            .preservation_rule
+            .contains("without displacing"));
+        assert!(transaction
+            .validation_law
+            .factory_fallback_gate
+            .contains("factoryFallback"));
+        assert!(transaction
+            .persistence_law
+            .permission_restore
+            .contains("www-data:www-data"));
+        assert!(transaction
+            .rollback_law
+            .mismatch_policy
+            .contains("do not remove"));
+        assert!(transaction
+            .transaction_sequence
+            .iter()
+            .any(|phase| phase.id == "atomic-promote" && phase.source_law.contains("shutil.move")));
+        assert!(transaction
+            .first_missing_live_signal
+            .contains("Caduceus registry transaction actuator"));
+    }
+
+    #[tokio::test]
+    async fn api_root_declares_installer_contract_route() {
+        let temp = test_tab_root("installer-root-route");
+        let response = app(AppState {
+            tab_root: Arc::new(temp),
+        })
+        .oneshot(Request::builder().uri("/api").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
+        assert!(root.routes.contains(&"/api/installer".to_string()));
+    }
+
+    fn test_tab_root(name: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("coronatio-test-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
