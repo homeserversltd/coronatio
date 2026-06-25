@@ -294,6 +294,26 @@
     }
 
 
+
+    #[test]
+    fn docs_and_shell_do_not_advertise_sidecar_config_authority() {
+        let shell = ["src/bands/shell.rs", "src/bands/shell/document-1.rs", "src/bands/shell/document-2.rs", "src/bands/shell/document-3.rs", "src/bands/shell/document-4.rs", "src/bands/shell/render.rs", "src/bands/shell/runtime.rs"]
+            .iter()
+            .map(|path| std::fs::read_to_string(path).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let readme = std::fs::read_to_string("README.md").unwrap();
+        let north_star = std::fs::read_to_string("docs/coronatio-north-star-contract.md").unwrap();
+        let bands = std::fs::read_to_string("src/bands/README.md").unwrap();
+        for (name, text) in [("shell", shell), ("readme", readme), ("north_star", north_star), ("bands", bands)] {
+            assert!(text.contains("homeserver.json"), "{name} must name homeserver.json authority");
+            assert!(!text.contains("static/themes/theme.json"), "{name} advertises obsolete theme sidecar");
+            assert!(!text.contains("static/favorites/favorites.json"), "{name} advertises obsolete favorites sidecar");
+            assert!(!text.contains("CORONATIO_THEME_JSON"), "{name} advertises obsolete theme env sidecar");
+            assert!(!text.contains("CORONATIO_FAVORITES_JSON"), "{name} advertises obsolete favorites env sidecar");
+        }
+    }
+
     #[test]
     fn coronatio_config_authority_is_single_homeserver_json_not_sidecar_jsons() {
         let mut contracts = std::fs::read_to_string("src/bands/contracts.rs").unwrap();
