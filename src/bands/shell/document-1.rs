@@ -532,6 +532,12 @@ fn shell_document_1() -> &'static str {
     .ux-role-pair { display: grid; gap: var(--theme-spacing-xs); padding: var(--theme-spacing-md); border-radius: var(--theme-radius-md); border: 1px solid var(--theme-outline-variant); background: var(--theme-component-card-container); color: var(--theme-on-surface); }
     .ux-role-pair.primary { background: var(--theme-role-primary); color: var(--theme-role-on-primary); }
     .ux-state-layer { position: relative; overflow: hidden; }
+    .theme-values-grid { align-items: stretch; }
+    .theme-chip { display: inline-flex; min-width: 92px; justify-content: center; padding: var(--theme-spacing-xs) var(--theme-spacing-sm); border-radius: var(--theme-radius-pill); border: 1px solid var(--theme-outline-variant); box-shadow: var(--theme-elevation-1); }
+    .theme-chip.surface-0 { background: var(--background); color: var(--text); }
+    .theme-chip.surface-1 { background: var(--surface); color: var(--text); }
+    .theme-chip.on-surface { background: var(--text); color: var(--background); }
+    .theme-chip.outline { background: transparent; color: var(--text-secondary); border-color: var(--border); }
     .ux-state-layer::after { content: ''; position: absolute; inset: 0; background: var(--theme-focus-color); opacity: var(--theme-state-hover-opacity); pointer-events: none; }
     .showcase-item h4, .ux-card h3, .ux-card h4 { margin: 0 0 var(--theme-spacing-sm); }
     .theme-token-table { font-family: var(--theme-font-mono); font-size: var(--theme-font-size-xs); }
