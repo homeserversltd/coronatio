@@ -349,12 +349,26 @@
         for viewport in ["admin", "stats", "portals", "upload", "testtab"] {
             assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing admin viewport {viewport}");
         }
-        for admin_action in ["Hard Drive Test", "Force Update", "Hide CPU Usage & Load", "Add portal", "PIN requirement", "Blacklist"] {
+        for admin_action in ["Hard Drive Test", "Force Update", "Hide CPU Usage & Load", "PIN requirement", "Blacklist"] {
             assert!(shell.contains(admin_action), "missing {admin_action}");
         }
         assert!(shell.contains("87 buttons"));
         assert!(shell.contains("History"));
-        assert!(shell.contains("Open main HomeServer"));
+        let portals_start = shell.find(r#"id="pane-portals""#).unwrap();
+        let portals_end = shell[portals_start..].find(r#"id="pane-upload""#).unwrap() + portals_start;
+        let portals = &shell[portals_start..portals_end];
+        for non_quarry in [
+            "Open main HomeServer",
+            "Read service contract",
+            "Factory portals",
+            "Add portal",
+            "portals-readout",
+            r#"href="https://home.arpa/""#,
+            r#"data-fetch="/api/services/data""#,
+            r#"data-fetch="/api/portals/factory""#,
+        ] {
+            assert!(!portals.contains(non_quarry), "non-quarry portals control survived: {non_quarry}");
+        }
     }
 
     #[tokio::test]

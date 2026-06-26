@@ -395,7 +395,6 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       event.stopPropagation();
       const button = event.currentTarget;
       const controls = button.closest('[data-portal-services]');
-      const readout = document.getElementById('portals-readout');
       const action = button.dataset.serviceAction;
       let services = [];
       try { services = JSON.parse(decodeURIComponent(controls?.dataset.portalServices || '%5B%5D')); } catch (_) { services = []; }
@@ -417,12 +416,10 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
           results.push({ service, action, error: String(error) });
         }
       }
-      if (readout) readout.textContent = JSON.stringify({ schema: 'coronatio.portals.admin.service_controls.ui.v1', action, results }, null, 2);
     }
 
     async function hydratePortals() {
       const grid = document.querySelector('[data-portals-grid]');
-      const readout = document.getElementById('portals-readout');
       if (!grid) return;
       try {
         const data = await fetch(grid.dataset.portalsSource || '/api/portals').then(r => r.json());
@@ -436,10 +433,8 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         });
         grid.querySelectorAll('[data-service-action]').forEach(button => button.addEventListener('click', handlePortalServiceAction));
         setAdminMode(headerState.isAdmin);
-        if (readout) readout.textContent = JSON.stringify({ source: data.source, count: portals.length, firstMissingSignal: data.firstMissingSignal }, null, 2);
       } catch (error) {
         grid.innerHTML = '<article class="card portal-card error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>';
-        if (readout) readout.textContent = 'portal load failed: ' + error;
       }
     }
 
