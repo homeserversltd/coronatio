@@ -150,8 +150,47 @@ fn shell_document_3() -> &'static str {
       if (route.includes('/api/status/vpn/pia')) return ok ? 'VPN status: ' + status + missing : 'VPN status unavailable';
       if (route.includes('/api/status/vpn/transmission')) return ok ? 'Transmission status: ' + status + missing : 'Transmission status unavailable';
       if (route.includes('services')) return ok ? 'Services status: ' + status + missing : 'Services status unavailable';
-      if (route.includes('power')) return ok ? 'Power readback: ' + status + missing : 'Power readback unavailable';
+      if (route.includes('power')) return ok && typeof data?.current === 'number' ? formatPowerWatts(data.current) : (ok ? 'Power readback: ' + status + missing : 'Power readback unavailable');
       return ok ? 'Internet status: ' + status + missing : 'Internet status unavailable';
+    }
+    const POWER_DISPLAY_FACTOR = 1.6;
+    function formatPowerWatts(watts) {
+      const value = Number(watts);
+      return Number.isFinite(value) ? (value * POWER_DISPLAY_FACTOR).toFixed(2) : 'unavailable';
+    }
+    function powerColorClass(watts) {
+      const value = Number(watts);
+      if (!Number.isFinite(value)) return 'warn';
+      if (value < 1) return 'ok';
+      if (value < 5) return 'warn';
+      return 'error';
+    }
+    function hydratePowerIndicator(data) {
+      const button = document.querySelector('[data-indicator="power-meter"]');
+      const number = button?.querySelector('.power-value-small-number');
+      if (!button || !number) return;
+      if (data?.ok && typeof data.current === 'number') {
+        const display = formatPowerWatts(data.current);
+        number.textContent = display;
+        button.classList.remove('ok', 'warn', 'error');
+        button.classList.add(powerColorClass(data.current));
+        button.title = 'Power: ' + display + 'W';
+        button.setAttribute('aria-label', 'Power Usage ' + display + ' Watts');
+      } else {
+        number.textContent = '—';
+        button.classList.remove('ok', 'error');
+        button.classList.add('warn');
+        button.title = 'Power readback unavailable';
+        button.setAttribute('aria-label', 'Power readback unavailable');
+      }
+    }
+    async function refreshPowerIndicator() {
+      try {
+        const response = await fetch('/api/status/power/usage', { cache: 'no-store' });
+        hydratePowerIndicator(await response.json());
+      } catch (error) {
+        hydratePowerIndicator(null);
+      }
     }
     function tailscaleStatusClass(data) {
       if (!data || data.status === 'loading') return 'loading';
@@ -334,6 +373,8 @@ fn shell_document_3() -> &'static str {
     loadThemeCatalog();
     hydrateInternetIndicator();
     setInterval(hydrateInternetIndicator, 1000);
+    refreshPowerIndicator();
+    setInterval(refreshPowerIndicator, 5000);
     setAdminMode(headerState.isAdmin);
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function visibleTabs() { return headerState.isAdmin ? tabs.filter(tab => tab.dataset.pane !== fallbackTab) : eligibleRegularTabs(); }
