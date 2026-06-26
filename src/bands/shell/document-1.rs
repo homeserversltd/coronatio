@@ -433,7 +433,8 @@ fn shell_document_1() -> &'static str {
     .ux-card.clickable, .ux-card-button { cursor: pointer; border-color: var(--theme-outline-variant); box-shadow: var(--theme-elevation-1); }
     .ux-card.clickable:hover, .ux-card-button:hover { transform: translateY(-2px); border-color: var(--theme-outline); box-shadow: var(--theme-elevation-2); background: color-mix(in srgb, var(--theme-component-card-container) 88%, var(--theme-highlight-subtle)); }
     .ux-card.clickable:active, .ux-card-button:active { transform: translateY(0); box-shadow: var(--theme-elevation-1); }
-    .ux-card.active { border-color: var(--accent); box-shadow: var(--theme-highlight-ring); }
+    .ux-card.active { position: relative; border-color: var(--accent); background: color-mix(in srgb, var(--theme-component-card-container) 82%, var(--theme-highlight-strong)); box-shadow: inset 4px 0 0 var(--accent), var(--theme-elevation-2); }
+    .ux-card.active::before { content: 'Selected'; display: inline-flex; width: max-content; margin-bottom: var(--theme-spacing-xs); padding: 2px 8px; border-radius: var(--theme-radius-pill); background: var(--accent); color: var(--background); font-size: var(--theme-font-size-xs); font-weight: var(--theme-font-weight-bold); letter-spacing: .06em; text-transform: uppercase; }
     .ux-card.error { border-color: var(--error); }
     .ux-field, .ux-select, .ux-textbox { width: 100%; padding: var(--theme-control-padding-y) var(--theme-control-padding-x); border: var(--theme-border-width) solid var(--theme-component-card-outline); border-radius: var(--theme-radius-md); background: var(--theme-surface-0); color: var(--text); font: inherit; box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
     .ux-field:hover, .ux-select:hover, .ux-textbox:hover { border-color: var(--theme-outline); background: var(--theme-surface-1); }
