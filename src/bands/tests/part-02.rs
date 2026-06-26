@@ -83,6 +83,11 @@
         assert!(body.contains("card-radius"));
         assert!(body.contains("primaryHover"));
         assert!(body.contains("hiddenTabBackground"));
+        assert!(body.contains("#A78BFA"), "dark accent must come from literal dark.json");
+        assert!(body.contains("#323840"), "dark primary must come from literal dark.json, not green");
+        assert!(body.contains("#6B7280"), "dark primaryHover must come from literal dark.json");
+        assert!(body.contains("#F87171"), "dark statusDown must come from literal dark.json");
+        assert!(body.contains("#A0AEC0"), "light primary must come from literal light.json");
     }
 
     #[tokio::test]
@@ -353,6 +358,8 @@
             "--theme-content-padding",
             "--theme-card-radius",
             "--theme-font-mono",
+            "--primary: var(--theme-primary)",
+            "--theme-primary: #323840",
             "--primaryHover",
             "--hiddenTabBackground",
             "aliasMap",
