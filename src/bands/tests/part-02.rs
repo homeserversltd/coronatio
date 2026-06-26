@@ -87,6 +87,11 @@
         assert!(body.contains("#323840"), "dark primary must come from literal dark.json, not green");
         assert!(body.contains("#6B7280"), "dark primaryHover must come from literal dark.json");
         assert!(body.contains("#F87171"), "dark statusDown must come from literal dark.json");
+        assert!(body.contains("gradient-accent"));
+        assert!(body.contains("highlight-strong"));
+        assert!(body.contains("role-primary"));
+        assert!(body.contains("component-button-container"));
+        assert!(body.contains("flag-gradients"));
         assert!(body.contains("#A0AEC0"), "light primary must come from literal light.json");
     }
 
@@ -363,9 +368,31 @@
             "--primaryHover",
             "--hiddenTabBackground",
             "aliasMap",
+            "--theme-gradient-accent",
+            "--theme-highlight-strong",
+            "--theme-role-primary",
+            "--theme-component-button-container",
         ] {
             assert!(shell.contains(marker), "expanded theme marker missing: {marker}");
         }
+    }
+
+
+    #[test]
+    fn ux_theme_system_docs_are_infinite_infinite_camel_case_band() {
+        for path in [
+            "docs/uxThemeSystem/index.json",
+            "docs/uxThemeSystem/index.md",
+            "docs/uxThemeSystem/observeMatureThemeSystems/index.json",
+            "docs/uxThemeSystem/declareJsonTokenGrammar/index.json",
+            "docs/uxThemeSystem/proveUxLibraryExpansion/index.json",
+        ] {
+            assert!(std::path::Path::new(path).exists(), "missing UX theme docs band path: {path}");
+        }
+        let index = std::fs::read_to_string("docs/uxThemeSystem/index.json").unwrap();
+        assert!(index.contains("observeMatureThemeSystems"));
+        assert!(index.contains("declareJsonTokenGrammar"));
+        assert!(index.contains("proveUxLibraryExpansion"));
     }
 
     #[test]
