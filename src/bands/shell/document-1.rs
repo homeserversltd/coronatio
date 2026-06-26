@@ -413,6 +413,11 @@ fn shell_document_1() -> &'static str {
     .ux-tab[aria-selected="true"], .ux-tab.active { background: var(--primary); border-color: var(--primaryHover); box-shadow: inset 0 -2px 0 var(--accent), var(--theme-elevation-1); }
     .ux-tab:focus-visible, .ux-button:focus-visible, .ux-card-button:focus-visible, .ux-field:focus-visible, .ux-select:focus-visible, .ux-textbox:focus-visible, .ux-toggle:focus-within, .ux-checkbox:focus-within { outline: var(--theme-focus-width) solid var(--theme-focus-color); outline-offset: var(--theme-focus-offset); box-shadow: var(--theme-highlight-ring); }
     .ux-tab[disabled], .ux-disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+    .ux-tab-strip .ux-tab { display: inline-flex; align-items: center; gap: var(--theme-spacing-xs); }
+    .ux-tab-star, .ux-tab-eye { display: inline-grid; place-items: center; min-width: 1.2em; color: var(--accent); font-weight: var(--theme-font-weight-bold); }
+    .ux-tab-eye { color: var(--text-secondary); }
+    .ux-tab-star.muted, .ux-tab-eye.muted { opacity: .52; color: var(--text-secondary); }
+    .ux-tab-faded, .ux-tab[data-hidden-tab="true"] { opacity: .48; background: var(--hiddenTabBackground); color: var(--hiddenTabText); border-style: dashed; }
     .ux-button { min-height: var(--theme-control-height); padding: var(--theme-control-padding-y) var(--theme-control-padding-x); border: var(--theme-border-width) solid var(--theme-component-card-outline); border-radius: var(--theme-radius-md); background: var(--theme-component-button-container); color: var(--theme-component-button-on-container); font-weight: var(--theme-font-weight-bold); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--theme-spacing-xs); box-shadow: var(--theme-elevation-1); position: relative; overflow: hidden; }
     .ux-button:hover { background: var(--theme-component-button-hover-container); border-color: var(--theme-outline); transform: translateY(-1px); box-shadow: var(--theme-elevation-2); }
     .ux-button:active { transform: translateY(0); box-shadow: var(--theme-elevation-1); }
