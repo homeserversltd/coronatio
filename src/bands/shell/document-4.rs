@@ -50,8 +50,28 @@ fn shell_document_4() -> &'static str {
       const cores = navigator.hardwareConcurrency || 4;
       return Math.max(0, Math.min(100, (Number(load || 0) / cores) * 100));
     }
-    const statsChartState = { labels: [], cpu: [], temp: [], upload: [], download: [], lastRx: null, lastTx: null, lastIo: {}, lastStamp: null, ioSeries: {} };
+    const statsChartState = { labels: [], cpu: [], temp: [], upload: [], download: [], lastRx: null, lastTx: null, lastIo: {}, lastStamp: null, ioSeries: {}, seeded: false };
+    function seedSeries(value, count = 24) {
+      return Array.from({ length: count }, (_, index) => Math.max(0, Number(value || 0) * (0.92 + (index % 6) * 0.025)));
+    }
+    function seedStatsHistory(label, data) {
+      if (statsChartState.seeded) return;
+      const cpu = loadToPercent(data.resources?.load?.one);
+      const temp = Number(data.resources?.load?.cpuTemperatureCelsius || 0);
+      const now = Date.now();
+      statsChartState.labels = Array.from({ length: 24 }, (_, index) => new Date(now - (23 - index) * 5000).toLocaleTimeString());
+      statsChartState.cpu = seedSeries(cpu);
+      statsChartState.temp = seedSeries(temp);
+      statsChartState.upload = seedSeries(0);
+      statsChartState.download = seedSeries(0);
+      (data.io?.devices || []).forEach(device => {
+        const key = device.device || device.mount;
+        statsChartState.ioSeries[key] = { read: seedSeries(0), write: seedSeries(0), label: key };
+      });
+      statsChartState.seeded = true;
+    }
     function pushChartPoint(label, data) {
+      seedStatsHistory(label, data);
       const now = Date.now();
       const totalRx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.rxBytes || 0), 0);
       const totalTx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.txBytes || 0), 0);
@@ -72,7 +92,7 @@ fn shell_document_4() -> &'static str {
         const read = previous ? Math.max(0, (Number(device.readBytes || 0) - previous.readBytes) / seconds) : 0;
         const write = previous ? Math.max(0, (Number(device.writeBytes || 0) - previous.writeBytes) / seconds) : 0;
         statsChartState.lastIo[key] = { readBytes: Number(device.readBytes || 0), writeBytes: Number(device.writeBytes || 0) };
-        if (!statsChartState.ioSeries[key]) statsChartState.ioSeries[key] = { read: [], write: [], label: key };
+        if (!statsChartState.ioSeries[key]) statsChartState.ioSeries[key] = { read: seedSeries(read), write: seedSeries(write), label: key };
         statsChartState.ioSeries[key].read.push(read);
         statsChartState.ioSeries[key].write.push(write);
       });
@@ -84,34 +104,57 @@ fn shell_document_4() -> &'static str {
     function points(values, width, height, maxValue) {
       const max = Math.max(maxValue || 0, ...values, 1);
       const step = values.length > 1 ? width / (values.length - 1) : width;
-      return values.map((value, index) => `${(index * step).toFixed(1)},${(height - (Number(value || 0) / max) * (height - 20) - 10).toFixed(1)}`).join(' ');
+      return values.map((value, index) => `${(index * step).toFixed(1)},${(height - (Number(value || 0) / max) * (height - 32) - 12).toFixed(1)}`).join(' ');
+    }
+    function axisTicks(maxValue, count = 4) {
+      return Array.from({ length: count + 1 }, (_, index) => Math.round((maxValue / count) * index));
     }
     function renderRechartsLine(containerId, datasets, opts = {}) {
       const container = document.getElementById(containerId);
       if (!container) return;
-      const width = 640;
+      const width = 760;
       const height = opts.height || 200;
+      const plot = { left: 52, right: 24, top: 18, bottom: 34 };
+      const plotWidth = width - plot.left - plot.right;
+      const plotHeight = height - plot.top - plot.bottom;
       const maxValue = opts.maxValue || Math.max(...datasets.flatMap(ds => ds.values), 1);
-      const lines = datasets.map(ds => `<polyline class="recharts-line-curve" points="${points(ds.values, width - 40, height - 40, maxValue)}" fill="none" stroke="${ds.color}" stroke-width="2" stroke-dasharray="${ds.dash || ''}" transform="translate(20 20)" data-series="${ds.name}"></polyline>`).join('');
-      const legend = datasets.map(ds => `<span class="recharts-legend-item"><span style="display:inline-block;width:18px;border-top:2px ${ds.dash ? 'dashed' : 'solid'} ${ds.color};margin-right:4px"></span>${ds.name}</span>`).join('');
-      container.innerHTML = `<div class="recharts-wrapper"><svg class="recharts-surface" viewBox="0 0 ${width} ${height}" role="img" aria-label="${opts.label || 'chart'}"><g class="recharts-cartesian-grid"><line x1="20" x2="620" y1="180" y2="180" stroke="var(--border)"></line><line x1="20" x2="20" y1="20" y2="180" stroke="var(--border)"></line></g>${lines}</svg><div class="recharts-legend-wrapper">${legend}</div></div>`;
+      const grid = axisTicks(maxValue).map(value => {
+        const y = plot.top + plotHeight - (value / Math.max(maxValue, 1)) * plotHeight;
+        return `<g class="recharts-cartesian-grid-horizontal"><line x1="${plot.left}" x2="${width - plot.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line><text x="${plot.left - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end" class="recharts-cartesian-axis-tick-value">${opts.formatTick ? opts.formatTick(value) : value}</text></g>`;
+      }).join('') + [0, .25, .5, .75, 1].map(ratio => {
+        const x = plot.left + ratio * plotWidth;
+        return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${plot.top}" y2="${height - plot.bottom}" class="recharts-cartesian-grid-vertical"></line>`;
+      }).join('');
+      const lines = datasets.map(ds => `<polyline class="recharts-line-curve" points="${points(ds.values, plotWidth, plotHeight, maxValue)}" fill="none" stroke="${ds.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${ds.dash || ''}" transform="translate(${plot.left} ${plot.top})" data-series="${ds.name}"></polyline>`).join('');
+      const legend = datasets.map(ds => ds.icon === 'square'
+        ? `<div class="recharts-legend-item"><svg width="20" height="20"><rect x="5" y="5" width="10" height="10" fill="none" stroke="${ds.color}" stroke-width="2"></rect></svg><span>${ds.name}</span></div>`
+        : `<div class="recharts-legend-item"><svg width="20" height="20"><circle cx="10" cy="10" r="5" fill="${ds.color}"></circle></svg><span>${ds.name}</span></div>`).join('');
+      const xLabels = statsChartState.labels.filter((_, index) => index % Math.max(1, Math.ceil(statsChartState.labels.length / 4)) === 0).slice(-4).map((label, index) => `<text x="${(plot.left + index * (plotWidth / 3)).toFixed(1)}" y="${height - 10}" text-anchor="middle" class="recharts-cartesian-axis-tick-value">${label.split(' ')[0]}</text>`).join('');
+      container.innerHTML = `<div class="recharts-wrapper"><svg class="recharts-surface" viewBox="0 0 ${width} ${height}" role="img" aria-label="${opts.label || 'chart'}"><g class="recharts-cartesian-grid">${grid}</g><g class="recharts-cartesian-axis recharts-xAxis"><line x1="${plot.left}" x2="${width - plot.right}" y1="${height - plot.bottom}" y2="${height - plot.bottom}" stroke="var(--hiddenTabText)"></line>${xLabels}</g><g class="recharts-cartesian-axis recharts-yAxis"><line x1="${plot.left}" x2="${plot.left}" y1="${plot.top}" y2="${height - plot.bottom}" stroke="var(--hiddenTabText)"></line></g><g class="recharts-line">${lines}</g></svg><div class="recharts-legend-wrapper custom-legend">${legend}</div></div>`;
     }
     function renderCpuChart(data) {
       renderRechartsLine('cpu-chart-container', [
         { name: 'CPU Usage', values: statsChartState.cpu, color: 'var(--secondary)' },
         { name: 'Temperature', values: statsChartState.temp, color: 'var(--accent)' }
-      ], { label: 'CPU Usage & Load', maxValue: 100 });
+      ], { label: 'CPU Usage & Load', maxValue: 100, formatTick: value => value + '%' });
       document.getElementById('load-1min').textContent = metricPercent(loadToPercent(data.resources?.load?.one));
       document.getElementById('load-5min').textContent = metricPercent(loadToPercent(data.resources?.load?.five));
       document.getElementById('load-15min').textContent = metricPercent(loadToPercent(data.resources?.load?.fifteen));
+    }
+    function interfaceLabel(name) {
+      if (name === 'wan0') return 'WAN';
+      if (name === 'lan0') return 'LAN';
+      if (name === 'tailscale0') return 'Tailscale VPN';
+      if (name === 'veth0') return 'Transmission';
+      return name;
     }
     function renderNetwork(data) {
       renderRechartsLine('network-chart-container', [
         { name: 'Download Speed', values: statsChartState.download, color: 'var(--secondary)' },
         { name: 'Upload Speed', values: statsChartState.upload, color: 'var(--accent)' }
-      ], { label: 'Network Traffic (WAN)' });
+      ], { label: 'Network Traffic (WAN)', formatTick: value => fmtBytes(value) });
       const tbody = document.querySelector('[data-network-interfaces]');
-      if (tbody) tbody.innerHTML = (data.network?.interfaces || []).map(iface => `<tr><td><span class="interface-name">${iface.name}</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr><td colspan="3">Loading network data...</td></tr>';
+      if (tbody) tbody.innerHTML = (data.network?.interfaces || []).map(iface => `<tr><td><span class="interface-name">${interfaceLabel(iface.name)}</span><span class="interface-label"> (${iface.name})</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr><td colspan="3">Loading network data...</td></tr>';
     }
     function renderDiskIo(data) {
       const controls = document.querySelector('[data-device-controls]');
@@ -123,10 +166,10 @@ fn shell_document_4() -> &'static str {
         const color = colors[index % colors.length];
         return [
           { name: `${device.device} (Read)`, values: series.read, color },
-          { name: `${device.device} (Write)`, values: series.write, color, dash: '3 3' }
+          { name: `${device.device} (Write)`, values: series.write, color, dash: '3 3', icon: 'square' }
         ];
       });
-      renderRechartsLine('disk-io-chart-container', datasets.length ? datasets : [{ name: 'disk (Read)', values: [0], color: 'var(--secondary)' }, { name: 'disk (Write)', values: [0], color: 'var(--secondary)', dash: '3 3' }], { label: 'Disk I/O' });
+      renderRechartsLine('disk-io-chart-container', datasets.length ? datasets : [{ name: 'disk (Read)', values: [0], color: 'var(--secondary)' }, { name: 'disk (Write)', values: [0], color: 'var(--secondary)', dash: '3 3' }], { label: 'Disk I/O', formatTick: value => fmtBytes(value) + '/s' });
     }
     function renderMemory(data) {
       const memory = data.resources?.memory || {};

@@ -146,21 +146,36 @@ fn connection_counts_for(path: &str) -> (u64, u64, u64) {
 
 fn stats_kea_leases() -> Vec<StatsKeaLease> {
     let mut leases = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
     for path in ["/var/lib/kea/kea-leases4.csv", "/var/lib/kea/dhcp4.leases"] {
         if let Ok(raw) = std::fs::read_to_string(path) {
-            for line in raw.lines().take(20) {
-                if line.trim().is_empty() || line.starts_with("address") || line.starts_with('#') {
+            for line in raw.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with("address") || line.starts_with('#') {
                     continue;
                 }
-                let parts: Vec<&str> = line.split(',').collect();
-                if parts.len() >= 2 {
-                    leases.push(StatsKeaLease {
-                        ip: parts.first().unwrap_or(&"").trim().to_string(),
-                        mac: parts.get(1).unwrap_or(&"").trim().to_string(),
-                        hostname: parts.get(8).or_else(|| parts.get(3)).unwrap_or(&"N/A").trim().trim_matches('"').to_string(),
-                        note: String::new(),
-                    });
+                let parts: Vec<&str> = line.split(',').map(|part| part.trim().trim_matches('"')).collect();
+                if parts.len() < 2 {
+                    continue;
                 }
+                let (ip, mac, hostname) = if parts.first().is_some_and(|value| value.contains('.')) {
+                    (
+                        parts.first().unwrap_or(&"").to_string(),
+                        parts.get(1).unwrap_or(&"").to_string(),
+                        parts.get(8).or_else(|| parts.get(3)).unwrap_or(&"N/A").to_string(),
+                    )
+                } else {
+                    (
+                        parts.get(2).unwrap_or(&"").to_string(),
+                        parts.get(0).unwrap_or(&"").to_string(),
+                        parts.get(1).unwrap_or(&"N/A").to_string(),
+                    )
+                };
+                if ip.is_empty() || !seen.insert((ip.clone(), mac.clone())) {
+                    continue;
+                }
+                leases.push(StatsKeaLease { hostname, ip, mac, note: String::new() });
+                if leases.len() >= 20 { break; }
             }
             if !leases.is_empty() { break; }
         }
@@ -173,12 +188,19 @@ fn stats_processes() -> Vec<StatsProcess> {
     let mut processes = Vec::new();
     if let Ok(output) = output {
         let raw = String::from_utf8_lossy(&output.stdout);
-        for line in raw.lines().skip(1).take(10) {
+        for line in raw.lines().skip(1) {
             let mut parts = line.split_whitespace();
             let Some(name) = parts.next() else { continue; };
+            if matches!(name, "ps" | "sh" | "bash" | "sudo" | "python3") {
+                continue;
+            }
             let cpu_percent = parts.next().and_then(|value| value.parse::<f64>().ok()).unwrap_or(0.0);
             let memory_bytes = parts.next().and_then(|value| value.parse::<u64>().ok()).unwrap_or(0).saturating_mul(1024);
+            if cpu_percent <= 0.0 && memory_bytes == 0 {
+                continue;
+            }
             processes.push(StatsProcess { name: name.to_string(), cpu_percent, memory_bytes, process_count: 1 });
+            if processes.len() >= 10 { break; }
         }
     }
     processes
