@@ -131,7 +131,6 @@
         assert!(body.contains(r#"data-admin-quarry-button-total="87""#));
         assert!(body.contains("Hard Drive Test"));
         assert!(body.contains("Force Update"));
-        assert!(body.contains("HomeServer"));
         assert!(body.contains("Admitted services"));
         assert!(body.contains("Upload Selected Files"));
         assert!(!body.contains("Coronatio crown shell"));
@@ -147,7 +146,6 @@
             assert!(shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
         }
-        assert!(shell.contains("Read service contract"));
         assert!(shell.contains("data-stats-viewport"));
         assert!(shell.contains(r#"class="stats-tablet""#));
         assert!(shell.contains(r#"data-stat-element-id="disk-usage""#));

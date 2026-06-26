@@ -325,8 +325,6 @@ fn shell_document_2() -> &'static str {
         <div class="portal-grid" data-portals-grid data-portals-source="/api/portals">
           <article class="card portal-card portal-loading" data-portals-loading><div><h2>Admitted services</h2><p>Reading homeserver.json portal entries.</p></div></article>
         </div>
-        <div class="button-row"><a class="action-link secondary" href="https://home.arpa/">Open main HomeServer</a><button data-fetch="/api/services/data" data-target="portals-readout">Read service contract</button><button data-fetch="/api/portals/factory" data-target="portals-readout">Factory portals</button><button data-admin-only data-admin-viewport="portals" data-fetch="/api/portals" data-method="POST" data-target="portals-readout">Add portal</button></div>
-        <pre class="readout" id="portals-readout">Portal cards load from homeserver.json through /api/portals for HomeServer.</pre>
       </section>
       <section class="pane" id="pane-upload" data-pane-panel="upload" role="tabpanel" aria-label="Upload">
         <div class="upload-tablet" data-upload-viewport data-react-quarry="UploadTablet" data-identity-standard="one-to-one">
