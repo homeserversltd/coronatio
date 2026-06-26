@@ -20,10 +20,10 @@
         assert_eq!(registry.schema, "coronatio.registry.v1");
         assert_eq!(registry.starred_tab, "upload");
         assert_eq!(registry.default_route_tab, "upload");
-        assert_eq!(registry.visible_tabs_user, ["stats", "portals", "upload"]);
+        assert_eq!(registry.visible_tabs_user, ["stats", "portals", "upload", "testtab"]);
         assert_eq!(
             registry.visible_tabs_admin,
-            ["admin", "stats", "portals", "upload"]
+            ["admin", "stats", "portals", "upload", "testtab"]
         );
         assert!(registry
             .validation_rules
@@ -346,7 +346,7 @@
         assert!(!shell.contains("localStorage.setItem(headerStateKey, JSON.stringify(headerState))"));
         assert!(shell.contains("appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         assert!(shell.contains("tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
-        for viewport in ["admin", "stats", "portals", "upload"] {
+        for viewport in ["admin", "stats", "portals", "upload", "testtab"] {
             assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing admin viewport {viewport}");
         }
         for admin_action in ["Hard Drive Test", "Force Update", "Hide CPU Usage & Load", "Add portal", "PIN requirement", "Blacklist"] {

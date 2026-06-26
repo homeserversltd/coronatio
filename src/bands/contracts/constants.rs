@@ -5,7 +5,7 @@ const QUARRY_HOMESERVER_JSON: &str = "../homeserver/initialization/flask/inject/
 const LOCAL_QUARRY_HOMESERVER_JSON: &str = "/fulcrum/attachments/homeserver/initialization/flask/inject/src/config/homeserver.json";
 const INSTALLED_STATIC_ROOT: &str = "/opt/coronatio/source/static";
 const DEFAULT_STATIC_ROOT: &str = "static";
-const PRIMARY_TABS: [&str; 4] = ["admin", "stats", "portals", "upload"];
+const PRIMARY_TABS: [&str; 5] = ["admin", "stats", "portals", "upload", "testtab"];
 
 const REQUIRED_THEME_KEYS: &[&str] = &[
     "color-primary",

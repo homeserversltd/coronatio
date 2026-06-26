@@ -44,6 +44,17 @@ fn native_crown_panes() -> Vec<CrownPane> {
             route: "/#upload".to_string(),
             state_route: "/api/panes/upload".to_string(),
         },
+        CrownPane {
+            id: "testtab".to_string(),
+            title: "TestTab".to_string(),
+            role: "stock UX laboratory".to_string(),
+            summary: "Native stock component showcase and theme truth surface built from composable UX primitives.".to_string(),
+            order: 40,
+            admin_only: false,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#testtab".to_string(),
+            state_route: "/api/panes/testtab".to_string(),
+        },
     ]
 }
 

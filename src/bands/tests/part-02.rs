@@ -172,7 +172,7 @@
             .await
             .unwrap();
         let list: TabList = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(list.native_panes.len(), 4);
+        assert_eq!(list.native_panes.len(), 5);
         assert_eq!(list.tabs.len(), 1);
         assert_eq!(list.tabs[0].id, "service-card");
         assert_eq!(list.tabs[0].install_mode, InstallMode::DynamicCartridge);
