@@ -75,7 +75,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/admin/premium/auto-update-status", get(homeserver_rust_read_route))
         .route("/api/status/services", get(homeserver_rust_read_route))
         .route("/api/status", get(internet_status_route))
-        .route("/api/uptime", get(homeserver_rust_read_route))
+        .route("/api/uptime", get(uptime_route))
         .route("/api/status/tailscale", get(homeserver_rust_read_route))
         .route("/api/status/tailscale/connect", post(homeserver_rust_mutation_route))
         .route("/api/status/tailscale/authkey", post(homeserver_rust_mutation_route))
@@ -376,6 +376,44 @@ fn internet_status_response() -> Response {
         })),
     )
         .into_response()
+}
+
+
+async fn uptime_route() -> impl IntoResponse {
+    let uptime_seconds = std::fs::read_to_string("/proc/uptime")
+        .ok()
+        .and_then(|raw| raw.split_whitespace().next().and_then(|value| value.parse::<f64>().ok()))
+        .map(|seconds| seconds.round() as u64);
+    let uptime = uptime_seconds
+        .map(format_duration)
+        .unwrap_or_else(|| "uptime unavailable".to_string());
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "schema": "coronatio.uptime.v1",
+            "ok": uptime_seconds.is_some(),
+            "path": "/api/uptime",
+            "uptime": uptime,
+            "uptimeSeconds": uptime_seconds,
+            "firstMissingSignal": if uptime_seconds.is_some() { "none" } else { "/proc/uptime unavailable" }
+        })),
+    )
+        .into_response()
+}
+
+fn format_duration(mut seconds: u64) -> String {
+    let days = seconds / 86_400;
+    seconds %= 86_400;
+    let hours = seconds / 3_600;
+    seconds %= 3_600;
+    let minutes = seconds / 60;
+    if days > 0 {
+        format!("{days}d {hours}h {minutes}m")
+    } else if hours > 0 {
+        format!("{hours}h {minutes}m")
+    } else {
+        format!("{minutes}m")
+    }
 }
 
 async fn homeserver_rust_read_route(method: Method, uri: Uri) -> impl IntoResponse {

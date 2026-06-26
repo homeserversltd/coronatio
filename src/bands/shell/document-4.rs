@@ -170,9 +170,10 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       const uptime = document.querySelector('[data-uptime-indicator]');
       if (!uptime) return;
       try {
-        const data = await fetch('/uptime').then(r => r.json()).catch(() => null);
-        uptime.textContent = data?.uptime ? data.uptime + 's' : 'connecting...';
-      } catch (_) { uptime.textContent = navigator.onLine ? 'connecting...' : 'disconnected'; }
+        const data = await fetch('/api/uptime').then(r => r.json()).catch(() => null);
+        uptime.textContent = data?.uptime || (data?.uptimeSeconds ? data.uptimeSeconds + 's' : 'uptime unavailable');
+        uptime.dataset.uptimeLoaded = data?.ok ? 'true' : 'false';
+      } catch (_) { uptime.textContent = navigator.onLine ? 'uptime unavailable' : 'disconnected'; uptime.dataset.uptimeLoaded = 'false'; }
     }
     function fmtBytes(value) {
       if (value === null || value === undefined) return '—';
