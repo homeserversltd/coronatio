@@ -417,6 +417,7 @@ fn shell_document_1() -> &'static str {
     .ux-button:hover { background: var(--theme-component-button-hover-container); border-color: var(--theme-outline); transform: translateY(-1px); box-shadow: var(--theme-elevation-2); }
     .ux-button:active { transform: translateY(0); box-shadow: var(--theme-elevation-1); }
     .ux-button.secondary { background: var(--theme-surface-1); color: var(--text); }
+    .ux-button.secondary:hover { background: var(--theme-component-button-hover-container); border-color: var(--theme-outline); color: var(--theme-component-button-on-container); transform: translateY(-1px); box-shadow: var(--theme-elevation-2); }
     .ux-button.danger { background: var(--error); color: var(--background); }
     .ux-button.warning { background: var(--warning); color: var(--background); }
     .ux-button.success { background: var(--success); color: var(--background); }

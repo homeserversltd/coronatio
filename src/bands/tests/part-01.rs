@@ -417,6 +417,8 @@
         }
         assert!(shell.contains(".ux-button {"));
         assert!(shell.contains("background: var(--primary); color: var(--text);"));
+        assert!(shell.contains(".ux-button.secondary { background: var(--theme-surface-1); color: var(--text); }"));
+        assert!(shell.contains(".ux-button.secondary:hover { background: var(--theme-component-button-hover-container);"));
         assert!(shell.contains(".ux-button.success { background: var(--success);"));
         assert!(shell.contains("class=\"ux-card ux-card-button clickable\""));
         assert!(shell.contains(".ux-card.clickable:hover, .ux-card-button:hover"));
