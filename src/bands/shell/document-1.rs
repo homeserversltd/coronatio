@@ -137,8 +137,17 @@ fn shell_document_1() -> &'static str {
     .indicator:hover { background-color: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,.15); }
     .indicator:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
     .indicator-icon { width: 1.15rem; height: 1.15rem; display: block; fill: currentColor; }
+    .indicator .indicator-icon-spinner { display: none; animation: indicator-spin .9s linear infinite; }
+    .indicator.loading .indicator-icon-plug { display: none; }
+    .indicator.loading .indicator-icon-spinner { display: block; }
     .indicator.ok .indicator-icon { color: var(--success); }
     .indicator.warn .indicator-icon { color: var(--warning); }
+    .indicator.error .indicator-icon { color: var(--error); }
+    .status-text.connected { color: var(--success); }
+    .status-text.disconnected, .status-text.error { color: var(--error); }
+    .status-text.loading { color: var(--text); }
+    .error-message { color: var(--error); font-size: .9rem; }
+    @keyframes indicator-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .modal-body { display: grid; gap: .75rem; color: var(--text-secondary); }
     .modal-body ul { margin: .25rem 0 0; padding-left: 1.15rem; }
     .modal-section, .status-section, .config-section, .credentials-section, .service-controls, .power-history-section, .speed-test-section { display: grid; gap: .55rem; }

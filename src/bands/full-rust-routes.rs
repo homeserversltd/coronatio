@@ -74,7 +74,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/admin/premium/auto-update/:tab_name", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
         .route("/api/admin/premium/auto-update-status", get(homeserver_rust_read_route))
         .route("/api/status/services", get(homeserver_rust_read_route))
-        .route("/api/status", get(homeserver_rust_read_route))
+        .route("/api/status", get(internet_status_route))
         .route("/api/uptime", get(homeserver_rust_read_route))
         .route("/api/status/tailscale", get(homeserver_rust_read_route))
         .route("/api/status/tailscale/connect", post(homeserver_rust_mutation_route))
@@ -341,6 +341,41 @@ async fn upload_pin_required_route() -> impl IntoResponse {
         "isPinRequired": false,
         "firstMissingSignal": "none"
     }))
+}
+
+async fn internet_status_route() -> impl IntoResponse {
+    internet_status_response()
+}
+
+fn internet_status_response() -> Response {
+    let connected = ["1.1.1.1:53", "8.8.8.8:53", "208.67.222.222:53"]
+        .iter()
+        .any(|authority| {
+            authority
+                .parse::<SocketAddr>()
+                .ok()
+                .and_then(|addr| TcpStream::connect_timeout(&addr, Duration::from_secs(3)).ok())
+                .is_some()
+        });
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64())
+        .unwrap_or(0.0);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "schema": "coronatio.internet.status.v1",
+            "ok": true,
+            "success": true,
+            "status": if connected { "connected" } else { "disconnected" },
+            "timestamp": timestamp,
+            "authority": "Coronatio Rust route port of Flask InternetStatusMonitor.check_connectivity",
+            "hosts": ["1.1.1.1", "8.8.8.8", "208.67.222.222"],
+            "timeoutSeconds": 3,
+            "firstMissingSignal": "none"
+        })),
+    )
+        .into_response()
 }
 
 async fn homeserver_rust_read_route(method: Method, uri: Uri) -> impl IntoResponse {
