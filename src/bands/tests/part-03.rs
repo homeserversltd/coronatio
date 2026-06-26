@@ -203,11 +203,52 @@
         let shell = render_crown_shell();
         assert!(shell.contains("function indicatorAdminSection(inner)"));
         assert!(shell.contains(r#"data-admin-surface="indicator-modal""#));
-        assert!(shell.contains(r#"headerState.isAdmin ? `<div class="status-item" data-admin-only"#));
+        assert!(shell.contains(r#"headerState.isAdmin ? `<div data-admin-only data-admin-surface="indicator-modal""#));
         assert!(shell.contains("!headerState.isAdmin && button.closest('[data-admin-only]')"));
         for admin_action in ["Update Tailnet", "Authenticate", "Run Speed Test", "Create PIA Key", "Create Transmission", "Enable Transmission over PIA VPN", "PIA Key Exists", "Service Data"] {
             assert!(shell.contains(admin_action), "missing gated admin action {admin_action}");
         }
+    }
+
+    #[test]
+    fn tailscale_indicator_ports_react_modal_control_and_login_grammar() {
+        let shell = render_crown_shell();
+        let start = shell.find("if (kind === 'tailscale')").unwrap();
+        let end = shell[start..].find("if (kind === 'internet')").unwrap() + start;
+        let tailscale = &shell[start..end];
+        for marker in [
+            r#"data-flask-react-quarry="TailscaleIndicator""#,
+            "LOADING...",
+            "Authentication Required",
+            "Tailscale service is running but needs authentication. Click the link below to complete login:",
+            "Copy URL",
+            "Click the authentication link above (opens in new tab)",
+            "Sign in to your Tailscale account",
+            "Authorize this device",
+            "Return here - the status should update automatically",
+            "Connect",
+            "Disconnect",
+            "Enable Service",
+            "Disable Service",
+            "Current Tailnet:",
+            "Enter Tailnet name",
+            "Update Tailnet",
+            "Unique name used for DNS entries and TLS certificates.",
+            "Alternative:",
+            "If the login link isn't working, you can use an auth key instead.",
+            "Enter your tskey-auth-... or tskey-client-... key",
+            "Authenticate",
+            "Get your auth key from the Tailscale admin console under Settings → Keys.",
+            "/api/status/tailscale/update-tailnet",
+            "/api/status/tailscale/authkey",
+        ] {
+            assert!(tailscale.contains(marker), "missing Tailscale one-to-one marker: {marker}");
+        }
+        assert!(shell.contains("function hydrateTailscaleModal(data)"));
+        assert!(shell.contains("function modalRequestBody(button)"));
+        assert!(shell.contains("tailnetName"));
+        assert!(shell.contains("authKey"));
+        assert!(shell.contains(r#"data-operation-label="Connecting...""#));
     }
 
     #[test]

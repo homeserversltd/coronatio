@@ -73,10 +73,28 @@ fn shell_document_3() -> &'static str {
       return headerState.isAdmin ? `<div data-admin-only data-admin-surface="indicator-modal" data-admin-enhanced="true">${inner}</div>` : '';
     }
     function modalTemplate(kind) {
-      if (kind === 'tailscale') return `<div class="tailscale-status-modal" data-modal-kind-body="tailscale">
-        <div class="status-section"><p class="status-text loading" data-modal-status data-route-read="/api/status/tailscale">Loading Tailscale status…</p></div>
-        ${indicatorAdminSection(`<div class="config-section"><div class="current-tailnet"><span class="label">Current Tailnet:</span><span class="value" data-route-read="/api/status/tailscale/config">Loading...</span></div><input data-tailnet-input placeholder="Enter Tailnet name"><div class="button-row"><button data-modal-fetch="/api/status/tailscale/update-tailnet" data-method="POST">Update Tailnet</button><button data-modal-fetch="/api/status/tailscale/connect" data-method="POST">Connect</button><button data-modal-fetch="/api/status/tailscale/disconnect" data-method="POST">Disconnect</button><button data-modal-fetch="/api/status/tailscale/enable" data-method="POST">Enable Service</button><button data-modal-fetch="/api/status/tailscale/disable" data-method="POST">Disable Service</button></div></div>
-        <div class="authkey-section"><input class="authkey-input" placeholder="Enter your tskey-auth-... or tskey-client-... key"><div class="button-row"><button data-modal-fetch="/api/status/tailscale/authkey" data-method="POST">Authenticate</button></div></div>`)}<pre class="readout action-output" data-modal-output></pre>
+      if (kind === 'tailscale') return `<div class="tailscale-status-modal" data-modal-kind-body="tailscale" data-flask-react-quarry="TailscaleIndicator">
+        <div class="status-section"><p class="status-text loading" data-modal-status data-route-read="/api/status/tailscale"><span data-spinner>⟳</span> LOADING...</p>
+          <div class="login-required-section" data-tailscale-login-section hidden>
+            <div class="login-message"><strong>Authentication Required</strong><p>Tailscale service is running but needs authentication. Click the link below to complete login:</p></div>
+            <div class="login-url-container"><a href="#" target="_blank" rel="noopener noreferrer" class="login-url-link" data-tailscale-login-url></a><button class="copy-url-button" data-copy-login-url title="Copy URL to clipboard">Copy URL</button></div>
+            <div class="login-instructions"><p><strong>Instructions:</strong></p><ol><li>Click the authentication link above (opens in new tab)</li><li>Sign in to your Tailscale account</li><li>Authorize this device</li><li>Return here - the status should update automatically</li></ol></div>
+          </div>
+        </div>
+        ${indicatorAdminSection(`<div class="controls-section"><div class="connection-buttons"><button class="primary-button" data-modal-fetch="/api/status/tailscale/connect" data-method="POST" data-operation-label="Connecting...">Connect</button><button class="primary-button" data-modal-fetch="/api/status/tailscale/disconnect" data-method="POST" data-operation-label="Disconnecting...">Disconnect</button></div><div class="service-controls"><button class="primary-button" data-modal-fetch="/api/status/tailscale/enable" data-method="POST" data-operation-label="Enabling...">Enable Service</button><button class="primary-button" data-modal-fetch="/api/status/tailscale/disable" data-method="POST" data-operation-label="Disabling...">Disable Service</button></div></div>
+        <div class="config-section"><div class="current-tailnet"><span class="label">Current Tailnet:</span><span class="value" data-route-read="/api/status/tailscale/config">Loading...</span></div><div class="config-form"><input data-tailnet-input placeholder="Enter Tailnet name"><button class="primary-button" data-modal-fetch="/api/status/tailscale/update-tailnet" data-method="POST" data-operation-label="Updating...">Update Tailnet</button><div class="tooltip-text">Unique name used for DNS entries and TLS certificates.
+          You can find this name on the DNS page of your tailscale dashboard.
+          This change will reboot the website and tailscale service. 
+          Please wait and refresh the page after submitting changes.
+
+          Note: HOMESERVER will automatically regenerate the HTTPS self-signed
+          certificate to reference your new tailnet. If you previously
+          installed the certificate on any device, open the site in a
+          private/incognito window and re-download the certificate before
+          returning to normal browsing. Until the new certificate is
+          installed, browsers may report a certificate name mismatch for both
+          local and remote access.</div></div></div>
+        <div class="authkey-section"><div class="authkey-alternative"><p class="alternative-text"><strong>Alternative:</strong> If the login link isn't working, you can use an auth key instead.</p></div><div class="authkey-form"><input class="authkey-input" data-authkey-input placeholder="Enter your tskey-auth-... or tskey-client-... key"><button class="primary-button" data-modal-fetch="/api/status/tailscale/authkey" data-method="POST" data-operation-label="Authenticating...">Authenticate</button></div><div class="authkey-help"><p>Get your auth key from the Tailscale admin console under Settings → Keys.</p></div></div>`)}<pre class="readout action-output" data-modal-output></pre>
       </div>`;
       if (kind === 'internet') return `<div class="internet-status-modal" data-modal-kind-body="internet"><div class="status-section"><p class="status-text loading" data-modal-status data-route-read="/api/status">Checking internet status…</p></div>${indicatorAdminSection(`<div class="admin-details-section" data-admin-details-section><div class="ip-details"><p><strong>Location:</strong> —</p><p><strong>ISP:</strong> —</p><p><strong>Timezone:</strong> —</p></div></div><div class="speed-test-section"><div class="button-row"><button data-modal-fetch="/api/status/internet/speedtest" data-method="POST">Run Speed Test</button></div><div class="speed-results"><p>Download: — Mbps</p><p>Upload: — Mbps</p><p>Latency: — ms</p></div></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'services') return `<div class="services-status-modal" data-modal-kind-body="services"><div class="loading-section" data-modal-status data-route-read="/api/status/services">Loading service status…</div><ul class="service-status-list" data-route-read="/api/status/services"><li>No status data available</li></ul>${indicatorAdminSection(`<div class="admin-service-grid"><div class="admin-service-description">Description</div><div class="admin-service-name">Service</div><div class="admin-service-right"><span class="admin-service-status">enabled</span></div></div><div class="button-row"><button data-modal-fetch="/api/status/services">Refresh</button><button data-modal-fetch="/api/services/data">Service Data</button></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
@@ -89,12 +107,43 @@ fn shell_document_3() -> &'static str {
       const ok = data && (data.ok === true || data.success === true);
       const status = data?.status || (ok ? 'ok' : 'unavailable');
       const missing = data?.firstMissingSignal && data.firstMissingSignal !== 'none' ? ' · ' + data.firstMissingSignal : '';
+      if (route.includes('/api/status/tailscale/config')) return data?.tailnet || data?.tailnetName || data?.readback?.tailnet || (ok ? 'Loading...' + missing : 'Loading...');
       if (route.includes('tailscale')) return ok ? 'Tailscale status: ' + status + missing : 'Tailscale status unavailable';
       if (route.includes('/api/status/vpn/pia')) return ok ? 'VPN status: ' + status + missing : 'VPN status unavailable';
       if (route.includes('/api/status/vpn/transmission')) return ok ? 'Transmission status: ' + status + missing : 'Transmission status unavailable';
       if (route.includes('services')) return ok ? 'Services status: ' + status + missing : 'Services status unavailable';
       if (route.includes('power')) return ok ? 'Power readback: ' + status + missing : 'Power readback unavailable';
       return ok ? 'Internet status: ' + status + missing : 'Internet status unavailable';
+    }
+    function tailscaleStatusClass(data) {
+      if (!data || data.status === 'loading') return 'loading';
+      if (data.status === 'connected') return 'connected';
+      if (data.status === 'disconnected' && data.loginUrl) return 'disconnected login-required';
+      if (data.status === 'disconnected') return 'disconnected';
+      if (data.status === 'error') return 'error';
+      return data.status || 'unknown';
+    }
+    function hydrateTailscaleModal(data) {
+      const statusNode = infoBody.querySelector('[data-modal-kind-body="tailscale"] [data-modal-status]');
+      if (!statusNode) return;
+      const state = data?.status || (data?.ok ? 'rust-route' : 'loading');
+      statusNode.className = 'status-text ' + tailscaleStatusClass(data);
+      statusNode.textContent = state === 'loading' ? 'LOADING...' : String(state).toUpperCase() + (headerState.isAdmin && data?.ip ? ' (' + data.ip + ')' : '');
+      const login = data?.loginUrl || data?.authUrl || data?.url;
+      const loginSection = infoBody.querySelector('[data-tailscale-login-section]');
+      const loginLink = infoBody.querySelector('[data-tailscale-login-url]');
+      const showLogin = Boolean(headerState.isAdmin && login && state === 'disconnected');
+      if (loginSection) loginSection.hidden = !showLogin;
+      if (loginLink && login) { loginLink.href = login; loginLink.textContent = login; }
+      infoBody.querySelector('[data-copy-login-url]')?.addEventListener('click', () => navigator.clipboard?.writeText(loginLink?.href || ''));
+      const input = infoBody.querySelector('[data-tailnet-input]');
+      if (input && data?.tailnet && !input.value) input.value = data.tailnet;
+    }
+    function modalRequestBody(button) {
+      const route = button.dataset.modalFetch || '';
+      if (route.endsWith('/update-tailnet')) return JSON.stringify({ tailnetName: infoBody.querySelector('[data-tailnet-input]')?.value || '' });
+      if (route.endsWith('/authkey')) return JSON.stringify({ authKey: infoBody.querySelector('[data-authkey-input]')?.value || '' });
+      return undefined;
     }
     async function hydrateModalRouteReads(kind) {
       const nodes = [...infoBody.querySelectorAll('[data-route-read]')];
@@ -103,10 +152,11 @@ fn shell_document_3() -> &'static str {
         try {
           const response = await fetch(route, { cache: 'no-store' });
           const data = await response.json();
+          if (kind === 'tailscale' && route === '/api/status/tailscale') hydrateTailscaleModal(data);
           const label = routeReadLabel(route, data);
           if (node.matches('ul')) node.innerHTML = `<li>${label}</li>`;
           else if (node.classList.contains('power-value')) node.querySelector('[data-modal-status]').textContent = label.replace('Power readback: ', '').replace('Power readback unavailable', 'unavailable');
-          else node.textContent = label;
+          else if (!(kind === 'tailscale' && route === '/api/status/tailscale')) node.textContent = label;
           node.classList.remove('loading');
           node.dataset.hydrated = 'true';
         } catch (error) {
@@ -123,12 +173,18 @@ fn shell_document_3() -> &'static str {
       infoBody.querySelectorAll('[data-modal-fetch]').forEach(button => button.addEventListener('click', async () => {
         const output = infoBody.querySelector('[data-modal-output]');
         if (!headerState.isAdmin && button.closest('[data-admin-only]')) { if (output) output.textContent = 'Enter Admin Mode'; return; }
+        const originalLabel = button.textContent;
+        if (button.dataset.operationLabel) button.textContent = button.dataset.operationLabel;
+        button.classList.add('pending-operation');
+        button.disabled = true;
         if (output) output.textContent = 'Loading ' + button.dataset.modalFetch + '…';
         try {
-          const response = await fetch(button.dataset.modalFetch, { method: button.dataset.method || 'GET' });
+          const body = modalRequestBody(button);
+          const response = await fetch(button.dataset.modalFetch, { method: button.dataset.method || 'GET', headers: body ? { 'Content-Type': 'application/json' } : undefined, body });
           const text = await response.text();
           if (output) { try { output.textContent = JSON.stringify(JSON.parse(text), null, 2); } catch (_) { output.textContent = text; } }
         } catch (error) { if (output) output.textContent = 'fetch failed: ' + error; }
+        finally { button.textContent = originalLabel; button.classList.remove('pending-operation'); button.disabled = false; }
       }));
     }
     function openInfoModal(title, kind = 'status') {
