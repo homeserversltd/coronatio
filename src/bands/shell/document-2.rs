@@ -52,7 +52,79 @@ fn shell_document_2() -> &'static str {
     .warning { color: var(--warning); }
     .error { color: var(--error); }
     .success { color: var(--success); }
-    .drop-zone { border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 8px; padding: 1.2rem; background: rgba(0,242,254,.07); }
+    .upload-tablet { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto; gap: 12px; scrollbar-width: inherit; }
+    .upload-controls { display: flex; flex-direction: column; gap: 16px; overflow: visible; }
+    .upload-progress-list { display: flex; flex-direction: column; gap: 12px; width: 100%; overflow: visible; }
+    .upload-progress { background: var(--hiddenTabBackground); border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,.1); border: 1px solid var(--border); transition: transform .2s ease, box-shadow .2s ease; }
+    .upload-header { display: flex; align-items: center; margin-bottom: 8px; gap: 8px; }
+    .status-icon { font-size: 1.2em; }
+    .filename { flex: 1; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .remove-button { background: none; border: none; color: var(--secondary); font-size: 1.2em; cursor: pointer; padding: 4px 8px; border-radius: 8px; transition: all .2s ease; }
+    .remove-button:hover { color: var(--statusDown); background: rgba(239,68,68,.1); }
+    .progress-section { display: flex; flex-direction: column; gap: 8px; }
+    .progress-bar-container { width: 100%; height: 20px; background: var(--hiddenTabBackground); color: var(--text); border-radius: 10px; overflow: hidden; position: relative; }
+    .progress-bar { height: 100%; border-radius: 10px; background: var(--hiddenTabBackground); color: var(--text); position: relative; display: flex; align-items: center; justify-content: center; min-width: 24px; }
+    .progress-text { color: var(--text); font-size: .8em; font-weight: 500; text-shadow: 0 1px 2px rgba(0,0,0,.3); z-index: 1; }
+    .upload-stats { display: flex; justify-content: space-between; font-size: .9em; color: var(--secondary); }
+    .speed { color: var(--accent); font-weight: 500; }
+    .error-message { color: var(--statusDown); font-size: .9em; padding: 8px; background: rgba(239,68,68,.1); border-radius: 4px; border-left: 3px solid var(--statusDown); }
+    .upload-progress.pending .progress-bar, .upload-progress.uploading .progress-bar { background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent); background-size: 1rem 1rem; animation: progress-stripes 1s linear infinite; }
+    @keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }
+    .file-upload-section { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .file-upload-section button, .file-upload-section input[type="file"] { background: var(--primary); border: none; border-radius: var(--border-radius); padding: 8px 12px; color: var(--text); cursor: pointer; transition: background var(--transition-fast); font-size: var(--font-size-sm); margin-right: 8px; margin-bottom: 8px; }
+    .file-upload-section button:hover, .file-upload-section input[type="file"]:hover { background: var(--primaryHover); }
+    .file-upload-section button[disabled] { opacity: .6; cursor: not-allowed; background: var(--disabled); }
+    .directory-browser { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background-color: var(--background); box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border); }
+    .directory-browser-header { display: flex; flex-wrap: wrap; align-items: center; padding: 8px 12px; background-color: var(--hiddenTabBackground); border-bottom: 1px solid var(--border); gap: 8px; }
+    .directory-browser-header button { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background-color: var(--primary); color: var(--text); cursor: pointer; font-size: .9em; transition: background-color .2s, border-color .2s; display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+    .directory-browser-header button:hover:not(:disabled) { background-color: var(--primaryHover); border-color: var(--border); }
+    .directory-browser-header button:disabled { opacity: .6; cursor: not-allowed; }
+    .directory-breadcrumb-container { padding: 8px 12px; background: var(--background); border-bottom: 1px solid var(--border); }
+    .breadcrumb-navigation { font-family: monospace; font-size: .9rem; white-space: normal; }
+    .breadcrumb-item { cursor: pointer; color: var(--text); }
+    .breadcrumb-item.current { cursor: default; font-weight: bold; }
+    .breadcrumb-separator { color: var(--text-secondary); margin: 0 4px; }
+    .directory-tree-container { flex-grow: 1; overflow-y: auto; padding: 8px; max-height: 70vh; }
+    .directory-entry { padding: 4px 8px; cursor: pointer; border-radius: 4px; transition: background-color .15s ease-in-out; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; display: flex; align-items: center; gap: 4px; min-height: 32px; }
+    .directory-entry:hover { background-color: var(--primaryHover); }
+    .directory-entry.selected { background-color: var(--primaryHover); font-weight: bold; color: var(--text); }
+    .directory-entry.loading { opacity: .7; pointer-events: none; }
+    .tree-line { background-color: var(--border); position: absolute; }
+    .tree-line.vertical { width: 1px; }
+    .tree-line.horizontal { height: 1px; }
+    .expand-control { cursor: pointer; margin-right: 4px; user-select: none; font-size: 12px; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; transition: background-color .2s ease; }
+    .entry-icon { color: var(--primary); font-size: 1.1em; }
+    .entry-name { color: var(--text); font-size: .95em; }
+    .entry-selected { color: var(--primary); font-size: 1.1em; margin-left: auto; }
+    .directory-error, .directory-empty { padding: 16px; text-align: center; color: var(--secondary); }
+    .directory-error.nas-unavailable, .directory-error[data-nas-unavailable="true"] { background: rgba(255,193,7,.1); border: 2px solid var(--warning, #ffc107); border-radius: 8px; color: var(--warning, #ffc107); font-weight: bold; font-size: 1.1em; }
+    .directory-loading-initial { display: flex; justify-content: center; align-items: center; min-height: 100px; padding: 20px; }
+    .toggle-pin-button { position: relative; width: 46px !important; height: 24px !important; padding: 0 !important; border-radius: 24px !important; transition: all .3s ease !important; overflow: hidden; border: none !important; display: flex !important; align-items: center !important; justify-content: center !important; background-color: var(--error) !important; }
+    .toggle-pin-button::before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background-color: var(--text) !important; border-radius: 50%; transition: transform .3s ease; }
+    .toggle-pin-button.active { background-color: var(--success) !important; }
+    .toggle-pin-button.active::before { transform: translateX(22px); }
+    .blacklist-manager { padding: 20px; display: flex; flex-direction: column; gap: 20px; min-width: 400px; max-width: 600px; background: var(--background); border-radius: 8px; }
+    .blacklist-entries { display: flex; flex-direction: column; gap: 8px; padding-right: 8px; }
+    .blacklist-entry { display: flex; align-items: center; padding: 8px 12px; background: var(--hiddenTabBackground); border-radius: 8px; gap: 12px; }
+    .entry-path { flex: 1; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .remove-entry { background: none; border: none; color: var(--text); font-size: 1.2em; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+    .blacklist-controls, .add-entry { display: flex; gap: 8px; }
+    .blacklist-controls { flex-direction: column; }
+    .entry-input { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--background); color: var(--text); font-family: monospace; }
+    .add-button, .submit-button, .clear-history-button { padding: 8px 12px; background: var(--primary); color: var(--text); border: none; border-radius: 8px; cursor: pointer; font-size: .9em; }
+    .submit-button, .clear-history-button { width: 100%; }
+    .clear-history-button { background: var(--error); margin-top: 4px; }
+    .upload-history-loading { display: flex; justify-content: center; align-items: center; min-height: 200px; width: 100%; }
+    .upload-history-modal-content { display: flex; flex-direction: column; max-height: 90vh; min-height: 200px; min-width: 300px; width: 100%; }
+    .upload-history-list { flex: 1; overflow-y: auto; padding: 4px; height: calc(90vh - 130px); }
+    .uploadHistoryModal.empty { padding: 10px; width: auto; height: auto; display: flex; justify-content: center; align-items: center; }
+    .upload-history-empty-message { font-size: 1.2rem; text-align: center; color: #666; }
+    .history-item { padding: 8px; margin: 4px 0; border-radius: 4px; font-size: .9em; font-family: monospace; word-break: break-word; width: 100%; box-sizing: border-box; }
+    .history-item.success { background: color-mix(in srgb, var(--status-up) 20%, transparent); border-left: 3px solid var(--status-up); color: var(--status-up); }
+    .history-item.error { background: color-mix(in srgb, var(--status-down) 20%, transparent); border-left: 3px solid var(--status-down); color: var(--status-down); }
+    .pin-modal-form { display: flex; flex-direction: column; gap: 15px; }
+    .pin-modal-form p { margin: 0; color: var(--secondary); line-height: 1.4; }
+    .pin-input { padding: 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--background); color: var(--text); font-size: 1rem; }
     [data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"]) { display: none !important; }
     [data-admin-mode="true"] [data-admin-only]:not([data-admin-only="false"]) { display: revert; }
     [data-admin-only]:not([data-admin-only="false"]) { }
@@ -216,11 +288,48 @@ fn shell_document_2() -> &'static str {
         <pre class="readout" id="portals-readout">Portal cards load from homeserver.json through /api/portals for HomeServer.</pre>
       </section>
       <section class="pane" id="pane-upload" data-pane-panel="upload" role="tabpanel" aria-label="Upload">
-        <div class="pane-grid upload-viewport" data-upload-viewport>
-          <article class="card upload-card" data-upload-regular="file-ingress"><h2>Upload files</h2><form class="upload-form" data-upload-form><label>Destination <input class="field" name="path" data-upload-path value="/mnt/nas" autocomplete="off"></label><label>File <input class="field" name="file" data-upload-file type="file"></label><div class="button-row"><button type="submit">Upload</button></div></form><div class="drop-zone" data-upload-drop><strong>Choose files for /mnt/nas</strong><p>Regular mode keeps file selection, destination, and upload available without admin controls.</p></div></article>
-          <article class="card upload-directory-card" data-upload-regular="directory-browser"><h2>Directory browser</h2><p class="muted">Browse or refresh the target directory before uploading.</p><div class="button-row"><button data-fetch="/api/files/browse-hierarchical" data-target="upload-readout">Browse directory</button><button class="secondary" data-fetch="/api/files/browse" data-target="upload-readout">Refresh tree</button></div><div class="details"><span>Current path</span><strong data-upload-current-path>/mnt/nas</strong></div></article>
-          <article class="card upload-progress-card" data-upload-regular="progress"><h2>Upload progress</h2><p class="muted">Selected file and Caduceus upload intent readback appear here.</p><pre class="readout" id="upload-readout">Select a file to send the upload intent to Caduceus.</pre></article>
-          <article class="card upload-admin-card" data-admin-only data-admin-viewport="upload"><h2>Admin upload controls</h2><p class="muted">Enhanced controls from the original Upload tablet.</p><div class="button-row"><button data-fetch="/api/upload/force-permissions" data-method="POST" data-target="upload-readout">Force Allow Upload</button><button class="secondary" data-fetch="/api/upload/default-directory" data-target="upload-readout">Default directory</button><button data-fetch="/api/upload/default-directory" data-method="POST" data-target="upload-readout">Set Default Directory</button><button class="secondary" data-fetch="/api/upload/pin-required-status" data-target="upload-readout">PIN requirement</button><button class="secondary" data-fetch="/api/upload/blacklist/list" data-target="upload-readout">Manage Blacklist</button><button class="secondary" data-fetch="/api/upload/history" data-target="upload-readout">Upload History</button><button class="secondary" data-fetch="/api/upload/history/clear" data-method="POST" data-target="upload-readout">Clear History</button></div></article>
+        <div class="upload-tablet" data-upload-viewport data-react-quarry="UploadTablet" data-identity-standard="one-to-one">
+          <div class="upload-progress-list" data-upload-progress-list hidden></div>
+          <div class="upload-controls">
+            <div class="directory-browser" data-upload-regular="directory-browser" data-directory-browser>
+              <div class="directory-browser-header">
+                <button type="button" class="refresh-button" data-upload-refresh title="Refresh Directory Tree">🔄</button>
+                <button type="button" class="admin-button force-allow-button" data-admin-only data-admin-viewport="upload" data-upload-force-allow title="Force Allow Upload (Admin)">🛡️ Allow</button>
+                <button type="button" class="admin-button set-default-button" data-admin-only data-admin-viewport="upload" data-upload-set-default title="Set as Default Directory (Admin)">📌 Default</button>
+                <button type="button" class="admin-button blacklist-button" data-admin-only data-admin-viewport="upload" data-upload-blacklist title="Manage Blacklist (Admin)">🚫 Blacklist</button>
+                <button type="button" class="admin-button upload-history-button" data-admin-only data-admin-viewport="upload" data-upload-history title="View Upload History (Admin)">📜 History</button>
+                <button type="button" class="toggle-pin-button" data-admin-only data-admin-viewport="upload" data-upload-pin-toggle title="Enable PIN requirement for uploads (Currently Off)" aria-label="Toggle PIN requirement (currently disabled)"></button>
+              </div>
+              <div class="directory-breadcrumb-container">
+                <div class="breadcrumb-navigation" data-upload-breadcrumbs><span class="breadcrumb-item current" data-path="/mnt/nas">nas</span></div>
+              </div>
+              <div class="directory-error nas-unavailable" data-nas-unavailable="true" data-upload-directory-error hidden>⚠️ NAS Storage Unavailable</div>
+              <div class="directory-loading-initial" data-upload-directory-loading hidden>Loading directory tree…</div>
+              <div class="directory-tree-container" data-upload-tree role="tree">
+                <div class="directory-entry selected" data-directory-path="/mnt/nas" role="treeitem" aria-selected="true" aria-expanded="false" style="padding-left: 12px">
+                  <span class="expand-control" aria-label="Expand">▶</span><span class="entry-icon">📁</span><span class="entry-name">nas</span><span class="entry-selected" aria-hidden="true">✓</span>
+                </div>
+              </div>
+            </div>
+            <div class="file-upload-section" data-upload-regular="file-ingress" data-upload-file-section>
+              <input type="file" multiple data-upload-file>
+              <button type="button" data-upload-submit disabled>Upload Selected Files</button>
+            </div>
+          </div>
+          <div class="modal-window" data-upload-history-modal hidden>
+            <div class="modal-titlebar">Upload History</div>
+            <div class="upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="clear-history-button" data-upload-clear-history disabled>Clear History</button></div>
+          </div>
+          <div class="modal-window" data-upload-blacklist-modal hidden>
+            <div class="modal-titlebar">Manage Blacklist</div>
+            <div class="blacklist-manager"><div class="blacklist-entries" data-upload-blacklist-entries></div><div class="blacklist-controls"><form class="add-entry" data-upload-blacklist-form><input type="text" class="entry-input" placeholder="Enter path to blacklist" data-upload-blacklist-input><button type="button" class="add-button" data-upload-blacklist-add>New</button></form><button type="button" class="submit-button" data-upload-blacklist-submit>Submit</button></div></div>
+          </div>
+          <div class="modal-window" data-upload-pin-modal hidden>
+            <div class="modal-titlebar">Admin PIN Required</div>
+            <form class="pin-modal-form" data-upload-pin-form><p>Please enter the admin PIN to proceed with the upload.</p><input type="text" name="username" autocomplete="username" style="position:absolute;left:-9999px;opacity:0" tabindex="-1" aria-hidden="true"><input type="password" placeholder="Admin PIN" class="pin-input" autocomplete="new-password" data-upload-pin-input></form>
+            <div class="modal-actions"><button type="button" class="secondary" data-upload-pin-cancel>Cancel</button><button type="button" data-upload-pin-confirm>Confirm</button></div>
+          </div>
+          <pre class="readout admin-quarry-note" id="upload-readout" data-upload-receipt-readout>Upload Caduceus receipts are diagnostic evidence, not the visible progress UI.</pre>
         </div>
       </section>
     </section>

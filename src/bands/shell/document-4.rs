@@ -10,24 +10,161 @@ fn shell_document_4() -> &'static str {
     }
     document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET')));
 
-    const uploadForm = document.querySelector('[data-upload-form]');
-    uploadForm?.addEventListener('submit', async event => {
-      event.preventDefault();
-      const file = document.querySelector('[data-upload-file]')?.files?.[0];
-      const destination = document.querySelector('[data-upload-path]')?.value || '/mnt/nas';
-      const out = document.getElementById('upload-readout');
-      if (!file) { out.textContent = 'Choose a file first.'; return; }
+    const uploadState = { currentPath: '/mnt/nas', selectedFiles: [], activeUploads: new Map(), pinRequired: false, uploading: false, blacklist: [], history: [] };
+    const uploadFileInput = document.querySelector('[data-upload-file]');
+    const uploadSubmit = document.querySelector('[data-upload-submit]');
+    const uploadProgressList = document.querySelector('[data-upload-progress-list]');
+    const uploadTree = document.querySelector('[data-upload-tree]');
+    const uploadBreadcrumbs = document.querySelector('[data-upload-breadcrumbs]');
+    const uploadReadout = document.getElementById('upload-readout');
+    function uploadFormatSize(bytes) {
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let size = Number(bytes || 0);
+      let unit = 0;
+      while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+      return size.toFixed(1) + ' ' + units[unit];
+    }
+    function uploadStatusIcon(status) {
+      if (status === 'pending') return '⏳';
+      if (status === 'uploading') return '📤';
+      if (status === 'completed') return '✅';
+      if (status === 'error') return '❌';
+      return '❓';
+    }
+    function uploadStatusColor(status) {
+      if (status === 'pending') return '#f59e0b';
+      if (status === 'uploading') return '#3b82f6';
+      if (status === 'completed') return '#10b981';
+      if (status === 'error') return '#ef4444';
+      return '#6b7280';
+    }
+    function renderUploadProgress() {
+      if (!uploadProgressList) return;
+      const uploads = Array.from(uploadState.activeUploads.values());
+      uploadProgressList.hidden = uploads.length === 0;
+      uploadProgressList.innerHTML = uploads.map(upload => `
+        <div class="upload-progress ${upload.status}" data-upload-progress="${upload.filename}">
+          <div class="upload-header"><span class="status-icon">${uploadStatusIcon(upload.status)}</span><span class="filename">${upload.filename}</span><button type="button" class="remove-button" data-upload-remove="${upload.filename}" aria-label="Remove upload">×</button></div>
+          <div class="progress-section"><div class="progress-bar-container"><div class="progress-bar" style="width:${upload.progress}%;background-color:${uploadStatusColor(upload.status)}"><span class="progress-text">${upload.progress.toFixed(1)}%</span></div></div><div class="upload-stats"><span class="size">${uploadFormatSize(upload.uploaded)} / ${uploadFormatSize(upload.total)}</span>${upload.status === 'uploading' ? `<span class="speed">${uploadFormatSize(upload.speed)}/s</span>` : ''}</div>${upload.status === 'error' ? `<div class="error-message">${upload.error || 'Upload failed'}</div>` : ''}</div>
+        </div>`).join('');
+      uploadProgressList.querySelectorAll('[data-upload-remove]').forEach(button => button.addEventListener('click', () => { uploadState.activeUploads.delete(button.dataset.uploadRemove); renderUploadProgress(); }));
+    }
+    function setUpload(filename, update) {
+      const current = uploadState.activeUploads.get(filename) || { filename, progress: 0, speed: 0, uploaded: 0, total: 0, status: 'pending' };
+      uploadState.activeUploads.set(filename, Object.assign(current, update));
+      renderUploadProgress();
+    }
+    function setUploadSelection() {
+      uploadState.selectedFiles = Array.from(uploadFileInput?.files || []);
+      if (uploadSubmit) uploadSubmit.disabled = uploadState.selectedFiles.length === 0 || uploadState.uploading;
+    }
+    function renderUploadBreadcrumbs(path) {
+      if (!uploadBreadcrumbs) return;
+      const parts = path.split('/').filter(Boolean).slice(1);
+      let current = '/mnt/nas';
+      const crumbs = [{ name: 'nas', path: '/mnt/nas' }];
+      parts.slice(1).forEach(part => { current += '/' + part; crumbs.push({ name: part, path: current }); });
+      uploadBreadcrumbs.innerHTML = crumbs.map((crumb, index) => `<span class="breadcrumb-item ${crumb.path === path ? 'current' : ''}" data-path="${crumb.path}">${crumb.name}</span>${index < crumbs.length - 1 ? '<span class="breadcrumb-separator"> / </span>' : ''}`).join('');
+      uploadBreadcrumbs.querySelectorAll('.breadcrumb-item').forEach(item => item.addEventListener('click', () => selectUploadPath(item.dataset.path || '/mnt/nas')));
+    }
+    function selectUploadPath(path) {
+      uploadState.currentPath = path || '/mnt/nas';
+      renderUploadBreadcrumbs(uploadState.currentPath);
+      uploadTree?.querySelectorAll('.directory-entry').forEach(row => {
+        const selected = row.dataset.directoryPath === uploadState.currentPath;
+        row.classList.toggle('selected', selected);
+        row.setAttribute('aria-selected', selected ? 'true' : 'false');
+        const mark = row.querySelector('.entry-selected');
+        if (mark) mark.hidden = !selected;
+      });
+    }
+    function renderDirectoryEntries(entries, depth = 0) {
+      return (entries || []).map(entry => `<div class="directory-entry ${entry.path === uploadState.currentPath ? 'selected' : ''}" data-directory-path="${entry.path}" role="treeitem" aria-selected="${entry.path === uploadState.currentPath}" aria-expanded="${entry.hasChildren ? !!entry.isExpanded : 'false'}" style="padding-left:${24 * depth + 12}px">${depth > 0 ? '<div class="tree-line horizontal"></div>' : ''}<span class="expand-control" aria-label="${entry.isExpanded ? 'Collapse' : 'Expand'}">${entry.hasChildren ? (entry.isLoading ? '⟳' : (entry.isExpanded ? '▼' : '▶')) : ''}</span><span class="entry-icon">📁</span><span class="entry-name">${entry.name}</span><span class="entry-selected" aria-hidden="true" ${entry.path === uploadState.currentPath ? '' : 'hidden'}>✓</span></div>${entry.isExpanded ? renderDirectoryEntries(entry.children || [], depth + 1) : ''}`).join('');
+    }
+    async function loadUploadDirectory(path = '/mnt/nas', expand = false) {
+      const loading = document.querySelector('[data-upload-directory-loading]');
+      const error = document.querySelector('[data-upload-directory-error]');
+      if (loading) loading.hidden = false;
+      if (error) error.hidden = true;
+      try {
+        const data = await fetch('/api/files/browse-hierarchical?path=' + encodeURIComponent(path) + '&expand=' + expand).then(r => r.json());
+        const entries = data.entries && data.entries.length ? data.entries : [{ name: 'nas', path: '/mnt/nas', type: 'directory', hasChildren: true, isExpanded: false, children: [] }];
+        if (uploadTree) uploadTree.innerHTML = renderDirectoryEntries(entries);
+        uploadTree?.querySelectorAll('.directory-entry').forEach(row => row.addEventListener('click', event => { event.stopPropagation(); selectUploadPath(row.dataset.directoryPath || '/mnt/nas'); }));
+        selectUploadPath(uploadState.currentPath);
+      } catch (err) {
+        if (error) { error.hidden = false; error.textContent = '⚠️ NAS Storage Unavailable'; }
+      } finally { if (loading) loading.hidden = true; }
+    }
+    async function uploadOneFile(file) {
+      setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending' });
       const form = new FormData();
       form.append('file', file);
-      form.append('path', destination);
-      out.textContent = 'Uploading ' + file.name + ' through Caduceus…';
-      try {
-        const response = await fetch('/api/files/upload', { method: 'POST', body: form });
-        const text = await response.text();
-        try { out.textContent = JSON.stringify(JSON.parse(text), null, 2); }
-        catch (_) { out.textContent = text; }
-      } catch (error) { out.textContent = 'upload failed: ' + error; }
-    });
+      form.append('path', uploadState.currentPath);
+      const xhr = new XMLHttpRequest();
+      const start = Date.now();
+      return new Promise((resolve, reject) => {
+        xhr.upload.onprogress = event => {
+          if (event.lengthComputable) {
+            const elapsed = Math.max(1, Date.now() - start) / 1000;
+            setUpload(file.name, { progress: (event.loaded / event.total) * 100, speed: event.loaded / elapsed, uploaded: event.loaded, total: event.total, status: 'uploading' });
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) { setUpload(file.name, { progress: 100, uploaded: file.size, total: file.size, status: 'completed' }); if (uploadReadout) uploadReadout.textContent = xhr.responseText; resolve(); }
+          else { let msg = 'Upload failed with status ' + xhr.status; try { const body = JSON.parse(xhr.responseText); if (body.error) msg = body.error; } catch (_) {} setUpload(file.name, { status: 'error', error: msg }); reject(new Error(msg)); }
+        };
+        xhr.onerror = () => { const msg = 'Network error occurred during upload'; setUpload(file.name, { status: 'error', error: msg }); reject(new Error(msg)); };
+        xhr.open('POST', '/api/files/upload');
+        xhr.send(form);
+      });
+    }
+    async function uploadSelectedFiles() {
+      if (!uploadState.selectedFiles.length) return;
+      uploadState.uploading = true;
+      if (uploadSubmit) { uploadSubmit.disabled = true; uploadSubmit.textContent = 'Uploading...'; }
+      let success = 0;
+      let failed = 0;
+      for (const file of uploadState.selectedFiles) {
+        try { await uploadOneFile(file); success += 1; }
+        catch (_) { failed += 1; }
+      }
+      uploadState.uploading = false;
+      if (uploadSubmit) { uploadSubmit.textContent = 'Upload Selected Files'; uploadSubmit.disabled = uploadState.selectedFiles.length === 0; }
+      if (uploadReadout) uploadReadout.textContent = failed ? `Uploaded ${success} file(s), ${failed} failed` : `Successfully uploaded ${success} file(s)`;
+    }
+    function openUploadModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
+    async function refreshUploadHistory() {
+      const modal = document.querySelector('[data-upload-history-modal]');
+      const list = modal?.querySelector('.upload-history-list');
+      const empty = modal?.querySelector('.uploadHistoryModal');
+      const clear = modal?.querySelector('[data-upload-clear-history]');
+      try { const data = await fetch('/api/upload/history').then(r => r.json()); uploadState.history = data.history || []; } catch (_) { uploadState.history = []; }
+      if (list) { list.hidden = uploadState.history.length === 0; list.innerHTML = uploadState.history.map(line => `<div class="history-item ${String(line).includes('Successfully') ? 'success' : 'error'}">${line}</div>`).join(''); }
+      if (empty) empty.hidden = uploadState.history.length !== 0;
+      if (clear) clear.disabled = uploadState.history.length === 0;
+    }
+    async function refreshUploadBlacklist() {
+      const entries = document.querySelector('[data-upload-blacklist-entries]');
+      try { const data = await fetch('/api/upload/blacklist/list').then(r => r.json()); uploadState.blacklist = data.blacklist || []; } catch (_) { uploadState.blacklist = []; }
+      if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join('');
+      entries?.querySelectorAll('[data-blacklist-remove]').forEach(button => button.addEventListener('click', () => { uploadState.blacklist.splice(Number(button.dataset.blacklistRemove), 1); refreshUploadBlacklistDomOnly(); }));
+    }
+    function refreshUploadBlacklistDomOnly() { const entries = document.querySelector('[data-upload-blacklist-entries]'); if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join(''); }
+    uploadFileInput?.addEventListener('change', setUploadSelection);
+    uploadSubmit?.addEventListener('click', uploadSelectedFiles);
+    document.querySelector('[data-upload-refresh]')?.addEventListener('click', () => loadUploadDirectory('/mnt/nas', false));
+    document.querySelector('[data-upload-force-allow]')?.addEventListener('click', async () => { if (!confirm(`WARNING: This will override security settings for ${uploadState.currentPath}. 
+Only continue if you understand the risks.`)) return; await fetch('/api/upload/force-permissions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ directory: uploadState.currentPath }) }); });
+    document.querySelector('[data-upload-set-default]')?.addEventListener('click', () => fetch('/api/upload/default-directory', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ directory: uploadState.currentPath }) }));
+    document.querySelector('[data-upload-history]')?.addEventListener('click', async () => { openUploadModal('[data-upload-history-modal]'); await refreshUploadHistory(); });
+    document.querySelector('[data-upload-blacklist]')?.addEventListener('click', async () => { openUploadModal('[data-upload-blacklist-modal]'); await refreshUploadBlacklist(); });
+    document.querySelector('[data-upload-blacklist-add]')?.addEventListener('click', () => { const input = document.querySelector('[data-upload-blacklist-input]'); const next = input?.value?.trim(); if (!next || uploadState.blacklist.includes(next)) return; uploadState.blacklist.push(next); input.value = ''; refreshUploadBlacklistDomOnly(); });
+    document.querySelector('[data-upload-blacklist-submit]')?.addEventListener('click', () => fetch('/api/upload/blacklist/update', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ blacklist: uploadState.blacklist }) }).then(() => loadUploadDirectory('/mnt/nas', true)));
+    document.querySelector('[data-upload-clear-history]')?.addEventListener('click', () => fetch('/api/upload/history/clear', { method: 'POST' }).then(refreshUploadHistory));
+    document.querySelector('[data-upload-pin-toggle]')?.addEventListener('click', async event => { uploadState.pinRequired = !uploadState.pinRequired; event.currentTarget.classList.toggle('active', uploadState.pinRequired); event.currentTarget.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); await fetch('/api/upload/pin-required-status', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); });
+    fetch('/api/upload/pin-required-status').then(r => r.json()).then(data => { uploadState.pinRequired = !!data.isPinRequired; const b = document.querySelector('[data-upload-pin-toggle]'); b?.classList.toggle('active', uploadState.pinRequired); }).catch(() => {});
+    loadUploadDirectory('/mnt/nas', false);
 
     async function hydrateUptime() {
       const uptime = document.querySelector('[data-uptime-indicator]');
