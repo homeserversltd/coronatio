@@ -405,6 +405,12 @@
             "ux-badge",
             "ux-table",
             "ux-progress",
+            "ux-card-button",
+            "ux-interactive",
+            "--theme-component-button-container",
+            "--theme-elevation-2",
+            ".ux-tab:focus-visible",
+            ".ux-toggle:hover",
             "--primary</td><td>loading</td><td>dark.json primary #323840",
         ] {
             assert!(shell.contains(marker), "missing TestTab UX marker: {marker}");
@@ -412,6 +418,8 @@
         assert!(shell.contains(".ux-button {"));
         assert!(shell.contains("background: var(--primary); color: var(--text);"));
         assert!(shell.contains(".ux-button.success { background: var(--success);"));
+        assert!(shell.contains("class=\"ux-card ux-card-button clickable\""));
+        assert!(shell.contains(".ux-card.clickable:hover, .ux-card-button:hover"));
         assert_eq!(shell.matches("data-ux-component=").count(), registry.len());
         for component in registry {
             assert!(shell.contains(&format!("data-ux-component=\"{}\"", component.id)), "missing registered component {}", component.id);

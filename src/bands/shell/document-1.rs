@@ -407,26 +407,34 @@ fn shell_document_1() -> &'static str {
     .ux-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--theme-spacing-sm); }
     .ux-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--theme-grid-gap); }
     .ux-tabs { display: flex; flex-wrap: wrap; gap: var(--theme-spacing-xs); border-bottom: var(--theme-border-width) solid var(--border); padding-bottom: var(--theme-spacing-xs); margin-bottom: var(--theme-spacing-md); }
-    .ux-tab { border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md) var(--theme-radius-md) 0 0; min-height: var(--theme-tab-height); padding: 0 var(--theme-control-padding-x); background: var(--hiddenTabBackground); color: var(--text); cursor: pointer; font-weight: var(--theme-font-weight-medium); }
-    .ux-tab[aria-selected="true"], .ux-tab.active { background: var(--primary); border-color: var(--primaryHover); box-shadow: inset 0 -2px 0 var(--accent); }
-    .ux-tab[disabled], .ux-disabled { opacity: .45; cursor: not-allowed; }
-    .ux-button { min-height: var(--theme-control-height); padding: var(--theme-control-padding-y) var(--theme-control-padding-x); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md); background: var(--primary); color: var(--text); font-weight: var(--theme-font-weight-bold); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--theme-spacing-xs); }
-    .ux-button:hover { background: var(--primaryHover); }
-    .ux-button.secondary { background: transparent; color: var(--text); }
+    .ux-interactive, .ux-tab, .ux-button, .ux-card-button, .ux-toggle, .ux-checkbox, .ux-field, .ux-select, .ux-textbox { transition: background-color var(--theme-transition-fast), border-color var(--theme-transition-fast), box-shadow var(--theme-transition-fast), color var(--theme-transition-fast), transform var(--theme-transition-fast), opacity var(--theme-transition-fast); }
+    .ux-tab { border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md) var(--theme-radius-md) 0 0; min-height: var(--theme-tab-height); padding: 0 var(--theme-control-padding-x); background: var(--hiddenTabBackground); color: var(--text); cursor: pointer; font-weight: var(--theme-font-weight-medium); box-shadow: inset 0 0 0 1px transparent; }
+    .ux-tab:hover { background: var(--theme-surface-2); border-color: var(--theme-outline); transform: translateY(-1px); }
+    .ux-tab[aria-selected="true"], .ux-tab.active { background: var(--primary); border-color: var(--primaryHover); box-shadow: inset 0 -2px 0 var(--accent), var(--theme-elevation-1); }
+    .ux-tab:focus-visible, .ux-button:focus-visible, .ux-card-button:focus-visible, .ux-field:focus-visible, .ux-select:focus-visible, .ux-textbox:focus-visible, .ux-toggle:focus-within, .ux-checkbox:focus-within { outline: var(--theme-focus-width) solid var(--theme-focus-color); outline-offset: var(--theme-focus-offset); box-shadow: var(--theme-highlight-ring); }
+    .ux-tab[disabled], .ux-disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+    .ux-button { min-height: var(--theme-control-height); padding: var(--theme-control-padding-y) var(--theme-control-padding-x); border: var(--theme-border-width) solid var(--theme-component-card-outline); border-radius: var(--theme-radius-md); background: var(--theme-component-button-container); color: var(--theme-component-button-on-container); font-weight: var(--theme-font-weight-bold); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--theme-spacing-xs); box-shadow: var(--theme-elevation-1); position: relative; overflow: hidden; }
+    .ux-button:hover { background: var(--theme-component-button-hover-container); border-color: var(--theme-outline); transform: translateY(-1px); box-shadow: var(--theme-elevation-2); }
+    .ux-button:active { transform: translateY(0); box-shadow: var(--theme-elevation-1); }
+    .ux-button.secondary { background: var(--theme-surface-1); color: var(--text); }
     .ux-button.danger { background: var(--error); color: var(--background); }
     .ux-button.warning { background: var(--warning); color: var(--background); }
     .ux-button.success { background: var(--success); color: var(--background); }
     .ux-button.small { min-height: 28px; font-size: var(--theme-font-size-xs); padding: var(--theme-spacing-xs) var(--theme-spacing-sm); }
     .ux-button.large { min-height: 44px; font-size: var(--theme-font-size-lg); }
-    .ux-card { background: var(--surface); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-card-radius); padding: var(--theme-card-padding); min-height: var(--theme-card-min-height); box-shadow: var(--shadow); }
-    .ux-card.clickable { cursor: pointer; transition: transform var(--theme-transition-fast), border-color var(--theme-transition-fast); }
-    .ux-card.clickable:hover { transform: translateY(-2px); border-color: var(--primaryHover); }
-    .ux-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+    .ux-card { background: var(--theme-component-card-container); border: var(--theme-border-width) solid var(--theme-component-card-outline); border-radius: var(--theme-card-radius); padding: var(--theme-card-padding); min-height: var(--theme-card-min-height); box-shadow: var(--theme-elevation-1); }
+    .ux-card-button { width: 100%; text-align: left; color: var(--text); cursor: pointer; appearance: none; font: inherit; }
+    .ux-card.clickable, .ux-card-button { cursor: pointer; border-color: var(--theme-outline-variant); box-shadow: var(--theme-elevation-1); }
+    .ux-card.clickable:hover, .ux-card-button:hover { transform: translateY(-2px); border-color: var(--theme-outline); box-shadow: var(--theme-elevation-2); background: color-mix(in srgb, var(--theme-component-card-container) 88%, var(--theme-highlight-subtle)); }
+    .ux-card.clickable:active, .ux-card-button:active { transform: translateY(0); box-shadow: var(--theme-elevation-1); }
+    .ux-card.active { border-color: var(--accent); box-shadow: var(--theme-highlight-ring); }
     .ux-card.error { border-color: var(--error); }
-    .ux-field, .ux-select, .ux-textbox { width: 100%; padding: var(--theme-control-padding-y) var(--theme-control-padding-x); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md); background: var(--background); color: var(--text); font: inherit; }
-    .ux-field:focus, .ux-select:focus, .ux-textbox:focus { outline: none; box-shadow: var(--theme-focus-ring); border-color: var(--accent); }
-    .ux-toggle { display: inline-flex; align-items: center; gap: var(--theme-spacing-sm); }
-    .ux-toggle input, .ux-checkbox input { accent-color: var(--accent); }
+    .ux-field, .ux-select, .ux-textbox { width: 100%; padding: var(--theme-control-padding-y) var(--theme-control-padding-x); border: var(--theme-border-width) solid var(--theme-component-card-outline); border-radius: var(--theme-radius-md); background: var(--theme-surface-0); color: var(--text); font: inherit; box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+    .ux-field:hover, .ux-select:hover, .ux-textbox:hover { border-color: var(--theme-outline); background: var(--theme-surface-1); }
+    .ux-field:focus, .ux-select:focus, .ux-textbox:focus { outline: none; box-shadow: var(--theme-highlight-ring); border-color: var(--theme-focus-color); }
+    .ux-toggle, .ux-checkbox { display: inline-flex; align-items: center; gap: var(--theme-spacing-sm); min-height: 32px; padding: var(--theme-spacing-xs) var(--theme-spacing-sm); border-radius: var(--theme-radius-pill); cursor: pointer; color: var(--text); }
+    .ux-toggle:hover, .ux-checkbox:hover { background: var(--theme-highlight-subtle); }
+    .ux-toggle input, .ux-checkbox input { accent-color: var(--accent); cursor: pointer; }
     .ux-badge { border-radius: var(--theme-radius-pill); border: var(--theme-border-width) solid var(--border); padding: 2px 8px; font-size: var(--theme-font-size-xs); text-transform: uppercase; letter-spacing: .06em; }
     .ux-badge.primary { background: var(--primary); color: var(--text); }
     .ux-badge.secondary { background: var(--hiddenTabBackground); color: var(--text-secondary); }
