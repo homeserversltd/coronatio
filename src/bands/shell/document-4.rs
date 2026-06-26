@@ -462,6 +462,33 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     }
     document.querySelectorAll('[data-testtab-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-testtab-tab]', '[data-testtab-panel]', 'testtabTab', tab.dataset.testtabTab)));
     document.querySelectorAll('[data-showcase-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-showcase-tab]', '[data-showcase-panel]', 'showcaseTab', tab.dataset.showcaseTab)));
+    function openUxModalDemo(size) {
+      const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
+      const win = document.querySelector('[data-ux-modal-demo-window]');
+      const title = document.querySelector('[data-ux-modal-demo-title]');
+      const body = document.querySelector('[data-ux-modal-demo-body]');
+      if (!backdrop || !win || !title || !body) return;
+      const copy = {
+        small: ['Small modal', 'Compact confirmation or short choice.'],
+        medium: ['Medium modal', 'Regular dialog body for settings, details, and ordinary decisions.'],
+        fullscreen: ['Fullscreen modal', 'Full-screen workflow surface for focused multi-step work.']
+      }[size] || ['Medium modal', 'Regular dialog body.'];
+      win.classList.remove('small', 'medium', 'fullscreen');
+      win.classList.add(size === 'small' || size === 'fullscreen' ? size : 'medium');
+      title.textContent = copy[0];
+      body.textContent = copy[1];
+      backdrop.classList.add('open');
+      backdrop.setAttribute('aria-hidden', 'false');
+    }
+    function closeUxModalDemo() {
+      const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
+      if (!backdrop) return;
+      backdrop.classList.remove('open');
+      backdrop.setAttribute('aria-hidden', 'true');
+    }
+    document.querySelectorAll('[data-ux-modal-open]').forEach(button => button.addEventListener('click', () => openUxModalDemo(button.dataset.uxModalOpen)));
+    document.querySelectorAll('[data-ux-modal-close]').forEach(button => button.addEventListener('click', closeUxModalDemo));
+    document.querySelectorAll('[data-ux-modal-demo-backdrop]').forEach(backdrop => backdrop.addEventListener('click', event => { if (event.target === event.currentTarget) closeUxModalDemo(); }));
     function hydrateThemeTruth() {
       const target = document.querySelector('[data-theme-token-readout]');
       if (!target) return;

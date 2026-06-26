@@ -494,6 +494,13 @@ fn shell_document_1() -> &'static str {
     .ux-readout { white-space: pre-wrap; background: var(--hiddenTabBackground); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md); padding: var(--theme-card-padding); color: var(--text); font-family: var(--theme-font-mono); max-height: 240px; overflow: auto; }
     .ux-breadcrumbs { display: flex; flex-wrap: wrap; gap: var(--theme-spacing-xs); color: var(--text-secondary); }
     .ux-modal-sample { border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-modal-radius); padding: var(--theme-card-padding); background: var(--surface); box-shadow: 0 16px 40px rgba(0,0,0,.35); }
+    .ux-modal-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--theme-grid-gap); align-items: start; }
+    .ux-modal-backdrop { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.62); z-index: 2600; padding: var(--theme-card-padding); }
+    .ux-modal-backdrop.open { display: grid; }
+    .ux-modal-shell { display: grid; gap: var(--theme-spacing-md); width: min(640px, 100%); max-height: calc(100vh - 2 * var(--theme-card-padding)); overflow: auto; border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-modal-radius); padding: var(--theme-card-padding); background: var(--surface); box-shadow: 0 24px 80px rgba(0,0,0,.55); }
+    .ux-modal-shell.small { width: min(360px, 100%); }
+    .ux-modal-shell.medium { width: min(640px, 100%); }
+    .ux-modal-shell.fullscreen { width: min(1120px, calc(100vw - 2 * var(--theme-card-padding))); height: calc(100vh - 2 * var(--theme-card-padding)); align-content: start; }
     .test-tablet { padding: var(--theme-content-padding); background: var(--background); min-height: 70vh; }
     .test-tablet-content, .component-showcase { max-width: 1400px; margin: 0 auto; }
     .ux-panel { display: none; }
