@@ -263,6 +263,45 @@
     }
 
     #[test]
+    fn power_indicator_polls_live_watts_and_formats_react_display_value() {
+        let shell = render_crown_shell();
+        for marker in [
+            "data-power-indicator-value",
+            "power-value-small-number",
+            "const POWER_DISPLAY_FACTOR = 1.6",
+            "function refreshPowerIndicator()",
+            "hydratePowerIndicator(await response.json())",
+            "fetch('/api/status/power/usage', { cache: 'no-store' })",
+            "setInterval(refreshPowerIndicator, 5000)",
+            "Power Usage ' + display + ' Watts",
+        ] {
+            assert!(shell.contains(marker), "missing power indicator marker: {marker}");
+        }
+    }
+
+    #[test]
+    fn power_route_is_rust_rapl_readback_not_generic_route_ack() {
+        let source = format!(
+            "{}\n{}",
+            std::fs::read_to_string("src/bands/full-rust-routes.rs").unwrap(),
+            std::fs::read_to_string("src/bands/full-rust-routes/power.rs").unwrap()
+        );
+        for marker in [
+            "fn power_usage_response(method: &str, path: &str) -> Response",
+            "schema\": \"coronatio.power.usage.v1",
+            "Coronatio Rust RAPL read route",
+            "current\": sample.current_watts",
+            "historical\": sample.history_watts",
+            "unit\": \"W\"",
+            "/sys/class/powercap/intel-rapl:0:0/energy_uj",
+            "/sys/class/powercap/intel-rapl:0:1/energy_uj",
+            "rapl-energy-readable-file-missing",
+        ] {
+            assert!(source.contains(marker), "missing Rust RAPL marker: {marker}");
+        }
+    }
+
+    #[test]
     fn header_status_indicators_are_packed_react_icon_port_not_text_pills() {
         let shell = render_crown_shell();
         for icon in ["network-wired", "plug", "lock", "server", "bolt"] {

@@ -140,6 +140,9 @@ fn shell_document_1() -> &'static str {
     .indicator .indicator-icon-spinner { display: none; animation: indicator-spin .9s linear infinite; }
     .indicator.loading .indicator-icon-plug { display: none; }
     .indicator.loading .indicator-icon-spinner { display: block; }
+    .power-indicator { gap: .2rem; }
+    .power-value-small { display: inline-flex; align-items: baseline; gap: .05rem; color: currentColor; font-size: .72rem; font-weight: 700; line-height: 1; min-width: 2.25rem; }
+    .power-value-small-unit { font-size: .62rem; }
     .indicator.ok .indicator-icon { color: var(--success); }
     .indicator.warn .indicator-icon { color: var(--warning); }
     .indicator.error .indicator-icon { color: var(--error); }

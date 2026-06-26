@@ -425,6 +425,10 @@ async fn homeserver_rust_mutation_route(method: Method, uri: Uri) -> impl IntoRe
 }
 
 fn homeserver_read_response(method: &str, path: &str) -> Response {
+    if path == "/api/status/power/usage" || path == "/status/power/usage" {
+        return power_usage_response(method, path);
+    }
+
     let family = homeserver_route_family(path);
     (
         StatusCode::OK,
@@ -442,6 +446,8 @@ fn homeserver_read_response(method: &str, path: &str) -> Response {
     )
         .into_response()
 }
+
+include!("full-rust-routes/power.rs");
 
 fn homeserver_mutation_response(method: &str, path: &str) -> Response {
     let caduceus = caduceus_http_json(
