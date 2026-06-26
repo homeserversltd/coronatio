@@ -322,5 +322,53 @@ fn shell_document_1() -> &'static str {
     .admin-modal-shelf { display: none; }
     .modal-window { background-color: var(--background); border: 1px solid var(--border); border-radius: var(--theme-card-radius); box-shadow: 0 4px 16px rgba(0,0,0,.25); overflow: hidden; flex-direction: column; min-height: 190px; }
     .modal-titlebar { background-color: var(--primaryHover); border-bottom: 1px solid var(--border); padding: 10px 14px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .modal-body-port { padding: 14px; display: flex; flex-direction: column; gap: 12px; }"####
+    .modal-body-port { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* Coronatio composable UX library: stock TestTab composes these primitives. */
+    .ux-surface { color: var(--text); font-family: var(--theme-font-family); }
+    .ux-stack { display: grid; gap: var(--theme-grid-gap); }
+    .ux-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--theme-spacing-sm); }
+    .ux-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--theme-grid-gap); }
+    .ux-tabs { display: flex; flex-wrap: wrap; gap: var(--theme-spacing-xs); border-bottom: var(--theme-border-width) solid var(--border); padding-bottom: var(--theme-spacing-xs); margin-bottom: var(--theme-spacing-md); }
+    .ux-tab { border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md) var(--theme-radius-md) 0 0; min-height: var(--theme-tab-height); padding: 0 var(--theme-control-padding-x); background: var(--hiddenTabBackground); color: var(--text); cursor: pointer; font-weight: var(--theme-font-weight-medium); }
+    .ux-tab[aria-selected="true"], .ux-tab.active { background: var(--primary); border-color: var(--primaryHover); box-shadow: inset 0 -2px 0 var(--accent); }
+    .ux-tab[disabled], .ux-disabled { opacity: .45; cursor: not-allowed; }
+    .ux-button { min-height: var(--theme-control-height); padding: var(--theme-control-padding-y) var(--theme-control-padding-x); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md); background: var(--primary); color: var(--text); font-weight: var(--theme-font-weight-bold); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--theme-spacing-xs); }
+    .ux-button:hover { background: var(--primaryHover); }
+    .ux-button.secondary { background: transparent; color: var(--text); }
+    .ux-button.danger { background: var(--error); color: var(--background); }
+    .ux-button.warning { background: var(--warning); color: var(--background); }
+    .ux-button.success { background: var(--success); color: var(--background); }
+    .ux-button.small { min-height: 28px; font-size: var(--theme-font-size-xs); padding: var(--theme-spacing-xs) var(--theme-spacing-sm); }
+    .ux-button.large { min-height: 44px; font-size: var(--theme-font-size-lg); }
+    .ux-card { background: var(--surface); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-card-radius); padding: var(--theme-card-padding); min-height: var(--theme-card-min-height); box-shadow: var(--shadow); }
+    .ux-card.clickable { cursor: pointer; transition: transform var(--theme-transition-fast), border-color var(--theme-transition-fast); }
+    .ux-card.clickable:hover { transform: translateY(-2px); border-color: var(--primaryHover); }
+    .ux-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+    .ux-card.error { border-color: var(--error); }
+    .ux-field, .ux-select, .ux-textbox { width: 100%; padding: var(--theme-control-padding-y) var(--theme-control-padding-x); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md); background: var(--background); color: var(--text); font: inherit; }
+    .ux-field:focus, .ux-select:focus, .ux-textbox:focus { outline: none; box-shadow: var(--theme-focus-ring); border-color: var(--accent); }
+    .ux-toggle { display: inline-flex; align-items: center; gap: var(--theme-spacing-sm); }
+    .ux-toggle input, .ux-checkbox input { accent-color: var(--accent); }
+    .ux-badge { border-radius: var(--theme-radius-pill); border: var(--theme-border-width) solid var(--border); padding: 2px 8px; font-size: var(--theme-font-size-xs); text-transform: uppercase; letter-spacing: .06em; }
+    .ux-badge.primary { background: var(--primary); color: var(--text); }
+    .ux-badge.secondary { background: var(--hiddenTabBackground); color: var(--text-secondary); }
+    .ux-badge.success { background: var(--success); color: var(--background); }
+    .ux-badge.warning { background: var(--warning); color: var(--background); }
+    .ux-badge.danger { background: var(--error); color: var(--background); }
+    .ux-badge.info { background: var(--accent); color: var(--background); }
+    .ux-progress { width: 100%; height: 10px; overflow: hidden; border-radius: var(--theme-radius-pill); background: var(--hiddenTabBackground); border: var(--theme-border-width) solid var(--border); }
+    .ux-progress > span { display: block; height: 100%; background: var(--accent); }
+    .ux-table { width: 100%; border-collapse: collapse; background: var(--surface); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-card-radius); overflow: hidden; }
+    .ux-table th, .ux-table td { padding: var(--theme-spacing-sm); border-bottom: var(--theme-border-width) solid var(--border); text-align: left; }
+    .ux-readout { white-space: pre-wrap; background: var(--hiddenTabBackground); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md); padding: var(--theme-card-padding); color: var(--text); font-family: var(--theme-font-mono); max-height: 240px; overflow: auto; }
+    .ux-breadcrumbs { display: flex; flex-wrap: wrap; gap: var(--theme-spacing-xs); color: var(--text-secondary); }
+    .ux-modal-sample { border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-modal-radius); padding: var(--theme-card-padding); background: var(--surface); box-shadow: 0 16px 40px rgba(0,0,0,.35); }
+    .test-tablet { padding: var(--theme-content-padding); background: var(--background); min-height: 70vh; }
+    .test-tablet-content, .component-showcase { max-width: 1400px; margin: 0 auto; }
+    .showcase-section { display: none; }
+    .showcase-section.active { display: grid; gap: var(--theme-grid-gap); }
+    .showcase-item h4, .ux-card h3, .ux-card h4 { margin: 0 0 var(--theme-spacing-sm); }
+    .theme-token-table { font-family: var(--theme-font-mono); font-size: var(--theme-font-size-xs); }
+"####
 }

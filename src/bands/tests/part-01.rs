@@ -68,8 +68,8 @@
             .await
             .unwrap();
         let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(root.primary_tabs, ["admin", "stats", "portals", "upload"]);
-        assert_eq!(root.first_party_panes.len(), 4);
+        assert_eq!(root.primary_tabs, ["admin", "stats", "portals", "upload", "testtab"]);
+        assert_eq!(root.first_party_panes.len(), 5);
     }
 
     #[tokio::test]
@@ -97,6 +97,7 @@
         assert!(body.contains("Stats"));
         assert!(body.contains("Portals"));
         assert!(body.contains("Upload"));
+        assert!(body.contains("TestTab"));
         assert!(!body.contains("YouTube"));
     }
 
@@ -378,3 +379,34 @@
         assert!(!shell.contains("Choose the active HOMESERVER theme."));
     }
 
+
+
+    #[test]
+    fn native_stock_testtab_is_composed_from_ux_library() {
+        let shell = ["src/bands/shell/document-1.rs", "src/bands/shell/document-2.rs", "src/bands/shell/document-4.rs"]
+            .iter()
+            .map(|path| std::fs::read_to_string(path).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        for marker in [
+            "coronatio-composable-ux.v1",
+            "data-native-stock-testtab=\"true\"",
+            "data-react-quarry=\"premium/testTab\"",
+            "data-showcase-tab=\"buttons\"",
+            "data-showcase-tab=\"modals\"",
+            "data-testtab-panel=\"theme-truth\"",
+            "ux-button",
+            "ux-card",
+            "ux-tabs",
+            "ux-field",
+            "ux-badge",
+            "ux-table",
+            "ux-progress",
+            "--primary</td><td>loading</td><td>dark.json primary #323840",
+        ] {
+            assert!(shell.contains(marker), "missing TestTab UX marker: {marker}");
+        }
+        assert!(shell.contains(".ux-button {"));
+        assert!(shell.contains("background: var(--primary); color: var(--text);"));
+        assert!(shell.contains(".ux-button.success { background: var(--success);"));
+    }

@@ -274,7 +274,40 @@ fn shell_document_4() -> &'static str {
       } catch (_) { setStarredTab(tabState.starredTab); }
       showPane((location.hash || '#' + (tabState.starredTab || firstVisibleTab())).slice(1));
     }
+
+
+    function switchScopedTabs(tabSelector, panelSelector, attrName, selectedName) {
+      document.querySelectorAll(tabSelector).forEach(tab => {
+        const selected = tab.dataset[attrName] === selectedName;
+        tab.classList.toggle('active', selected);
+        tab.setAttribute('aria-selected', String(selected));
+      });
+      document.querySelectorAll(panelSelector).forEach(panel => panel.classList.toggle('active', panel.dataset[attrName.replace('Tab','Panel')] === selectedName));
+    }
+    document.querySelectorAll('[data-testtab-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-testtab-tab]', '[data-testtab-panel]', 'testtabTab', tab.dataset.testtabTab)));
+    document.querySelectorAll('[data-showcase-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-showcase-tab]', '[data-showcase-panel]', 'showcaseTab', tab.dataset.showcaseTab)));
+    function hydrateThemeTruth() {
+      const target = document.querySelector('[data-theme-token-readout]');
+      if (!target) return;
+      const computed = getComputedStyle(document.documentElement);
+      const tokens = [
+        ['--primary', 'dark.json primary #323840'],
+        ['--primaryHover', 'dark.json primaryHover #6B7280'],
+        ['--success', 'dark.json success #10B981'],
+        ['--status-up', 'dark.json statusUp #10B981'],
+        ['--accent', 'dark.json accent #A78BFA'],
+        ['--theme-control-height', 'theme sizing token'],
+        ['--theme-font-family', 'theme font token']
+      ];
+      target.innerHTML = tokens.map(([token, source]) => `<tr><td>${token}</td><td>${computed.getPropertyValue(token).trim()}</td><td>${source}</td></tr>`).join('');
+    }
+    document.querySelectorAll('[data-testtab-health-check]').forEach(button => button.addEventListener('click', () => {
+      const out = document.querySelector('[data-testtab-health-output]');
+      if (out) out.textContent = JSON.stringify({ schema: 'coronatio.testtab.health.v1', status: 'ready', dependencies: { rust_shell: true, theme_catalog: Boolean(themeCatalog?.themes), ux_library: true }, theme: headerState.theme }, null, 2);
+    }));
+
     hydrateFavoriteManifest();
+    hydrateThemeTruth();
     hydrateUptime();
     hydrateStats();
     hydratePortals();
