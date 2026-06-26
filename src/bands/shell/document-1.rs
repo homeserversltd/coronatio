@@ -450,8 +450,41 @@ fn shell_document_1() -> &'static str {
     .ux-badge.info { background: var(--accent); color: var(--background); }
     .ux-progress { width: 100%; height: 10px; overflow: hidden; border-radius: var(--theme-radius-pill); background: var(--hiddenTabBackground); border: var(--theme-border-width) solid var(--border); }
     .ux-progress > span { display: block; height: 100%; background: var(--accent); }
-    .ux-table { width: 100%; border-collapse: collapse; background: var(--surface); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-card-radius); overflow: hidden; }
-    .ux-table th, .ux-table td { padding: var(--theme-spacing-sm); border-bottom: var(--theme-border-width) solid var(--border); text-align: left; }
+    .ux-table-shell { width: 100%; overflow: auto; border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-card-radius); background: var(--surface); box-shadow: var(--theme-elevation-1); }
+    .ux-table-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; gap: var(--theme-spacing-sm); align-items: center; margin-bottom: var(--theme-spacing-sm); }
+    .ux-table { width: 100%; border-collapse: collapse; background: var(--surface); overflow: hidden; }
+    .ux-table caption { text-align: left; padding: var(--theme-spacing-sm) var(--theme-spacing-md); color: var(--text-secondary); font-weight: var(--theme-font-weight-bold); background: var(--theme-surface-1); border-bottom: var(--theme-border-width) solid var(--border); }
+    .ux-table th, .ux-table td { padding: var(--theme-spacing-sm); border-bottom: var(--theme-border-width) solid var(--border); text-align: left; vertical-align: middle; }
+    .ux-table th { color: var(--text-secondary); font-size: var(--theme-font-size-xs); text-transform: uppercase; letter-spacing: .06em; background: var(--theme-surface-1); }
+    .ux-table tbody tr:hover { background: var(--theme-highlight-subtle); }
+    .ux-table-dense th, .ux-table-dense td { padding: var(--theme-spacing-xs) var(--theme-spacing-sm); }
+    .ux-table-actions td:last-child { text-align: right; white-space: nowrap; }
+    .ux-table-subtext { display: block; color: var(--text-secondary); font-size: var(--theme-font-size-xs); margin-top: 2px; }
+    .ux-table-sort { appearance: none; border: 0; background: transparent; color: inherit; display: inline-flex; align-items: center; gap: var(--theme-spacing-xs); font: inherit; font-weight: var(--theme-font-weight-bold); cursor: pointer; padding: 0; }
+    .ux-table-sort:hover { color: var(--text); }
+    .ux-row-selected { background: color-mix(in srgb, var(--theme-highlight-subtle) 72%, var(--theme-surface-1)); box-shadow: inset 3px 0 0 var(--accent); }
+    .ux-table meter { width: min(140px, 100%); accent-color: var(--accent); }
+    .ux-chart { display: grid; gap: var(--theme-spacing-sm); min-height: 280px; border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-card-radius); padding: var(--theme-card-padding); background: linear-gradient(180deg, var(--theme-component-card-container), var(--theme-surface-1)); box-shadow: var(--theme-elevation-1); }
+    .ux-chart figcaption { display: flex; justify-content: space-between; gap: var(--theme-spacing-sm); color: var(--text); }
+    .ux-chart figcaption span, .ux-chart-legend { color: var(--text-secondary); font-size: var(--theme-font-size-sm); }
+    .ux-chart-frame { width: 100%; min-height: 180px; overflow: visible; }
+    .ux-chart-grid line { stroke: var(--border); stroke-dasharray: 4 4; opacity: .85; }
+    .ux-chart-axis line, .ux-chart-axis text, .ux-chart-labels text { stroke: var(--text-secondary); fill: var(--text-secondary); font-size: 11px; }
+    .ux-chart-area { fill: var(--theme-highlight-subtle); opacity: .72; }
+    .ux-chart-line-path, .ux-sparkline polyline { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+    .ux-chart-point { fill: var(--accent); stroke: var(--background); stroke-width: 2; }
+    .ux-chart-bars rect { fill: var(--primary); rx: 6; transition: opacity var(--theme-transition-fast), transform var(--theme-transition-fast); }
+    .ux-chart-bars rect:hover { opacity: .78; transform: translateY(-2px); }
+    .ux-chart-legend { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--theme-spacing-sm); }
+    .ux-chart-legend span { display: inline-flex; align-items: center; gap: var(--theme-spacing-xs); }
+    .ux-chart-legend i { width: 10px; height: 10px; border-radius: 999px; background: var(--accent); display: inline-block; }
+    .ux-chart-legend i.secondary { background: var(--primary); }
+    .ux-chart-legend i.muted { background: var(--hiddenTabBackground); border: 1px solid var(--border); }
+    .ux-donut { --ux-donut-a: 60%; --ux-donut-b: 78%; width: min(180px, 70vw); aspect-ratio: 1; border-radius: 50%; margin: 0 auto; display: grid; place-items: center; background: conic-gradient(var(--accent) 0 var(--ux-donut-a), var(--primary) var(--ux-donut-a) var(--ux-donut-b), var(--hiddenTabBackground) var(--ux-donut-b) 100%); position: relative; box-shadow: var(--theme-elevation-2); }
+    .ux-donut::after { content: ''; position: absolute; inset: 22%; border-radius: 50%; background: var(--theme-component-card-container); border: var(--theme-border-width) solid var(--border); }
+    .ux-donut span { position: relative; z-index: 1; font-size: var(--theme-font-size-xl); font-weight: var(--theme-font-weight-bold); color: var(--text); }
+    .ux-sparkline { width: 100%; min-height: 44px; background: var(--theme-surface-1); border-radius: var(--theme-radius-md); padding: var(--theme-spacing-xs); }
+    .ux-sparkline.warning polyline { stroke: var(--warning); }
     .ux-readout { white-space: pre-wrap; background: var(--hiddenTabBackground); border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md); padding: var(--theme-card-padding); color: var(--text); font-family: var(--theme-font-mono); max-height: 240px; overflow: auto; }
     .ux-breadcrumbs { display: flex; flex-wrap: wrap; gap: var(--theme-spacing-xs); color: var(--text-secondary); }
     .ux-modal-sample { border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-modal-radius); padding: var(--theme-card-padding); background: var(--surface); box-shadow: 0 16px 40px rgba(0,0,0,.35); }
