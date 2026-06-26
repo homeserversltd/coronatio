@@ -504,6 +504,23 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       ];
       target.innerHTML = tokens.map(([token, source]) => `<tr><td>${token}</td><td>${computed.getPropertyValue(token).trim()}</td><td>${source}</td></tr>`).join('');
     }
+    function hydrateThemeTokenLab() {
+      const root = document.documentElement;
+      document.querySelectorAll('[data-theme-token-slider]').forEach(slider => {
+        const token = slider.dataset.themeTokenSlider;
+        const row = slider.closest('[data-theme-token-control]');
+        const unit = row?.dataset.themeTokenUnit || '';
+        const output = document.querySelector(`[data-theme-token-output="${token}"]`);
+        const apply = () => {
+          const value = `${slider.value}${unit}`;
+          root.style.setProperty(token, value);
+          if (output) output.textContent = value;
+          row?.setAttribute('data-theme-token-current', value);
+        };
+        slider.addEventListener('input', apply);
+        apply();
+      });
+    }
     document.querySelectorAll('[data-testtab-health-check]').forEach(button => button.addEventListener('click', () => {
       const out = document.querySelector('[data-testtab-health-output]');
       if (out) out.textContent = JSON.stringify({ schema: 'coronatio.testtab.health.v1', status: 'ready', dependencies: { rust_shell: true, theme_catalog: Boolean(themeCatalog?.themes), ux_library: true }, theme: headerState.theme }, null, 2);
@@ -511,6 +528,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
 
     hydrateFavoriteManifest();
     hydrateThemeTruth();
+    hydrateThemeTokenLab();
     hydrateUptime();
     hydrateStats();
     hydratePortals();
