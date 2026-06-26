@@ -117,6 +117,10 @@ fn shell_document_1() -> &'static str {
       --theme-elevation-1: 0 1px 4px rgba(0,0,0,0.28);
       --theme-elevation-2: 0 6px 16px rgba(0,0,0,0.34);
       --theme-elevation-3: 0 18px 40px rgba(0,0,0,0.44);
+      --theme-cardlet-rest-shadow: 0 1px 3px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.035);
+      --theme-cardlet-hover-shadow: 0 12px 28px rgba(0,0,0,0.38), 0 0 0 1px var(--theme-highlight-strong), inset 0 1px 0 rgba(255,255,255,0.08);
+      --theme-cardlet-press-shadow: 0 3px 10px rgba(0,0,0,0.34), inset 0 1px 3px rgba(0,0,0,0.20);
+      --theme-cardlet-glimmer: linear-gradient(115deg, transparent 0%, transparent 38%, rgba(255,255,255,0.16) 48%, transparent 58%, transparent 100%);
       --theme-overlay-scrim: rgba(0,0,0,0.68);
       --theme-overlay-tint: rgba(167,139,250,0.10);
       --theme-focus-color: #A78BFA;
@@ -407,7 +411,7 @@ fn shell_document_1() -> &'static str {
     .ux-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--theme-spacing-sm); }
     .ux-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--theme-grid-gap); }
     .ux-tabs { display: flex; flex-wrap: wrap; gap: var(--theme-spacing-xs); border-bottom: var(--theme-border-width) solid var(--border); padding-bottom: var(--theme-spacing-xs); margin-bottom: var(--theme-spacing-md); }
-    .ux-interactive, .ux-tab, .ux-button, .ux-card-button, .ux-toggle, .ux-checkbox, .ux-field, .ux-select, .ux-textbox, .ux-badge-button { transition: background-color var(--theme-transition-fast), border-color var(--theme-transition-fast), box-shadow var(--theme-transition-fast), color var(--theme-transition-fast), transform var(--theme-transition-fast), opacity var(--theme-transition-fast); }
+    .ux-interactive, .ux-tab, .ux-button, .ux-card-button, .ux-cardlet, .ux-toggle, .ux-checkbox, .ux-field, .ux-select, .ux-textbox, .ux-badge-button { transition: background-color var(--theme-transition-fast), border-color var(--theme-transition-fast), box-shadow var(--theme-transition-fast), color var(--theme-transition-fast), transform var(--theme-transition-fast), opacity var(--theme-transition-fast), filter var(--theme-transition-fast); }
     .ux-tab { border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md) var(--theme-radius-md) 0 0; min-height: var(--theme-tab-height); padding: 0 var(--theme-control-padding-x); background: var(--hiddenTabBackground); color: var(--text); cursor: pointer; font-weight: var(--theme-font-weight-medium); box-shadow: inset 0 0 0 1px transparent; }
     .ux-tab:hover { background: var(--theme-surface-2); border-color: var(--theme-outline); transform: translateY(-1px); }
     .ux-tab[aria-selected="true"], .ux-tab.active { background: var(--primary); border-color: var(--primaryHover); box-shadow: inset 0 -2px 0 var(--accent), var(--theme-elevation-1); }
@@ -429,10 +433,16 @@ fn shell_document_1() -> &'static str {
     .ux-button.small { min-height: 28px; font-size: var(--theme-font-size-xs); padding: var(--theme-spacing-xs) var(--theme-spacing-sm); }
     .ux-button.large { min-height: 44px; font-size: var(--theme-font-size-lg); }
     .ux-card { background: var(--theme-component-card-container); border: var(--theme-border-width) solid var(--theme-component-card-outline); border-radius: var(--theme-card-radius); padding: var(--theme-card-padding); min-height: var(--theme-card-min-height); box-shadow: var(--theme-elevation-1); }
+    .ux-cardlet { position: relative; isolation: isolate; overflow: hidden; appearance: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; background: linear-gradient(180deg, color-mix(in srgb, var(--theme-component-card-container) 94%, var(--theme-highlight-subtle)), var(--theme-component-card-container)); border: var(--theme-border-width) solid var(--theme-outline-variant); border-radius: var(--theme-card-radius); padding: var(--theme-card-padding); min-height: 92px; box-shadow: var(--theme-cardlet-rest-shadow); transform: translateY(0) scale(1); will-change: transform, box-shadow; }
+    .ux-cardlet::after, .ux-card-button::after { content: ''; position: absolute; inset: -45% -75%; z-index: 0; background: var(--theme-cardlet-glimmer); mix-blend-mode: screen; opacity: 0; transform: translateX(-35%); transition: opacity var(--theme-transition-normal), transform var(--theme-transition-normal); pointer-events: none; }
+    @media (hover: hover) and (pointer: fine) { .ux-cardlet:hover, .ux-card-button:hover { transform: translateY(-4px) scale(1.012); border-color: var(--theme-outline); box-shadow: var(--theme-cardlet-hover-shadow); filter: saturate(1.04); } .ux-cardlet:hover::after, .ux-card-button:hover::after { opacity: 1; transform: translateX(18%); } }
+    .ux-cardlet:active, .ux-card-button:active { transform: translateY(1px) scale(.992); box-shadow: var(--theme-cardlet-press-shadow); filter: saturate(.98); }
+    @media (hover: none) { .ux-cardlet:active, .ux-card-button:active { transform: translateY(1px) scale(.985); box-shadow: var(--theme-cardlet-press-shadow); } .ux-cardlet:active::after, .ux-card-button:active::after { opacity: .75; transform: translateX(8%); } }
+    @media (prefers-reduced-motion: reduce) { .ux-cardlet, .ux-cardlet::after, .ux-card-button, .ux-card-button::after { transition-duration: 1ms; } .ux-cardlet:hover, .ux-card-button:hover, .ux-cardlet:active, .ux-card-button:active { transform: none; } }
     .ux-card-button { width: 100%; text-align: left; color: var(--text); cursor: pointer; appearance: none; font: inherit; }
-    .ux-card.clickable, .ux-card-button { cursor: pointer; border-color: var(--theme-outline-variant); box-shadow: var(--theme-elevation-1); }
-    .ux-card.clickable:hover, .ux-card-button:hover { transform: translateY(-2px); border-color: var(--theme-outline); box-shadow: var(--theme-elevation-2); background: color-mix(in srgb, var(--theme-component-card-container) 88%, var(--theme-highlight-subtle)); }
-    .ux-card.clickable:active, .ux-card-button:active { transform: translateY(0); box-shadow: var(--theme-elevation-1); }
+    .ux-card.clickable, .ux-card-button { position: relative; isolation: isolate; overflow: hidden; cursor: pointer; border-color: var(--theme-outline-variant); box-shadow: var(--theme-cardlet-rest-shadow); }
+    .ux-card.clickable:hover { transform: translateY(-2px); border-color: var(--theme-outline); box-shadow: var(--theme-elevation-2); background: color-mix(in srgb, var(--theme-component-card-container) 88%, var(--theme-highlight-subtle)); }
+    .ux-card.clickable:active { transform: translateY(0); box-shadow: var(--theme-elevation-1); }
     .ux-card.active { position: relative; border-color: var(--accent); background: color-mix(in srgb, var(--theme-component-card-container) 82%, var(--theme-highlight-strong)); box-shadow: inset 4px 0 0 var(--accent), var(--theme-elevation-2); }
     .ux-card.active::before { content: 'Selected'; display: inline-flex; width: max-content; margin-bottom: var(--theme-spacing-xs); padding: 2px 8px; border-radius: var(--theme-radius-pill); background: var(--accent); color: var(--background); font-size: var(--theme-font-size-xs); font-weight: var(--theme-font-weight-bold); letter-spacing: .06em; text-transform: uppercase; }
     .ux-card.error { border-color: var(--error); }

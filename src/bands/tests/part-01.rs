@@ -412,6 +412,7 @@
             "expanded JSON gradient-accent",
             "ux-button",
             "ux-card",
+            "ux-cardlet",
             "ux-tabs",
             "ux-field",
             "ux-badge",
@@ -437,7 +438,13 @@
             "ux-interactive",
             "--theme-component-button-container",
             "--theme-elevation-2",
+            "--theme-cardlet-hover-shadow",
+            "--theme-cardlet-press-shadow",
+            "--theme-cardlet-glimmer",
             ".ux-tab:focus-visible",
+            "@media (hover: hover) and (pointer: fine)",
+            "@media (hover: none)",
+            "@media (prefers-reduced-motion: reduce)",
             ".ux-toggle:hover",
             "--primary</td><td>loading</td><td>dark.json primary #323840",
         ] {
@@ -448,13 +455,17 @@
         assert!(shell.contains(".ux-button.secondary { background: var(--theme-surface-1); color: var(--text); }"));
         assert!(shell.contains(".ux-button.secondary:hover { background: var(--theme-component-button-hover-container);"));
         assert!(shell.contains(".ux-button.success { background: var(--success);"));
+        assert!(shell.contains("class=\"ux-cardlet\""));
+        assert!(shell.contains(".ux-cardlet:hover, .ux-card-button:hover"));
+        assert!(shell.contains(".ux-cardlet:active, .ux-card-button:active"));
+        assert!(shell.contains("ux-cardlet + ux-row"));
         assert!(shell.contains("class=\"ux-card ux-card-button clickable\""));
         assert!(shell.contains("class=\"ux-badge ux-badge-button primary\""));
         assert!(shell.contains("aria-label=\"Interactive badge buttons\""));
         assert!(shell.contains(".ux-badge-button:hover"));
         assert!(shell.contains(".ux-badge-button:focus-visible"));
         assert!(shell.contains(".ux-badge-button[aria-pressed=\"true\"]"));
-        assert!(shell.contains(".ux-card.clickable:hover, .ux-card-button:hover"));
+        assert!(shell.contains(".ux-card.clickable:hover"));
         assert_eq!(shell.matches("data-ux-component=").count(), registry.len());
         for component in registry {
             assert!(shell.contains(&format!("data-ux-component=\"{}\"", component.id)), "missing registered component {}", component.id);
