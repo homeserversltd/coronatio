@@ -47,7 +47,7 @@ fn shell_document_2() -> &'static str {
     .process-text-container { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; z-index: 1; }
     .process-name, .process-usage { color: var(--text); }
     @media (max-width: 768px) { .key-manager-content, .disk-manager-container { flex-direction: column; } .system-controls-btn { width: 100%; max-width: 180px; } .admin-modal-shelf { grid-template-columns: 1fr; } }
-    button, .action-link { border: 1px solid var(--border); border-radius: 6px; padding: .55rem .7rem; background: var(--primary); color: #061006; font-weight: 700; cursor: pointer; text-decoration: none; }
+    button, .action-link { border: 1px solid var(--border); border-radius: 6px; padding: .55rem .7rem; background: var(--primary); color: var(--text); font-weight: 700; cursor: pointer; text-decoration: none; }
     button.secondary, .action-link.secondary { background: transparent; color: var(--text); }
     .warning { color: var(--warning); }
     .error { color: var(--error); }
