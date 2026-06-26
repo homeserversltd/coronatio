@@ -415,6 +415,7 @@
             "ux-tabs",
             "ux-field",
             "ux-badge",
+            "ux-badge-button",
             "ux-table",
             "ux-progress",
             "ux-card-button",
@@ -433,6 +434,11 @@
         assert!(shell.contains(".ux-button.secondary:hover { background: var(--theme-component-button-hover-container);"));
         assert!(shell.contains(".ux-button.success { background: var(--success);"));
         assert!(shell.contains("class=\"ux-card ux-card-button clickable\""));
+        assert!(shell.contains("class=\"ux-badge ux-badge-button primary\""));
+        assert!(shell.contains("aria-label=\"Interactive badge buttons\""));
+        assert!(shell.contains(".ux-badge-button:hover"));
+        assert!(shell.contains(".ux-badge-button:focus-visible"));
+        assert!(shell.contains(".ux-badge-button[aria-pressed=\"true\"]"));
         assert!(shell.contains(".ux-card.clickable:hover, .ux-card-button:hover"));
         assert_eq!(shell.matches("data-ux-component=").count(), registry.len());
         for component in registry {

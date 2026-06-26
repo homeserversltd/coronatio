@@ -407,7 +407,7 @@ fn shell_document_1() -> &'static str {
     .ux-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--theme-spacing-sm); }
     .ux-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--theme-grid-gap); }
     .ux-tabs { display: flex; flex-wrap: wrap; gap: var(--theme-spacing-xs); border-bottom: var(--theme-border-width) solid var(--border); padding-bottom: var(--theme-spacing-xs); margin-bottom: var(--theme-spacing-md); }
-    .ux-interactive, .ux-tab, .ux-button, .ux-card-button, .ux-toggle, .ux-checkbox, .ux-field, .ux-select, .ux-textbox { transition: background-color var(--theme-transition-fast), border-color var(--theme-transition-fast), box-shadow var(--theme-transition-fast), color var(--theme-transition-fast), transform var(--theme-transition-fast), opacity var(--theme-transition-fast); }
+    .ux-interactive, .ux-tab, .ux-button, .ux-card-button, .ux-toggle, .ux-checkbox, .ux-field, .ux-select, .ux-textbox, .ux-badge-button { transition: background-color var(--theme-transition-fast), border-color var(--theme-transition-fast), box-shadow var(--theme-transition-fast), color var(--theme-transition-fast), transform var(--theme-transition-fast), opacity var(--theme-transition-fast); }
     .ux-tab { border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-radius-md) var(--theme-radius-md) 0 0; min-height: var(--theme-tab-height); padding: 0 var(--theme-control-padding-x); background: var(--hiddenTabBackground); color: var(--text); cursor: pointer; font-weight: var(--theme-font-weight-medium); box-shadow: inset 0 0 0 1px transparent; }
     .ux-tab:hover { background: var(--theme-surface-2); border-color: var(--theme-outline); transform: translateY(-1px); }
     .ux-tab[aria-selected="true"], .ux-tab.active { background: var(--primary); border-color: var(--primaryHover); box-shadow: inset 0 -2px 0 var(--accent), var(--theme-elevation-1); }
@@ -441,7 +441,12 @@ fn shell_document_1() -> &'static str {
     .ux-toggle, .ux-checkbox { display: inline-flex; align-items: center; gap: var(--theme-spacing-sm); min-height: 32px; padding: var(--theme-spacing-xs) var(--theme-spacing-sm); border-radius: var(--theme-radius-pill); cursor: pointer; color: var(--text); }
     .ux-toggle:hover, .ux-checkbox:hover { background: var(--theme-highlight-subtle); }
     .ux-toggle input, .ux-checkbox input { accent-color: var(--accent); cursor: pointer; }
-    .ux-badge { border-radius: var(--theme-radius-pill); border: var(--theme-border-width) solid var(--border); padding: 2px 8px; font-size: var(--theme-font-size-xs); text-transform: uppercase; letter-spacing: .06em; }
+    .ux-badge { display: inline-flex; align-items: center; justify-content: center; min-height: 24px; border-radius: var(--theme-radius-pill); border: var(--theme-border-width) solid var(--border); padding: 2px 8px; font-size: var(--theme-font-size-xs); text-transform: uppercase; letter-spacing: .06em; }
+    .ux-badge-button { appearance: none; font: inherit; cursor: pointer; box-shadow: inset 0 0 0 1px transparent, var(--theme-elevation-1); }
+    .ux-badge-button:hover { border-color: var(--theme-outline); transform: translateY(-1px); box-shadow: inset 0 0 0 1px var(--theme-highlight-strong), var(--theme-elevation-2); filter: brightness(1.08); }
+    .ux-badge-button:active { transform: translateY(0); box-shadow: inset 0 0 0 1px var(--theme-outline), var(--theme-elevation-1); }
+    .ux-badge-button:focus-visible { outline: var(--theme-focus-width) solid var(--theme-focus-color); outline-offset: var(--theme-focus-offset); box-shadow: var(--theme-highlight-ring); }
+    .ux-badge-button[aria-pressed="true"] { border-color: var(--theme-focus-color); box-shadow: inset 0 0 0 1px var(--theme-focus-color), var(--theme-highlight-ring); }
     .ux-badge.primary { background: var(--primary); color: var(--text); }
     .ux-badge.secondary { background: var(--hiddenTabBackground); color: var(--text-secondary); }
     .ux-badge.success { background: var(--success); color: var(--background); }
