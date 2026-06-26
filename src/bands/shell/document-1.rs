@@ -533,6 +533,15 @@ fn shell_document_1() -> &'static str {
     .ux-role-pair.primary { background: var(--theme-role-primary); color: var(--theme-role-on-primary); }
     .ux-state-layer { position: relative; overflow: hidden; }
     .theme-values-grid { align-items: stretch; }
+    .theme-token-lab { display: grid; gap: var(--theme-grid-gap); }
+    .theme-token-lab-grid { display: grid; gap: var(--theme-spacing-md); }
+    .theme-token-row { display: grid; grid-template-columns: minmax(240px, .9fr) minmax(220px, 1.1fr); gap: var(--theme-grid-gap); align-items: center; padding: var(--theme-spacing-md); border: var(--theme-border-width) solid var(--theme-outline-variant); border-radius: var(--theme-radius-lg); background: var(--theme-surface-1); }
+    .theme-token-control { display: grid; gap: var(--theme-spacing-xs); color: var(--text); }
+    .theme-token-control input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .theme-token-control output { color: var(--text-secondary); font-family: var(--theme-font-mono); font-size: var(--theme-font-size-xs); }
+    .theme-token-specimen-card { display: inline-grid; place-items: center; min-height: 72px; border-radius: var(--theme-radius-md); }
+    .theme-token-gap-specimen { gap: var(--theme-spacing-md); }
+    .theme-token-focus-specimen { box-shadow: 0 0 0 var(--theme-focus-width) var(--theme-focus-color), var(--theme-elevation-1); }
     .theme-chip { display: inline-flex; min-width: 92px; justify-content: center; padding: var(--theme-spacing-xs) var(--theme-spacing-sm); border-radius: var(--theme-radius-pill); border: 1px solid var(--theme-outline-variant); box-shadow: var(--theme-elevation-1); }
     .theme-chip.surface-0 { background: var(--background); color: var(--text); }
     .theme-chip.surface-1 { background: var(--surface); color: var(--text); }
