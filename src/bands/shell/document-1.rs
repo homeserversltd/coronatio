@@ -130,6 +130,26 @@ fn shell_document_1() -> &'static str {
     .modal-body input { width: 100%; padding: .55rem .65rem; border: 1px solid var(--border); border-radius: var(--theme-radius-md); background: var(--background); color: var(--text); }
     .status-item, .power-average-row, .current-tailnet { display: flex; justify-content: space-between; gap: .75rem; border-bottom: 1px solid rgba(255,255,255,.08); padding-bottom: .35rem; }
     .status-value, .power-value, .power-average-value, .value { color: var(--text); font-weight: 700; }
+    .tailscale-status-modal { padding: 0 .5rem; max-width: 400px; }
+    .tailscale-status-modal .status-text { font-size: .95rem; font-weight: 600; display: flex; align-items: center; gap: .5rem; padding: .25rem .5rem; border-radius: 4px; }
+    .tailscale-status-modal .status-text.connected { justify-content: space-between; color: var(--success); padding: 12px; background-color: color-mix(in srgb, var(--success) 15%, transparent); border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); }
+    .tailscale-status-modal .status-text.disconnected, .tailscale-status-modal .status-text.error { justify-content: space-between; color: var(--error); padding: 12px; background-color: color-mix(in srgb, var(--error) 15%, transparent); border: 1px solid color-mix(in srgb, var(--error) 30%, transparent); }
+    .tailscale-status-modal .status-text.login-required { color: var(--warning); background-color: color-mix(in srgb, var(--warning) 15%, transparent); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
+    .tailscale-status-modal .connection-buttons, .tailscale-status-modal .service-controls { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin-bottom: .5rem; }
+    .tailscale-status-modal .current-tailnet { display: flex; gap: .5rem; align-items: baseline; margin-bottom: 1rem; font-size: .9rem; }
+    .tailscale-status-modal .current-tailnet .label { color: color-mix(in srgb, var(--text) 60%, transparent); }
+    .tailscale-status-modal .config-form { display: grid; gap: .75rem; }
+    .tailscale-status-modal .tooltip-text, .tailscale-status-modal .authkey-help { white-space: pre-line; font-size: .8rem; color: color-mix(in srgb, var(--text) 60%, transparent); line-height: 1.4; padding-bottom: .75rem; }
+    .tailscale-status-modal .login-required-section { background-color: color-mix(in srgb, var(--warning) 8%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 20%, transparent); border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+    .tailscale-status-modal .login-message strong { color: var(--warning); font-size: 1.1rem; display: block; margin-bottom: .5rem; }
+    .tailscale-status-modal .login-url-container { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .75rem; background-color: color-mix(in srgb, var(--background) 50%, transparent); border-radius: 6px; border: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
+    .tailscale-status-modal .login-url-link { color: var(--primary); text-decoration: none; font-family: monospace; font-size: .85rem; word-break: break-all; padding: .5rem; background-color: color-mix(in srgb, var(--primary) 5%, transparent); border-radius: 4px; border: 1px solid color-mix(in srgb, var(--primary) 15%, transparent); }
+    .tailscale-status-modal .copy-url-button { align-self: flex-start; font-size: .85rem; }
+    .tailscale-status-modal .login-instructions { font-size: .85rem; line-height: 1.4; }
+    .tailscale-status-modal .authkey-section { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
+    .tailscale-status-modal .authkey-form { display: grid; gap: .75rem; margin-bottom: .75rem; }
+    .tailscale-status-modal .authkey-input { font-family: monospace; font-size: .85rem; }
+    .pending-operation { opacity: .82; cursor: progress; }
     .action-output:empty { display: none; }
     .theme-choice-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
     .theme-choice-row[hidden] { display: none !important; }
