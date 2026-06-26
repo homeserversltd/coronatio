@@ -89,6 +89,51 @@ fn shell_document_1() -> &'static str {
       --theme-statusUnknown: #94A3B8;
       --theme-hiddenTabBackground: #1E293B;
       --theme-hiddenTabText: #A0AEC0;
+      --theme-role-primary: #323840;
+      --theme-role-on-primary: #E0E0E0;
+      --theme-role-primary-container: #1E293B;
+      --theme-role-on-primary-container: #E0E0E0;
+      --theme-role-secondary: #9CA3AF;
+      --theme-role-tertiary: #A78BFA;
+      --theme-surface-0: #0A0A0A;
+      --theme-surface-1: #111827;
+      --theme-surface-2: #1E293B;
+      --theme-surface-3: #323840;
+      --theme-on-surface: #E0E0E0;
+      --theme-on-surface-muted: #9CA3AF;
+      --theme-outline: #6B7280;
+      --theme-outline-variant: #1E293B;
+      --theme-highlight-subtle: rgba(167,139,250,0.16);
+      --theme-highlight-strong: rgba(167,139,250,0.34);
+      --theme-highlight-ring: 0 0 0 3px rgba(167,139,250,0.34);
+      --theme-accent-warm: #FBBF24;
+      --theme-accent-cool: #90cff3;
+      --theme-accent-neutral: #9CA3AF;
+      --theme-accent-critical: #df0a3f;
+      --theme-gradient-primary: linear-gradient(135deg, #323840 0%, #6B7280 100%);
+      --theme-gradient-accent: linear-gradient(135deg, #A78BFA 0%, #90cff3 100%);
+      --theme-gradient-surface: linear-gradient(180deg, #111827 0%, #0A0A0A 100%);
+      --theme-gradient-highlight: radial-gradient(circle at 20% 20%, rgba(167,139,250,0.34), transparent 55%);
+      --theme-elevation-1: 0 1px 4px rgba(0,0,0,0.28);
+      --theme-elevation-2: 0 6px 16px rgba(0,0,0,0.34);
+      --theme-elevation-3: 0 18px 40px rgba(0,0,0,0.44);
+      --theme-overlay-scrim: rgba(0,0,0,0.68);
+      --theme-overlay-tint: rgba(167,139,250,0.10);
+      --theme-focus-color: #A78BFA;
+      --theme-focus-width: 2px;
+      --theme-focus-offset: 2px;
+      --theme-contrast-minimum: 4.5;
+      --theme-density: comfortable;
+      --theme-component-button-container: #323840;
+      --theme-component-button-on-container: #E0E0E0;
+      --theme-component-button-hover-container: #6B7280;
+      --theme-component-card-container: #111827;
+      --theme-component-card-outline: #1E293B;
+      --theme-flag-gradients: enabled;
+      --theme-flag-highlights: enabled;
+      --theme-flag-accent-stripes: enabled;
+      --theme-flag-state-layers: enabled;
+      --theme-flag-density-scale: enabled;
       --background: var(--theme-background);
       --surface: var(--theme-bg-primary);
       --surface-soft: var(--theme-bg-tertiary);
@@ -402,6 +447,22 @@ fn shell_document_1() -> &'static str {
     .ux-panel.active { display: grid; gap: var(--theme-grid-gap); }
     .ux-component-card { align-content: start; }
     .ux-component-sample { display: grid; gap: var(--theme-spacing-sm); }
+
+    .ux-gradient-swatch { min-height: 84px; border-radius: var(--theme-radius-lg); border: 1px solid var(--theme-outline-variant); box-shadow: var(--theme-elevation-1); }
+    .ux-gradient-swatch.primary { background: var(--theme-gradient-primary); }
+    .ux-gradient-swatch.accent { background: var(--theme-gradient-accent); }
+    .ux-gradient-swatch.surface { background: var(--theme-gradient-surface); }
+    .ux-gradient-swatch.highlight { background: var(--theme-gradient-highlight), var(--theme-surface-1); }
+    .ux-highlight-card { border-color: var(--theme-highlight-strong); background: var(--theme-highlight-subtle); box-shadow: var(--theme-highlight-ring); }
+    .ux-accent-strip { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); min-height: 44px; overflow: hidden; border-radius: var(--theme-radius-md); border: 1px solid var(--theme-outline-variant); }
+    .ux-accent-strip span:nth-child(1) { background: var(--theme-accent-warm); }
+    .ux-accent-strip span:nth-child(2) { background: var(--theme-accent-cool); }
+    .ux-accent-strip span:nth-child(3) { background: var(--theme-accent-neutral); }
+    .ux-accent-strip span:nth-child(4) { background: var(--theme-accent-critical); }
+    .ux-role-pair { display: grid; gap: var(--theme-spacing-xs); padding: var(--theme-spacing-md); border-radius: var(--theme-radius-md); border: 1px solid var(--theme-outline-variant); background: var(--theme-component-card-container); color: var(--theme-on-surface); }
+    .ux-role-pair.primary { background: var(--theme-role-primary); color: var(--theme-role-on-primary); }
+    .ux-state-layer { position: relative; overflow: hidden; }
+    .ux-state-layer::after { content: ''; position: absolute; inset: 0; background: var(--theme-focus-color); opacity: var(--theme-state-hover-opacity); pointer-events: none; }
     .showcase-item h4, .ux-card h3, .ux-card h4 { margin: 0 0 var(--theme-spacing-sm); }
     .theme-token-table { font-family: var(--theme-font-mono); font-size: var(--theme-font-size-xs); }
 "####

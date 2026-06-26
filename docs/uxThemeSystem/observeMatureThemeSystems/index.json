@@ -1,0 +1,9 @@
+{
+  "metadata": {
+    "name": "observeMatureThemeSystems",
+    "description": "ObserveMatureThemeSystems for Coronatio UX theme tokens",
+    "schema_version": "1.0"
+  },
+  "children": [],
+  "execution": { "entry_point": "index.md", "language": "markdown" }
+}
