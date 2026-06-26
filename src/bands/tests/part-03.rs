@@ -281,6 +281,39 @@
     }
 
     #[test]
+    fn internet_status_indicator_matches_react_runtime_contract() {
+        let shell = render_crown_shell();
+        for marker in [
+            r#"data-internet-status-indicator"#,
+            r#"class="indicator loading internet-indicator""#,
+            r#"data-packed-icon="spinner""#,
+            "Checking internet connection...",
+            "const internetState = { status: 'loading'",
+            "function setInternetIndicatorState(data)",
+            "Internet: ${internetState.status} (${internetState.publicIp})",
+            "function internetStatusModalText()",
+            "CHECKING...",
+            "String(internetState.status || 'loading').toUpperCase()",
+            "function internetAdminDetailsHtml()",
+            "details.city && details.region",
+            "details.org",
+            "details.timezone",
+            "data-speed-test-button",
+            "Running Speed Test...",
+            "internetState.speedTestResults = { download: parsed.download, upload: parsed.upload, latency: parsed.latency }",
+            "hydrateInternetIndicator()",
+            "setInterval(hydrateInternetIndicator, 1000)",
+        ] {
+            assert!(shell.contains(marker), "missing React InternetIndicator port marker: {marker}");
+        }
+        let internet_start = shell.find("if (kind === 'internet')").unwrap();
+        let internet_end = shell[internet_start..].find("if (kind === 'services')").unwrap() + internet_start;
+        let internet = &shell[internet_start..internet_end];
+        assert!(!internet.contains("Location:</strong> —"));
+        assert!(!internet.contains("Download: — Mbps"));
+    }
+
+    #[test]
     fn header_obliterates_non_quarry_coronatio_branding() {
         let shell = render_crown_shell();
         assert!(shell.contains(r#"data-flask-react-quarry="Header""#));

@@ -96,18 +96,56 @@ fn shell_document_3() -> &'static str {
           local and remote access.</div></div></div>
         <div class="authkey-section"><div class="authkey-alternative"><p class="alternative-text"><strong>Alternative:</strong> If the login link isn't working, you can use an auth key instead.</p></div><div class="authkey-form"><input class="authkey-input" data-authkey-input placeholder="Enter your tskey-auth-... or tskey-client-... key"><button class="primary-button" data-modal-fetch="/api/status/tailscale/authkey" data-method="POST" data-operation-label="Authenticating...">Authenticate</button></div><div class="authkey-help"><p>Get your auth key from the Tailscale admin console under Settings → Keys.</p></div></div>`)}<pre class="readout action-output" data-modal-output></pre>
       </div>`;
-      if (kind === 'internet') return `<div class="internet-status-modal" data-modal-kind-body="internet"><div class="status-section"><p class="status-text loading" data-modal-status data-route-read="/api/status">Checking internet status…</p></div>${indicatorAdminSection(`<div class="admin-details-section" data-admin-details-section><div class="ip-details"><p><strong>Location:</strong> —</p><p><strong>ISP:</strong> —</p><p><strong>Timezone:</strong> —</p></div></div><div class="speed-test-section"><div class="button-row"><button data-modal-fetch="/api/status/internet/speedtest" data-method="POST">Run Speed Test</button></div><div class="speed-results"><p>Download: — Mbps</p><p>Upload: — Mbps</p><p>Latency: — ms</p></div></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'internet') return `<div class="internet-status-modal" data-modal-kind-body="internet"><div class="status-section"><p class="status-text ${internetState.status}" data-modal-status data-route-read="/api/status">${internetStatusModalText()}</p></div>${indicatorAdminSection(`${internetAdminDetailsHtml()}<div class="speed-test-section"><div class="button-row"><button class="primary-button" data-speed-test-button data-modal-fetch="/api/status/internet/speedtest" data-method="POST" ${internetState.isSpeedTesting || internetState.status === 'loading' ? 'disabled' : ''}>${internetState.isSpeedTesting ? 'Running Speed Test...' : 'Run Speed Test'}</button></div>${internetSpeedTestHtml()}</div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'services') return `<div class="services-status-modal" data-modal-kind-body="services"><div class="loading-section" data-modal-status data-route-read="/api/status/services">Loading service status…</div><ul class="service-status-list" data-route-read="/api/status/services"><li>No status data available</li></ul>${indicatorAdminSection(`<div class="admin-service-grid"><div class="admin-service-description">Description</div><div class="admin-service-name">Service</div><div class="admin-service-right"><span class="admin-service-status">enabled</span></div></div><div class="button-row"><button data-modal-fetch="/api/status/services">Refresh</button><button data-modal-fetch="/api/services/data">Service Data</button></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'openvpn') return `<div class="vpn-status-modal" data-modal-kind-body="openvpn"><div class="status-section"><div class="service-statuses"><div class="status-item loading"><span>VPN Status:</span><span class="status-value" data-modal-status data-route-read="/api/status/vpn/pia">Loading VPN…</span></div><div class="status-item loading"><span>Transmission Status:</span><span class="status-value" data-modal-secondary-status data-route-read="/api/status/vpn/transmission">Loading Transmission…</span></div>${headerState.isAdmin ? `<div class="status-item" data-admin-only data-admin-surface="indicator-modal"><span>Systemd Service:</span><span class="status-value">LOADING</span></div>` : ''}</div></div>${indicatorAdminSection(`<div class="credentials-section"><div class="modal-grid"><div class="credential-group"><input placeholder="PIA Username"><input type="password" placeholder="PIA Password"><button data-modal-fetch="/api/status/vpn/updatekey/pia" data-method="POST">Create PIA Key</button></div><div class="credential-group"><input placeholder="Transmission Username"><input type="password" placeholder="Transmission Password"><button data-modal-fetch="/api/status/vpn/updatekey/transmission" data-method="POST">Create Transmission</button></div></div></div><div class="service-controls"><div class="button-row"><button data-modal-fetch="/api/status/vpn/enable" data-method="POST">Enable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/disable" data-method="POST">Disable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/pia/exists">PIA Key Exists</button><button data-modal-fetch="/api/status/vpn/transmission/exists">Transmission Key Exists</button></div></div><div class="restart-notice"><p>Note: Service changes require a restart to take effect.</p></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'power-meter') return `<div class="power-meter-modal" data-modal-kind-body="power-meter"><div class="power-usage-display"><div class="power-value" data-route-read="/api/status/power/usage"><span class="power-value-number" data-modal-status>Loading power…</span><span class="power-value-unit">Watts</span></div></div><div class="power-history-section"><div class="power-averages"><div class="power-average-row"><div class="power-average-label">5s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">30s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">60s average:</div><div class="power-average-value">—W</div></div></div></div><pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p><p>Theme selection comes from homeserver.json global.theme.name through /api/themes.</p></div>`;
       return '';
     }
+    function internetStatusModalText() {
+      if (internetState.status === 'loading') return 'CHECKING...';
+      const base = String(internetState.status || 'loading').toUpperCase();
+      return headerState.isAdmin && internetState.publicIp ? `${base} (${internetState.publicIp})` : base;
+    }
+    function internetAdminDetailsHtml() {
+      if (!headerState.isAdmin || !internetState.ipDetails) return '';
+      const details = internetState.ipDetails;
+      const rows = [];
+      if (details.city && details.region) rows.push(`<p><strong>Location:</strong> ${details.city}, ${details.region}, ${details.country || ''}</p>`);
+      if (details.org) rows.push(`<p><strong>ISP:</strong> ${details.org}</p>`);
+      if (details.timezone) rows.push(`<p><strong>Timezone:</strong> ${details.timezone}</p>`);
+      return rows.length ? `<div class="admin-details-section" data-admin-details-section><div class="ip-details">${rows.join('')}</div></div>` : '';
+    }
+    function internetSpeedTestHtml() {
+      if (internetState.speedTestError) return `<div class="error-message">${internetState.speedTestError}</div>`;
+      const result = internetState.speedTestResults;
+      if (!result) return '';
+      return `<div class="speed-results"><p>Download: ${result.download} Mbps</p><p>Upload: ${result.upload} Mbps</p><p>Latency: ${result.latency} ms</p></div>`;
+    }
+    function setInternetIndicatorState(data) {
+      if (!data) return;
+      internetState.status = data.status || 'loading';
+      internetState.publicIp = data.publicIp;
+      internetState.ipDetails = data.ipDetails;
+      if (!internetIndicator) return;
+      internetIndicator.classList.remove('ok', 'warn', 'error', 'loading');
+      if (internetState.status === 'connected') internetIndicator.classList.add('ok');
+      else if (internetState.status === 'disconnected' || internetState.status === 'error') internetIndicator.classList.add('error');
+      else internetIndicator.classList.add('loading');
+      const title = internetState.status === 'loading' ? 'Checking internet connection...' : (headerState.isAdmin && internetState.publicIp ? `Internet: ${internetState.status} (${internetState.publicIp})` : `Internet: ${internetState.status}`);
+      internetIndicator.title = title;
+      internetIndicator.setAttribute('aria-label', internetState.status === 'loading' ? 'Checking Internet Status' : 'Internet Status');
+    }
     function routeReadLabel(route, data) {
       const ok = data && (data.ok === true || data.success === true);
       const status = data?.status || (ok ? 'ok' : 'unavailable');
       const missing = data?.firstMissingSignal && data.firstMissingSignal !== 'none' ? ' · ' + data.firstMissingSignal : '';
       if (route.includes('/api/status/tailscale/config')) return data?.tailnet || data?.tailnetName || data?.readback?.tailnet || (ok ? 'Loading...' + missing : 'Loading...');
+      if (route === '/api/status') {
+        setInternetIndicatorState(data);
+        return internetStatusModalText();
+      }
       if (route.includes('tailscale')) return ok ? 'Tailscale status: ' + status + missing : 'Tailscale status unavailable';
       if (route.includes('/api/status/vpn/pia')) return ok ? 'VPN status: ' + status + missing : 'VPN status unavailable';
       if (route.includes('/api/status/vpn/transmission')) return ok ? 'Transmission status: ' + status + missing : 'Transmission status unavailable';
@@ -145,6 +183,15 @@ fn shell_document_3() -> &'static str {
       if (route.endsWith('/authkey')) return JSON.stringify({ authKey: infoBody.querySelector('[data-authkey-input]')?.value || '' });
       return undefined;
     }
+    async function hydrateInternetIndicator() {
+      try {
+        const response = await fetch('/api/status', { cache: 'no-store' });
+        const data = await response.json();
+        setInternetIndicatorState(data);
+      } catch (_) {
+        setInternetIndicatorState({ status: 'disconnected' });
+      }
+    }
     async function hydrateModalRouteReads(kind) {
       const nodes = [...infoBody.querySelectorAll('[data-route-read]')];
       await Promise.all(nodes.map(async node => {
@@ -157,6 +204,10 @@ fn shell_document_3() -> &'static str {
           if (node.matches('ul')) node.innerHTML = `<li>${label}</li>`;
           else if (node.classList.contains('power-value')) node.querySelector('[data-modal-status]').textContent = label.replace('Power readback: ', '').replace('Power readback unavailable', 'unavailable');
           else if (!(kind === 'tailscale' && route === '/api/status/tailscale')) node.textContent = label;
+          if (route === '/api/status') {
+            node.classList.remove('loading', 'connected', 'disconnected', 'error');
+            node.classList.add(internetState.status || 'loading');
+          }
           node.classList.remove('loading');
           node.dataset.hydrated = 'true';
         } catch (error) {
@@ -168,13 +219,23 @@ fn shell_document_3() -> &'static str {
           node.dataset.hydrated = 'false';
         }
       }));
+      if (kind === 'internet') {
+        const statusNode = infoBody.querySelector('[data-modal-status][data-route-read="/api/status"]');
+        if (statusNode) statusNode.textContent = internetStatusModalText();
+      }
     }
     function wireModalFetches() {
       infoBody.querySelectorAll('[data-modal-fetch]').forEach(button => button.addEventListener('click', async () => {
         const output = infoBody.querySelector('[data-modal-output]');
         if (!headerState.isAdmin && button.closest('[data-admin-only]')) { if (output) output.textContent = 'Enter Admin Mode'; return; }
         const originalLabel = button.textContent;
-        if (button.dataset.operationLabel) button.textContent = button.dataset.operationLabel;
+        const isSpeedTest = button.hasAttribute('data-speed-test-button');
+        if (isSpeedTest) {
+          internetState.isSpeedTesting = true;
+          internetState.speedTestResults = null;
+          internetState.speedTestError = null;
+          button.textContent = 'Running Speed Test...';
+        } else if (button.dataset.operationLabel) button.textContent = button.dataset.operationLabel;
         button.classList.add('pending-operation');
         button.disabled = true;
         if (output) output.textContent = 'Loading ' + button.dataset.modalFetch + '…';
@@ -182,9 +243,30 @@ fn shell_document_3() -> &'static str {
           const body = modalRequestBody(button);
           const response = await fetch(button.dataset.modalFetch, { method: button.dataset.method || 'GET', headers: body ? { 'Content-Type': 'application/json' } : undefined, body });
           const text = await response.text();
-          if (output) { try { output.textContent = JSON.stringify(JSON.parse(text), null, 2); } catch (_) { output.textContent = text; } }
-        } catch (error) { if (output) output.textContent = 'fetch failed: ' + error; }
-        finally { button.textContent = originalLabel; button.classList.remove('pending-operation'); button.disabled = false; }
+          let parsed = null;
+          try { parsed = JSON.parse(text); } catch (_) {}
+          if (isSpeedTest) {
+            if (parsed?.error) throw new Error(parsed.error);
+            if (parsed && (parsed.download !== undefined || parsed.upload !== undefined || parsed.latency !== undefined)) {
+              internetState.speedTestResults = { download: parsed.download, upload: parsed.upload, latency: parsed.latency };
+            } else if (!response.ok) {
+              throw new Error(text || 'Speed test failed unexpectedly.');
+            } else {
+              internetState.speedTestError = parsed?.firstMissingSignal && parsed.firstMissingSignal !== 'none' ? parsed.firstMissingSignal : 'Speed test result unavailable.';
+            }
+            openInfoModal('Internet Status', 'internet');
+            return;
+          }
+          if (output) { output.textContent = parsed ? JSON.stringify(parsed, null, 2) : text; }
+        } catch (error) {
+          if (isSpeedTest) {
+            internetState.speedTestError = error?.message || 'Speed test failed unexpectedly.';
+            openInfoModal('Internet Status', 'internet');
+            return;
+          }
+          if (output) output.textContent = 'fetch failed: ' + error;
+        }
+        finally { if (isSpeedTest) internetState.isSpeedTesting = false; button.textContent = originalLabel; button.classList.remove('pending-operation'); button.disabled = false; }
       }));
     }
     function openInfoModal(title, kind = 'status') {
@@ -250,6 +332,8 @@ fn shell_document_3() -> &'static str {
       if (modalMode === 'enter') closePinModal();
     });
     loadThemeCatalog();
+    hydrateInternetIndicator();
+    setInterval(hydrateInternetIndicator, 1000);
     setAdminMode(headerState.isAdmin);
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function visibleTabs() { return headerState.isAdmin ? tabs.filter(tab => tab.dataset.pane !== fallbackTab) : eligibleRegularTabs(); }
