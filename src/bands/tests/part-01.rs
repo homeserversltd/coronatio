@@ -391,7 +391,8 @@
             "data-ux-registry=\"rust-native\"",
             "data-showcase-tab=\"buttons\"",
             "data-showcase-tab=\"modals\"",
-            "data-testtab-panel=\"theme-truth\"",
+            "data-testtab-panel=\"theme-values\"",
+            "data-theme-values-panel=\"true\"",
             "data-ux-registry-count",
             "data-ux-component=\"theme-gradients\"",
             "data-ux-component=\"theme-highlights\"",
@@ -436,11 +437,31 @@
             "--theme-elevation-2",
             ".ux-tab:focus-visible",
             ".ux-toggle:hover",
-            "--primary</td><td>loading</td><td>dark.json primary #323840",
+            "<code>--primary</code>, <code>--primaryHover</code>, <code>--theme-component-button-container</code>",
+            "Theme Values",
+            "live CSS token map",
+            "data-theme-value-family=\"core\"",
+            "data-theme-value-family=\"actions\"",
+            "data-theme-value-family=\"gradients\"",
+            "data-theme-value-family=\"highlights\"",
+            "data-theme-value-family=\"accents\"",
+            "data-theme-value-family=\"roles\"",
+            "--theme-component-button-container",
+            "--theme-highlight-ring",
+            "--theme-radius-pill",
         ] {
             assert!(shell.contains(marker), "missing TestTab UX marker: {marker}");
         }
         assert!(shell.contains(".ux-button {"));
+        assert!(!shell.contains("data-testtab-tab=\"services\""));
+        assert!(!shell.contains("data-testtab-tab=\"config\""));
+        assert!(!shell.contains("data-testtab-tab=\"health\""));
+        assert!(!shell.contains("data-testtab-panel=\"services\""));
+        assert!(!shell.contains("data-testtab-panel=\"config\""));
+        assert!(!shell.contains("data-testtab-panel=\"health\""));
+        assert!(!shell.contains("Service Tests"));
+        assert!(!shell.contains("Configuration</button>"));
+        assert!(!shell.contains("Health Status"));
         assert!(shell.contains("background: var(--primary); color: var(--text);"));
         assert!(shell.contains(".ux-button.secondary { background: var(--theme-surface-1); color: var(--text); }"));
         assert!(shell.contains(".ux-button.secondary:hover { background: var(--theme-component-button-hover-container);"));
