@@ -133,7 +133,7 @@
         assert!(body.contains("Force Update"));
         assert!(body.contains("HomeServer"));
         assert!(body.contains("Admitted services"));
-        assert!(body.contains("Upload files"));
+        assert!(body.contains("Upload Selected Files"));
         assert!(!body.contains("Coronatio crown shell"));
         assert!(!body.contains("class=\"crown-card\""));
         assert!(!body.contains("Arcadia"));
@@ -157,7 +157,8 @@
         assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
         assert!(shell.contains(r#"data-admin-quarry-button-total="87""#));
         assert!(shell.contains("data-upload-regular=\"file-ingress\""));
-        assert!(shell.contains("Admin upload controls"));
+        assert!(shell.contains(r#"class="directory-browser-header""#));
+        assert!(shell.contains("🛡️ Allow"));
         assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
     }
 
