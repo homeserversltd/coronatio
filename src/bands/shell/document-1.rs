@@ -398,8 +398,10 @@ fn shell_document_1() -> &'static str {
     .ux-modal-sample { border: var(--theme-border-width) solid var(--border); border-radius: var(--theme-modal-radius); padding: var(--theme-card-padding); background: var(--surface); box-shadow: 0 16px 40px rgba(0,0,0,.35); }
     .test-tablet { padding: var(--theme-content-padding); background: var(--background); min-height: 70vh; }
     .test-tablet-content, .component-showcase { max-width: 1400px; margin: 0 auto; }
-    .showcase-section { display: none; }
-    .showcase-section.active { display: grid; gap: var(--theme-grid-gap); }
+    .ux-panel { display: none; }
+    .ux-panel.active { display: grid; gap: var(--theme-grid-gap); }
+    .ux-component-card { align-content: start; }
+    .ux-component-sample { display: grid; gap: var(--theme-spacing-sm); }
     .showcase-item h4, .ux-card h3, .ux-card h4 { margin: 0 0 var(--theme-spacing-sm); }
     .theme-token-table { font-family: var(--theme-font-mono); font-size: var(--theme-font-size-xs); }
 "####

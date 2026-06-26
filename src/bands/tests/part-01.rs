@@ -382,18 +382,17 @@
 
     #[test]
     fn native_stock_testtab_is_composed_from_ux_library() {
-        let shell = ["src/bands/shell/document-1.rs", "src/bands/shell/document-2.rs", "src/bands/shell/document-4.rs"]
-            .iter()
-            .map(|path| std::fs::read_to_string(path).unwrap())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let shell = render_crown_shell();
+        let registry = ux_component_registry();
         for marker in [
             "coronatio-composable-ux.v1",
             "data-native-stock-testtab=\"true\"",
             "data-react-quarry=\"premium/testTab\"",
+            "data-ux-registry=\"rust-native\"",
             "data-showcase-tab=\"buttons\"",
             "data-showcase-tab=\"modals\"",
             "data-testtab-panel=\"theme-truth\"",
+            "data-ux-registry-count",
             "ux-button",
             "ux-card",
             "ux-tabs",
@@ -408,4 +407,8 @@
         assert!(shell.contains(".ux-button {"));
         assert!(shell.contains("background: var(--primary); color: var(--text);"));
         assert!(shell.contains(".ux-button.success { background: var(--success);"));
+        assert_eq!(shell.matches("data-ux-component=").count(), registry.len());
+        for component in registry {
+            assert!(shell.contains(&format!("data-ux-component=\"{}\"", component.id)), "missing registered component {}", component.id);
+        }
     }
