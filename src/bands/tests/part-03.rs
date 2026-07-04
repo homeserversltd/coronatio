@@ -136,6 +136,8 @@
             static_dir: "static".to_string(),
             service_url: None,
             health_route: None,
+            fragment_path: default_fragment_path(),
+            client_class: ClientClass::Fragment,
             install_mode: InstallMode::DynamicCartridge,
         };
         assert!(validate_tab_manifest(&manifest).is_ok());

@@ -154,6 +154,14 @@ struct CrownShellTab {
     admin_only: bool,
 }
 
+fn admit_route_for_tab(tab_id: &str) -> String {
+    format!("/admit/{tab_id}")
+}
+
+fn viewport_target_for_tab(tab_id: &str) -> String {
+    format!("#viewport-{tab_id}")
+}
+
 fn render_crown_shell() -> String {
     render_crown_shell_with_registry(&[])
 }
@@ -207,7 +215,11 @@ fn render_crown_shell_tabs(tabs: &[CrownShellTab]) -> maud::Markup {
                                     data-crown-tab=(tab.id)
                                     data-admin-only=(if tab.admin_only { "true" } else { "false" })
                                     aria-selected=(if tab.id == active { "true" } else { "false" })
-                                    aria-controls=(format!("viewport-{}", tab.id)) {
+                                    aria-controls=(format!("viewport-{}", tab.id))
+                                    hx-get=(admit_route_for_tab(&tab.id))
+                                    hx-target=(viewport_target_for_tab(&tab.id))
+                                    hx-swap="innerHTML"
+                                    hx-trigger="click, keyup[key=='Enter'], keyup[key==' ']" {
                                     span.crown-tab__title { (tab.title) }
                                     span.crown-tab__kind { (tab.kind) }
                                 }

@@ -71,6 +71,7 @@ fn app(state: AppState) -> Router {
         .route("/api/stats", get(stats_route))
         .route("/api/tabs", get(tabs_route))
         .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
+        .route("/admit/:tab_id", get(admit_tab_route))
         .route(CROWN_SHELL_STYLESHEET_PATH, get(crown_stylesheet_route))
         .route(CROWN_HTMX_SCRIPT_PATH, get(crown_htmx_script_route))
         .route(CROWN_SHELL_SCRIPT_PATH, get(crown_chrome_script_route))

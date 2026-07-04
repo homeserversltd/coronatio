@@ -62,6 +62,10 @@ fn default_enabled() -> bool {
     true
 }
 
+fn default_fragment_path() -> String {
+    "/fragment".to_string()
+}
+
 fn validate_tab_manifest(manifest: &TabManifest) -> Result<(), String> {
     if !is_safe_tab_id(&manifest.id) {
         return Err("id must be lowercase hyphen-case ascii".to_string());
@@ -87,6 +91,9 @@ fn validate_tab_manifest(manifest: &TabManifest) -> Result<(), String> {
     }
     if manifest.static_dir.contains("..") || manifest.static_dir.starts_with('/') {
         return Err("staticDir must be relative and stay inside the tab root".to_string());
+    }
+    if !manifest.fragment_path.starts_with('/') || manifest.fragment_path.contains("..") {
+        return Err("fragmentPath must be an absolute tab-local route without parent traversal".to_string());
     }
     Ok(())
 }

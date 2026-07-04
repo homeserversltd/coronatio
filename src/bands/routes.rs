@@ -63,6 +63,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/stats".to_string(),
             "/api/tabs".to_string(),
             "/api/tabs/:tab_id/manifest".to_string(),
+            "/admit/:tab_id".to_string(),
             "/static/vendor/htmx.min.js".to_string(),
             "/static/vendor/chart.umd.min.js".to_string(),
             "/static/vendor/chartjs-plugin-datalabels.min.js".to_string(),

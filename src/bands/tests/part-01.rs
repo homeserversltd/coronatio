@@ -133,6 +133,10 @@
         assert!(body.contains(CROWN_SHELL_SCRIPT_PATH));
         assert!(body.find(CROWN_HTMX_SCRIPT_PATH).unwrap() < body.find(CROWN_SHELL_SCRIPT_PATH).unwrap());
         assert!(!body.contains("fetch("));
+        assert!(body.contains("hx-get=\"/admit/admin\""));
+        assert!(body.contains("hx-target=\"#viewport-admin\""));
+        assert!(body.contains("hx-swap=\"innerHTML\""));
+        assert!(body.contains("hx-trigger=\"click, keyup[key=='Enter'], keyup[key==' ']\""));
         assert!(!body.contains("Arcadia"));
         assert!(!body.contains("YouTube"));
     }
@@ -175,7 +179,12 @@
         assert!(shell.contains(CROWN_SHELL_SCRIPT_PATH));
         assert!(shell.find(CROWN_HTMX_SCRIPT_PATH).unwrap() < shell.find(CROWN_SHELL_SCRIPT_PATH).unwrap());
         assert!(!shell.contains("fetch("));
-        assert!(!shell.contains("hx-"));
+        for pane in PRIMARY_TABS {
+            assert!(shell.contains(&format!("hx-get=\"/admit/{}\"", pane)));
+            assert!(shell.contains(&format!("hx-target=\"#viewport-{}\"", pane)));
+        }
+        assert!(shell.contains("hx-swap=\"innerHTML\""));
+        assert!(shell.contains("hx-trigger=\"click, keyup[key=='Enter'], keyup[key==' ']\""));
     }
 
     #[test]
@@ -195,6 +204,8 @@
             static_dir: "static".to_string(),
             service_url: Some("http://127.0.0.1:9910".to_string()),
             health_route: Some("/health".to_string()),
+            fragment_path: default_fragment_path(),
+            client_class: ClientClass::Fragment,
             install_mode: InstallMode::DynamicCartridge,
         }];
         let shell = render_crown_shell_with_registry(&registry);
@@ -202,6 +213,93 @@
         assert!(shell.contains(r#"data-view-panel="service-card""#));
         assert!(shell.contains("registry tab"));
         assert!(shell.find(r#"data-crown-tab="testtab""#).unwrap() < shell.find(r#"data-crown-tab="service-card""#).unwrap());
+    }
+
+
+    #[tokio::test]
+    async fn coro_003_manifest_defaults_fragment_fields() {
+        let raw = r#"{
+          "id":"service-card",
+          "title":"Service Card",
+          "routePrefix":"/api/tabs/service-card"
+        }"#;
+        let manifest: TabManifest = serde_json::from_str(raw).unwrap();
+        assert_eq!(manifest.fragment_path, "/fragment");
+        assert_eq!(manifest.client_class, ClientClass::Fragment);
+        let serialized = serde_json::to_string(&manifest).unwrap();
+        assert!(serialized.contains("fragmentPath"));
+        assert!(serialized.contains("clientClass"));
+    }
+
+    #[tokio::test]
+    async fn coro_003_admit_native_pane_returns_fragment_html() {
+        let temp = test_tab_root("coro-003-native-admit");
+        let response = app(AppState { tab_root: Arc::new(temp) })
+            .oneshot(Request::builder().uri("/admit/stats").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("data-fragment-schema=\"coronatio.stats.fragment.v1\""));
+        assert!(body.contains("coronatio.stats.snapshot.v1"));
+        assert!(body.contains("data-native-readback=\"json\""));
+    }
+
+    #[tokio::test]
+    async fn coro_003_proxy_fault_path_returns_typed_fault_marker() {
+        let temp = test_tab_root("coro-003-fault");
+        let tab_dir = temp.join("dead-service");
+        std::fs::create_dir_all(&tab_dir).unwrap();
+        std::fs::write(tab_dir.join("tab.json"), r#"{
+          "id":"dead-service",
+          "title":"Dead Service",
+          "routePrefix":"/api/tabs/dead-service",
+          "serviceUrl":"http://127.0.0.1:9",
+          "fragmentPath":"/fragment"
+        }"#).unwrap();
+        let response = app(AppState { tab_root: Arc::new(temp) })
+            .oneshot(Request::builder().uri("/admit/dead-service").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(response.headers().get("x-coronatio-fault").unwrap(), "cartridge-fragment");
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("data-cartridge-fault=\"true\""));
+        assert!(body.contains("data-cartridge-fault-kind="));
+    }
+
+    #[tokio::test]
+    async fn coro_003_static_reference_cartridge_admits_fragment() {
+        let temp = test_tab_root("coro-003-static-reference");
+        let tab_dir = temp.join("inert-fragment").join("static");
+        std::fs::create_dir_all(&tab_dir).unwrap();
+        std::fs::write(temp.join("inert-fragment").join("tab.json"), r#"{
+          "id":"inert-fragment",
+          "title":"Inert Fragment",
+          "routePrefix":"/api/tabs/inert-fragment",
+          "fragmentPath":"/static/fragment.html",
+          "clientClass":"fragment"
+        }"#).unwrap();
+        std::fs::write(tab_dir.join("fragment.html"), r#"<article data-reference-cartridge="inert-fragment"><h2>Inert Fragment</h2></article>"#).unwrap();
+        let response = app(AppState { tab_root: Arc::new(temp) })
+            .oneshot(Request::builder().uri("/admit/inert-fragment").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("data-reference-cartridge=\"inert-fragment\""));
+    }
+
+    #[test]
+    fn coro_003_rail_markup_fetches_on_every_activation() {
+        let shell = render_crown_shell();
+        for pane in PRIMARY_TABS {
+            assert!(shell.contains(&format!("hx-get=\"/admit/{}\"", pane)));
+            assert!(shell.contains(&format!("hx-target=\"#viewport-{}\"", pane)));
+        }
+        assert!(shell.contains("hx-trigger=\"click, keyup[key=='Enter'], keyup[key==' ']\""));
+        assert!(!shell.contains("hx-trigger=\"load"));
+        assert!(!shell.contains("hx-trigger=\"revealed"));
     }
 
     #[tokio::test]
@@ -254,7 +352,9 @@
         let shell = String::from_utf8(axum::body::to_bytes(shell_response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(shell.contains(&format!(r#"script defer src="{}""#, CROWN_HTMX_SCRIPT_PATH)));
         assert!(shell.find(CROWN_HTMX_SCRIPT_PATH).unwrap() < shell.find(CROWN_SHELL_SCRIPT_PATH).unwrap());
-        assert!(!shell.contains("hx-"));
+        assert!(shell.contains("hx-get=\"/admit/admin\""));
+        assert!(shell.contains("hx-target=\"#viewport-admin\""));
+        assert!(shell.contains("hx-swap=\"innerHTML\""));
 
         let htmx = router.clone()
             .oneshot(Request::builder().uri(CROWN_HTMX_SCRIPT_PATH).body(Body::empty()).unwrap())
