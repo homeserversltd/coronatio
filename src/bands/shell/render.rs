@@ -1,5 +1,8 @@
 const CROWN_SHELL_STYLESHEET_PATH: &str = "/static/crown/crown.css";
+const CROWN_HTMX_SCRIPT_PATH: &str = "/static/vendor/htmx.min.js";
 const CROWN_SHELL_SCRIPT_PATH: &str = "/static/crown/chrome.js";
+const CROWN_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'self'; frame-ancestors 'self'";
+const CROWN_HTMX_JS: &str = include_str!("../../../static/vendor/htmx.min.js");
 
 const CROWN_SHELL_CSS: &str = r#"
 :root {
@@ -72,6 +75,27 @@ button { font: inherit; }
 const CROWN_SHELL_JS: &str = r#"
 // @ts-check
 (() => {
+  const htmxOrgan = window.htmx;
+  if (htmxOrgan && htmxOrgan.config) {
+    htmxOrgan.config.allowScriptTags = false;
+    htmxOrgan.config.selfRequestsOnly = true;
+  }
+
+  /**
+   * CORO-004 seam: typed CartridgeFaultReceipt stub until the full receipt path is seated.
+   * @param {'htmx-timeout' | 'htmx-error'} faultKind
+   * @param {Event} event
+   */
+  function emitCartridgeFaultReceiptStub(faultKind, event) {
+    document.documentElement.dataset.cartridgeFaultReceipt = 'stubbed';
+    document.documentElement.dataset.cartridgeFaultLast = faultKind;
+    console.warn('coronatio CartridgeFaultReceipt stub', { faultKind, event });
+  }
+
+  document.body.addEventListener('htmx:timeout', (event) => emitCartridgeFaultReceiptStub('htmx-timeout', event));
+  document.body.addEventListener('htmx:responseError', (event) => emitCartridgeFaultReceiptStub('htmx-error', event));
+  document.body.addEventListener('htmx:sendError', (event) => emitCartridgeFaultReceiptStub('htmx-error', event));
+
   /** @type {NodeListOf<HTMLButtonElement>} */
   const tabs = document.querySelectorAll('[data-crown-tab]');
   /** @type {NodeListOf<HTMLElement>} */
@@ -165,6 +189,7 @@ fn render_crown_shell_tabs(tabs: &[CrownShellTab]) -> maud::Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Coronatio" }
                 link rel="stylesheet" href=(CROWN_SHELL_STYLESHEET_PATH);
+                script defer src=(CROWN_HTMX_SCRIPT_PATH) {}
                 script defer src=(CROWN_SHELL_SCRIPT_PATH) {}
             }
             body data-source-material="homeserver-main-site" {
