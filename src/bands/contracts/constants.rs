@@ -272,8 +272,20 @@ struct TabManifest {
     service_url: Option<String>,
     #[serde(default)]
     health_route: Option<String>,
+    #[serde(default = "default_fragment_path")]
+    fragment_path: String,
+    #[serde(default)]
+    client_class: ClientClass,
     #[serde(default)]
     install_mode: InstallMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+enum ClientClass {
+    #[default]
+    Fragment,
+    Iframe,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -292,6 +304,16 @@ struct TabList {
     tab_root: String,
     native_panes: Vec<CrownPane>,
     tabs: Vec<TabManifest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct FragmentFaultReadback {
+    schema: String,
+    ok: bool,
+    tab_id: String,
+    fault: String,
+    status: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

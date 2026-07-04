@@ -180,6 +180,104 @@ async fn load_tab_manifest(
     Ok(Some(manifest))
 }
 
+async fn admit_tab_route(State(state): State<AppState>, Path(tab_id): Path<String>) -> impl IntoResponse {
+    if !is_safe_tab_id(&tab_id) {
+        return fragment_fault(StatusCode::BAD_REQUEST, &tab_id, "invalid-tab-id");
+    }
+
+    if let Some(pane) = native_crown_panes().into_iter().find(|pane| pane.id == tab_id) {
+        return Html(render_native_pane_fragment(&pane)).into_response();
+    }
+
+    match load_tab_manifest(&state.tab_root, &tab_id).await {
+        Ok(Some(manifest)) => admit_registry_manifest(&state, manifest).await,
+        Ok(None) => fragment_fault(StatusCode::NOT_FOUND, &tab_id, "tab-not-found"),
+        Err(error) => fragment_fault(StatusCode::INTERNAL_SERVER_ERROR, &tab_id, &format!("manifest-error:{error}")),
+    }
+}
+
+async fn admit_registry_manifest(state: &AppState, manifest: TabManifest) -> Response {
+    if manifest.client_class != ClientClass::Fragment {
+        return fragment_fault(StatusCode::BAD_REQUEST, &manifest.id, "unsupported-client-class");
+    }
+    if let Some(service_url) = manifest.service_url.as_deref().filter(|value| !value.trim().is_empty()) {
+        let url = format!("{}{}", service_url.trim_end_matches('/'), manifest.fragment_path.as_str());
+        return fetch_cartridge_fragment(&manifest.id, &url).await;
+    }
+    read_static_cartridge_fragment(state, &manifest).await
+}
+
+async fn fetch_cartridge_fragment(tab_id: &str, url: &str) -> Response {
+    let client = match reqwest::Client::builder().timeout(Duration::from_secs(2)).build() {
+        Ok(client) => client,
+        Err(error) => return fragment_fault(StatusCode::INTERNAL_SERVER_ERROR, tab_id, &format!("client-build:{error}")),
+    };
+    match client.get(url).send().await {
+        Ok(response) => {
+            let status = StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            match response.text().await {
+                Ok(body) if status.is_success() => Html(body).into_response(),
+                Ok(body) => fragment_fault(status, tab_id, &format!("cartridge-status:{}:{}", status.as_u16(), body.chars().take(120).collect::<String>())),
+                Err(error) => fragment_fault(StatusCode::BAD_GATEWAY, tab_id, &format!("cartridge-body:{error}")),
+            }
+        }
+        Err(error) => fragment_fault(StatusCode::BAD_GATEWAY, tab_id, &format!("cartridge-fetch:{error}")),
+    }
+}
+
+async fn read_static_cartridge_fragment(state: &AppState, manifest: &TabManifest) -> Response {
+    let fragment_rel = manifest.fragment_path.trim_start_matches('/');
+    let path = state.tab_root.join(&manifest.id).join(fragment_rel);
+    match fs::read_to_string(&path).await {
+        Ok(body) => Html(body).into_response(),
+        Err(error) => fragment_fault(StatusCode::BAD_GATEWAY, &manifest.id, &format!("static-fragment:{}:{error}", path.display())),
+    }
+}
+
+fn fragment_fault(status: StatusCode, tab_id: &str, fault: &str) -> Response {
+    let escaped_fault = fault.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
+    let body = maud::html! {
+        section data-cartridge-fault="true" data-cartridge-fault-kind=(escaped_fault) data-tab-id=(tab_id) {
+            h2 { "Cartridge fault" }
+            p { "The crown kept the underlay standing while this fragment failed admission." }
+        }
+    }.into_string();
+    (
+        status,
+        [("x-coronatio-fault", "cartridge-fragment")],
+        Html(body),
+    ).into_response()
+}
+
+fn render_native_pane_fragment(pane: &CrownPane) -> String {
+    match pane.id.as_str() {
+        "stats" => render_json_fragment(&pane.title, "coronatio.stats.fragment.v1", serde_json::to_value(stats_snapshot()).unwrap_or(serde_json::Value::Null)),
+        "portals" => render_json_fragment(&pane.title, "coronatio.portals.fragment.v1", serde_json::to_value(read_portals_config().unwrap_or_else(|signal| PortalConfigResponse {
+            schema: "coronatio.portals.config.v1".to_string(),
+            route: "/api/portals".to_string(),
+            success: false,
+            source: homeserver_config_candidates().into_iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(" | "),
+            factory_source: None,
+            portals: Vec::new(),
+            factory_portals: Vec::new(),
+            first_missing_signal: signal,
+        })).unwrap_or(serde_json::Value::Null)),
+        "upload" => render_json_fragment(&pane.title, "coronatio.upload.fragment.v1", serde_json::json!({"schema":"coronatio.upload.history.v1","ok":true,"history":[],"firstMissingSignal":"none"})),
+        "admin" => render_json_fragment(&pane.title, "coronatio.admin.fragment.v1", serde_json::to_value(admin_session_readback()).unwrap_or(serde_json::Value::Null)),
+        _ => render_json_fragment(&pane.title, "coronatio.native.fragment.v1", serde_json::to_value(pane).unwrap_or(serde_json::Value::Null)),
+    }
+}
+
+fn render_json_fragment(title: &str, schema: &str, value: serde_json::Value) -> String {
+    let pretty = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
+    maud::html! {
+        article .crown-fragment data-fragment-schema=(schema) {
+            h2 { (title) }
+            pre data-native-readback="json" { (pretty) }
+        }
+    }.into_string()
+}
+
 async fn homeserver_validate_pin_route(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
     let supplied = body
         .get("pin")
