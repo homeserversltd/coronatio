@@ -129,7 +129,9 @@
         assert!(body.contains("data-view-panel=\"upload\""));
         assert!(body.contains("data-crown-underlay=\"fallback\""));
         assert!(body.contains(CROWN_SHELL_STYLESHEET_PATH));
+        assert!(body.contains(CROWN_HTMX_SCRIPT_PATH));
         assert!(body.contains(CROWN_SHELL_SCRIPT_PATH));
+        assert!(body.find(CROWN_HTMX_SCRIPT_PATH).unwrap() < body.find(CROWN_SHELL_SCRIPT_PATH).unwrap());
         assert!(!body.contains("fetch("));
         assert!(!body.contains("Arcadia"));
         assert!(!body.contains("YouTube"));
@@ -169,7 +171,9 @@
             assert!(shell.contains(&format!(r#"data-view-panel="{}""#, pane)), "missing viewport slot {pane}");
         }
         assert!(shell.contains(CROWN_SHELL_STYLESHEET_PATH));
+        assert!(shell.contains(CROWN_HTMX_SCRIPT_PATH));
         assert!(shell.contains(CROWN_SHELL_SCRIPT_PATH));
+        assert!(shell.find(CROWN_HTMX_SCRIPT_PATH).unwrap() < shell.find(CROWN_SHELL_SCRIPT_PATH).unwrap());
         assert!(!shell.contains("fetch("));
         assert!(!shell.contains("hx-"));
     }
@@ -222,7 +226,54 @@
         let js_body = String::from_utf8(axum::body::to_bytes(js.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(js_body.contains("selectViewport"));
         assert!(js_body.contains("data-view-panel"));
+        assert!(js_body.contains("htmxOrgan.config.allowScriptTags = false"));
+        assert!(js_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
+        assert!(js_body.contains("emitCartridgeFaultReceiptStub"));
+        assert!(js_body.contains("htmx:timeout"));
+        assert!(js_body.contains("htmx:responseError"));
         assert!(!js_body.contains("fetch("));
-        assert!(!js_body.contains("htmx"));
+    }
+
+    #[tokio::test]
+    async fn coro_002_crown_seats_vendored_htmx_and_csp_walls() {
+        let temp = test_tab_root("coro-002-htmx");
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let shell_response = router.clone()
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(shell_response.status(), StatusCode::OK);
+        let csp = shell_response
+            .headers()
+            .get(header::CONTENT_SECURITY_POLICY)
+            .and_then(|value| value.to_str().ok())
+            .unwrap();
+        assert!(csp.contains("default-src 'self'"));
+        assert!(csp.contains("script-src 'self'"));
+        assert!(csp.contains("style-src 'self'"));
+        let shell = String::from_utf8(axum::body::to_bytes(shell_response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(shell.contains(&format!(r#"script defer src="{}""#, CROWN_HTMX_SCRIPT_PATH)));
+        assert!(shell.find(CROWN_HTMX_SCRIPT_PATH).unwrap() < shell.find(CROWN_SHELL_SCRIPT_PATH).unwrap());
+        assert!(!shell.contains("hx-"));
+
+        let htmx = router.clone()
+            .oneshot(Request::builder().uri(CROWN_HTMX_SCRIPT_PATH).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(htmx.status(), StatusCode::OK);
+        let content_type = htmx.headers().get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()).unwrap();
+        assert!(content_type.starts_with("application/javascript"));
+        let htmx_body = String::from_utf8(axum::body::to_bytes(htmx.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(htmx_body.starts_with("var htmx=function()"));
+        assert!(htmx_body.contains("allowScriptTags"));
+
+        let chrome = router
+            .oneshot(Request::builder().uri(CROWN_SHELL_SCRIPT_PATH).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let chrome_body = String::from_utf8(axum::body::to_bytes(chrome.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(chrome_body.contains("htmxOrgan.config.allowScriptTags = false"));
+        assert!(chrome_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
+        assert!(chrome_body.contains("emitCartridgeFaultReceiptStub"));
     }
 
