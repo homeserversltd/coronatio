@@ -102,7 +102,7 @@
     }
 
     #[tokio::test]
-    async fn crown_shell_renders_primary_tabs_without_platform_brand_nav() {
+    async fn crown_shell_renders_compiled_vessel_without_platform_brand_nav() {
         let temp = test_tab_root("shell");
         let response = app(AppState {
             tab_root: Arc::new(temp),
@@ -117,107 +117,29 @@
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("data-product=\"Coronatio\""));
         assert!(body.contains("data-source-material=\"homeserver-main-site\""));
-        assert!(body.contains("class=\"tab-bar\""));
+        assert!(body.contains("data-crown-shell=\"maud\""));
         assert!(body.contains("role=\"tablist\""));
-        assert!(body.contains("data-pane=\"admin\""));
-        assert!(body.contains("data-pane=\"stats\""));
-        assert!(body.contains("data-pane=\"portals\""));
-        assert!(body.contains("data-pane=\"upload\""));
-        assert!(body.contains("data-pane-panel=\"admin\""));
-        assert!(body.contains("data-pane-panel=\"stats\""));
-        assert!(body.contains("data-pane-panel=\"portals\""));
-        assert!(body.contains("data-pane-panel=\"upload\""));
-        assert!(body.contains("function showPane(id)"));
-        assert!(body.contains("fetch('/api/stats')"));
-        assert!(body.contains(r#"data-admin-quarry-button-total="87""#));
-        assert!(body.contains("Hard Drive Test"));
-        assert!(body.contains("Force Update"));
-        assert!(body.contains("Admitted services"));
-        assert!(body.contains("Upload Selected Files"));
-        assert!(!body.contains("Coronatio crown shell"));
-        assert!(!body.contains("class=\"crown-card\""));
+        assert!(body.contains("data-crown-tab=\"admin\""));
+        assert!(body.contains("data-crown-tab=\"stats\""));
+        assert!(body.contains("data-crown-tab=\"portals\""));
+        assert!(body.contains("data-crown-tab=\"upload\""));
+        assert!(body.contains("data-view-panel=\"admin\""));
+        assert!(body.contains("data-view-panel=\"stats\""));
+        assert!(body.contains("data-view-panel=\"portals\""));
+        assert!(body.contains("data-view-panel=\"upload\""));
+        assert!(body.contains("data-crown-underlay=\"fallback\""));
+        assert!(body.contains(CROWN_SHELL_STYLESHEET_PATH));
+        assert!(body.contains(CROWN_SHELL_SCRIPT_PATH));
+        assert!(!body.contains("fetch("));
         assert!(!body.contains("Arcadia"));
         assert!(!body.contains("YouTube"));
     }
 
-    #[test]
-    fn native_pane_bodies_are_not_placeholder_cards() {
-        let shell = render_crown_shell();
-        for pane in PRIMARY_TABS {
-            assert!(shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
-            assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
-        }
-        assert!(shell.contains("data-stats-viewport"));
-        assert!(shell.contains(r#"class="stats-tablet""#));
-        assert!(shell.contains(r#"data-stat-element-id="disk-usage""#));
-        assert!(shell.contains(r#"data-stat-element-id="network""#));
-        assert!(shell.contains(r#"data-stat-element-id="kea-leases""#));
-        assert!(shell.contains(r#"data-stat-element-id="process-usage""#));
-        assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
-        assert!(shell.contains(r#"data-admin-quarry-button-total="87""#));
-        assert!(shell.contains("data-upload-regular=\"file-ingress\""));
-        assert!(shell.contains(r#"class="directory-browser-header""#));
-        assert!(shell.contains("🛡️ Allow"));
-        assert!(!shell.contains("First-party panes are native Rust crown law. Installed services enter through governed cartridges or source-injection recompiles."));
-    }
+    
 
 
-
-    #[test]
-    fn normal_mode_keeps_primary_tabs_visible_and_admin_only_enhances_controls() {
-        let shell = render_crown_shell();
-        for pane in ["stats", "portals", "upload"] {
-            let marker = format!(r#"data-tab-id="{}""#, pane);
-            let start = shell.find(&marker).expect("normal tab marker present");
-            let tab_start = shell[..start]
-                .rfind("<div class=\"tab")
-                .expect("tab starts before marker");
-            let tag_end = shell[start..]
-                .find('>')
-                .map(|n| start + n)
-                .expect("tab opening tag closes after marker");
-            let opening_tag = &shell[tab_start..tag_end];
-            assert!(
-                !opening_tag.contains("data-admin-only"),
-                "{pane} tab element itself must be visible outside admin mode"
-            );
-            assert!(
-                !opening_tag.contains("hidden"),
-                "{pane} tab element must not start hidden outside admin mode"
-            );
-            assert!(
-                shell.contains(&format!(r#"data-tab-star="{}""#, pane)),
-                "{pane} keeps normal star/default control"
-            );
-        }
-        assert!(shell.contains(r#"data-tab-id="admin" data-visibility="visible" data-admin-only="true""#));
-        for pane in ["stats", "portals", "upload"] {
-            assert!(shell.contains(&format!(r#"data-admin-only="true" data-tab-visibility-toggle="{}""#, pane)), "{pane} eye control is admin enhancement");
-        }
-        assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));
-        assert!(shell.contains(r#"querySelectorAll('[data-admin-only]:not([data-admin-only="false"])')"#));
-    }
-
-    #[test]
-    fn admin_regular_transition_ladder_is_cemented_in_rust_shell() {
-        let shell = render_crown_shell();
-        for marker in [
-            "function eligibleRegularTabs()",
-            "function lawfulPaneCandidate(id)",
-            "function reconcileActiveTabAfterAdminExit(previousActive)",
-            "function applyTabBarVisibility()",
-            "if (wasAdmin && !headerState.isAdmin) reconcileActiveTabAfterAdminExit(previousActive)",
-            "if (!canStarTab(button.dataset.tabStar)) return;",
-            r#"[data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }"#,
-            r#"[data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; }"#,
-        ] {
-            assert!(shell.contains(marker), "missing tab ladder marker: {marker}");
-        }
-        assert!(shell.contains("eligibleRegularTabs().length <= 2"));
-        assert!(shell.contains("tab.dataset.adminOnly === 'true') return headerState.isAdmin ? id : firstVisibleTab()"));
-        assert!(shell.contains("tab.dataset.visibility === 'hidden') return firstVisibleTab()"));
-    }
-
+    
+    
     #[test]
     fn registry_admin_mode_includes_hidden_regular_tabs_for_restoration() {
         let mut contracts = native_tab_contracts();
@@ -236,294 +158,71 @@
     }
 
     #[test]
-    fn crown_tabbar_recreates_flask_react_star_eye_and_hide_controls() {
+    fn coro_001_shell_has_layer_zero_underlay_and_native_viewport_slots() {
         let shell = render_crown_shell();
-        assert!(shell.contains("class=\"tab-bar\""));
-        assert!(shell.contains("data-admin-mode=\"true\""));
-        for pane in ["admin", "stats", "portals", "upload"] {
-            assert!(shell.contains("class=\"tab active\""));
-            assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
-            assert!(shell.contains(&format!("data-pane=\"{}\"", pane)));
+        assert!(shell.contains(r#"data-crown-shell="maud""#));
+        assert!(shell.contains(r#"data-crown-underlay="fallback""#));
+        assert!(shell.contains(r#"data-layer="0""#));
+        assert!(shell.contains(r#"data-layer="1""#));
+        for pane in PRIMARY_TABS {
+            assert!(shell.contains(&format!(r#"data-crown-tab="{}""#, pane)), "missing rail tab {pane}");
+            assert!(shell.contains(&format!(r#"data-view-panel="{}""#, pane)), "missing viewport slot {pane}");
         }
-        for pane in ["stats", "portals", "upload"] {
-            assert!(shell.contains(&format!("data-tab-visibility-toggle=\"{}\"", pane)));
-            assert!(shell.contains(&format!("data-tab-star=\"{}\"", pane)));
-        }
-        assert!(shell.contains("class=\"visibility-toggle\""));
-        assert!(shell.contains("class=\"star-button fas fa-star\""));
-        assert!(shell.contains("class=\"star-button far fa-star\""));
-        assert!(shell.contains("data-visibility=\"visible\""));
-        assert!(shell.contains("hiddenTabs"));
-        assert!(shell.contains("firstVisibleTab()"));
-        assert!(shell.contains("setStarredTab"));
-        assert!(shell.contains("applyVisibilityState"));
-        assert!(shell.contains("🙈"));
-        assert!(!shell.contains("class=\"tab-button\""));
+        assert!(shell.contains(CROWN_SHELL_STYLESHEET_PATH));
+        assert!(shell.contains(CROWN_SHELL_SCRIPT_PATH));
+        assert!(!shell.contains("fetch("));
+        assert!(!shell.contains("hx-"));
     }
 
     #[test]
-    fn crown_header_recreates_flask_react_indicators_pin_and_theme_controls() {
-        let shell = render_crown_shell();
-        assert!(shell.contains(r#"data-flask-react-quarry="Header""#));
-        assert!(shell.contains(r#"class="status-indicators""#));
-        for indicator in ["tailscale", "internet", "openvpn", "services", "power-meter"] {
-            assert!(shell.contains(&format!(r#"data-indicator="{}""#, indicator)));
-        }
-        assert!(shell.contains(r#"class="indicator ok tailscale-indicator""#));
-        assert!(shell.contains(r#"data-packed-icon="network-wired""#));
-        assert!(shell.contains(r#"data-modal-title="Tailscale Status""#));
-        assert!(shell.contains(r#"data-modal-kind="tailscale""#));
-        assert!(shell.contains("data-info-modal-backdrop"));
-        assert!(shell.contains(".theme-choice-row[hidden]"));
-        assert!(shell.contains("modalTemplate(kind)"));
-        assert!(shell.contains("wireModalFetches"));
-        assert!(shell.contains("openInfoModal"));
-        assert!(shell.contains("document.querySelectorAll('[data-indicator]')"));
-        assert!(shell.contains("data-uptime-indicator"));
-        assert!(shell.contains(r#"class="theme-button""#));
-        assert!(shell.contains("data-theme-button"));
-        assert!(shell.contains("Click to switch theme"));
-        assert!(!shell.contains("Open theme selector"));
-        assert!(shell.contains(r#"data-theme-json-source="/api/themes""#));
-        assert!(shell.contains("loadThemeCatalog()"));
-        assert!(shell.contains("fetch('/api/themes')"));
-        assert!(!shell.contains(r#"data-theme-choice="blue""#));
-        assert!(shell.contains("Current theme:"));
-        assert!(shell.contains(r#"class="admin-button""#));
-        assert!(shell.contains("Enter Admin Mode"));
-        assert!(shell.contains("Exit Admin Mode"));
-        assert!(shell.contains(r#"class="change-admin-pin-button""#));
-        assert!(shell.contains("Change PIN"));
-        assert!(shell.contains(r#"id="pin-modal-title""#));
-        assert!(shell.contains("Enter Admin Mode"));
-        assert!(shell.contains("Change Admin PIN"));
-        assert!(shell.contains(r#"placeholder="Enter PIN""#));
-        assert!(shell.contains(r#"placeholder="Current PIN""#));
-        assert!(shell.contains(r#"placeholder="New PIN""#));
-        assert!(shell.contains(r#"placeholder="Confirm new PIN""#));
-        assert!(shell.contains("coronatio.flask-react-header.v1"));
-        assert!(shell.contains("setAdminMode"));
-        assert!(shell.contains("applyTheme"));
-        for preserved in [
-            "Tailscale Status",
-            "Current Tailnet:",
-            "Enter Tailnet name",
-            "Update Tailnet",
-            "Authenticate",
-            "/api/status/tailscale/connect",
-            "/api/status/tailscale/authkey",
-            "Internet Status",
-            "Run Speed Test",
-            "/api/status/internet/speedtest",
-            "Services Status",
-            "service-status-list",
-            "/api/status/services",
-            "VPN & Transmission Configuration",
-            "VPN Status:",
-            "Transmission Status:",
-            "PIA Username",
-            "Create PIA Key",
-            "Enable Transmission over PIA VPN",
-            "/api/status/vpn/updatekey/pia",
-            "Power Consumption",
-            "power-meter-modal",
-            "5s average:",
-            "30s average:",
-            "60s average:",
-        ] {
-            assert!(shell.contains(preserved), "original header feature missing: {}", preserved);
-        }
-        for invented in [
-            "Rust crown online",
-            "Caduceus boundary protected",
-            "Source quarry: main HomeServer",
-            "Live Rust header control",
-            "Detailed backend wiring continues through Coronatio/Caduceus routes",
-            "Power meter readback, energy telemetry, and device availability",
-            "Choose the active HOMESERVER theme.",
-        ] {
-            assert!(!shell.contains(invented), "invented visible prose survived: {}", invented);
-        }
+    fn coro_001_shell_renders_registry_tabs_after_native_rail() {
+        let registry = vec![TabManifest {
+            id: "service-card".to_string(),
+            title: "Service Card".to_string(),
+            description: String::new(),
+            icon: String::new(),
+            display_name: String::new(),
+            order: 90,
+            enabled: true,
+            admin_only: true,
+            visibility: TabVisibility::default(),
+            data: serde_json::Value::Null,
+            route_prefix: "/api/tabs/service-card".to_string(),
+            static_dir: "static".to_string(),
+            service_url: Some("http://127.0.0.1:9910".to_string()),
+            health_route: Some("/health".to_string()),
+            install_mode: InstallMode::DynamicCartridge,
+        }];
+        let shell = render_crown_shell_with_registry(&registry);
+        assert!(shell.contains(r#"data-crown-tab="service-card""#));
+        assert!(shell.contains(r#"data-view-panel="service-card""#));
+        assert!(shell.contains("registry tab"));
+        assert!(shell.find(r#"data-crown-tab="testtab""#).unwrap() < shell.find(r#"data-crown-tab="service-card""#).unwrap());
     }
 
-    #[test]
-    fn crown_theme_system_uses_legacy_react_variable_membrane_across_panes() {
-        let shell = render_crown_shell();
-        for preserved in [
-            "--theme-color-primary",
-            "--theme-bg-primary",
-            "--theme-bg-secondary",
-            "--theme-text-primary",
-            "--theme-status-success",
-            "--theme-spacing-md",
-            "--theme-transition-fast",
-            "--theme-shadow-md",
-            "style[data-theme-styles]",
-            "themeToCss(theme)",
-            "themeCatalog",
-            "preferred-theme",
-            "themeData",
-            "/api/themes",
-            "data-theme-json-source",
-        ] {
-            assert!(shell.contains(preserved), "theme membrane marker missing: {}", preserved);
-        }
-        for pane in ["admin", "stats", "portals", "upload"] {
-            assert!(shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
-        }
-        assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));
-        assert!(shell.contains("aria-pressed"));
-        assert!(!shell.contains("const themeCatalog = {"));
-        assert!(!shell.contains(r#":root[data-theme="light"]"#));
-        assert!(!shell.contains("Choose the active HOMESERVER theme."));
+    #[tokio::test]
+    async fn coro_001_crown_assets_are_served_by_binary() {
+        let temp = test_tab_root("coro-001-assets");
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let css = router.clone()
+            .oneshot(Request::builder().uri(CROWN_SHELL_STYLESHEET_PATH).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(css.status(), StatusCode::OK);
+        let css_body = String::from_utf8(axum::body::to_bytes(css.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(css_body.contains("--ux-color-crown"));
+        assert!(css_body.contains("--ux-space-4"));
+        assert!(css_body.contains("--ux-radius-lg"));
+
+        let js = router
+            .oneshot(Request::builder().uri(CROWN_SHELL_SCRIPT_PATH).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(js.status(), StatusCode::OK);
+        let js_body = String::from_utf8(axum::body::to_bytes(js.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(js_body.contains("selectViewport"));
+        assert!(js_body.contains("data-view-panel"));
+        assert!(!js_body.contains("fetch("));
+        assert!(!js_body.contains("htmx"));
     }
 
-
-
-    #[test]
-    fn native_stock_testtab_is_composed_from_ux_library() {
-        let shell = render_crown_shell();
-        let registry = ux_component_registry();
-        for marker in [
-            "coronatio-composable-ux.v1",
-            "data-native-stock-testtab=\"true\"",
-            "data-react-quarry=\"premium/testTab\"",
-            "data-ux-registry=\"rust-native\"",
-            "data-showcase-tab=\"buttons\"",
-            "data-showcase-tab=\"modals\"",
-            "data-testtab-panel=\"theme-values\"",
-            "data-theme-values-panel=\"true\"",
-            "data-ux-registry-count",
-            "data-ux-component=\"theme-gradients\"",
-            "data-ux-component=\"theme-highlights\"",
-            "data-ux-component=\"theme-accents\"",
-            "data-ux-component=\"theme-role-pairs\"",
-            "data-ux-modal-demo=\"sizes\"",
-            "data-ux-modal-open=\"small\"",
-            "data-ux-modal-open=\"medium\"",
-            "data-ux-modal-open=\"fullscreen\"",
-            "data-ux-modal-size-sample=\"small\"",
-            "data-ux-modal-size-sample=\"medium\"",
-            "data-ux-modal-size-sample=\"fullscreen\"",
-            "data-ux-modal-demo-backdrop",
-            "data-ux-modal-demo-window",
-            "ux-modal-shell small",
-            "ux-modal-shell medium",
-            "ux-modal-shell fullscreen",
-            ".ux-modal-shell.fullscreen",
-            "openUxModalDemo(size)",
-            "data-ux-component=\"tabs-plain\"",
-            "data-ux-component=\"tabs-favorite\"",
-            "data-ux-component=\"tabs-favorite-visibility\"",
-            "data-ux-tab-affordance=\"plain\"",
-            "data-ux-tab-affordance=\"favorite\"",
-            "data-ux-tab-affordance=\"favorite-visibility\"",
-            "ux-tab-star",
-            "ux-tab-eye",
-            "ux-tab-faded",
-            "data-hidden-tab=\"true\"",
-            "Favorite + hide/fade strip",
-            ".ux-tab-faded, .ux-tab[data-hidden-tab=\"true\"]",
-            "expanded JSON gradient-accent",
-            "ux-button",
-            "ux-card",
-            "ux-cardlet",
-            "ux-tabs",
-            "ux-field",
-            "ux-select-pill",
-            "Dropdown Pills",
-            "right-side chevron cap",
-            "appearance: none",
-            "border-radius: var(--theme-radius-pill)",
-            ".ux-select-pill::after",
-            ".ux-select:hover",
-            "ux-badge",
-            "ux-badge-button",
-            "inset 4px 0 0 var(--accent)",
-            "Selected",
-            "selected persistent state",
-            "ux-table",
-            "ux-table-shell",
-            "ux-table-sortable",
-            "ux-table-selectable",
-            "ux-progress",
-            "data-showcase-tab=\"graphs\"",
-            "data-ux-component=\"graph-line-area\"",
-            "data-ux-component=\"graph-bar\"",
-            "data-ux-component=\"graph-donut\"",
-            "data-ux-component=\"graph-sparkline\"",
-            "ux-chart-line-path",
-            "ux-chart-bars",
-            "ux-donut",
-            "ux-sparkline",
-            "ux-card-button",
-            "ux-interactive",
-            "--theme-component-button-container",
-            "--theme-elevation-2",
-            "--theme-cardlet-hover-shadow",
-            "--theme-cardlet-press-shadow",
-            "--theme-cardlet-glimmer",
-            ".ux-tab:focus-visible",
-            "@media (hover: hover) and (pointer: fine)",
-            "@media (hover: none)",
-            "@media (prefers-reduced-motion: reduce)",
-            ".ux-toggle:hover",
-            "<code>--primary</code>, <code>--primaryHover</code>, <code>--theme-component-button-container</code>",
-            "Theme Values",
-            "live CSS token map",
-            "data-theme-value-family=\"core\"",
-            "data-theme-value-family=\"actions\"",
-            "data-theme-value-family=\"gradients\"",
-            "data-theme-value-family=\"highlights\"",
-            "data-theme-value-family=\"accents\"",
-            "data-theme-value-family=\"roles\"",
-            "data-theme-token-lab=\"true\"",
-            "Mini Theme Token Lab",
-            "data-theme-token-slider=\"--theme-control-height\"",
-            "data-theme-token-slider=\"--theme-radius-md\"",
-            "data-theme-token-slider=\"--theme-spacing-md\"",
-            "data-theme-token-slider=\"--theme-state-hover-opacity\"",
-            "data-theme-token-slider=\"--theme-focus-width\"",
-            "data-theme-token-specimen=\"--theme-control-height\"",
-            "data-theme-token-specimen=\"--theme-radius-md\"",
-            "data-theme-token-output=\"--theme-spacing-md\"",
-            "theme-token-lab-grid",
-            "theme-token-focus-specimen",
-            "hydrateThemeTokenLab()",
-            "root.style.setProperty(token, value)",
-            "--theme-component-button-container",
-            "--theme-highlight-ring",
-            "--theme-radius-pill",
-        ] {
-            assert!(shell.contains(marker), "missing TestTab UX marker: {marker}");
-        }
-        assert!(shell.contains(".ux-button {"));
-        assert!(!shell.contains("data-testtab-tab=\"services\""));
-        assert!(!shell.contains("data-testtab-tab=\"config\""));
-        assert!(!shell.contains("data-testtab-tab=\"health\""));
-        assert!(!shell.contains("data-testtab-panel=\"services\""));
-        assert!(!shell.contains("data-testtab-panel=\"config\""));
-        assert!(!shell.contains("data-testtab-panel=\"health\""));
-        assert!(!shell.contains("Service Tests"));
-        assert!(!shell.contains("Configuration</button>"));
-        assert!(!shell.contains("Health Status"));
-        assert!(shell.contains("background: var(--primary); color: var(--text);"));
-        assert!(shell.contains(".ux-button.secondary { background: var(--theme-surface-1); color: var(--text); }"));
-        assert!(shell.contains(".ux-button.secondary:hover { background: var(--theme-component-button-hover-container);"));
-        assert!(shell.contains(".ux-button.success { background: var(--success);"));
-        assert!(shell.contains("class=\"ux-cardlet\""));
-        assert!(shell.contains(".ux-cardlet:hover, .ux-card-button:hover"));
-        assert!(shell.contains(".ux-cardlet:active, .ux-card-button:active"));
-        assert!(shell.contains("ux-cardlet + ux-row"));
-        assert!(shell.contains("class=\"ux-card ux-card-button clickable\""));
-        assert!(shell.contains("class=\"ux-badge ux-badge-button primary\""));
-        assert!(shell.contains("aria-label=\"Interactive badge buttons\""));
-        assert!(shell.contains(".ux-badge-button:hover"));
-        assert!(shell.contains(".ux-badge-button:focus-visible"));
-        assert!(shell.contains(".ux-badge-button[aria-pressed=\"true\"]"));
-        assert!(shell.contains(".ux-card.clickable:hover"));
-        assert_eq!(shell.matches("data-ux-component=").count(), registry.len());
-        for component in registry {
-            assert!(shell.contains(&format!("data-ux-component=\"{}\"", component.id)), "missing registered component {}", component.id);
-        }
-    }

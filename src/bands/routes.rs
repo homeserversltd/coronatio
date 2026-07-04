@@ -1,5 +1,14 @@
-async fn crown_shell_route() -> impl IntoResponse {
-    Html(render_crown_shell())
+async fn crown_shell_route(State(state): State<AppState>) -> impl IntoResponse {
+    let tabs = load_tab_manifests(&state.tab_root).await.unwrap_or_default();
+    Html(render_crown_shell_with_registry(&tabs))
+}
+
+async fn crown_stylesheet_route() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], CROWN_SHELL_CSS)
+}
+
+async fn crown_chrome_script_route() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "application/javascript; charset=utf-8")], CROWN_SHELL_JS)
 }
 
 async fn health_route() -> impl IntoResponse {
