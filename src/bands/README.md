@@ -18,3 +18,15 @@ Coronatio is a one-to-one port before it is a new product surface. The central H
 ## Favorite and first-load manifest law
 
 Original first load is governed by the Flask tab registry and favorite system: `flask-0-7-tabdrawing.md` loads `get_starred_tab() or get_first_visible_tab()` into the root template; `flask-0-8-favoritecomponent.md` loads `/api/get_starred_tab`, updates exactly one visible non-admin favorite, and updates the star UI. Coronatio records that law in the single HomeServer config, `homeserver.json`: `tabs.starred` selects the default route and `tabs.<tab>.config` plus `tabs.<tab>.visibility` define visible/admin tab state. `/api/favorites` and `/api/get_starred_tab` project that one config truth; they do not read a Coronatio sidecar favorites JSON. The star is the favorite/default-route control. The eye is the visibility control: in admin mode it hides or shows a tab without deleting, disabling, uninstalling, or marking it failed.
+
+## Adding a crown pane
+
+Coronatio SHALL add a crown pane through this five-step ladder:
+
+1. Add one `CrownPane` literal to `native_crown_panes()` with a lowercase-hyphen `id`, an `order`, `route: /#<id>`, and `state_route: /api/panes/<id>`.
+2. Write `render_<pane>()` returning `<section class="pane" data-pane-panel="<id>" data-view-panel="<id>">` and compose it only from `ui-*` primitives proven in the Test tab showcase. The Test tab is the executable spec; copy its markup, do not invent classes.
+3. Splice the pane through a `__PLACEHOLDER__` in `render_crown_shell()` so the shell owns placement while the pane owns its body.
+4. Deliver server state as HTMX `/admit/<pane>` fragments with `Cache-Control: no-store`.
+5. Bind interactivity through delegated body listeners keyed by `data-*` attributes. A pane fragment SHALL NOT bind listeners at init time, because HTMX swaps orphan them; break-glass commit `17bf406` proves delegated chrome survives while init-time bindings die.
+
+Pane HTML lives in `r#""#` `format!` bodies; literal braces are escaped as `{{ }}`.

@@ -292,6 +292,38 @@
         assert!(chrome_body.contains("if (id === 'stats') hydrateStats();"));
     }
 
+
+    #[tokio::test]
+    async fn test_tab_uses_generic_tab_scope_and_delegated_chrome() {
+        let temp = test_tab_root("test-002-tab-scope");
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let response = router.clone().oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let shell = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        for marker in [
+            r#"data-tab-scope="test""#,
+            r#"data-tab-id="showcase""#,
+            r#"data-tab-panel="showcase""#,
+            r#"data-tab-scope="showcase""#,
+            r#"data-tab-id="buttons""#,
+            r#"data-tab-panel="buttons""#,
+        ] {
+            assert!(shell.contains(marker), "served shell missing generic tab-scope marker: {marker}");
+        }
+        assert!(!shell.contains("data-test-tab="));
+        assert!(!shell.contains("data-showcase-tab="));
+        let chrome = router.oneshot(Request::builder().uri("/static/crown/chrome.js").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(chrome.status(), StatusCode::OK);
+        let chrome_body = String::from_utf8(axum::body::to_bytes(chrome.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(chrome_body.contains("function switchScopedTabs(tabButton)"));
+        assert!(chrome_body.contains("closest('[data-tab-scope]')"));
+        assert!(chrome_body.contains("event.target.closest('[data-tab-id]')"));
+        assert!(chrome_body.contains("event.target.closest('[data-test-health-check]')"));
+        assert!(!chrome_body.contains("closest('[data-test-tab]')"));
+        assert!(!chrome_body.contains("closest('[data-showcase-tab]')"));
+        assert!(!chrome_body.contains("document.querySelectorAll('[data-test-health-check]').forEach"));
+    }
+
     #[tokio::test]
     async fn hx_001_admit_route_serves_og_pane_fragments_fresh_and_records_faults() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();

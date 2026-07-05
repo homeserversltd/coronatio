@@ -35,6 +35,41 @@
         }
     }
 
+
+    #[test]
+    fn docs_inscribe_pane_creation_ladder_and_delegated_chrome_law() {
+        let bands = std::fs::read_to_string("src/bands/README.md").unwrap();
+        let shell = std::fs::read_to_string("src/bands/shell/README.md").unwrap();
+        for marker in [
+            "## Adding a crown pane",
+            "Add one `CrownPane` literal to `native_crown_panes()`",
+            "`route: /#<id>`",
+            "`state_route: /api/panes/<id>`",
+            "The Test tab is the executable spec; copy its markup, do not invent classes.",
+            "Splice the pane through a `__PLACEHOLDER__` in `render_crown_shell()`",
+            "HTMX `/admit/<pane>` fragments with `Cache-Control: no-store`",
+            "A pane fragment SHALL NOT bind listeners at init time",
+            "break-glass commit `17bf406`",
+            "literal braces are escaped as `{{ }}`",
+        ] {
+            assert!(bands.contains(marker), "bands README missing pane ladder marker: {marker}");
+        }
+        for marker in [
+            "## Shell band law",
+            "extracting inline chrome into `/static/crown/chrome.js`",
+            "Delegated-chrome law",
+            "body-level delegated listeners keyed by stable `data-*` attributes",
+            "Pane fragments SHALL NOT attach init-time listeners",
+            "Generic tab-scope convention",
+            "[data-tab-scope=\"<scope>\"]",
+            "[data-tab-id=\"<panel>\"]",
+            "[data-tab-panel=\"<panel>\"]",
+            "zero JavaScript edits",
+        ] {
+            assert!(shell.contains(marker), "shell README missing shell law marker: {marker}");
+        }
+    }
+
     #[tokio::test]
     async fn api_root_names_coronatio_not_arcadia() {
         let temp = test_tab_root("api-root");
@@ -419,17 +454,18 @@
             "data-react-quarry=\"premium/testTab\"",
             "data-ux-library=\"og-styles-common-ui\"",
             "data-ux-registry=\"og-test-bedrock\"",
-            "data-test-tab=\"showcase\"",
-            "data-test-tab=\"services\"",
-            "data-test-tab=\"config\"",
-            "data-test-tab=\"health\"",
+            "data-tab-scope=\"test\"",
+            "data-tab-id=\"showcase\"",
+            "data-tab-id=\"services\"",
+            "data-tab-id=\"config\"",
+            "data-tab-id=\"health\"",
             "Component Showcase",
             "Services",
             "Configuration",
             "Health Status",
-            "data-test-panel=\"services\"",
-            "data-test-panel=\"config\"",
-            "data-test-panel=\"health\"",
+            "data-tab-panel=\"services\"",
+            "data-tab-panel=\"config\"",
+            "data-tab-panel=\"health\"",
             "TEST-001 LIBRARY band",
             ".ui-button",
             ".ui-toggle",
@@ -471,14 +507,14 @@
             ("modals", "Modals"),
         ];
         for (id, title) in categories {
-            assert!(shell.contains(&format!("data-showcase-tab=\"{}\"", id)), "missing category chip {id}");
+            assert!(shell.contains(&format!("data-tab-id=\"{}\"", id)), "missing category chip {id}");
             assert!(shell.contains(&format!("id=\"showcase-{}\"", id)), "missing category section {id}");
             assert!(shell.contains(title), "missing category title {title}");
         }
-        assert_eq!(shell.matches("data-showcase-tab=").count(), 18);
+        assert_eq!(shell.matches("data-category-chip=").count(), 18);
         assert_eq!(shell.matches("data-og-category-section=").count(), 18);
         assert!(!shell.contains("data-test-panel=\"theme-values\""));
         assert!(!shell.contains("Mini Theme Token Lab"));
         assert!(!shell.contains("data-theme-token-lab=\"true\""));
-        assert!(!shell.contains("data-showcase-tab=\"graphs\""));
+        assert!(!shell.contains("data-category-chip=\"graphs\""));
     }
