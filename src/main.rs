@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{header, Method, StatusCode, Uri},
     response::{Html, IntoResponse, Response},
     routing::{delete, get, post, put},
@@ -11,7 +11,7 @@ use std::{
     env,
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
-    path::PathBuf,
+    path::{Path as FsPath, PathBuf},
     process::Command,
     sync::Arc,
     thread,

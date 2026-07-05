@@ -127,15 +127,15 @@ fn shell_document_2() -> &'static str {
     .breadcrumb-item { cursor: pointer; color: var(--text); }
     .breadcrumb-item.current { cursor: default; font-weight: bold; }
     .breadcrumb-separator { color: var(--text-secondary); margin: 0 4px; }
-    .directory-tree-container { flex-grow: 1; overflow-y: auto; padding: 8px; max-height: 70vh; }
-    .directory-entry { padding: 4px 8px; cursor: pointer; border-radius: 4px; transition: background-color .15s ease-in-out; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; display: flex; align-items: center; gap: 4px; min-height: 32px; }
+    .directory-tree-container { flex-grow: 1; overflow-y: auto; padding: 8px; max-height: 70vh; width: 100%; }
+    .directory-entry { padding: 4px 8px; cursor: pointer; border-radius: 4px; transition: background-color .15s ease-in-out; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; display: flex; align-items: center; gap: 4px; min-height: 44px; }
     .directory-entry:hover { background-color: var(--primaryHover); }
     .directory-entry.selected { background-color: var(--primaryHover); font-weight: bold; color: var(--text); }
     .directory-entry.loading { opacity: .7; pointer-events: none; }
     .tree-line { background-color: var(--border); position: absolute; }
     .tree-line.vertical { width: 1px; }
     .tree-line.horizontal { height: 1px; }
-    .expand-control { cursor: pointer; margin-right: 4px; user-select: none; font-size: 12px; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; transition: background-color .2s ease; }
+    .expand-control { cursor: pointer; margin-right: 4px; user-select: none; font-size: 12px; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; transition: background-color .2s ease; flex: 0 0 24px; }
     .entry-icon { color: var(--primary); font-size: 1.1em; }
     .entry-name { color: var(--text); font-size: .95em; }
     .entry-selected { color: var(--primary); font-size: 1.1em; margin-left: auto; }

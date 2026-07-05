@@ -45,6 +45,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/stats/events".to_string(),
             "/api/stats/events/renew".to_string(),
             "/api/stats".to_string(),
+            "/api/files/browse-hierarchical".to_string(),
             "/api/tabs".to_string(),
             "/api/tabs/:tab_id/manifest".to_string(),
             "/static/vendor/chart.umd.min.js".to_string(),

@@ -17,6 +17,7 @@ fn shell_document_4() -> &'static str {
     const uploadTree = document.querySelector('[data-upload-tree]');
     const uploadBreadcrumbs = document.querySelector('[data-upload-breadcrumbs]');
     const uploadReadout = document.getElementById('upload-readout');
+    let uploadTreeEntries = [{ name: 'nas', path: '/mnt/nas', type: 'directory', hasChildren: true, isExpanded: false, children: [] }];
     function uploadFormatSize(bytes) {
       const units = ['B', 'KB', 'MB', 'GB'];
       let size = Number(bytes || 0);
@@ -78,8 +79,29 @@ fn shell_document_4() -> &'static str {
         if (mark) mark.hidden = !selected;
       });
     }
+    function findUploadTreeEntry(entries, path) {
+      for (const entry of entries || []) {
+        if (entry.path === path) return entry;
+        const child = findUploadTreeEntry(entry.children || [], path);
+        if (child) return child;
+      }
+      return null;
+    }
     function renderDirectoryEntries(entries, depth = 0) {
       return (entries || []).map(entry => `<div class="directory-entry ${entry.path === uploadState.currentPath ? 'selected' : ''}" data-directory-path="${entry.path}" role="treeitem" aria-selected="${entry.path === uploadState.currentPath}" aria-expanded="${entry.hasChildren ? !!entry.isExpanded : 'false'}" style="padding-left:${24 * depth + 12}px">${depth > 0 ? '<div class="tree-line horizontal"></div>' : ''}<span class="expand-control" aria-label="${entry.isExpanded ? 'Collapse' : 'Expand'}">${entry.hasChildren ? (entry.isLoading ? '⟳' : (entry.isExpanded ? '▼' : '▶')) : ''}</span><span class="entry-icon">📁</span><span class="entry-name">${entry.name}</span><span class="entry-selected" aria-hidden="true" ${entry.path === uploadState.currentPath ? '' : 'hidden'}>✓</span></div>${entry.isExpanded ? renderDirectoryEntries(entry.children || [], depth + 1) : ''}`).join('');
+    }
+    function wireUploadTreeRows() {
+      uploadTree?.querySelectorAll('.directory-entry').forEach(row => {
+        const path = row.dataset.directoryPath || '/mnt/nas';
+        row.addEventListener('click', event => { event.stopPropagation(); selectUploadPath(path); });
+        row.querySelector('.expand-control')?.addEventListener('click', event => {
+          event.stopPropagation();
+          const node = findUploadTreeEntry(uploadTreeEntries, path);
+          if (!node || !node.hasChildren) return;
+          if (node.isExpanded) { node.isExpanded = false; if (uploadTree) uploadTree.innerHTML = renderDirectoryEntries(uploadTreeEntries); wireUploadTreeRows(); selectUploadPath(uploadState.currentPath); return; }
+          loadUploadDirectory(path, true);
+        });
+      });
     }
     async function loadUploadDirectory(path = '/mnt/nas', expand = false) {
       const loading = document.querySelector('[data-upload-directory-loading]');
@@ -88,9 +110,14 @@ fn shell_document_4() -> &'static str {
       if (error) error.hidden = true;
       try {
         const data = await fetch('/api/files/browse-hierarchical?path=' + encodeURIComponent(path) + '&expand=' + expand).then(r => r.json());
-        const entries = data.entries && data.entries.length ? data.entries : [{ name: 'nas', path: '/mnt/nas', type: 'directory', hasChildren: true, isExpanded: false, children: [] }];
-        if (uploadTree) uploadTree.innerHTML = renderDirectoryEntries(entries);
-        uploadTree?.querySelectorAll('.directory-entry').forEach(row => row.addEventListener('click', event => { event.stopPropagation(); selectUploadPath(row.dataset.directoryPath || '/mnt/nas'); }));
+        const entries = data.entries || [];
+        if (path === '/mnt/nas') uploadTreeEntries = [{ name: 'nas', path: '/mnt/nas', type: 'directory', hasChildren: data.hasChildren !== false, isExpanded: true, children: entries }];
+        else {
+          const node = findUploadTreeEntry(uploadTreeEntries, path);
+          if (node) { node.children = entries; node.hasChildren = data.hasChildren !== false; node.isExpanded = true; }
+        }
+        if (uploadTree) uploadTree.innerHTML = renderDirectoryEntries(uploadTreeEntries);
+        wireUploadTreeRows();
         selectUploadPath(uploadState.currentPath);
       } catch (err) {
         if (error) { error.hidden = false; error.textContent = '⚠️ NAS Storage Unavailable'; }
@@ -461,9 +488,6 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     }
     function renderPortalCard(portal, factoryNames) {
       const destination = portalDestination(portal);
-      const factory = factoryNames.includes(portal.name);
-      const services = (portal.services || []).map(service => `<span class="portal-chip">${escapeHtml(service)}</span>`).join('');
-      const port = portal.port ? `<span class="portal-chip">:${escapeHtml(portal.port)}</span>` : '';
       const serviceData = encodeURIComponent(JSON.stringify(portal.services || []));
       const adminControls = portal.type === 'link' ? '' : `<div class="portal-admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="${serviceData}">
         <div class="admin-controls-row"><button data-service-action="start">Start</button><button data-service-action="stop">Stop</button><button data-service-action="restart">Restart</button></div>
@@ -479,7 +503,6 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
             <h2 class="portal-name">${escapeHtml(portal.name)}</h2>
             <p class="portal-description">${escapeHtml(portal.description || '')}</p>
           </div>
-          <div class="portal-service-row">${factory ? '<span class="portal-chip">factory</span>' : '<span class="portal-chip">custom</span>'}${isVisible ? '' : '<span class="portal-chip">hidden</span>'}${port}${services}</div>
           ${adminControls}
         </article>
       </div>`;
