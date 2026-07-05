@@ -69,8 +69,8 @@ fn native_crown_panes() -> Vec<CrownPane> {
         CrownPane {
             id: "test".to_string(),
             title: "Test".to_string(),
-            role: "original test tab".to_string(),
-            summary: "Original HOMESERVER Test tab placeholder until the pane body is ported.".to_string(),
+            role: "stock UX laboratory".to_string(),
+            summary: "Native stock component showcase and theme truth surface built from composable UX primitives.".to_string(),
             order: 60,
             admin_only: false,
             install_mode: InstallMode::FirstPartyNative,
@@ -109,17 +109,6 @@ fn native_crown_panes() -> Vec<CrownPane> {
             install_mode: InstallMode::FirstPartyNative,
             route: "/#youtube".to_string(),
             state_route: "/api/panes/youtube".to_string(),
-        },
-        CrownPane {
-            id: "testtab".to_string(),
-            title: "TestTab".to_string(),
-            role: "stock UX laboratory".to_string(),
-            summary: "Native stock component showcase and theme truth surface built from composable UX primitives.".to_string(),
-            order: 100,
-            admin_only: true,
-            install_mode: InstallMode::FirstPartyNative,
-            route: "/#testtab".to_string(),
-            state_route: "/api/panes/testtab".to_string(),
         },
     ]
 }

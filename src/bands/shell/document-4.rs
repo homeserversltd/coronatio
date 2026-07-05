@@ -531,7 +531,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     }
 
 
-    // TEST-001: og TestTab UX-library chrome is allowed here: sub-tab/category switching, demo modal, demo readbacks.
+    // TEST-001: og Test UX-library chrome is allowed here: sub-tab/category switching, demo modal, demo readbacks.
     function switchScopedTabs(tabSelector, panelSelector, attrName, selectedName) {
       document.querySelectorAll(tabSelector).forEach(tab => {
         const selected = tab.dataset[attrName] === selectedName;
@@ -541,7 +541,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       });
       document.querySelectorAll(panelSelector).forEach(panel => panel.classList.toggle('active', panel.dataset[attrName.replace('Tab','Panel')] === selectedName));
     }
-    document.querySelectorAll('[data-testtab-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-testtab-tab]', '[data-testtab-panel]', 'testtabTab', tab.dataset.testtabTab)));
+    document.querySelectorAll('[data-test-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-test-tab]', '[data-test-panel]', 'testTab', tab.dataset.testTab)));
     document.querySelectorAll('[data-showcase-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-showcase-tab]', '[data-showcase-panel]', 'showcaseTab', tab.dataset.showcaseTab)));
     document.querySelectorAll('[data-ui-slider]').forEach(slider => slider.addEventListener('input', () => slider.closest('.showcase-item')?.querySelector('[data-slider-value]') && (slider.closest('.showcase-item').querySelector('[data-slider-value]').textContent = slider.value)));
     document.querySelectorAll('[data-ui-time-picker]').forEach(input => input.addEventListener('input', () => document.querySelector('[data-ui-time-output]') && (document.querySelector('[data-ui-time-output]').textContent = input.value)));
@@ -607,9 +607,9 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         apply();
       });
     }
-    document.querySelectorAll('[data-testtab-health-check]').forEach(button => button.addEventListener('click', () => {
-      const out = document.querySelector('[data-testtab-health-output]');
-      if (out) out.textContent = JSON.stringify({ schema: 'coronatio.testtab.health.v1', status: 'ready', dependencies: { rust_shell: true, theme_catalog: Boolean(themeCatalog?.themes), ux_library: true }, theme: headerState.theme }, null, 2);
+    document.querySelectorAll('[data-test-health-check]').forEach(button => button.addEventListener('click', () => {
+      const out = document.querySelector('[data-test-health-output]');
+      if (out) out.textContent = JSON.stringify({ schema: 'coronatio.test.health.v1', status: 'ready', dependencies: { rust_shell: true, theme_catalog: Boolean(themeCatalog?.themes), ux_library: true }, theme: headerState.theme }, null, 2);
     }));
 
     hydrateFavoriteManifest();

@@ -68,7 +68,7 @@
             .await
             .unwrap();
         let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"]);
+        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"]);
         assert_eq!(root.first_party_panes.len(), PRIMARY_TABS.len());
     }
 
@@ -97,7 +97,7 @@
         assert!(body.contains("Stats"));
         assert!(body.contains("Portals"));
         assert!(body.contains("Upload"));
-        assert!(body.contains("TestTab"));
+        assert!(body.contains("Test"));
         assert!(body.contains("backBlaze"));
         assert!(body.contains("Wake on LAN"));
         assert!(body.contains("YouTube"));
@@ -250,7 +250,7 @@
         let shell = render_crown_shell();
         assert!(shell.contains("class=\"tab-bar\""));
         assert!(shell.contains("data-admin-mode=\"true\""));
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"] {
             assert!(shell.contains("class=\"tab active\""));
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
             assert!(shell.contains(&format!("data-pane=\"{}\"", pane)));
@@ -394,7 +394,7 @@
         ] {
             assert!(shell.contains(preserved), "theme membrane marker missing: {}", preserved);
         }
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"] {
             assert!(shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
         }
         assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));
@@ -407,24 +407,29 @@
 
 
     #[test]
-    fn native_stock_testtab_is_og_bedrock_port() {
+    fn native_stock_test_is_og_bedrock_port() {
         let shell = render_crown_shell();
+        let retired_id = ["test", "tab"].concat();
+        assert!(!shell.contains(&format!(r#"data-pane-panel=\"{}\""#, retired_id)));
+        assert!(!shell.contains(&format!(r#"data-tab-id=\"{}\""#, retired_id)));
+        assert!(!shell.contains(&format!(r#"id=\"pane-{}\""#, retired_id)));
+        assert!(!shell.contains(r#"data-og-stub-pane=\"test\""#));
         for marker in [
-            "data-native-stock-testtab=\"true\"",
+            "data-native-stock-test=\"true\"",
             "data-react-quarry=\"premium/testTab\"",
             "data-ux-library=\"og-styles-common-ui\"",
-            "data-ux-registry=\"og-testtab-bedrock\"",
-            "data-testtab-tab=\"showcase\"",
-            "data-testtab-tab=\"services\"",
-            "data-testtab-tab=\"config\"",
-            "data-testtab-tab=\"health\"",
+            "data-ux-registry=\"og-test-bedrock\"",
+            "data-test-tab=\"showcase\"",
+            "data-test-tab=\"services\"",
+            "data-test-tab=\"config\"",
+            "data-test-tab=\"health\"",
             "Component Showcase",
             "Services",
             "Configuration",
             "Health Status",
-            "data-testtab-panel=\"services\"",
-            "data-testtab-panel=\"config\"",
-            "data-testtab-panel=\"health\"",
+            "data-test-panel=\"services\"",
+            "data-test-panel=\"config\"",
+            "data-test-panel=\"health\"",
             "TEST-001 LIBRARY band",
             ".ui-button",
             ".ui-toggle",
@@ -438,12 +443,12 @@
             "text-box",
             ".progress-bar",
             ".ui-table",
-            "// TEST-001: og TestTab UX-library chrome is allowed here",
+            "// TEST-001: og Test UX-library chrome is allowed here",
             "data-ux-modal-open=\"small\"",
             "data-ux-modal-open=\"medium\"",
             "data-ux-modal-open=\"fullscreen\"",
         ] {
-            assert!(shell.contains(marker), "missing og TestTab marker: {marker}");
+            assert!(shell.contains(marker), "missing og Test marker: {marker}");
         }
         let categories = [
             ("buttons", "Buttons"),
@@ -472,7 +477,7 @@
         }
         assert_eq!(shell.matches("data-showcase-tab=").count(), 18);
         assert_eq!(shell.matches("data-og-category-section=").count(), 18);
-        assert!(!shell.contains("data-testtab-panel=\"theme-values\""));
+        assert!(!shell.contains("data-test-panel=\"theme-values\""));
         assert!(!shell.contains("Mini Theme Token Lab"));
         assert!(!shell.contains("data-theme-token-lab=\"true\""));
         assert!(!shell.contains("data-showcase-tab=\"graphs\""));

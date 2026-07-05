@@ -35,7 +35,7 @@ fn render_crown_shell() -> String {
     let shell = [shell_document_1(), shell_document_2(), shell_document_3(), shell_document_4()].concat();
     let shell = shell
         .replace("__NAV__", &nav)
-        .replace("__TESTTAB__", &render_testtab())
+        .replace("__TEST__", &render_test_showcase())
         .replace("__ADMIN_SSH_PASSWORD_CARD__", &render_admin_service_card_html("ssh-password-authentication"))
         .replace("__ADMIN_SSH_SERVICE_CARD__", &render_admin_service_card_html("ssh-service"))
         .replace("__ADMIN_SAMBA_SERVICE_CARD__", &render_admin_service_card_html("samba-file-sharing"))

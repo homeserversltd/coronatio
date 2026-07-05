@@ -429,7 +429,7 @@ fn shell_document_1() -> &'static str {
     .modal-titlebar { background-color: var(--primaryHover); border-bottom: 1px solid var(--border); padding: 10px 14px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .modal-body-port { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 
-    /* Coronatio composable UX library: stock TestTab composes these primitives. */
+    /* Coronatio composable UX library: stock Test composes these primitives. */
     .ux-surface { color: var(--text); font-family: var(--theme-font-family); }
     .ux-stack { display: grid; gap: var(--theme-grid-gap); }
     .ux-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--theme-spacing-sm); }
