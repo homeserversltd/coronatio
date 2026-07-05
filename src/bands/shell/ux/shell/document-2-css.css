@@ -1,0 +1,108 @@
+    .modal-actions, .modal-toolbar, .modal-pager, .update-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .modal-toolbar { justify-content: flex-start; border-top: none; margin-top: 0; padding-top: 0; }
+    .modal-button, .refresh-button { padding: 10px 15px; border-radius: 5px; border: 1px solid var(--border); background-color: var(--primary); display: inline-flex; align-items: center; gap: 8px; }
+    .modal-button:hover, .refresh-button:hover { background-color: var(--primaryHover); transform: translateY(-1px); }
+    .view-tabs { display: flex; gap: 5px; position: relative; bottom: -1px; }
+    .tab-button { padding: 8px 16px; border: 1px solid var(--border); border-bottom: none; background-color: var(--primary); color: var(--text); border-radius: 6px 6px 0 0; }
+    .tab-button.active { background-color: var(--background); z-index: 2; }
+    .update-status-container { display: flex; align-items: center; gap: 12px; padding: 15px 20px; border-radius: 6px; font-weight: 600; font-size: 1.1rem; background-color: var(--primaryHover); color: var(--warning); border: 1px solid var(--warning); }
+    .modules-table, .log-frame { width: 100%; border-collapse: collapse; background-color: var(--primary); border-radius: 6px; overflow: hidden; }
+    .modules-table th, .modules-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; font-size: .85rem; }
+    .log-frame { min-height: 76px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--secondary); }
+    .admin-quarry-note { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+    .stats-tablet { display: flex; flex-direction: column; gap: 24px; padding: 16px; }
+    .stat-element { position: relative; padding: 8px; border-radius: 8px; background-color: var(--background); transition: all 0.2s ease-out; box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border); }
+    .stat-element[data-visible="true"] { background-color: var(--background); }
+    .stat-element[data-visible="false"] { background-color: var(--hiddenTabBackground); }
+    .stat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .stat-title { margin: 0; color: var(--text); font-size: 1rem; font-weight: 500; flex-grow: 1; text-align: center; }
+    .stat-content { display: flex; flex-direction: column; gap: 16px; }
+    .stat-info { padding: 8px; background-color: var(--hiddenTabBackground); border-radius: 4px; font-size: .9rem; color: var(--text); }
+    .visibility-toggle { padding: .35rem .45rem; min-width: 34px; }
+    .cpu-stats-container, .network-stats-container, .disk-io-chart, .memory-stats, .disk-usage-stats, .kea-leases-table, .process-usage-list { width: 100%; }
+    .cpu-chart, .network-speed-chart, .stat-chart { width: 100%; height: 180px; margin: 0; }
+    .chart-container { position: relative; width: 100%; height: 180px; margin: 0; }
+    .coronatio-chart-canvas { display: block; width: 100% !important; height: 180px !important; }
+    .recharts-wrapper { width: 100%; height: 180px; position: relative; }
+    .recharts-surface { width: 100%; height: 180px; overflow: visible; display: block; }
+    .recharts-cartesian-grid line { stroke: var(--border) !important; stroke-opacity: .8; stroke-dasharray: 3 3; }
+    .recharts-cartesian-axis text { fill: var(--hiddenTabText); font-size: 11px; }
+    .recharts-line-curve { vector-effect: non-scaling-stroke; }
+    .recharts-legend-wrapper, .custom-legend { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; color: var(--text); font-size: .85rem; padding: 8px; }
+    .recharts-default-tooltip { background-color: var(--hiddenTabBackground) !important; border: 1px solid var(--border) !important; border-radius: 4px !important; padding: 8px !important; box-shadow: 0 2px 4px rgba(0,0,0,.1) !important; }
+    .load-averages { display: flex; flex-direction: column; gap: .5rem; padding: .5rem; border-radius: 4px; }
+    .load-average-values { display: flex; justify-content: space-around; gap: 2rem; padding: .5rem; color: var(--text); }
+    .load-average-item { display: flex; gap: .5rem; align-items: center; }
+    .load-label { color: var(--text); font-weight: 500; }
+    .load-value { color: var(--text); margin-left: .5rem; }
+    .network-interfaces { background: var(--tabContentBackground); border-radius: 4px; padding: 1rem; max-height: 260px; overflow: auto; }
+    .network-interfaces-table, .kea-leases-table table { width: 100%; border-collapse: collapse; color: var(--text); }
+    .network-interfaces-table th { background-color: var(--hiddenTabBackground); text-align: left; padding: .5rem; font-weight: 500; color: var(--accent); }
+    .network-interfaces-table th, .network-interfaces-table td { border: 1px solid var(--border); }
+    .network-interfaces-table td { padding: .5rem; }
+    .interface-name { font-weight: 500; }
+    .interface-label { color: var(--hiddenTabText); font-size: .9em; }
+    .data-cell { font-family: var(--monoFont); }
+    .device-controls { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; padding: 8px; background: var(--hiddenTabBackground); border-radius: 4px; }
+    .device-control { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--background); border-radius: 4px; font-size: .9rem; }
+    .device-name { font-weight: 500; margin-right: 8px; color: var(--text); }
+    .device-checkboxes { display: flex; gap: 8px; }
+    .device-control label { display: flex; align-items: center; gap: 4px; color: var(--text); cursor: pointer; }
+    .memory-stats { display: flex; flex-direction: column; gap: 16px; }
+    .memory-current { display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+    .memory-current:last-child { border-bottom: none; }
+    .memory-label { font-size: .85rem; font-weight: 500; color: var(--text); margin-bottom: -4px; }
+    .memory-bar, .disk-usage-bar, .process-bar { width: 100%; height: 24px; background-color: var(--hiddenTabBackground); border-radius: 12px; overflow: hidden; position: relative; }
+    .memory-bar-fill, .disk-usage-fill { height: 100%; background-color: var(--secondary); border-radius: 12px; transition: width .3s ease-out; display: flex; align-items: center; justify-content: center; min-width: 40px; }
+    .memory-bar-fill-swap { background-color: var(--accent); }
+    .memory-text { color: var(--background); font-size: .85rem; font-weight: 500; text-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .memory-details, .disk-usage-details { display: flex; justify-content: space-between; gap: 8px; font-size: .85rem; color: var(--text); padding: 4px 8px; }
+    .disk-usage-stats { display: flex; flex-direction: column; gap: 16px; padding: 8px; }
+    .disk-usage-item { display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+    .disk-usage-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .disk-usage-header { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; margin-bottom: 4px; }
+    .disk-device { font-weight: 500; color: var(--text); font-size: .9rem; }
+    .disk-mountpoint { font-style: italic; color: var(--hiddenTabText); font-size: .85rem; }
+    .kea-leases-table { max-height: 360px; overflow: auto; }
+    .kea-leases-table th, .kea-leases-table td { border: 1px solid var(--border); padding: 8px; text-align: left; min-width: 120px; }
+    .kea-leases-table th { background-color: var(--hiddenTabBackground); color: var(--text); }
+    .kea-leases-table th:nth-child(4), .kea-leases-table td:nth-child(4) { min-width: 150px !important; width: auto !important; white-space: nowrap; }
+    .device-note-cell { display: flex; align-items: center; gap: 8px; min-width: 200px; min-height: 32px; padding: 4px 0; }
+    .note-text { flex: 1; color: var(--text); font-size: .9rem; min-height: 24px; display: flex; align-items: center; }
+    .edit-note-button { padding: 4px 8px; background: none; border: none; color: var(--text); opacity: .6; cursor: pointer; transition: opacity .2s; }
+    .edit-note-button:hover { opacity: 1; }
+    .process-usage-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; position: relative; z-index: 1; }
+    .process-bar { width: 100%; height: 24px; background-color: var(--hiddenTabBackground); border-radius: 12px; overflow: hidden; position: relative; z-index: 1; }
+    .process-bar-fill { height: 100%; background-color: var(--primaryHover); border-radius: 12px; transition: width .3s ease-out; position: absolute; left: 0; top: 0; }
+    .process-text-container { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; z-index: 1; }
+    .process-name { color: var(--text); font-size: .85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .process-usage { color: var(--text); font-size: .85rem; font-weight: 500; margin-left: 8px; }
+    .stat-element[data-visible="false"] .stat-title, .stat-element[data-visible="false"] .stat-info { color: var(--secondary); opacity: .7; }
+    .cpu-chart, .network-speed-chart, .stat-chart { height: 180px; min-height: 180px; overflow: visible; }
+    .disk-io-chart .chart-container { min-height: 180px; }
+    .recharts-wrapper { height: 180px; min-height: 180px; overflow: visible; }
+    .recharts-surface { height: 180px; max-height: 180px; }
+    .recharts-legend-wrapper { margin-top: 6px; min-height: 28px; align-items: center; }
+    .recharts-legend-item { display: inline-flex; align-items: center; gap: 4px; color: var(--text); }
+    .recharts-cartesian-axis-tick-value, .recharts-surface text { fill: var(--hiddenTabText) !important; color: var(--hiddenTabText); }
+    .network-stats-container, .disk-io-chart { display: flex; flex-direction: column; gap: 16px; }
+    .network-interfaces { margin-top: 0; }
+    @media (max-width: 768px) { .key-manager-content, .disk-manager-container { flex-direction: column; } .system-controls-btn { width: 100%; max-width: 180px; } .admin-modal-shelf { grid-template-columns: 1fr; } }
+    button, .action-link { border: 1px solid var(--border); border-radius: 6px; padding: .55rem .7rem; background: var(--primary); color: var(--text); font-weight: 700; cursor: pointer; text-decoration: none; }
+    button.secondary, .action-link.secondary { background: transparent; color: var(--text); }
+    .warning { color: var(--warning); }
+    .error { color: var(--error); }
+    .success { color: var(--success); }
+    /* UXPORT-001: upload pane declarations live only in the document-1 LIBRARY band after declaration-diff receipts. */
+    [data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"]) { display: none !important; }
+    [data-admin-mode="true"] [data-admin-only]:not([data-admin-only="false"]) { display: revert; }
+    [data-admin-only]:not([data-admin-only="false"]) { }
+    @media (max-width: 760px) {
+      .top-bar { align-items: stretch; flex-direction: column; padding: .75rem 1rem; }
+      .header-top-row { flex-direction: column; align-items: stretch; }
+      .header-left, .header-center, .header-right { justify-content: center; }
+      .theme-button, .change-admin-pin-button, .admin-button { flex: 1 1 auto; min-width: 0; }
+      .tab-bar, .content { padding-left: 12px; padding-right: 12px; }
+      .portal-grid, .pane-grid { grid-template-columns: 1fr; }
+    }

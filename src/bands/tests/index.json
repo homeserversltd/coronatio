@@ -5,7 +5,8 @@
     "part-02.rs",
     "part-03.rs",
     "part-04.rs",
-    "part-05.rs"
+    "part-05.rs",
+    "part-06.rs"
   ],
   "purpose": "Thin test face; child test bands preserve crate-private access while staying under line pressure."
 }
