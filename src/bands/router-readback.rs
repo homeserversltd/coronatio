@@ -273,14 +273,42 @@ async fn admit_tab_route(State(state): State<AppState>, Path(tab_id): Path<Strin
 }
 
 async fn admit_registry_manifest(state: &AppState, manifest: TabManifest) -> Response {
-    if manifest.client_class != ClientClass::Fragment {
-        return fragment_fault(StatusCode::BAD_REQUEST, &manifest.id, CartridgeFaultKind::UpstreamError);
+    match manifest.client_class {
+        ClientClass::Fragment => {
+            if let Some(service_url) = manifest.service_url.as_deref().filter(|value| !value.trim().is_empty()) {
+                let url = format!("{}{}", service_url.trim_end_matches('/'), manifest.fragment_path.as_str());
+                return fetch_cartridge_fragment(&manifest.id, &url).await;
+            }
+            read_static_cartridge_fragment(state, &manifest).await
+        }
+        ClientClass::Iframe => Html(render_iframe_guest_fragment(&manifest)).into_response(),
     }
+}
+
+fn iframe_guest_src(manifest: &TabManifest) -> String {
     if let Some(service_url) = manifest.service_url.as_deref().filter(|value| !value.trim().is_empty()) {
-        let url = format!("{}{}", service_url.trim_end_matches('/'), manifest.fragment_path.as_str());
-        return fetch_cartridge_fragment(&manifest.id, &url).await;
+        return format!("{}{}", service_url.trim_end_matches('/'), manifest.fragment_path.as_str());
     }
-    read_static_cartridge_fragment(state, &manifest).await
+    format!("/tabs/{}/{}", manifest.id, manifest.fragment_path.trim_start_matches('/'))
+}
+
+fn render_iframe_guest_fragment(manifest: &TabManifest) -> String {
+    let title = if manifest.title.trim().is_empty() { &manifest.id } else { &manifest.title };
+    let src = iframe_guest_src(manifest);
+    maud::html! {
+        article .crown-fragment .crown-iframe-guest data-fragment-schema="coronatio.iframe-guest.v1" data-reference-cartridge=(manifest.id) data-client-class="iframe" {
+            header .crown-iframe-guest__chrome {
+                h2 { (title) }
+                span .crown-iframe-guest__chip { "iframe guest" }
+            }
+            iframe
+                class="crown-iframe-guest__frame"
+                title=(title)
+                src=(src)
+                sandbox="allow-scripts allow-same-origin allow-forms"
+                referrerpolicy="no-referrer" {}
+        }
+    }.into_string()
 }
 
 async fn fetch_cartridge_fragment(tab_id: &str, url: &str) -> Response {

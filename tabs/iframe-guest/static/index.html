@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Iframe Guest Reference</title>
+</head>
+<body data-iframe-guest="reference">
+  <main>
+    <h1>Iframe Guest Reference</h1>
+    <p id="sandbox-proof">script pending</p>
+  </main>
+  <script>
+    document.body.dataset.sandboxScriptRan = 'true';
+    document.getElementById('sandbox-proof').textContent = 'script ran inside iframe sandbox';
+    try { window.parent.document.documentElement.dataset.iframeGuestTouchedCrown = 'forbidden'; }
+    catch (error) { document.body.dataset.crownDocumentAccess = 'blocked'; }
+  </script>
+</body>
+</html>

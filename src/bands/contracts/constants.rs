@@ -280,6 +280,11 @@ struct TabManifest {
     install_mode: InstallMode,
 }
 
+/// Guest class ladder: iframe guest → fragment guest → native pane.
+/// Iframe guests prove isolated browsing context under a locked sandbox; fragment
+/// guests prove inert hypermedia plus crown `--ux-*` token composition; native
+/// panes prove full Cibation-admitted crown source ownership. The crown is the
+/// vessel body: every foreign spark enters a husk before it can approach source.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
 enum ClientClass {
