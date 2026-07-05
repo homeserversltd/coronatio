@@ -58,6 +58,8 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/stats".to_string(),
             "/api/faults".to_string(),
             "/admit/:tab_id".to_string(),
+            "/admit/admin/toggle/:toggle_id".to_string(),
+            "/admit/admin/action/:action_id".to_string(),
             "/admit/upload/tree".to_string(),
             "/api/files/browse-hierarchical".to_string(),
             "/api/tabs".to_string(),

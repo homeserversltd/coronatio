@@ -42,6 +42,8 @@ fn shell_document_3() -> &'static str {
         adminButton.textContent = headerState.isAdmin ? 'Exit Admin Mode' : 'Enter Admin Mode';
       }
       if (appRoot) appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
+      if (headerState.isAdmin) localStorage.setItem('coronatioAdminToken', 'coronatio-session-token');
+      else localStorage.removeItem('coronatioAdminToken');
       if (tabBar) tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
       document.querySelectorAll('[data-admin-only]:not([data-admin-only="false"])').forEach(el => {
         el.hidden = !headerState.isAdmin;
@@ -352,11 +354,23 @@ fn shell_document_3() -> &'static str {
       if (!headerState.isAdmin) { modalMessage.textContent = 'Must be in admin mode to change PIN'; return; }
       openPinModal('change');
     });
+    document.body.addEventListener('htmx:configRequest', event => {
+      const token = localStorage.getItem('coronatioAdminToken');
+      if (token) event.detail.headers['X-Admin-Token'] = token;
+    });
     document.querySelector('[data-pin-cancel]')?.addEventListener('click', closePinModal);
     document.querySelector('[data-pin-confirm-button]')?.addEventListener('click', async () => {
       if (modalMode === 'change' && (!changeCurrentPinInput.value || !newPinInput.value || !confirmPinInput.value)) { modalMessage.textContent = 'Please fill in all fields'; return; }
       if (modalMode === 'change' && newPinInput.value !== confirmPinInput.value) { modalMessage.textContent = 'New PINs do not match'; return; }
       if (modalMode === 'enter' && !currentPinInput.value) { modalMessage.textContent = 'Enter PIN'; return; }
+      if (modalMode === 'enter') {
+        try {
+          const response = await fetch('/api/validatePin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || !result.valid) { modalMessage.textContent = 'Invalid PIN'; return; }
+          localStorage.setItem('coronatioAdminToken', result.token || 'coronatio-session-token');
+        } catch (_) { modalMessage.textContent = 'PIN check unavailable'; return; }
+      }
       setAdminMode(true);
       modalMessage.textContent = modalMode === 'change' ? 'PIN changed successfully' : '';
       if (modalMode === 'enter') closePinModal();

@@ -418,6 +418,38 @@
     }
 
     #[tokio::test]
+    async fn validate_pin_reads_homeserver_json_override_before_etc() {
+        let temp = test_tab_root("pin-json-override");
+        let config_path = temp.join("homeserver.json");
+        std::fs::write(&config_path, r#"{
+          "global": { "admin": { "pin": "2468" } }
+        }"#).unwrap();
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config_path);
+        let response = app(AppState { tab_root: Arc::new(temp) })
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/validatePin")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"pin":"2468"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let data: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(data["schema"], "coronatio.homeserver.auth.pin.v1");
+        assert_eq!(data["valid"], true);
+        assert_eq!(data["firstMissingSignal"], "none");
+        assert_eq!(
+            data["source"].as_str().unwrap(),
+            format!("{} global.admin.pin", config_path.display())
+        );
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+    }
+
+    #[tokio::test]
     async fn portal_image_route_serves_original_portal_icons() {
         let temp = test_tab_root("portal-images");
         let images = temp.join("images");

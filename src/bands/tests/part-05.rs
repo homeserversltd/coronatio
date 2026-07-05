@@ -525,3 +525,114 @@
         assert!(shell.contains(r#"data-tab-id="stats" data-visibility="visible" hx-get="/admit/stats" hx-target="[data-view-panel='stats']" hx-swap="innerHTML" hx-trigger="load, click""#));
     }
 
+
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn hx_exemplar_admin_toggle_post_rerenders_real_state_card() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let temp = test_tab_root("hx-admin-toggle");
+        let sshd = temp.join("sshd_config");
+        std::fs::write(&sshd, "PasswordAuthentication no\n").unwrap();
+        std::env::set_var("CORONATIO_SSHD_CONFIG_FIXTURE", &sshd);
+        std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
+        let response = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-toggle-app")) })
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/admit/admin/toggle/ssh-password-authentication")
+                    .header("X-Admin-Token", "coronatio-session-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        std::env::remove_var("CORONATIO_SSHD_CONFIG_FIXTURE");
+        std::env::remove_var("CADUCEUS_URL");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get(header::CACHE_CONTROL).and_then(|value| value.to_str().ok()), Some("no-store"));
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains(r#"data-admin-toggle-card="ssh-password-authentication""#), "{body}");
+        assert!(body.contains(r#"data-real-state="Disabled""#), "{body}");
+        assert!(body.contains("sshd_config PasswordAuthentication readback"), "{body}");
+        assert!(body.contains(r#"hx-post="/admit/admin/toggle/ssh-password-authentication""#), "{body}");
+        assert!(body.contains("caduceus-unreachable"), "{body}");
+        assert!(body.contains(r#"data-og-affordance="toast-mapped-to-result-strip""#), "{body}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn hx_exemplar_admin_non_admin_mutation_returns_membrane_refusal_fragment() {
+        let response = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-refusal")) })
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/admit/admin/toggle/ssh-service")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains(r#"data-admin-membrane-refusal="true""#), "{body}");
+        assert!(body.contains("Enter Admin Mode"), "{body}");
+        assert!(body.contains("admin-session-required"), "{body}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn hx_exemplar_admin_action_strip_routes_and_og_affordance_markup() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-actions")) });
+        for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "view-logs", "install-certificate"] {
+            let method = if action == "view-logs" { "GET" } else { "POST" };
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(format!("/admit/admin/action/{action}"))
+                        .header("X-Admin-Token", "coronatio-session-token")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{action}");
+            let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            assert!(body.contains(r#"data-admin-action-result-fragment="#), "{action}: {body}");
+            assert!(body.contains(r#"data-og-affordance="toast-mapped-to-result-strip""#), "{action}: {body}");
+            assert!(body.contains("caduceus-unreachable") || body.contains("caduceus-http-not-ok"), "{action}: {body}");
+        }
+        std::env::remove_var("CADUCEUS_URL");
+        let api = router.oneshot(Request::builder().uri("/api").body(Body::empty()).unwrap()).await.unwrap();
+        let body = String::from_utf8(axum::body::to_bytes(api.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("/admit/admin/toggle/:toggle_id"));
+        assert!(body.contains("/admit/admin/action/:action_id"));
+    }
+
+    #[test]
+    fn hx_exemplar_admin_shell_uses_hx_dialect_and_documents_allowlisted_chrome_fetches() {
+        let shell = render_crown_shell();
+        for toggle in ["ssh-password-authentication", "ssh-service", "samba-file-sharing"] {
+            assert!(shell.contains(&format!(r#"hx-post="/admit/admin/toggle/{toggle}""#)), "missing {toggle}");
+        }
+        for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "install-certificate"] {
+            assert!(shell.contains(&format!(r#"hx-post="/admit/admin/action/{action}""#)), "missing {action}");
+        }
+        assert!(shell.contains(r#"hx-get="/admit/admin/action/view-logs""#));
+        assert!(shell.contains(r#"data-admin-action-result data-og-affordance="toast-mapped-to-result-strip""#));
+        assert!(shell.contains("hx-confirm=\"Double Click to Restart"));
+        assert!(shell.contains("hx-confirm=\"Double Click to Shut Down"));
+        let chrome = crown_chrome_js();
+        assert!(chrome.contains("htmx:configRequest"));
+        assert!(chrome.contains("X-Admin-Token"));
+        assert!(chrome.contains("new XMLHttpRequest()"), "upload progress XHR is consciously allowlisted chrome");
+        assert!(chrome.contains("fetch('/api/stats')"), "chart data fetch lane is consciously allowlisted chrome");
+        assert!(chrome.contains("fetch('/api/validatePin'"), "PIN/session entry remains crown chrome and is consciously allowlisted");
+        assert!(!chrome.contains("fetch('/api/admin/ssh/toggle'"));
+        assert!(!chrome.contains("fetch('/api/admin/ssh/service'"));
+        assert!(!chrome.contains("fetch('/api/admin/samba/service'"));
+        assert!(!chrome.contains("fetch('/api/admin/hard-drive-test/start'"));
+        assert!(!chrome.contains("fetch('/api/admin/system/restart'"));
+        assert!(!chrome.contains("fetch('/api/admin/system/shutdown'"));
+    }
