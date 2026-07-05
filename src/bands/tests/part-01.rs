@@ -68,7 +68,7 @@
             .await
             .unwrap();
         let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"]);
+        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"]);
         assert_eq!(root.first_party_panes.len(), PRIMARY_TABS.len());
     }
 
@@ -97,7 +97,7 @@
         assert!(body.contains("Stats"));
         assert!(body.contains("Portals"));
         assert!(body.contains("Upload"));
-        assert!(body.contains("TestTab"));
+        assert!(body.contains("Test"));
         assert!(body.contains("backBlaze"));
         assert!(body.contains("Wake on LAN"));
         assert!(body.contains("YouTube"));
@@ -250,7 +250,7 @@
         let shell = render_crown_shell();
         assert!(shell.contains("class=\"tab-bar\""));
         assert!(shell.contains("data-admin-mode=\"true\""));
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"] {
             assert!(shell.contains("class=\"tab active\""));
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
             assert!(shell.contains(&format!("data-pane=\"{}\"", pane)));
@@ -394,7 +394,7 @@
         ] {
             assert!(shell.contains(preserved), "theme membrane marker missing: {}", preserved);
         }
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"] {
             assert!(shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
         }
         assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));
@@ -407,149 +407,78 @@
 
 
     #[test]
-    fn native_stock_testtab_is_composed_from_ux_library() {
+    fn native_stock_test_is_og_bedrock_port() {
         let shell = render_crown_shell();
-        let registry = ux_component_registry();
+        let retired_id = ["test", "tab"].concat();
+        assert!(!shell.contains(&format!(r#"data-pane-panel=\"{}\""#, retired_id)));
+        assert!(!shell.contains(&format!(r#"data-tab-id=\"{}\""#, retired_id)));
+        assert!(!shell.contains(&format!(r#"id=\"pane-{}\""#, retired_id)));
+        assert!(!shell.contains(r#"data-og-stub-pane=\"test\""#));
         for marker in [
-            "coronatio-composable-ux.v1",
-            "data-native-stock-testtab=\"true\"",
+            "data-native-stock-test=\"true\"",
             "data-react-quarry=\"premium/testTab\"",
-            "data-ux-registry=\"rust-native\"",
-            "data-showcase-tab=\"buttons\"",
-            "data-showcase-tab=\"modals\"",
-            "data-testtab-panel=\"theme-values\"",
-            "data-theme-values-panel=\"true\"",
-            "data-ux-registry-count",
-            "data-ux-component=\"theme-gradients\"",
-            "data-ux-component=\"theme-highlights\"",
-            "data-ux-component=\"theme-accents\"",
-            "data-ux-component=\"theme-role-pairs\"",
-            "data-ux-modal-demo=\"sizes\"",
+            "data-ux-library=\"og-styles-common-ui\"",
+            "data-ux-registry=\"og-test-bedrock\"",
+            "data-test-tab=\"showcase\"",
+            "data-test-tab=\"services\"",
+            "data-test-tab=\"config\"",
+            "data-test-tab=\"health\"",
+            "Component Showcase",
+            "Services",
+            "Configuration",
+            "Health Status",
+            "data-test-panel=\"services\"",
+            "data-test-panel=\"config\"",
+            "data-test-panel=\"health\"",
+            "TEST-001 LIBRARY band",
+            ".ui-button",
+            ".ui-toggle",
+            ".ui-tab",
+            ".ui-input",
+            ".ui-select",
+            ".ui-card",
+            ".ui-badge",
+            ".ui-checkbox",
+            ".ui-slider",
+            "text-box",
+            ".progress-bar",
+            ".ui-table",
+            "// TEST-001: og Test UX-library chrome is allowed here",
             "data-ux-modal-open=\"small\"",
             "data-ux-modal-open=\"medium\"",
             "data-ux-modal-open=\"fullscreen\"",
-            "data-ux-modal-size-sample=\"small\"",
-            "data-ux-modal-size-sample=\"medium\"",
-            "data-ux-modal-size-sample=\"fullscreen\"",
-            "data-ux-modal-demo-backdrop",
-            "data-ux-modal-demo-window",
-            "ux-modal-shell small",
-            "ux-modal-shell medium",
-            "ux-modal-shell fullscreen",
-            ".ux-modal-shell.fullscreen",
-            "openUxModalDemo(size)",
-            "data-ux-component=\"tabs-plain\"",
-            "data-ux-component=\"tabs-favorite\"",
-            "data-ux-component=\"tabs-favorite-visibility\"",
-            "data-ux-tab-affordance=\"plain\"",
-            "data-ux-tab-affordance=\"favorite\"",
-            "data-ux-tab-affordance=\"favorite-visibility\"",
-            "ux-tab-star",
-            "ux-tab-eye",
-            "ux-tab-faded",
-            "data-hidden-tab=\"true\"",
-            "Favorite + hide/fade strip",
-            ".ux-tab-faded, .ux-tab[data-hidden-tab=\"true\"]",
-            "expanded JSON gradient-accent",
-            "ux-button",
-            "ux-card",
-            "ux-cardlet",
-            "ux-tabs",
-            "ux-field",
-            "ux-select-pill",
-            "Dropdown Pills",
-            "right-side chevron cap",
-            "appearance: none",
-            "border-radius: var(--theme-radius-pill)",
-            ".ux-select-pill::after",
-            ".ux-select:hover",
-            "ux-badge",
-            "ux-badge-button",
-            "inset 4px 0 0 var(--accent)",
-            "Selected",
-            "selected persistent state",
-            "ux-table",
-            "ux-table-shell",
-            "ux-table-sortable",
-            "ux-table-selectable",
-            "ux-progress",
-            "data-showcase-tab=\"graphs\"",
-            "data-ux-component=\"graph-line-area\"",
-            "data-ux-component=\"graph-bar\"",
-            "data-ux-component=\"graph-donut\"",
-            "data-ux-component=\"graph-sparkline\"",
-            "ux-chart-line-path",
-            "ux-chart-bars",
-            "ux-donut",
-            "ux-sparkline",
-            "ux-card-button",
-            "ux-interactive",
-            "--theme-component-button-container",
-            "--theme-elevation-2",
-            "--theme-cardlet-hover-shadow",
-            "--theme-cardlet-press-shadow",
-            "--theme-cardlet-glimmer",
-            ".ux-tab:focus-visible",
-            "@media (hover: hover) and (pointer: fine)",
-            "@media (hover: none)",
-            "@media (prefers-reduced-motion: reduce)",
-            ".ux-toggle:hover",
-            "<code>--primary</code>, <code>--primaryHover</code>, <code>--theme-component-button-container</code>",
-            "Theme Values",
-            "live CSS token map",
-            "data-theme-value-family=\"core\"",
-            "data-theme-value-family=\"actions\"",
-            "data-theme-value-family=\"gradients\"",
-            "data-theme-value-family=\"highlights\"",
-            "data-theme-value-family=\"accents\"",
-            "data-theme-value-family=\"roles\"",
-            "data-theme-token-lab=\"true\"",
-            "Mini Theme Token Lab",
-            "data-theme-token-slider=\"--theme-control-height\"",
-            "data-theme-token-slider=\"--theme-radius-md\"",
-            "data-theme-token-slider=\"--theme-spacing-md\"",
-            "data-theme-token-slider=\"--theme-state-hover-opacity\"",
-            "data-theme-token-slider=\"--theme-focus-width\"",
-            "data-theme-token-specimen=\"--theme-control-height\"",
-            "data-theme-token-specimen=\"--theme-radius-md\"",
-            "data-theme-token-output=\"--theme-spacing-md\"",
-            "theme-token-lab-grid",
-            "theme-token-focus-specimen",
-            "hydrateThemeTokenLab()",
-            "root.style.setProperty(token, value)",
-            "--theme-component-button-container",
-            "--theme-highlight-ring",
-            "--theme-radius-pill",
         ] {
-            assert!(shell.contains(marker), "missing TestTab UX marker: {marker}");
+            assert!(shell.contains(marker), "missing og Test marker: {marker}");
         }
-        assert!(shell.contains(".ux-button {"));
-        assert!(!shell.contains("data-testtab-tab=\"services\""));
-        assert!(!shell.contains("data-testtab-tab=\"config\""));
-        assert!(!shell.contains("data-testtab-tab=\"health\""));
-        assert!(!shell.contains("data-testtab-panel=\"services\""));
-        assert!(!shell.contains("data-testtab-panel=\"config\""));
-        assert!(!shell.contains("data-testtab-panel=\"health\""));
-        assert!(!shell.contains("Service Tests"));
-        assert!(!shell.contains("Configuration</button>"));
-        assert!(!shell.contains("Health Status"));
-        assert!(shell.contains("background: var(--primary); color: var(--text);"));
-        assert!(shell.contains(".ux-button.secondary { background: var(--theme-surface-1); color: var(--text); }"));
-        assert!(shell.contains(".ux-button.secondary:hover { background: var(--theme-component-button-hover-container);"));
-        assert!(shell.contains(".ux-button.success { background: var(--success);"));
-        assert!(shell.contains("class=\"ux-cardlet\""));
-        assert!(shell.contains(".ux-cardlet:hover, .ux-card-button:hover"));
-        assert!(shell.contains(".ux-cardlet:active, .ux-card-button:active"));
-        assert!(shell.contains("ux-cardlet + ux-row"));
-        assert!(shell.contains("class=\"ux-card ux-card-button clickable\""));
-        assert!(shell.contains("class=\"ux-badge ux-badge-button primary\""));
-        assert!(shell.contains("aria-label=\"Interactive badge buttons\""));
-        assert!(shell.contains(".ux-badge-button:hover"));
-        assert!(shell.contains(".ux-badge-button:focus-visible"));
-        assert!(shell.contains(".ux-badge-button[aria-pressed=\"true\"]"));
-        assert!(shell.contains(".ux-card.clickable:hover"));
-        assert_eq!(shell.matches("data-ux-component=").count(), registry.len());
-        for component in registry {
-            assert!(shell.contains(&format!("data-ux-component=\"{}\"", component.id)), "missing registered component {}", component.id);
+        let categories = [
+            ("buttons", "Buttons"),
+            ("toggles", "Toggles"),
+            ("tabs", "Tabs"),
+            ("inputs", "Inputs"),
+            ("cards", "Cards"),
+            ("badges", "Badges"),
+            ("checkboxes", "Checkboxes"),
+            ("utilities", "Utilities"),
+            ("calendar-time", "Calendar & Time"),
+            ("row-info-tile", "Row Info Tile"),
+            ("dropdowns", "Dropdowns"),
+            ("slider", "Slider"),
+            ("textbox", "Text Box"),
+            ("upload-components", "Upload Components"),
+            ("progress-bar", "Progress Bar"),
+            ("table", "Table"),
+            ("collapsible", "Collapsible"),
+            ("modals", "Modals"),
+        ];
+        for (id, title) in categories {
+            assert!(shell.contains(&format!("data-showcase-tab=\"{}\"", id)), "missing category chip {id}");
+            assert!(shell.contains(&format!("id=\"showcase-{}\"", id)), "missing category section {id}");
+            assert!(shell.contains(title), "missing category title {title}");
         }
+        assert_eq!(shell.matches("data-showcase-tab=").count(), 18);
+        assert_eq!(shell.matches("data-og-category-section=").count(), 18);
+        assert!(!shell.contains("data-test-panel=\"theme-values\""));
+        assert!(!shell.contains("Mini Theme Token Lab"));
+        assert!(!shell.contains("data-theme-token-lab=\"true\""));
+        assert!(!shell.contains("data-showcase-tab=\"graphs\""));
     }

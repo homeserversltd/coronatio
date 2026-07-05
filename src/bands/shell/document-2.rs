@@ -386,9 +386,7 @@ fn shell_document_2() -> &'static str {
       <section class="pane" id="pane-wake-on-lan" data-pane-panel="wake-on-lan" data-view-panel="wake-on-lan" role="tabpanel" aria-label="Wake on LAN">
         <article class="card og-stub-pane" data-og-stub-pane="wake-on-lan"><h2>Wake on LAN</h2><p>not yet ported</p></article>
       </section>
-      <section class="pane" id="pane-test" data-pane-panel="test" data-view-panel="test" role="tabpanel" aria-label="Test">
-        <article class="card og-stub-pane" data-og-stub-pane="test"><h2>Test</h2><p>not yet ported</p></article>
-      </section>
+      __TEST__
       <section class="pane" id="pane-chia-mining" data-pane-panel="chia-mining" data-view-panel="chia-mining" role="tabpanel" aria-label="Chia Mining">
         <article class="card og-stub-pane" data-og-stub-pane="chia-mining"><h2>Chia Mining</h2><p>not yet ported</p></article>
       </section>
@@ -398,7 +396,6 @@ fn shell_document_2() -> &'static str {
       <section class="pane" id="pane-youtube" data-pane-panel="youtube" data-view-panel="youtube" role="tabpanel" aria-label="YouTube">
         <article class="card og-stub-pane" data-og-stub-pane="youtube"><h2>YouTube</h2><p>not yet ported</p></article>
       </section>
-      __TESTTAB__
     </section>
   </main>
   <script>

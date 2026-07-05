@@ -23,7 +23,7 @@
         assert_eq!(registry.visible_tabs_user, ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"]);
         assert_eq!(
             registry.visible_tabs_admin,
-            ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"]
+            ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"]
         );
         assert!(registry
             .validation_rules
@@ -385,7 +385,7 @@
         assert!(!shell.contains("localStorage.setItem(headerStateKey, JSON.stringify(headerState))"));
         assert!(shell.contains("appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         assert!(shell.contains("tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
-        for viewport in ["admin", "stats", "portals", "upload", "testtab"] {
+        for viewport in ["admin", "stats", "portals", "upload", "test"] {
             assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing admin viewport {viewport}");
         }
         for admin_action in ["Hard Drive Test", "Force Update", "Hide CPU Usage & Load", "PIN requirement", "Blacklist"] {

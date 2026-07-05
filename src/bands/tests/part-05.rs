@@ -299,7 +299,7 @@
         let temp = test_tab_root("hx-001-admit");
         let router = app(AppState { tab_root: Arc::new(temp) });
         let shell = render_crown_shell();
-        for pane in ["portals", "stats", "upload", "admin"] {
+        for pane in ["portals", "stats", "upload", "admin", "test"] {
             let response = router.clone().oneshot(Request::builder().uri(format!("/admit/{pane}")).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK, "{pane} admits");
             assert_eq!(response.headers().get(header::CACHE_CONTROL).and_then(|value| value.to_str().ok()), Some("no-store"));
@@ -312,11 +312,13 @@
         let fault_body = String::from_utf8(axum::body::to_bytes(missing.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(fault_body.contains("data-cartridge-fault=\"true\""));
         assert!(fault_body.contains("data-cartridge-fault-kind=\"tab-not-found\""));
-        let faults = router.oneshot(Request::builder().uri("/api/faults").body(Body::empty()).unwrap()).await.unwrap();
+        let faults = router.clone().oneshot(Request::builder().uri("/api/faults").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(faults.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(faults.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("coronatio.cartridge-faults.v1"));
         assert!(body.contains("missing-tab"));
+        let retired = router.clone().oneshot(Request::builder().uri(format!("/admit/{}", ["test", "tab"].concat())).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(retired.status(), StatusCode::NOT_FOUND, "retired route must stay absent");
     }
 
 
