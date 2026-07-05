@@ -22,8 +22,10 @@ fn shell_document_2() -> &'static str {
     .stat-info { padding: 8px; background-color: var(--hiddenTabBackground); border-radius: 4px; font-size: .9rem; color: var(--text); }
     .visibility-toggle { padding: .35rem .45rem; min-width: 34px; }
     .cpu-stats-container, .network-stats-container, .disk-io-chart, .memory-stats, .disk-usage-stats, .kea-leases-table, .process-usage-list { width: 100%; }
-    .cpu-chart, .network-speed-chart, .stat-chart { width: 100%; height: 150px; margin: 0; }
-    .recharts-wrapper { width: 100%; height: 200px; position: relative; }
+    .cpu-chart, .network-speed-chart, .stat-chart { width: 100%; min-height: 320px; margin: 0; }
+    .chart-container { position: relative; width: 100%; height: 300px; min-height: 300px; }
+    .coronatio-chart-canvas { display: block; width: 100% !important; height: 300px !important; }
+    .recharts-wrapper { width: 100%; height: 300px; position: relative; }
     .recharts-surface { width: 100%; height: 200px; overflow: visible; display: block; }
     .recharts-cartesian-grid line { stroke: var(--border) !important; stroke-opacity: .8; stroke-dasharray: 3 3; }
     .recharts-cartesian-axis text { fill: var(--hiddenTabText); font-size: 11px; }
@@ -78,10 +80,10 @@ fn shell_document_2() -> &'static str {
     .process-name { color: var(--text); font-size: .85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .process-usage { color: var(--text); font-size: .85rem; font-weight: 500; margin-left: 8px; }
     .stat-element[data-visible="false"] .stat-title, .stat-element[data-visible="false"] .stat-info { color: var(--secondary); opacity: .7; }
-    .cpu-chart, .network-speed-chart, .stat-chart { height: auto; min-height: 252px; overflow: visible; }
-    .disk-io-chart .recharts-wrapper { min-height: 268px; }
-    .recharts-wrapper { height: auto; min-height: 244px; overflow: visible; }
-    .recharts-surface { height: 188px; max-height: 188px; }
+    .cpu-chart, .network-speed-chart, .stat-chart { height: auto; min-height: 332px; overflow: visible; }
+    .disk-io-chart .chart-container { min-height: 320px; }
+    .recharts-wrapper { height: auto; min-height: 300px; overflow: visible; }
+    .recharts-surface { height: 300px; max-height: 300px; }
     .recharts-legend-wrapper { margin-top: 6px; min-height: 28px; align-items: center; }
     .recharts-legend-item { display: inline-flex; align-items: center; gap: 4px; color: var(--text); }
     .recharts-cartesian-axis-tick-value, .recharts-surface text { fill: var(--hiddenTabText) !important; color: var(--hiddenTabText); }
@@ -293,15 +295,15 @@ fn shell_document_2() -> &'static str {
         <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
           <div class="stat-element" data-stat-element-id="cpu-chart" data-visible="true">
             <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="cpu-chart" data-visible="true" aria-label="Hide CPU Usage & Load">👁</button><h3 class="stat-title">CPU Usage &amp; Load</h3></div>
-            <div class="stat-content"><div class="cpu-stats-container"><div class="cpu-chart" data-recharts-chart="cpu"><div class="recharts-wrapper" id="cpu-chart-container"></div></div><div class="load-averages"><div class="load-average-values"><div class="load-average-item"><span class="load-label">1 min:</span><span class="load-value" id="load-1min">—</span></div><div class="load-average-item"><span class="load-label">5 min:</span><span class="load-value" id="load-5min">—</span></div><div class="load-average-item"><span class="load-label">15 min:</span><span class="load-value" id="load-15min">—</span></div></div></div></div></div>
+            <div class="stat-content"><div class="cpu-stats-container"><div class="cpu-chart" data-chartjs-chart="cpu" data-chart-authority="serverbox-original-homeserver-stats"><div class="chart-container" id="cpu-chart-container"><canvas id="cpuChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-left-axis="CPU Usage (%)" data-right-axis="Temperature (°C)"></canvas></div></div><div class="load-averages"><div class="load-average-values"><div class="load-average-item"><span class="load-label">1 min:</span><span class="load-value" id="load-1min">—</span></div><div class="load-average-item"><span class="load-label">5 min:</span><span class="load-value" id="load-5min">—</span></div><div class="load-average-item"><span class="load-label">15 min:</span><span class="load-value" id="load-15min">—</span></div></div></div></div></div>
           </div>
           <div class="stat-element" data-stat-element-id="network" data-visible="true">
             <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="network" data-visible="true" aria-label="Hide Network Traffic (WAN)">👁</button><h3 class="stat-title">Network Traffic (WAN)</h3></div>
-            <div class="stat-content"><div class="network-stats-container"><div class="network-speed-chart" data-recharts-chart="network"><div class="recharts-wrapper" id="network-chart-container"></div></div><div class="network-interfaces"><table class="network-interfaces-table"><thead><tr><th>Interface</th><th>Total Received</th><th>Total Sent</th></tr></thead><tbody data-network-interfaces></tbody></table></div></div></div>
+            <div class="stat-content"><div class="network-stats-container"><div class="network-speed-chart" data-chartjs-chart="network" data-chart-authority="serverbox-original-homeserver-stats"><div class="chart-container" id="network-chart-container"><canvas id="networkChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-left-axis="Speed (B/s)" data-right-axis="Speed (B/s)"></canvas></div></div><div class="network-interfaces"><table class="network-interfaces-table"><thead><tr><th>Interface</th><th>Total Received</th><th>Total Sent</th></tr></thead><tbody data-network-interfaces></tbody></table></div></div></div>
           </div>
           <div class="stat-element" data-stat-element-id="io-section" data-visible="true">
             <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="io-section" data-visible="true" aria-label="Hide Disk I/O">👁</button><h3 class="stat-title">Disk I/O</h3></div>
-            <div class="stat-content"><div class="disk-io-chart"><div class="device-controls" data-device-controls></div><div class="recharts-wrapper" id="disk-io-chart-container"></div></div></div>
+            <div class="stat-content"><div class="disk-io-chart"><div class="device-controls" id="io-drive-selector" data-device-controls data-original-control="drive-checkbox"></div><div class="chart-container" id="disk-io-chart-container"><canvas id="io-chart" class="coronatio-chart-canvas" data-full-width-canvas="true"></canvas></div><div class="io-chart-legend" id="io-chart-legend"></div></div></div>
           </div>
           <div class="stat-element" data-stat-element-id="memory" data-visible="true">
             <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="memory" data-visible="true" aria-label="Hide Memory Usage">👁</button><h3 class="stat-title">Memory Usage</h3></div>
