@@ -322,7 +322,20 @@ async fn homeserver_validate_pin_route(Json(body): Json<serde_json::Value>) -> i
         .and_then(serde_json::Value::as_str)
         .unwrap_or("");
     let configured = configured_admin_pin();
-    let valid = configured.as_deref().map(|pin| pin == supplied).unwrap_or(false);
+    let valid = configured
+        .as_ref()
+        .map(|(_, pin)| pin == supplied)
+        .unwrap_or(false);
+    let source = configured
+        .as_ref()
+        .map(|(path, _)| format!("{} global.admin.pin", path.display()))
+        .unwrap_or_else(|| {
+            homeserver_pin_config_candidates()
+                .into_iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(" | ")
+        });
     (
         if valid { StatusCode::OK } else { StatusCode::UNAUTHORIZED },
         Json(serde_json::json!({
@@ -332,7 +345,7 @@ async fn homeserver_validate_pin_route(Json(body): Json<serde_json::Value>) -> i
             "valid": valid,
             "token": if valid { "coronatio-session-token" } else { "" },
             "expiresIn": 1800,
-            "source": "/etc/homeserver.json global.admin.pin",
+            "source": source,
             "firstMissingSignal": if configured.is_some() { "none" } else { "homeserver-config-pin-missing" }
         })),
     )
@@ -358,14 +371,34 @@ async fn homeserver_admin_ping_route() -> impl IntoResponse {
 
 
 
-fn configured_admin_pin() -> Option<String> {
-    let text = std::fs::read_to_string("/etc/homeserver.json").ok()?;
-    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
-    value
-        .get("global")
-        .and_then(|global| global.get("admin"))
-        .and_then(|admin| admin.get("pin"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
+fn homeserver_pin_config_candidates() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(path) = env::var("CORONATIO_HOMESERVER_JSON") {
+        paths.push(PathBuf::from(path));
+    }
+    paths.push(PathBuf::from("/etc/homeserver.json"));
+    paths
+}
+
+fn configured_admin_pin() -> Option<(PathBuf, String)> {
+    for path in homeserver_pin_config_candidates() {
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(_) => continue,
+        };
+        let value: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if let Some(pin) = value
+            .get("global")
+            .and_then(|global| global.get("admin"))
+            .and_then(|admin| admin.get("pin"))
+            .and_then(serde_json::Value::as_str)
+        {
+            return Some((path, pin.to_string()));
+        }
+    }
+    None
 }
 
