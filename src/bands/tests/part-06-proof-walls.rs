@@ -212,6 +212,100 @@
         assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
+    #[test]
+    fn coro_007_native_panes_are_composed_crown_blocks_with_details_readbacks() {
+        let expected = [
+            ("portals", "portal-card-row"),
+            ("stats", "stat-workbench-grid"),
+            ("admin", "status-strip-admin-cards"),
+            ("upload", "single-ingress-card"),
+            ("testtab", "token-lab"),
+        ];
+        for (pane_id, block_shape) in expected {
+            let pane = native_crown_panes().into_iter().find(|pane| pane.id == pane_id).unwrap();
+            let html = render_native_pane_fragment(&pane);
+            assert!(html.contains("class=\"crown-fragment"), "{pane_id} missing crown fragment class");
+            assert!(html.contains(&format!("data-crown-block-shape=\"{block_shape}\"")), "{pane_id} missing block shape {block_shape}");
+            assert!(html.contains("data-crown-readback=\"true\""), "{pane_id} raw JSON not behind details");
+            assert!(html.contains("data-native-readback=\"json\""), "{pane_id} raw JSON pre missing");
+            assert!(!html.contains(" style="), "{pane_id} carries inline style");
+            assert!(!html.trim_start().starts_with("<pre"), "{pane_id} is still pre-only");
+        }
+    }
+
+    #[test]
+    fn coro_007_body_scroll_is_contained_by_stage_and_iframe_husk_fills_stage() {
+        assert!(CROWN_SHELL_CSS.contains("html, body { margin: 0; height: 100%; overflow: hidden"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-shell { height: 100vh"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-main { min-width: 0; min-height: 0"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-stage { position: relative; min-height: 0; height: 100%"));
+        assert!(CROWN_SHELL_CSS.contains("overflow-y: auto"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-layer-one { position: relative; z-index: 1; min-height: 100%; height: 100%; display: grid"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-view-panel { min-height: 100%; height: 100%"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-iframe-guest { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--ux-space-3); min-height: 100%; height: 100%"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-iframe-guest__frame { width: 100%; height: 100%; min-height: 0"));
+    }
+
+    #[test]
+    fn coro_007_portal_values_and_services_obey_chip_law_without_forced_word_breaks() {
+        assert!(CROWN_SHELL_CSS.contains(".crown-definition-row { display: grid; grid-template-columns: minmax(5.5rem, .32fr) minmax(0, 1.35fr)"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-definition-row dd { margin: 0; color: var(--ux-text-strong); min-width: 0; overflow-wrap: normal; word-break: normal"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-chip { border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-pill); padding: var(--ux-space-1) var(--ux-space-2); color: var(--ux-color-crown-bright); background: rgba(61, 220, 151, 0.12); font-size: var(--ux-type-small); overflow-wrap: normal; word-break: normal; white-space: nowrap"));
+
+        let html = render_portals_fragment(PortalConfigResponse {
+            schema: "coronatio.portals.config.v1".to_string(),
+            route: "/api/portals".to_string(),
+            success: true,
+            source: "fixture".to_string(),
+            factory_source: None,
+            portals: vec![PortalEntry {
+                name: "Media".to_string(),
+                description: "Portal fixture".to_string(),
+                services: vec!["transmissionPIA".to_string(), "calibre-web".to_string(), "calibre-simple-watch".to_string()],
+                r#type: "systemd".to_string(),
+                port: Some(9091),
+                local_url: "http://media.home.arpa".to_string(),
+                remote_url: None,
+                status: None,
+                visible: true,
+            }],
+            factory_portals: vec![],
+            first_missing_signal: "none".to_string(),
+        });
+        for service in ["transmissionPIA", "calibre-web", "calibre-simple-watch"] {
+            let marker = format!("data-portal-service=\"{service}\"");
+            assert_eq!(html.matches(&marker).count(), 1, "service chip should render exactly once for {service}");
+            assert!(html.contains(&format!("title=\"{service}\"")), "service chip should keep an ellipsis title for {service}");
+        }
+        assert!(!html.contains("transmissionPIA, calibre-web"), "services must not render as one comma-joined breakable text cell");
+    }
+
+    #[test]
+    fn coro_007_shell_projects_selected_theme_and_underlay_recovery_posture() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("data-theme="));
+        assert!(shell.contains("data-crown-theme-projection=\"homeserver-json-default\""));
+        assert!(shell.contains("--ux-surface-0:"));
+        assert!(shell.contains("--ux-color-crown:"));
+        assert!(shell.contains("Recovery posture"));
+        assert!(shell.contains("data-underlay-startup-phase=\"app-ready\""));
+        assert!(shell.contains("Service health"));
+        assert!(shell.contains("data-underlay-fault-kind=\"none\""));
+    }
+
+    #[test]
+    fn coro_007_testtab_is_live_ux_token_lab() {
+        let pane = native_crown_panes().into_iter().find(|pane| pane.id == "testtab").unwrap();
+        let html = render_native_pane_fragment(&pane);
+        for token in ["--ux-surface-0", "--ux-color-crown", "--ux-color-leaf", "--ux-outline"] {
+            assert!(html.contains(token), "missing token sample {token}");
+        }
+        assert!(html.contains("Live UX token swatches"));
+        assert!(html.contains("Type scale"));
+        assert!(html.contains("Radius"));
+        assert!(!html.contains("style="));
+    }
+
     #[tokio::test]
     async fn wall_5_reactivation_refetches_upstream_and_admission_is_no_store() {
         let temp = test_tab_root("wall-5-staleness");
