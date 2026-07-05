@@ -146,6 +146,7 @@ fn shell_document_2() -> &'static str {
     .directory-error, .directory-empty { padding: 16px; text-align: center; color: var(--secondary); }
     .directory-error.nas-unavailable, .directory-error[data-nas-unavailable="true"] { background: rgba(255,193,7,.1); border: 2px solid var(--warning, #ffc107); border-radius: 8px; color: var(--warning, #ffc107); font-weight: bold; font-size: 1.1em; }
     .directory-loading-initial { display: flex; justify-content: center; align-items: center; min-height: 100px; padding: 20px; }
+    .directory-loading-initial[hidden] { display: none; }
     .toggle-pin-button { position: relative; width: 46px !important; height: 24px !important; padding: 0 !important; border-radius: 24px !important; transition: all .3s ease !important; overflow: hidden; border: none !important; display: flex !important; align-items: center !important; justify-content: center !important; background-color: var(--error) !important; }
     .toggle-pin-button::before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background-color: var(--text) !important; border-radius: 50%; transition: transform .3s ease; }
     .toggle-pin-button.active { background-color: var(--success) !important; }
