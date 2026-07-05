@@ -93,11 +93,14 @@ fn network_interfaces() -> Vec<StatsNetworkInterface> {
         for line in raw.lines().skip(2) {
             let Some((name, rest)) = line.split_once(':') else { continue; };
             let name = name.trim();
-            if name == "lo" || name.is_empty() {
+            if name.is_empty() {
                 continue;
             }
             let values: Vec<&str> = rest.split_whitespace().collect();
             if values.len() < 16 {
+                continue;
+            }
+            if is_unmeaningful_stats_interface(name) {
                 continue;
             }
             let rx_bytes = values[0].parse::<u64>().unwrap_or(0);
@@ -111,6 +114,16 @@ fn network_interfaces() -> Vec<StatsNetworkInterface> {
     }
     interfaces.sort_by(|left, right| left.name.cmp(&right.name));
     interfaces
+}
+
+fn is_unmeaningful_stats_interface(name: &str) -> bool {
+    name == "lo"
+        || name == "docker0"
+        || name.starts_with("br-")
+        || name.starts_with("virbr")
+        || name.starts_with("vnet")
+        || name.starts_with("zt")
+        || name.is_empty()
 }
 
 fn connection_counts() -> StatsConnectionCounts {
@@ -288,7 +301,7 @@ fn render_flask_react_tabbar_quarry() -> String {
                     }
                 )
             };
-            let admin_only_attr = if pane.admin_only { r##" data-admin-only="true""## } else { "" };
+            let admin_only_attr = if pane.admin_only { r##" data-admin-only="true" hidden"## } else { "" };
             format!(
                 r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}"{admin_only_attr}>{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
                 id = pane.id,

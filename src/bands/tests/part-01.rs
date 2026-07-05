@@ -192,7 +192,14 @@
                 "{pane} keeps normal star/default control"
             );
         }
-        assert!(shell.contains(r#"data-tab-id="admin" data-visibility="visible" data-admin-only="true""#));
+        let admin_marker = r#"data-tab-id="admin""#;
+        let admin_start = shell.find(admin_marker).expect("admin tab marker present");
+        let admin_tag_start = shell[..admin_start].rfind(r#"<div class="tab"#).expect("admin tab opening tag");
+        let admin_tag_end = shell[admin_start..].find('>').map(|offset| admin_start + offset).expect("admin tab opening closes");
+        let admin_opening_tag = &shell[admin_tag_start..admin_tag_end];
+        assert!(admin_opening_tag.contains(r#"role="tab""#));
+        assert!(admin_opening_tag.contains(r#"data-admin-only="true""#), "Admin tab must be admin-session-only while retaining tab member markup");
+        assert!(admin_opening_tag.contains("hidden"), "Admin tab must start hidden in regular mode");
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!(r#"data-admin-only="true" data-tab-visibility-toggle="{}""#, pane)), "{pane} eye control is admin enhancement");
         }
@@ -212,6 +219,7 @@
             "if (!canStarTab(button.dataset.tabStar)) return;",
             r#"[data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }"#,
             r#"[data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; }"#,
+            r#".tab[data-visibility="hidden"] { opacity: .48; }"#,
         ] {
             assert!(shell.contains(marker), "missing tab ladder marker: {marker}");
         }
@@ -260,6 +268,11 @@
         assert!(shell.contains("setStarredTab"));
         assert!(shell.contains("applyVisibilityState"));
         assert!(shell.contains("🙈"));
+        let nav_start = shell.find("<nav class=\"tab-bar\"").expect("tab bar starts");
+        let nav_end = shell[nav_start..].find("</nav>").map(|offset| nav_start + offset).expect("tab bar ends");
+        let nav = &shell[nav_start..nav_end];
+        assert!(!shell.contains(".tab[data-visibility=\"hidden\"] .tab-name { text-decoration: line-through; }"));
+        assert!(!nav.contains("🔒"), "hidden tab state is the eye only, not a lock glyph");
         assert!(!shell.contains("class=\"tab-button\""));
     }
 

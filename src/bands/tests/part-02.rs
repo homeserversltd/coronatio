@@ -283,9 +283,15 @@
             r#"<th>Device Note</th><th>Hostname</th><th>IP Address</th><th>MAC Address</th>"#,
             r#"class="process-usage-list""#,
             r#"class="process-bar"#,
-            r#"renderRechartsLine"#,
-            r#"recharts-wrapper"#,
-            r#"recharts-surface"#,
+            r#"createCPUChart"#,
+            r#"createNetworkChart"#,
+            r#"createIOChart"#,
+            r#"data-chartjs-chart="cpu""#,
+            r#"data-chartjs-chart="network""#,
+            r#"data-full-width-canvas="true""#,
+            r#"class="chart-container" id="cpu-chart-container""#,
+            r#"class="chart-container" id="network-chart-container""#,
+            r#"class="chart-container" id="disk-io-chart-container""#,
         ] {
             assert!(shell.contains(marker), "React Stats identity marker missing: {}", marker);
         }
@@ -299,15 +305,78 @@
             r#"stats-readout"#,
             r#"id="cpu-gauge""#,
             r#"id="memory-chart""#,
-            r#"<canvas id="cpuChart""#,
-            r#"<canvas id="networkChart""#,
-            r#"<canvas id="io-chart""#,
             r#"type: 'doughnut'"#,
             r#"class="stats-section resources""#,
             r#"class="stats-section drives""#,
             r#"class="stats-section network""#,
         ] {
             assert!(!shell.contains(extra_or_old), "non-React Stats divergence survived: {}", extra_or_old);
+        }
+    }
+
+
+    #[test]
+    fn stats_charts_port_original_chartjs_dual_axes_full_width_and_tooltips() {
+        let shell = render_crown_shell();
+        for marker in [
+            r#"<script src="/static/vendor/chart.umd.min.js" data-chart-dependency="chartjs-4.4.0""#,
+            r#"<canvas id="cpuChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-chart-left-axis="percent-suffix" data-chart-right-axis="celsius-suffix""#,
+            r#"<canvas id="networkChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-chart-left-axis="byte-rate-suffix" data-chart-right-axis="byte-rate-suffix" data-synchronized-axes="true""#,
+            r#"<canvas id="io-chart" class="coronatio-chart-canvas" data-full-width-canvas="true""#,
+            "maintainAspectRatio: false",
+            "interaction: { mode: 'index', intersect: false }",
+            "tooltip: chartTooltip",
+            "lineDataset('CPU Usage', cpuData, '#4A5568', 'y-cpu')",
+            "lineDataset('Temperature', tempData, '#90cff3', 'y-temp')",
+            "lineDataset('Download Speed', downloadData, '#4A5568', 'y')",
+            "lineDataset('Upload Speed', uploadData, '#90cff3', 'y-right')",
+            "fill: false",
+            "pointRadius: 0",
+            "legend: { position: 'bottom', align: 'center'",
+            "value => Number(value).toFixed(0) + '%'",
+            "value => Number(value).toFixed(0) + '°C'",
+            "callback: value => fmtBytes(value) + '/s'",
+            "function formatChartTime(value = Date.now())",
+            "const networkMax = Math.max(1, ...downloadData, ...uploadData) * 1.1",
+            "'y-cpu': { type: 'linear', display: true, position: 'left'",
+            "'y-temp': { type: 'linear', display: true, position: 'right'",
+            "'y-right': { beginAtZero: true, suggestedMin: 0, max: networkMax, position: 'right'",
+        ] {
+            assert!(shell.contains(marker), "missing Chart.js parity marker: {marker}");
+        }
+        for drift in [
+            "rgb(75, 192, 192)",
+            "rgb(255, 99, 132)",
+            "rgba(75, 192, 192, 0.1)",
+            "rgba(255, 99, 132, 0.1)",
+            "fill: true",
+            "legend: { position: 'top' }",
+            "title: { display: true",
+            "CPU Usage (%)",
+            "Temperature (°C)",
+            "Speed (B/s)",
+            "toLocaleTimeString()",
+        ] {
+            assert!(!shell.contains(drift), "Chart.js quarry drift survived: {drift}");
+        }
+    }
+
+    #[test]
+    fn stats_disk_io_and_interface_filters_match_original_detail_shape() {
+        let shell = render_crown_shell();
+        for marker in [
+            r#"id="io-drive-selector" data-device-controls data-original-control="drive-checkbox""#,
+            r#"class="drive-checkbox"><input type="checkbox" name="read-${name}" value="${name}" checked>Read"#,
+            r#"class="drive-checkbox"><input type="checkbox" name="write-${name}" value="${name}" checked>Write"#,
+            "function meaningfulInterface(iface)",
+            "name === 'docker0'",
+            "name.startsWith('br-')",
+            "if (name === 'tailscale0') return 'Tailscale VPN';",
+            "if (mount === '/mnt/nas') return 'nas';",
+            "if (mount === '/mnt/nasbackup') return 'nasbackup';",
+            "if ((device.device || '').includes('sda6')) return 'sda6';",
+        ] {
+            assert!(shell.contains(marker), "missing Stats detail parity marker: {marker}");
         }
     }
 

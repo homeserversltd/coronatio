@@ -218,6 +218,10 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       while (next >= 1024 && unit < units.length - 1) { next = next / 1024; unit += 1; }
       return next.toFixed(next >= 10 || unit === 0 ? 0 : 1) + ' ' + units[unit];
     }
+    function formatChartTime(value = Date.now()) {
+      const date = value instanceof Date ? value : new Date(value);
+      return date.getMinutes() + ':' + date.getSeconds().toString().padStart(2, '0');
+    }
     function metricPercent(value) { return value === null || value === undefined ? '—' : Number(value).toFixed(1) + '%'; }
     function loadToPercent(load) {
       const cores = navigator.hardwareConcurrency || 4;
@@ -232,7 +236,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       const cpu = loadToPercent(data.resources?.load?.one);
       const temp = Number(data.resources?.load?.cpuTemperatureCelsius || 0);
       const now = Date.now();
-      statsChartState.labels = Array.from({ length: 24 }, (_, index) => new Date(now - (23 - index) * 5000).toLocaleTimeString());
+      statsChartState.labels = Array.from({ length: 24 }, (_, index) => formatChartTime(now - (23 - index) * 5000));
       statsChartState.cpu = seedSeries(cpu);
       statsChartState.temp = seedSeries(temp);
       statsChartState.upload = seedSeries(0);
@@ -274,42 +278,89 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         Object.values(statsChartState.ioSeries).forEach(series => { series.read.shift(); series.write.shift(); });
       }
     }
-    function points(values, width, height, maxValue) {
-      const max = Math.max(maxValue || 0, ...values, 1);
-      const step = values.length > 1 ? width / (values.length - 1) : width;
-      return values.map((value, index) => `${(index * step).toFixed(1)},${(height - (Number(value || 0) / max) * (height - 32) - 12).toFixed(1)}`).join(' ');
+    const statsCharts = { cpu: null, network: null, io: null };
+    function destroyStatsChart(key) {
+      if (statsCharts[key]) { statsCharts[key].destroy(); statsCharts[key] = null; }
     }
-    function axisTicks(maxValue, count = 4) {
-      return Array.from({ length: count + 1 }, (_, index) => Math.round((maxValue / count) * index));
+    function chartTicks(color, callback) { return { color, maxTicksLimit: 10, autoSkip: true, callback }; }
+    function chartGrid() { return { color: 'var(--border)', borderDash: [3, 3] }; }
+    function chartTooltip(labelFormatter) {
+      return { enabled: true, mode: 'index', intersect: false, callbacks: { label: labelFormatter } };
     }
-    function renderRechartsLine(containerId, datasets, opts = {}) {
-      const container = document.getElementById(containerId);
-      if (!container) return;
-      const width = 760;
-      const height = opts.height || 200;
-      const plot = { left: 52, right: 24, top: 18, bottom: 34 };
-      const plotWidth = width - plot.left - plot.right;
-      const plotHeight = height - plot.top - plot.bottom;
-      const maxValue = opts.maxValue || Math.max(...datasets.flatMap(ds => ds.values), 1);
-      const grid = axisTicks(maxValue).map(value => {
-        const y = plot.top + plotHeight - (value / Math.max(maxValue, 1)) * plotHeight;
-        return `<g class="recharts-cartesian-grid-horizontal"><line x1="${plot.left}" x2="${width - plot.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line><text x="${plot.left - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end" class="recharts-cartesian-axis-tick-value">${opts.formatTick ? opts.formatTick(value) : value}</text></g>`;
-      }).join('') + [0, .25, .5, .75, 1].map(ratio => {
-        const x = plot.left + ratio * plotWidth;
-        return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${plot.top}" y2="${height - plot.bottom}" class="recharts-cartesian-grid-vertical"></line>`;
-      }).join('');
-      const lines = datasets.map(ds => `<polyline class="recharts-line-curve" points="${points(ds.values, plotWidth, plotHeight, maxValue)}" fill="none" stroke="${ds.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${ds.dash || ''}" transform="translate(${plot.left} ${plot.top})" data-series="${ds.name}"></polyline>`).join('');
-      const legend = datasets.map(ds => ds.icon === 'square'
-        ? `<div class="recharts-legend-item"><svg width="20" height="20"><rect x="5" y="5" width="10" height="10" fill="none" stroke="${ds.color}" stroke-width="2"></rect></svg><span>${ds.name}</span></div>`
-        : `<div class="recharts-legend-item"><svg width="20" height="20"><circle cx="10" cy="10" r="5" fill="${ds.color}"></circle></svg><span>${ds.name}</span></div>`).join('');
-      const xLabels = statsChartState.labels.filter((_, index) => index % Math.max(1, Math.ceil(statsChartState.labels.length / 4)) === 0).slice(-4).map((label, index) => `<text x="${(plot.left + index * (plotWidth / 3)).toFixed(1)}" y="${height - 10}" text-anchor="middle" class="recharts-cartesian-axis-tick-value">${label.split(' ')[0]}</text>`).join('');
-      container.innerHTML = `<div class="recharts-wrapper"><svg class="recharts-surface" viewBox="0 0 ${width} ${height}" role="img" aria-label="${opts.label || 'chart'}"><g class="recharts-cartesian-grid">${grid}</g><g class="recharts-cartesian-axis recharts-xAxis"><line x1="${plot.left}" x2="${width - plot.right}" y1="${height - plot.bottom}" y2="${height - plot.bottom}" stroke="var(--hiddenTabText)"></line>${xLabels}</g><g class="recharts-cartesian-axis recharts-yAxis"><line x1="${plot.left}" x2="${plot.left}" y1="${plot.top}" y2="${height - plot.bottom}" stroke="var(--hiddenTabText)"></line></g><g class="recharts-line">${lines}</g></svg><div class="recharts-legend-wrapper custom-legend">${legend}</div></div>`;
+    function chartCommonOptions() {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { left: 10, right: 10, top: 20, bottom: 20 } },
+        animation: { duration: 0 }
+      };
+    }
+    function lineDataset(label, data, color, yAxisID) {
+      return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4, yAxisID };
+    }
+    function createCPUChart(ctx, labels, cpuData, tempData) {
+      destroyStatsChart('cpu');
+      statsCharts.cpu = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [
+          lineDataset('CPU Usage', cpuData, '#4A5568', 'y-cpu'),
+          lineDataset('Temperature', tempData, '#90cff3', 'y-temp')
+        ] },
+        options: Object.assign(chartCommonOptions(), {
+          plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + Number(context.parsed.y || 0).toFixed(1) + (context.dataset.yAxisID === 'y-temp' ? '°C' : '%')), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
+          scales: {
+            x: { ticks: chartTicks('var(--hiddenTabText)', value => labels[value] || value), grid: { display: false } },
+            'y-cpu': { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, ticks: chartTicks('var(--hiddenTabText)', value => Number(value).toFixed(0) + '%'), grid: chartGrid() },
+            'y-temp': { type: 'linear', display: true, position: 'right', beginAtZero: true, max: 100, ticks: chartTicks('var(--hiddenTabText)', value => Number(value).toFixed(0) + '°C'), grid: { display: false } }
+          }
+        })
+      });
+    }
+    function createNetworkChart(ctx, labels, downloadData, uploadData) {
+      destroyStatsChart('network');
+      const networkMax = Math.max(1, ...downloadData, ...uploadData) * 1.1;
+      const networkTicks = { color: 'var(--hiddenTabText)', maxTicksLimit: 10, autoSkip: true, callback: value => fmtBytes(value) + '/s' };
+      statsCharts.network = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [
+          lineDataset('Download Speed', downloadData, '#4A5568', 'y'),
+          lineDataset('Upload Speed', uploadData, '#90cff3', 'y-right')
+        ] },
+        options: Object.assign(chartCommonOptions(), {
+          plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + fmtBytes(context.parsed.y) + '/s'), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
+          scales: {
+            x: { ticks: chartTicks('var(--hiddenTabText)', value => labels[value] || value), grid: { display: false } },
+            y: { beginAtZero: true, suggestedMin: 0, max: networkMax, ticks: networkTicks, grid: chartGrid() },
+            'y-right': { beginAtZero: true, suggestedMin: 0, max: networkMax, position: 'right', ticks: networkTicks, grid: { display: false } }
+          }
+        })
+      });
+    }
+    function diskDisplayName(device) {
+      const mount = device.mount || '';
+      if (mount === '/mnt/nas') return 'nas';
+      if (mount === '/mnt/nasbackup') return 'nasbackup';
+      if ((device.device || '').includes('sda6')) return 'sda6';
+      return mount.replace(/^\/mnt\//, '') || device.device || 'disk';
+    }
+    function createIOChart(ctx, labels, datasets) {
+      destroyStatsChart('io');
+      statsCharts.io = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: Object.assign(chartCommonOptions(), {
+          plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { label: context => context.dataset.label + ': ' + Number(context.parsed.y || 0).toFixed(2) + ' MB/s' } } },
+          scales: {
+            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6, callback: value => labels[value] || value } },
+            y: { ticks: { callback: value => Number(value).toFixed(2) } }
+          }
+        })
+      });
     }
     function renderCpuChart(data) {
-      renderRechartsLine('cpu-chart-container', [
-        { name: 'CPU Usage', values: statsChartState.cpu, color: 'var(--secondary)' },
-        { name: 'Temperature', values: statsChartState.temp, color: 'var(--accent)' }
-      ], { label: 'CPU Usage & Load', maxValue: 100, formatTick: value => value + '%' });
+      const ctx = document.getElementById('cpuChart');
+      if (ctx && window.Chart) createCPUChart(ctx, statsChartState.labels, statsChartState.cpu, statsChartState.temp);
       document.getElementById('load-1min').textContent = metricPercent(loadToPercent(data.resources?.load?.one));
       document.getElementById('load-5min').textContent = metricPercent(loadToPercent(data.resources?.load?.five));
       document.getElementById('load-15min').textContent = metricPercent(loadToPercent(data.resources?.load?.fifteen));
@@ -318,31 +369,39 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       if (name === 'wan0') return 'WAN';
       if (name === 'lan0') return 'LAN';
       if (name === 'tailscale0') return 'Tailscale VPN';
-      if (name === 'veth0') return 'Transmission';
+      if (name.startsWith('veth')) return 'Service';
       return name;
     }
+    function meaningfulInterface(iface) {
+      const name = iface.name || '';
+      if (!name || name === 'lo' || name === 'docker0' || name.startsWith('br-') || name.startsWith('virbr') || name.startsWith('vnet')) return false;
+      return true;
+    }
     function renderNetwork(data) {
-      renderRechartsLine('network-chart-container', [
-        { name: 'Download Speed', values: statsChartState.download, color: 'var(--secondary)' },
-        { name: 'Upload Speed', values: statsChartState.upload, color: 'var(--accent)' }
-      ], { label: 'Network Traffic (WAN)', formatTick: value => fmtBytes(value) });
+      const ctx = document.getElementById('networkChart');
+      if (ctx && window.Chart) createNetworkChart(ctx, statsChartState.labels, statsChartState.download, statsChartState.upload);
       const tbody = document.querySelector('[data-network-interfaces]');
-      if (tbody) tbody.innerHTML = (data.network?.interfaces || []).map(iface => `<tr><td><span class="interface-name">${interfaceLabel(iface.name)}</span><span class="interface-label"> (${iface.name})</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr><td colspan="3">Loading network data...</td></tr>';
+      if (tbody) tbody.innerHTML = (data.network?.interfaces || []).filter(meaningfulInterface).map(iface => `<tr><td><span class="interface-name">${interfaceLabel(iface.name)}</span><span class="interface-label"> (${iface.name})</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr><td colspan="3">Loading network data...</td></tr>';
     }
     function renderDiskIo(data) {
       const controls = document.querySelector('[data-device-controls]');
       const devices = data.io?.devices || [];
-      if (controls) controls.innerHTML = devices.map(device => `<div class="device-control"><div class="device-name">${device.device}</div><div class="device-checkboxes"><label><input type="checkbox" name="read-${device.device}" checked>Read</label><label><input type="checkbox" name="write-${device.device}" checked>Write</label></div></div>`).join('') || '<div class="io-loading"><p>Loading disk I/O data...</p></div>';
+      if (controls) controls.innerHTML = devices.map(device => { const name = diskDisplayName(device); return `<div class="device-control" data-io-device="${name}"><div class="device-name">${name}</div><div class="device-checkboxes"><label class="drive-checkbox"><input type="checkbox" name="read-${name}" value="${name}" checked>Read</label><label class="drive-checkbox"><input type="checkbox" name="write-${name}" value="${name}" checked>Write</label></div></div>`; }).join('') || '<div class="io-loading"><p>Loading disk I/O data...</p></div>';
+      const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
       const datasets = devices.flatMap((device, index) => {
-        const series = statsChartState.ioSeries[device.device] || { read: [0], write: [0] };
-        const colors = ['var(--secondary)', 'var(--accent)', 'var(--warning)', 'var(--success)', 'var(--error)'];
+        const key = device.device || device.mount;
+        const name = diskDisplayName(device);
+        const series = statsChartState.ioSeries[key] || { read: [0], write: [0] };
         const color = colors[index % colors.length];
         return [
-          { name: `${device.device} (Read)`, values: series.read, color },
-          { name: `${device.device} (Write)`, values: series.write, color, dash: '3 3', icon: 'square' }
+          { label: `${name} Read`, data: series.read.map(value => Number(value || 0) / (1024 * 1024)), borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0 },
+          { label: `${name} Write`, data: series.write.map(value => Number(value || 0) / (1024 * 1024)), borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0 }
         ];
       });
-      renderRechartsLine('disk-io-chart-container', datasets.length ? datasets : [{ name: 'disk (Read)', values: [0], color: 'var(--secondary)' }, { name: 'disk (Write)', values: [0], color: 'var(--secondary)', dash: '3 3' }], { label: 'Disk I/O', formatTick: value => fmtBytes(value) + '/s' });
+      const ctx = document.getElementById('io-chart');
+      if (ctx && window.Chart) createIOChart(ctx, statsChartState.labels, datasets);
+      const legend = document.getElementById('io-chart-legend');
+      if (legend) legend.innerHTML = [...new Set(datasets.map(dataset => dataset.label.split(' ')[0]))].map(name => `<span>${name} Read · Write</span>`).join('');
     }
     function renderMemory(data) {
       const memory = data.resources?.memory || {};
@@ -380,7 +439,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     async function hydrateStats() {
       try {
         const data = await fetch('/api/stats').then(r => r.json());
-        const label = new Date().toLocaleTimeString();
+        const label = formatChartTime();
         pushChartPoint(label, data);
         renderCpuChart(data);
         renderNetwork(data);
