@@ -291,6 +291,13 @@ fn admin_membrane_refusal_fragment(surface: &str) -> String {
     )
 }
 
+fn admin_html_fragment_response(status: StatusCode, body: String) -> Response {
+    let mut response = (status, Html(body)).into_response();
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
+    response
+}
+
 fn admin_toggle_target(toggle_id: &str) -> Option<(&'static str, &'static str)> {
     match toggle_id {
         "ssh-password-authentication" => Some(("SSH Password Authentication", "/api/admin/ssh/toggle")),
@@ -327,10 +334,10 @@ fn admin_staff_intent(method: &str, path: &str, classification: &str) -> Caduceu
 
 async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
     if !admin_headers_authorized(&headers) {
-        return (StatusCode::UNAUTHORIZED, Html(admin_membrane_refusal_fragment(&toggle_id))).into_response();
+        return admin_html_fragment_response(StatusCode::UNAUTHORIZED, admin_membrane_refusal_fragment(&toggle_id));
     }
     let Some((label, path)) = admin_toggle_target(&toggle_id) else {
-        return (StatusCode::NOT_FOUND, Html(admin_membrane_refusal_fragment("unknown admin toggle"))).into_response();
+        return admin_html_fragment_response(StatusCode::NOT_FOUND, admin_membrane_refusal_fragment("unknown admin toggle"));
     };
     let readback = admin_staff_intent("POST", path, "admin-service-toggle");
     let result = AdminMutationResult {
@@ -340,17 +347,15 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
         ok: readback.ok,
         first_missing_signal: if readback.ok { "none".to_string() } else { readback.first_missing_signal },
     };
-    let mut response = Html(render_admin_service_card_result_html(&toggle_id, Some(&result))).into_response();
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response
+    admin_html_fragment_response(StatusCode::OK, render_admin_service_card_result_html(&toggle_id, Some(&result)))
 }
 
 async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>) -> impl IntoResponse {
     if !admin_headers_authorized(&headers) {
-        return (StatusCode::UNAUTHORIZED, Html(admin_membrane_refusal_fragment(&action_id))).into_response();
+        return admin_html_fragment_response(StatusCode::UNAUTHORIZED, admin_membrane_refusal_fragment(&action_id));
     }
     let Some((title, method, path, mutation)) = admin_action_target(&action_id) else {
-        return (StatusCode::NOT_FOUND, Html(admin_membrane_refusal_fragment("unknown admin action"))).into_response();
+        return admin_html_fragment_response(StatusCode::NOT_FOUND, admin_membrane_refusal_fragment("unknown admin action"));
     };
     let readback = if mutation { admin_staff_intent(method, path, homeserver_route_family(path)) } else { caduceus_http(method, path) };
     let class = if readback.ok { "success" } else { "error" };
@@ -369,7 +374,5 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
         html_escape(message),
         html_escape(if readback.ok { "none" } else { &readback.first_missing_signal }),
     );
-    let mut response = Html(body).into_response();
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response
+    admin_html_fragment_response(StatusCode::OK, body)
 }

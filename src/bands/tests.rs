@@ -9,4 +9,5 @@ mod tests {
     include!("tests/part-03.rs");
     include!("tests/part-04.rs");
     include!("tests/part-05.rs");
+    include!("tests/hx-proof-walls.rs");
 }
