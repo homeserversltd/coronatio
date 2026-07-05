@@ -106,6 +106,82 @@ async fn tabs_route(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum CartridgeFaultKind {
+    Timeout,
+    UpstreamError,
+    TabNotFound,
+    ProxyUnreachable,
+}
+
+impl CartridgeFaultKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Timeout => "timeout",
+            Self::UpstreamError => "upstream-error",
+            Self::TabNotFound => "tab-not-found",
+            Self::ProxyUnreachable => "proxy-unreachable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct CartridgeFaultReceipt {
+    tab_id: String,
+    fault_kind: CartridgeFaultKind,
+    occurred_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct CartridgeFaultReadback {
+    schema: String,
+    readback_lane: String,
+    capacity: usize,
+    receipts: Vec<CartridgeFaultReceipt>,
+}
+
+const CARTRIDGE_FAULT_RECEIPT_CAPACITY: usize = 32;
+static CARTRIDGE_FAULT_RECEIPTS: OnceLock<Mutex<VecDeque<CartridgeFaultReceipt>>> = OnceLock::new();
+
+fn cartridge_fault_receipts() -> &'static Mutex<VecDeque<CartridgeFaultReceipt>> {
+    CARTRIDGE_FAULT_RECEIPTS.get_or_init(|| Mutex::new(VecDeque::with_capacity(CARTRIDGE_FAULT_RECEIPT_CAPACITY)))
+}
+
+fn record_cartridge_fault(tab_id: &str, fault_kind: CartridgeFaultKind) -> CartridgeFaultReceipt {
+    let receipt = CartridgeFaultReceipt {
+        tab_id: tab_id.to_string(),
+        fault_kind,
+        occurred_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0),
+    };
+    let mut receipts = cartridge_fault_receipts().lock().expect("cartridge fault receipts lock");
+    while receipts.len() >= CARTRIDGE_FAULT_RECEIPT_CAPACITY {
+        receipts.pop_front();
+    }
+    receipts.push_back(receipt.clone());
+    receipt
+}
+
+async fn faults_route() -> impl IntoResponse {
+    let receipts = cartridge_fault_receipts()
+        .lock()
+        .expect("cartridge fault receipts lock")
+        .iter()
+        .cloned()
+        .collect();
+    Json(CartridgeFaultReadback {
+        schema: "coronatio.cartridge-faults.v1".to_string(),
+        readback_lane: "occurred_at-unix-seconds".to_string(),
+        capacity: CARTRIDGE_FAULT_RECEIPT_CAPACITY,
+        receipts,
+    })
+}
+
 async fn tab_manifest_route(
     State(state): State<AppState>,
     Path(tab_id): Path<String>,
@@ -182,7 +258,7 @@ async fn load_tab_manifest(
 
 async fn admit_tab_route(State(state): State<AppState>, Path(tab_id): Path<String>) -> impl IntoResponse {
     if !is_safe_tab_id(&tab_id) {
-        return fragment_fault(StatusCode::BAD_REQUEST, &tab_id, "invalid-tab-id");
+        return fragment_fault(StatusCode::BAD_REQUEST, &tab_id, CartridgeFaultKind::UpstreamError);
     }
 
     if let Some(pane) = native_crown_panes().into_iter().find(|pane| pane.id == tab_id) {
@@ -191,14 +267,14 @@ async fn admit_tab_route(State(state): State<AppState>, Path(tab_id): Path<Strin
 
     match load_tab_manifest(&state.tab_root, &tab_id).await {
         Ok(Some(manifest)) => admit_registry_manifest(&state, manifest).await,
-        Ok(None) => fragment_fault(StatusCode::NOT_FOUND, &tab_id, "tab-not-found"),
-        Err(error) => fragment_fault(StatusCode::INTERNAL_SERVER_ERROR, &tab_id, &format!("manifest-error:{error}")),
+        Ok(None) => fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound),
+        Err(_error) => fragment_fault(StatusCode::INTERNAL_SERVER_ERROR, &tab_id, CartridgeFaultKind::UpstreamError),
     }
 }
 
 async fn admit_registry_manifest(state: &AppState, manifest: TabManifest) -> Response {
     if manifest.client_class != ClientClass::Fragment {
-        return fragment_fault(StatusCode::BAD_REQUEST, &manifest.id, "unsupported-client-class");
+        return fragment_fault(StatusCode::BAD_REQUEST, &manifest.id, CartridgeFaultKind::UpstreamError);
     }
     if let Some(service_url) = manifest.service_url.as_deref().filter(|value| !value.trim().is_empty()) {
         let url = format!("{}{}", service_url.trim_end_matches('/'), manifest.fragment_path.as_str());
@@ -210,18 +286,25 @@ async fn admit_registry_manifest(state: &AppState, manifest: TabManifest) -> Res
 async fn fetch_cartridge_fragment(tab_id: &str, url: &str) -> Response {
     let client = match reqwest::Client::builder().timeout(Duration::from_secs(2)).build() {
         Ok(client) => client,
-        Err(error) => return fragment_fault(StatusCode::INTERNAL_SERVER_ERROR, tab_id, &format!("client-build:{error}")),
+        Err(_error) => return fragment_fault(StatusCode::INTERNAL_SERVER_ERROR, tab_id, CartridgeFaultKind::UpstreamError),
     };
     match client.get(url).send().await {
         Ok(response) => {
             let status = StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
             match response.text().await {
                 Ok(body) if status.is_success() => Html(body).into_response(),
-                Ok(body) => fragment_fault(status, tab_id, &format!("cartridge-status:{}:{}", status.as_u16(), body.chars().take(120).collect::<String>())),
-                Err(error) => fragment_fault(StatusCode::BAD_GATEWAY, tab_id, &format!("cartridge-body:{error}")),
+                Ok(_body) => fragment_fault(status, tab_id, CartridgeFaultKind::UpstreamError),
+                Err(_error) => fragment_fault(StatusCode::BAD_GATEWAY, tab_id, CartridgeFaultKind::UpstreamError),
             }
         }
-        Err(error) => fragment_fault(StatusCode::BAD_GATEWAY, tab_id, &format!("cartridge-fetch:{error}")),
+        Err(error) => {
+            let fault_kind = if error.is_timeout() {
+                CartridgeFaultKind::Timeout
+            } else {
+                CartridgeFaultKind::ProxyUnreachable
+            };
+            fragment_fault(StatusCode::BAD_GATEWAY, tab_id, fault_kind)
+        },
     }
 }
 
@@ -230,14 +313,15 @@ async fn read_static_cartridge_fragment(state: &AppState, manifest: &TabManifest
     let path = state.tab_root.join(&manifest.id).join(fragment_rel);
     match fs::read_to_string(&path).await {
         Ok(body) => Html(body).into_response(),
-        Err(error) => fragment_fault(StatusCode::BAD_GATEWAY, &manifest.id, &format!("static-fragment:{}:{error}", path.display())),
+        Err(_error) => fragment_fault(StatusCode::BAD_GATEWAY, &manifest.id, CartridgeFaultKind::UpstreamError),
     }
 }
 
-fn fragment_fault(status: StatusCode, tab_id: &str, fault: &str) -> Response {
-    let escaped_fault = fault.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
+fn fragment_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKind) -> Response {
+    let receipt = record_cartridge_fault(tab_id, fault_kind);
+    let fault = receipt.fault_kind.as_str();
     let body = maud::html! {
-        section data-cartridge-fault="true" data-cartridge-fault-kind=(escaped_fault) data-tab-id=(tab_id) {
+        section data-cartridge-fault="true" data-cartridge-fault-kind=(fault) data-tab-id=(tab_id) data-cartridge-fault-occurred-at=(receipt.occurred_at) {
             h2 { "Cartridge fault" }
             p { "The crown kept the underlay standing while this fragment failed admission." }
         }

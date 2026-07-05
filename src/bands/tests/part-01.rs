@@ -185,6 +185,8 @@
         }
         assert!(shell.contains("hx-swap=\"innerHTML\""));
         assert!(shell.contains("hx-trigger=\"click, keyup[key=='Enter'], keyup[key==' ']\""));
+        assert!(shell.contains(r#"data-underlay-state="visible""#));
+        assert!(shell.contains("data-underlay-fault-kind"));
     }
 
     #[test]
@@ -246,8 +248,8 @@
     }
 
     #[tokio::test]
-    async fn coro_003_proxy_fault_path_returns_typed_fault_marker() {
-        let temp = test_tab_root("coro-003-fault");
+    async fn coro_004_proxy_connect_failure_returns_fault_fragment_and_receipt() {
+        let temp = test_tab_root("coro-004-connect-fault");
         let tab_dir = temp.join("dead-service");
         std::fs::create_dir_all(&tab_dir).unwrap();
         std::fs::write(tab_dir.join("tab.json"), r#"{
@@ -257,7 +259,8 @@
           "serviceUrl":"http://127.0.0.1:9",
           "fragmentPath":"/fragment"
         }"#).unwrap();
-        let response = app(AppState { tab_root: Arc::new(temp) })
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let response = router.clone()
             .oneshot(Request::builder().uri("/admit/dead-service").body(Body::empty()).unwrap())
             .await
             .unwrap();
@@ -265,7 +268,78 @@
         assert_eq!(response.headers().get("x-coronatio-fault").unwrap(), "cartridge-fragment");
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("data-cartridge-fault=\"true\""));
-        assert!(body.contains("data-cartridge-fault-kind="));
+        assert!(body.contains("data-cartridge-fault-kind=\"proxy-unreachable\""));
+        assert!(body.contains("data-cartridge-fault-occurred-at="));
+
+        let readback = router.oneshot(Request::builder().uri("/api/faults").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(readback.status(), StatusCode::OK);
+        let body = String::from_utf8(axum::body::to_bytes(readback.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("coronatio.cartridge-faults.v1"));
+        assert!(body.contains("occurred_at-unix-seconds") || body.contains("occurredAt"));
+        assert!(body.contains("dead-service"));
+        assert!(body.contains("proxy-unreachable"));
+    }
+
+    #[tokio::test]
+    async fn coro_004_upstream_non_2xx_returns_fault_fragment_and_receipt() {
+        let upstream = spawn_one_shot_http_response(503, "upstream unavailable", Duration::ZERO);
+        let temp = test_tab_root("coro-004-upstream-fault");
+        let tab_dir = temp.join("bad-upstream");
+        std::fs::create_dir_all(&tab_dir).unwrap();
+        std::fs::write(tab_dir.join("tab.json"), format!(r#"{{
+          "id":"bad-upstream",
+          "title":"Bad Upstream",
+          "routePrefix":"/api/tabs/bad-upstream",
+          "serviceUrl":"{}",
+          "fragmentPath":"/fragment"
+        }}"#, upstream)).unwrap();
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let response = router.clone().oneshot(Request::builder().uri("/admit/bad-upstream").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("data-cartridge-fault-kind=\"upstream-error\""));
+        let readback = router.oneshot(Request::builder().uri("/api/faults").body(Body::empty()).unwrap()).await.unwrap();
+        let body = String::from_utf8(axum::body::to_bytes(readback.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("bad-upstream"));
+        assert!(body.contains("upstream-error"));
+    }
+
+    #[tokio::test]
+    async fn coro_004_proxy_timeout_returns_fault_fragment_and_receipt() {
+        let upstream = spawn_one_shot_http_response(200, "<article>late</article>", Duration::from_secs(3));
+        let temp = test_tab_root("coro-004-timeout-fault");
+        let tab_dir = temp.join("slow-upstream");
+        std::fs::create_dir_all(&tab_dir).unwrap();
+        std::fs::write(tab_dir.join("tab.json"), format!(r#"{{
+          "id":"slow-upstream",
+          "title":"Slow Upstream",
+          "routePrefix":"/api/tabs/slow-upstream",
+          "serviceUrl":"{}",
+          "fragmentPath":"/fragment"
+        }}"#, upstream)).unwrap();
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let response = router.clone().oneshot(Request::builder().uri("/admit/slow-upstream").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("data-cartridge-fault-kind=\"timeout\""));
+        let readback = router.oneshot(Request::builder().uri("/api/faults").body(Body::empty()).unwrap()).await.unwrap();
+        let body = String::from_utf8(axum::body::to_bytes(readback.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("slow-upstream"));
+        assert!(body.contains("timeout"));
+    }
+
+    #[tokio::test]
+    async fn coro_004_tab_not_found_returns_typed_fault_receipt() {
+        let temp = test_tab_root("coro-004-tab-missing");
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let response = router.clone().oneshot(Request::builder().uri("/admit/missing-tab").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("data-cartridge-fault-kind=\"tab-not-found\""));
+        let readback = router.oneshot(Request::builder().uri("/api/faults").body(Body::empty()).unwrap()).await.unwrap();
+        let body = String::from_utf8(axum::body::to_bytes(readback.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("missing-tab"));
+        assert!(body.contains("tab-not-found"));
     }
 
     #[tokio::test]
@@ -326,7 +400,9 @@
         assert!(js_body.contains("data-view-panel"));
         assert!(js_body.contains("htmxOrgan.config.allowScriptTags = false"));
         assert!(js_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
-        assert!(js_body.contains("emitCartridgeFaultReceiptStub"));
+        assert!(js_body.contains("emitCartridgeFaultReceipt"));
+        assert!(js_body.contains("stage.dataset.underlayState = 'visible'"));
+        assert!(js_body.contains("stage.dataset.underlayState = panelIsEmptyOrFaulted(activePanel) ? 'visible' : 'occupied'"));
         assert!(js_body.contains("htmx:timeout"));
         assert!(js_body.contains("htmx:responseError"));
         assert!(!js_body.contains("fetch("));
@@ -374,6 +450,6 @@
         let chrome_body = String::from_utf8(axum::body::to_bytes(chrome.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(chrome_body.contains("htmxOrgan.config.allowScriptTags = false"));
         assert!(chrome_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
-        assert!(chrome_body.contains("emitCartridgeFaultReceiptStub"));
+        assert!(chrome_body.contains("emitCartridgeFaultReceipt"));
     }
 
