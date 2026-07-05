@@ -299,7 +299,7 @@
         let temp = test_tab_root("hx-001-admit");
         let router = app(AppState { tab_root: Arc::new(temp) });
         let shell = render_crown_shell();
-        for pane in ["portals", "stats", "upload", "admin"] {
+        for pane in ["portals", "stats", "upload", "admin", "testtab"] {
             let response = router.clone().oneshot(Request::builder().uri(format!("/admit/{pane}")).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK, "{pane} admits");
             assert_eq!(response.headers().get(header::CACHE_CONTROL).and_then(|value| value.to_str().ok()), Some("no-store"));
