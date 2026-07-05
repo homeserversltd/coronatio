@@ -25,6 +25,7 @@
     "library/_toggle.css",
     "library/_visibility-toggle.css",
     "packs/upload.css",
+    "packs/stats.css",
     "shell/document-2-css.css"
   ],
   "authority": "Serve-time concatenation order IS this list; adding a file means adding it here."
