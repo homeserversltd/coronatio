@@ -257,19 +257,19 @@ async fn load_tab_manifest(
 }
 
 async fn admit_tab_route(State(state): State<AppState>, headers: HeaderMap, Path(tab_id): Path<String>) -> impl IntoResponse {
-    if !is_safe_tab_id(&tab_id) {
-        return fragment_fault(StatusCode::BAD_REQUEST, &tab_id, CartridgeFaultKind::UpstreamError);
-    }
-
-    if let Some(pane) = native_crown_panes().into_iter().find(|pane| pane.id == tab_id) {
-        return Html(render_native_pane_fragment(&pane)).into_response();
-    }
-
-    match load_tab_manifest(&state.tab_root, &tab_id).await {
-        Ok(Some(manifest)) => admit_registry_manifest(&state, &headers, manifest).await,
-        Ok(None) => fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound),
-        Err(_error) => fragment_fault(StatusCode::INTERNAL_SERVER_ERROR, &tab_id, CartridgeFaultKind::UpstreamError),
-    }
+    let mut response = if !is_safe_tab_id(&tab_id) {
+        fragment_fault(StatusCode::BAD_REQUEST, &tab_id, CartridgeFaultKind::UpstreamError)
+    } else if let Some(pane) = native_crown_panes().into_iter().find(|pane| pane.id == tab_id) {
+        Html(render_native_pane_fragment(&pane)).into_response()
+    } else {
+        match load_tab_manifest(&state.tab_root, &tab_id).await {
+            Ok(Some(manifest)) => admit_registry_manifest(&state, &headers, manifest).await,
+            Ok(None) => fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound),
+            Err(_error) => fragment_fault(StatusCode::INTERNAL_SERVER_ERROR, &tab_id, CartridgeFaultKind::UpstreamError),
+        }
+    };
+    response.headers_mut().insert(header::CACHE_CONTROL, header::HeaderValue::from_static("no-store"));
+    response
 }
 
 async fn admit_registry_manifest(state: &AppState, headers: &HeaderMap, manifest: TabManifest) -> Response {
