@@ -135,4 +135,3 @@ async fn upload_browse_hierarchical_route(Query(query): Query<UploadBrowseQuery>
     }))
     .into_response()
 }
-

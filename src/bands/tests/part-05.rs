@@ -238,3 +238,24 @@
         }
     }
 
+
+    #[test]
+    fn css_sizing_ports_quarry_verbatim_values_for_port_005_and_retrofit() {
+        let html = render_crown_shell();
+        for required in [
+            "padding: 0 1rem;",
+            "height: calc(var(--theme-header-height) - 8px);",
+            "padding: 0 20px;",
+            "min-height: 48px;",
+            "width: 120px; height: 120px;",
+            "grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;",
+            "height: 180px; margin: 0;",
+            "min-width: 200px; padding: 8px 12px; border: 1px solid var(--border);",
+            "max-height: 70vh; width: 100%;",
+            "padding: 4px 8px; cursor: pointer; border-radius: 4px;",
+        ] {
+            assert!(html.contains(required), "missing verbatim quarry CSS value {required}");
+        }
+        let directory_rule = html.split(".directory-entry { ").nth(1).unwrap().split(" }").next().unwrap();
+        assert!(!directory_rule.contains("min-height"), "directory rows must not invent non-quarry row height: {directory_rule}");
+    }

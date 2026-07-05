@@ -12,21 +12,21 @@ fn shell_document_2() -> &'static str {
     .log-frame { min-height: 76px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--secondary); }
     .admin-quarry-note { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
-    .stats-tablet { display: flex; flex-direction: column; gap: 16px; padding: 8px; }
+    .stats-tablet { display: flex; flex-direction: column; gap: 24px; padding: 16px; }
     .stat-element { position: relative; padding: 8px; border-radius: 8px; background-color: var(--background); transition: all 0.2s ease-out; box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border); }
     .stat-element[data-visible="true"] { background-color: var(--background); }
     .stat-element[data-visible="false"] { background-color: var(--hiddenTabBackground); }
     .stat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-    .stat-title { margin: 0; color: var(--text); font-size: .9rem; font-weight: 500; flex-grow: 1; text-align: center; }
+    .stat-title { margin: 0; color: var(--text); font-size: 1rem; font-weight: 500; flex-grow: 1; text-align: center; }
     .stat-content { display: flex; flex-direction: column; gap: 16px; }
     .stat-info { padding: 8px; background-color: var(--hiddenTabBackground); border-radius: 4px; font-size: .9rem; color: var(--text); }
     .visibility-toggle { padding: .35rem .45rem; min-width: 34px; }
     .cpu-stats-container, .network-stats-container, .disk-io-chart, .memory-stats, .disk-usage-stats, .kea-leases-table, .process-usage-list { width: 100%; }
-    .cpu-chart, .network-speed-chart, .stat-chart { width: 100%; min-height: 320px; margin: 0; }
-    .chart-container { position: relative; width: 100%; height: 300px; min-height: 300px; }
-    .coronatio-chart-canvas { display: block; width: 100% !important; height: 300px !important; }
-    .recharts-wrapper { width: 100%; height: 300px; position: relative; }
-    .recharts-surface { width: 100%; height: 200px; overflow: visible; display: block; }
+    .cpu-chart, .network-speed-chart, .stat-chart { width: 100%; height: 180px; margin: 0; }
+    .chart-container { position: relative; width: 100%; height: 180px; margin: 0; }
+    .coronatio-chart-canvas { display: block; width: 100% !important; height: 180px !important; }
+    .recharts-wrapper { width: 100%; height: 180px; position: relative; }
+    .recharts-surface { width: 100%; height: 180px; overflow: visible; display: block; }
     .recharts-cartesian-grid line { stroke: var(--border) !important; stroke-opacity: .8; stroke-dasharray: 3 3; }
     .recharts-cartesian-axis text { fill: var(--hiddenTabText); font-size: 11px; }
     .recharts-line-curve { vector-effect: non-scaling-stroke; }
@@ -80,10 +80,10 @@ fn shell_document_2() -> &'static str {
     .process-name { color: var(--text); font-size: .85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .process-usage { color: var(--text); font-size: .85rem; font-weight: 500; margin-left: 8px; }
     .stat-element[data-visible="false"] .stat-title, .stat-element[data-visible="false"] .stat-info { color: var(--secondary); opacity: .7; }
-    .cpu-chart, .network-speed-chart, .stat-chart { height: auto; min-height: 332px; overflow: visible; }
-    .disk-io-chart .chart-container { min-height: 320px; }
-    .recharts-wrapper { height: auto; min-height: 300px; overflow: visible; }
-    .recharts-surface { height: 300px; max-height: 300px; }
+    .cpu-chart, .network-speed-chart, .stat-chart { height: 180px; min-height: 180px; overflow: visible; }
+    .disk-io-chart .chart-container { min-height: 180px; }
+    .recharts-wrapper { height: 180px; min-height: 180px; overflow: visible; }
+    .recharts-surface { height: 180px; max-height: 180px; }
     .recharts-legend-wrapper { margin-top: 6px; min-height: 28px; align-items: center; }
     .recharts-legend-item { display: inline-flex; align-items: center; gap: 4px; color: var(--text); }
     .recharts-cartesian-axis-tick-value, .recharts-surface text { fill: var(--hiddenTabText) !important; color: var(--hiddenTabText); }
@@ -114,21 +114,25 @@ fn shell_document_2() -> &'static str {
     .upload-progress.pending .progress-bar, .upload-progress.uploading .progress-bar { background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent); background-size: 1rem 1rem; animation: progress-stripes 1s linear infinite; }
     @keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }
     .file-upload-section { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .file-upload-section button, .file-upload-section input[type="file"] { background: var(--primary); border: none; border-radius: var(--border-radius); padding: 8px 12px; color: var(--text); cursor: pointer; transition: background var(--transition-fast); font-size: var(--font-size-sm); margin-right: 8px; margin-bottom: 8px; }
-    .file-upload-section button:hover, .file-upload-section input[type="file"]:hover { background: var(--primaryHover); }
+    .file-upload-section button { background: var(--primary); border: none; border-radius: var(--border-radius, 8px); padding: 8px 12px; color: var(--text); cursor: pointer; transition: background var(--transition-fast); font-size: var(--font-size-sm); margin-right: 8px; margin-bottom: 8px; }
+    .file-upload-section input[type="file"] { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--border-radius, 8px); background-color: var(--background); color: var(--text); font-size: 14px; cursor: default; transition: border-color .2s ease; }
+    .file-upload-section button:hover { background: var(--primaryHover); }
+    .file-upload-section input[type="file"]:focus { outline: none; border-color: var(--primary); }
     .file-upload-section button[disabled] { opacity: .6; cursor: not-allowed; background: var(--disabled); }
     .directory-browser { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background-color: var(--background); box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border); }
     .directory-browser-header { display: flex; flex-wrap: wrap; align-items: center; padding: 8px 12px; background-color: var(--hiddenTabBackground); border-bottom: 1px solid var(--border); gap: 8px; }
     .directory-browser-header button { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background-color: var(--primary); color: var(--text); cursor: pointer; font-size: .9em; transition: background-color .2s, border-color .2s; display: inline-flex; align-items: center; gap: 4px; margin: 0; }
     .directory-browser-header button:hover:not(:disabled) { background-color: var(--primaryHover); border-color: var(--border); }
     .directory-browser-header button:disabled { opacity: .6; cursor: not-allowed; }
-    .directory-breadcrumb-container { padding: 8px 12px; background: var(--background); border-bottom: 1px solid var(--border); }
-    .breadcrumb-navigation { font-family: monospace; font-size: .9rem; white-space: normal; }
-    .breadcrumb-item { cursor: pointer; color: var(--text); }
-    .breadcrumb-item.current { cursor: default; font-weight: bold; }
-    .breadcrumb-separator { color: var(--text-secondary); margin: 0 4px; }
+    .directory-breadcrumb-container { padding: 8px 12px; background-color: var(--hiddenTabBackground); border-bottom: 1px solid var(--border); font-size: .9em; }
+    .breadcrumb-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+    .breadcrumb-item { color: var(--text); padding: 2px 6px; border-radius: 4px; transition: background-color .2s ease, color .2s ease; }
+    .breadcrumb-item:not(.current) { color: var(--secondary); cursor: pointer; }
+    .breadcrumb-item:not(.current):hover { background-color: var(--primaryHover); color: var(--text); }
+    .breadcrumb-item.current { color: var(--primary); background-color: var(--primaryHover); font-weight: bold; cursor: default; }
+    .breadcrumb-separator { color: var(--secondary); user-select: none; }
     .directory-tree-container { flex-grow: 1; overflow-y: auto; padding: 8px; max-height: 70vh; width: 100%; }
-    .directory-entry { padding: 4px 8px; cursor: pointer; border-radius: 4px; transition: background-color .15s ease-in-out; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; display: flex; align-items: center; gap: 4px; min-height: 44px; }
+    .directory-entry { padding: 4px 8px; cursor: pointer; border-radius: 4px; transition: background-color .15s ease-in-out; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; display: flex; align-items: center; gap: 4px; }
     .directory-entry:hover { background-color: var(--primaryHover); }
     .directory-entry.selected { background-color: var(--primaryHover); font-weight: bold; color: var(--text); }
     .directory-entry.loading { opacity: .7; pointer-events: none; }
