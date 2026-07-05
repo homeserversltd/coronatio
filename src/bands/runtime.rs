@@ -71,6 +71,7 @@ fn app(state: AppState) -> Router {
         .route("/api/stats", get(stats_route))
         .route("/api/faults", get(faults_route))
         .route("/admit/:tab_id", get(admit_tab_route))
+        .route("/admit/upload/tree", get(upload_tree_fragment_route))
         .route(CROWN_HTMX_SCRIPT_PATH, get(crown_htmx_script_route))
         .route(CROWN_CHROME_SCRIPT_PATH, get(crown_chrome_script_route))
         .route("/api/tabs", get(tabs_route))

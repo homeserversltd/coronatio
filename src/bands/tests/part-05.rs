@@ -121,6 +121,7 @@
 
     #[tokio::test]
     async fn upload_browse_hierarchical_returns_real_directory_json() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let root = test_tab_root("upload-browse-root");
         let media = root.join("media");
         let films = media.join("films");
@@ -229,9 +230,9 @@
             "uploadState.currentPath",
             "renderUploadProgress",
             "setUploadDirectoryError",
-            "if (data.ok === false) { setUploadDirectoryError(data.error || '⚠️ NAS Storage Unavailable'); return; }",
-            "finally { if (loading) loading.hidden = true; }",
-            "/api/files/browse-hierarchical?path=",
+            "uploadCurrentPath()",
+            "syncUploadTreeSelection",
+            "/admit/upload/tree?path=%2Fmnt%2Fnas",
             "/api/upload/blacklist/update",
             "/api/upload/history/clear",
             "/api/upload/pin-required-status",
@@ -293,6 +294,8 @@
 
     #[tokio::test]
     async fn hx_001_admit_route_serves_og_pane_fragments_fresh_and_records_faults() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
         let temp = test_tab_root("hx-001-admit");
         let router = app(AppState { tab_root: Arc::new(temp) });
         let shell = render_crown_shell();
@@ -314,6 +317,115 @@
         let body = String::from_utf8(axum::body::to_bytes(faults.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("coronatio.cartridge-faults.v1"));
         assert!(body.contains("missing-tab"));
+    }
+
+
+
+    static HX_EXEMPLAR_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn hx_exemplar_subtree_fragment_returns_og_rows_for_fixture_dir() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let root = test_tab_root("hx-exemplar-subtree-root");
+        let media = root.join("media");
+        std::fs::create_dir_all(media.join("films")).unwrap();
+        std::fs::create_dir_all(media.join("shows")).unwrap();
+        std::env::set_var("CORONATIO_UPLOAD_ROOT", &root);
+        let route = format!("/admit/upload/tree?path={}&depth=1&selected={}", upload_query_escape(&format!("{}/media", root.display())), upload_query_escape(&root.display().to_string()));
+        let response = app(AppState { tab_root: Arc::new(test_tab_root("hx-exemplar-subtree-app")) })
+            .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
+            .await.unwrap();
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains(r#"class="directory-entry"#), "{body}");
+        assert!(body.contains(r#"class="expand-control""#), "{body}");
+        assert!(body.contains(r#"class="entry-icon""#), "{body}");
+        assert!(body.contains(r#"class="entry-name">films</span>"#), "{body}");
+        assert!(body.contains(r#"style="padding-left: 36px""#), "{body}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn hx_exemplar_caret_markup_carries_hx_get_child_pointer() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let root = test_tab_root("hx-exemplar-caret-root");
+        std::fs::create_dir_all(root.join("media/films")).unwrap();
+        std::env::set_var("CORONATIO_UPLOAD_ROOT", &root);
+        let response = app(AppState { tab_root: Arc::new(test_tab_root("hx-exemplar-caret-app")) })
+            .oneshot(Request::builder().uri("/admit/upload/tree").body(Body::empty()).unwrap())
+            .await.unwrap();
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains(r#"hx-get="/admit/upload/tree?path="#), "{body}");
+        assert!(body.contains("depth=1"), "{body}");
+        assert!(body.contains("hx-target=\"#upload-subtree-"), "{body}");
+        assert!(body.contains("hx-swap=\"innerHTML\""), "{body}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn hx_exemplar_selection_echo_keeps_expanded_tree_state() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let root = test_tab_root("hx-exemplar-selection-root");
+        std::fs::create_dir_all(root.join("media/films")).unwrap();
+        let media = format!("{}/media", root.display());
+        let films = format!("{}/media/films", root.display());
+        std::env::set_var("CORONATIO_UPLOAD_ROOT", &root);
+        let route = format!(
+            "/admit/upload/tree?path={}&depth=0&selected={}&expanded={}",
+            upload_query_escape(&root.display().to_string()),
+            upload_query_escape(&films),
+            upload_query_escape(&media)
+        );
+        let response = app(AppState { tab_root: Arc::new(test_tab_root("hx-exemplar-selection-app")) })
+            .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
+            .await.unwrap();
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains(&format!("data-directory-path=\"{}\" role=\"treeitem\" aria-selected=\"true\"", films)), "{body}");
+        assert!(body.contains(&format!("data-upload-current-path value=\"{}\"", films)), "{body}");
+        assert!(body.contains(r#"class="entry-name">films</span>"#), "selection must not collapse expanded media subtree: {body}");
+    }
+
+    #[test]
+    fn hx_exemplar_tree_dialect_is_htmx_only_and_upload_xhr_is_allowlisted() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let root = test_tab_root("hx-exemplar-dialect-root");
+        std::fs::create_dir_all(root.join("media")).unwrap();
+        std::env::set_var("CORONATIO_UPLOAD_ROOT", &root);
+        let chrome = crown_chrome_js();
+        assert!(!chrome.contains("renderDirectoryEntries"), "client-side tree renderer still present");
+        assert!(!chrome.contains("loadUploadDirectory"), "client-side tree loader still present");
+        assert!(!chrome.contains("/api/files/browse-hierarchical?path="), "tree lane still fetches browse JSON");
+        assert!(chrome.contains("new XMLHttpRequest()"), "owned upload progress XHR must stay");
+        assert!(chrome.contains("xhr.upload.onprogress"), "owned upload progress XHR must keep progress chrome");
+        let shell = render_crown_shell();
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
+        assert!(shell.contains(r#"data-upload-tree role="tree""#));
+        assert!(shell.contains("hx-get=\"/admit/upload/tree"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn hx_exemplar_re_expand_reads_fresh_subtree_from_server() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let root = test_tab_root("hx-exemplar-fresh-root");
+        let media = root.join("media");
+        std::fs::create_dir_all(media.join("films")).unwrap();
+        let media_display = format!("{}/media", root.display());
+        let route = format!("/admit/upload/tree?path={}&depth=1&selected={}", upload_query_escape(&media_display), upload_query_escape(&root.display().to_string()));
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-exemplar-fresh-app")) });
+        std::env::set_var("CORONATIO_UPLOAD_ROOT", &root);
+        let first = router.clone().oneshot(Request::builder().uri(&route).body(Body::empty()).unwrap()).await.unwrap();
+        let first_body = String::from_utf8(axum::body::to_bytes(first.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(first_body.contains("films"), "{first_body}");
+        assert!(!first_body.contains("concerts"), "{first_body}");
+        std::fs::create_dir_all(media.join("concerts")).unwrap();
+        let second = router.oneshot(Request::builder().uri(&route).body(Body::empty()).unwrap()).await.unwrap();
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
+        let second_body = String::from_utf8(axum::body::to_bytes(second.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(second_body.contains("films"), "{second_body}");
+        assert!(second_body.contains("concerts"), "server did not resolve fresh subtree on re-expand: {second_body}");
     }
 
     #[test]

@@ -17,7 +17,6 @@ fn shell_document_4() -> &'static str {
     const uploadTree = document.querySelector('[data-upload-tree]');
     const uploadBreadcrumbs = document.querySelector('[data-upload-breadcrumbs]');
     const uploadReadout = document.getElementById('upload-readout');
-    let uploadTreeEntries = [{ name: 'nas', path: '/mnt/nas', type: 'directory', hasChildren: true, isExpanded: false, children: [] }];
     function uploadFormatSize(bytes) {
       const units = ['B', 'KB', 'MB', 'GB'];
       let size = Number(bytes || 0);
@@ -59,83 +58,38 @@ fn shell_document_4() -> &'static str {
       uploadState.selectedFiles = Array.from(uploadFileInput?.files || []);
       if (uploadSubmit) uploadSubmit.disabled = uploadState.selectedFiles.length === 0 || uploadState.uploading;
     }
+    function uploadCurrentPath() {
+      return document.querySelector('[data-upload-current-path]')?.value || uploadState.currentPath || '/mnt/nas';
+    }
     function renderUploadBreadcrumbs(path) {
       if (!uploadBreadcrumbs) return;
-      const parts = path.split('/').filter(Boolean).slice(1);
+      const parts = String(path || '/mnt/nas').split('/').filter(Boolean).slice(1);
       let current = '/mnt/nas';
       const crumbs = [{ name: 'nas', path: '/mnt/nas' }];
       parts.slice(1).forEach(part => { current += '/' + part; crumbs.push({ name: part, path: current }); });
       uploadBreadcrumbs.innerHTML = crumbs.map((crumb, index) => `<span class="breadcrumb-item ${crumb.path === path ? 'current' : ''}" data-path="${crumb.path}">${crumb.name}</span>${index < crumbs.length - 1 ? '<span class="breadcrumb-separator"> / </span>' : ''}`).join('');
-      uploadBreadcrumbs.querySelectorAll('.breadcrumb-item').forEach(item => item.addEventListener('click', () => selectUploadPath(item.dataset.path || '/mnt/nas')));
     }
-    function selectUploadPath(path) {
-      uploadState.currentPath = path || '/mnt/nas';
+    function syncUploadTreeSelection() {
+      const selected = uploadTree?.querySelector('.directory-entry[aria-selected="true"]')?.dataset.directoryPath || uploadCurrentPath();
+      uploadState.currentPath = selected || '/mnt/nas';
+      const field = document.querySelector('[data-upload-current-path]');
+      if (field) field.value = uploadState.currentPath;
       renderUploadBreadcrumbs(uploadState.currentPath);
-      uploadTree?.querySelectorAll('.directory-entry').forEach(row => {
-        const selected = row.dataset.directoryPath === uploadState.currentPath;
-        row.classList.toggle('selected', selected);
-        row.setAttribute('aria-selected', selected ? 'true' : 'false');
-        const mark = row.querySelector('.entry-selected');
-        if (mark) mark.hidden = !selected;
-      });
-    }
-    function findUploadTreeEntry(entries, path) {
-      for (const entry of entries || []) {
-        if (entry.path === path) return entry;
-        const child = findUploadTreeEntry(entry.children || [], path);
-        if (child) return child;
-      }
-      return null;
-    }
-    function renderDirectoryEntries(entries, depth = 0) {
-      return (entries || []).map(entry => `<div class="directory-entry ${entry.path === uploadState.currentPath ? 'selected' : ''}" data-directory-path="${entry.path}" role="treeitem" aria-selected="${entry.path === uploadState.currentPath}" aria-expanded="${entry.hasChildren ? !!entry.isExpanded : 'false'}" style="padding-left:${24 * depth + 12}px">${depth > 0 ? '<div class="tree-line horizontal"></div>' : ''}<span class="expand-control" aria-label="${entry.isExpanded ? 'Collapse' : 'Expand'}">${entry.hasChildren ? (entry.isLoading ? '⟳' : (entry.isExpanded ? '▼' : '▶')) : ''}</span><span class="entry-icon">📁</span><span class="entry-name">${entry.name}</span><span class="entry-selected" aria-hidden="true" ${entry.path === uploadState.currentPath ? '' : 'hidden'}>✓</span></div>${entry.isExpanded ? renderDirectoryEntries(entry.children || [], depth + 1) : ''}`).join('');
     }
     function setUploadDirectoryError(message) {
       const error = document.querySelector('[data-upload-directory-error]');
-      uploadTreeEntries = [{ name: 'nas', path: '/mnt/nas', type: 'directory', hasChildren: false, isExpanded: false, children: [] }];
-      if (uploadTree) uploadTree.innerHTML = renderDirectoryEntries(uploadTreeEntries);
-      selectUploadPath('/mnt/nas');
       if (error) { error.hidden = false; error.textContent = message || '⚠️ NAS Storage Unavailable'; }
+      syncUploadTreeSelection();
     }
-    function wireUploadTreeRows() {
-      uploadTree?.querySelectorAll('.directory-entry').forEach(row => {
-        const path = row.dataset.directoryPath || '/mnt/nas';
-        row.addEventListener('click', event => { event.stopPropagation(); selectUploadPath(path); });
-        row.querySelector('.expand-control')?.addEventListener('click', event => {
-          event.stopPropagation();
-          const node = findUploadTreeEntry(uploadTreeEntries, path);
-          if (!node || !node.hasChildren) return;
-          if (node.isExpanded) { node.isExpanded = false; if (uploadTree) uploadTree.innerHTML = renderDirectoryEntries(uploadTreeEntries); wireUploadTreeRows(); selectUploadPath(uploadState.currentPath); return; }
-          loadUploadDirectory(path, true);
-        });
-      });
-    }
-    async function loadUploadDirectory(path = '/mnt/nas', expand = false) {
-      const loading = document.querySelector('[data-upload-directory-loading]');
-      const error = document.querySelector('[data-upload-directory-error]');
-      if (loading) loading.hidden = false;
-      if (error) error.hidden = true;
-      try {
-        const data = await fetch('/api/files/browse-hierarchical?path=' + encodeURIComponent(path) + '&expand=' + expand).then(r => r.json());
-        if (data.ok === false) { setUploadDirectoryError(data.error || '⚠️ NAS Storage Unavailable'); return; }
-        const entries = data.entries || [];
-        if (path === '/mnt/nas') uploadTreeEntries = [{ name: 'nas', path: '/mnt/nas', type: 'directory', hasChildren: data.hasChildren !== false, isExpanded: true, children: entries }];
-        else {
-          const node = findUploadTreeEntry(uploadTreeEntries, path);
-          if (node) { node.children = entries; node.hasChildren = data.hasChildren !== false; node.isExpanded = true; }
-        }
-        if (uploadTree) uploadTree.innerHTML = renderDirectoryEntries(uploadTreeEntries);
-        wireUploadTreeRows();
-        selectUploadPath(uploadState.currentPath);
-      } catch (err) {
-        setUploadDirectoryError('⚠️ NAS Storage Unavailable');
-      } finally { if (loading) loading.hidden = true; }
-    }
+    document.body.addEventListener('htmx:afterSwap', event => {
+      const target = event.detail?.target;
+      if (target instanceof Element && (target.matches('[data-upload-tree]') || target.closest('[data-upload-tree]'))) syncUploadTreeSelection();
+    });
     async function uploadOneFile(file) {
       setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending' });
       const form = new FormData();
       form.append('file', file);
-      form.append('path', uploadState.currentPath);
+      form.append('path', uploadCurrentPath());
       const xhr = new XMLHttpRequest();
       const start = Date.now();
       return new Promise((resolve, reject) => {
@@ -188,18 +142,18 @@ fn shell_document_4() -> &'static str {
     function refreshUploadBlacklistDomOnly() { const entries = document.querySelector('[data-upload-blacklist-entries]'); if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join(''); }
     uploadFileInput?.addEventListener('change', setUploadSelection);
     uploadSubmit?.addEventListener('click', uploadSelectedFiles);
-    document.querySelector('[data-upload-refresh]')?.addEventListener('click', () => loadUploadDirectory('/mnt/nas', false));
+    document.querySelector('[data-upload-refresh]')?.addEventListener('click', () => { window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(uploadCurrentPath()), { target: '[data-upload-tree]', swap: 'innerHTML' }); });
     document.querySelector('[data-upload-force-allow]')?.addEventListener('click', async () => { if (!confirm(`WARNING: This will override security settings for ${uploadState.currentPath}. 
 Only continue if you understand the risks.`)) return; await fetch('/api/upload/force-permissions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ directory: uploadState.currentPath }) }); });
     document.querySelector('[data-upload-set-default]')?.addEventListener('click', () => fetch('/api/upload/default-directory', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ directory: uploadState.currentPath }) }));
     document.querySelector('[data-upload-history]')?.addEventListener('click', async () => { openUploadModal('[data-upload-history-modal]'); await refreshUploadHistory(); });
     document.querySelector('[data-upload-blacklist]')?.addEventListener('click', async () => { openUploadModal('[data-upload-blacklist-modal]'); await refreshUploadBlacklist(); });
     document.querySelector('[data-upload-blacklist-add]')?.addEventListener('click', () => { const input = document.querySelector('[data-upload-blacklist-input]'); const next = input?.value?.trim(); if (!next || uploadState.blacklist.includes(next)) return; uploadState.blacklist.push(next); input.value = ''; refreshUploadBlacklistDomOnly(); });
-    document.querySelector('[data-upload-blacklist-submit]')?.addEventListener('click', () => fetch('/api/upload/blacklist/update', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ blacklist: uploadState.blacklist }) }).then(() => loadUploadDirectory('/mnt/nas', true)));
+    document.querySelector('[data-upload-blacklist-submit]')?.addEventListener('click', () => fetch('/api/upload/blacklist/update', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ blacklist: uploadState.blacklist }) }).then(() => window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(uploadCurrentPath()), { target: '[data-upload-tree]', swap: 'innerHTML' })));
     document.querySelector('[data-upload-clear-history]')?.addEventListener('click', () => fetch('/api/upload/history/clear', { method: 'POST' }).then(refreshUploadHistory));
     document.querySelector('[data-upload-pin-toggle]')?.addEventListener('click', async event => { uploadState.pinRequired = !uploadState.pinRequired; event.currentTarget.classList.toggle('active', uploadState.pinRequired); event.currentTarget.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); await fetch('/api/upload/pin-required-status', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); });
     fetch('/api/upload/pin-required-status').then(r => r.json()).then(data => { uploadState.pinRequired = !!data.isPinRequired; const b = document.querySelector('[data-upload-pin-toggle]'); b?.classList.toggle('active', uploadState.pinRequired); }).catch(() => {});
-    loadUploadDirectory('/mnt/nas', false);
+    syncUploadTreeSelection();
 
     let uptimeBaseSeconds = null;
     let uptimeBaseStamp = 0;

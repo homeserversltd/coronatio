@@ -355,13 +355,8 @@ fn shell_document_2() -> &'static str {
               <div class="directory-breadcrumb-container">
                 <div class="breadcrumb-navigation" data-upload-breadcrumbs><span class="breadcrumb-item current" data-path="/mnt/nas">nas</span></div>
               </div>
-              <div class="directory-error nas-unavailable" data-nas-unavailable="true" data-upload-directory-error hidden>⚠️ NAS Storage Unavailable</div>
               <div class="directory-loading-initial" data-upload-directory-loading hidden>Loading directory tree…</div>
-              <div class="directory-tree-container" data-upload-tree role="tree">
-                <div class="directory-entry selected" data-directory-path="/mnt/nas" role="treeitem" aria-selected="true" aria-expanded="false" style="padding-left: 12px">
-                  <span class="expand-control" aria-label="Expand">▶</span><span class="entry-icon">📁</span><span class="entry-name">nas</span><span class="entry-selected" aria-hidden="true">✓</span>
-                </div>
-              </div>
+              <div class="directory-tree-container" data-upload-tree role="tree">__UPLOAD_TREE_FRAGMENT__</div>
             </div>
             <div class="file-upload-section" data-upload-regular="file-ingress" data-upload-file-section>
               <input type="file" multiple data-upload-file>
