@@ -343,11 +343,30 @@ fn render_admin_service_card_html(id: &str) -> String {
     let toggle_class = if id == "samba-file-sharing" { "samba-toggle" } else { "ssh-toggle" };
     let icon_span_class = if id == "samba-file-sharing" { "samba-icon" } else { "ssh-icon" };
     format!(
-        "<div class=\"{outer_class}\"><h3>{}</h3><div class=\"{toggle_class}\"><label class=\"toggle-switch\"><input type=\"checkbox\"{checked} disabled data-state-source=\"{}\"><span class=\"toggle-slider\"></span></label><span class=\"toggle-label\">{}</span><span class=\"{icon_span_class} {icon_class}\">{icon}</span></div></div>",
+        "<div class=\"{outer_class}\" data-admin-toggle-card=\"{}\" data-real-state=\"{}\" data-real-state-source=\"{}\"><h3>{}</h3><div class=\"{toggle_class}\"><label class=\"toggle-switch\"><input type=\"checkbox\"{checked} data-state-source=\"{}\" hx-post=\"/admit/admin/toggle/{}\" hx-target=\"closest [data-service-card]\" hx-swap=\"innerHTML\" hx-disabled-elt=\"this\"><span class=\"toggle-slider\"></span></label><span class=\"toggle-label\">{}</span><span class=\"{icon_span_class} {icon_class}\">{icon}</span></div></div>",
+        html_escape(id),
+        html_escape(&service.state),
+        html_escape(&service.source),
         html_escape(&service.label),
         html_escape(&service.source),
+        html_escape(id),
         html_escape(&service.state),
     )
+}
+
+fn render_admin_service_card_result_html(id: &str, result: Option<&AdminMutationResult>) -> String {
+    let mut card = render_admin_service_card_html(id);
+    if let Some(result) = result {
+        let class = if result.ok { "success" } else { "error" };
+        card.push_str(&format!(
+            "<div class=\"update-status-container {class}\" data-admin-mutation-result=\"{}\" data-og-affordance=\"toast-mapped-to-result-strip\"><strong>{}</strong><span>{}</span><code>{}</code></div>",
+            html_escape(&result.action),
+            html_escape(&result.title),
+            html_escape(&result.message),
+            html_escape(&result.first_missing_signal),
+        ));
+    }
+    card
 }
 
 fn render_admin_available_devices_html() -> String {

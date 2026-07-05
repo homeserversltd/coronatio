@@ -265,3 +265,111 @@ fn parse_caduceus_response(path: &str, response: &str) -> CaduceusHttpReadback {
         first_missing_signal,
     }
 }
+
+
+#[derive(Debug, Clone)]
+struct AdminMutationResult {
+    action: String,
+    title: String,
+    message: String,
+    ok: bool,
+    first_missing_signal: String,
+}
+
+fn admin_headers_authorized(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get("x-admin-token")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value == "coronatio-session-token")
+        .unwrap_or(false)
+}
+
+fn admin_membrane_refusal_fragment(surface: &str) -> String {
+    format!(
+        r#"<div class="update-status-container error" data-admin-membrane-refusal="true" data-og-affordance="toast-mapped-to-result-strip"><strong>Enter Admin Mode</strong><span>{}</span><code>admin-session-required</code></div>"#,
+        html_escape(surface),
+    )
+}
+
+fn admin_toggle_target(toggle_id: &str) -> Option<(&'static str, &'static str)> {
+    match toggle_id {
+        "ssh-password-authentication" => Some(("SSH Password Authentication", "/api/admin/ssh/toggle")),
+        "ssh-service" => Some(("SSH Service", "/api/admin/ssh/service")),
+        "samba-file-sharing" => Some(("Samba File Sharing", "/api/admin/samba/service")),
+        _ => None,
+    }
+}
+
+fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &'static str, bool)> {
+    match action_id {
+        "hard-drive-test" => Some(("Hard Drive Test", "POST", "/api/admin/hard-drive-test/start", true)),
+        "update" => Some(("Update", "POST", "/api/admin/updates/apply", true)),
+        "restart" => Some(("Restart", "POST", "/api/admin/system/restart", true)),
+        "shutdown" => Some(("Shutdown", "POST", "/api/admin/system/shutdown", true)),
+        "restart-website" => Some(("Restart Website", "POST", "/api/admin/services/hard-reset", true)),
+        "view-logs" => Some(("View Logs", "GET", "/api/admin/logs/homeserver", false)),
+        "install-certificate" => Some(("Install Certificate", "POST", "/api/admin/refresh-root-crt", true)),
+        _ => None,
+    }
+}
+
+fn admin_staff_intent(method: &str, path: &str, classification: &str) -> CaduceusHttpReadback {
+    caduceus_http_json(
+        "POST",
+        "/api/v1/staff/intent",
+        serde_json::json!({
+            "method": method,
+            "route": path,
+            "classification": classification,
+        }),
+    )
+}
+
+async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
+    if !admin_headers_authorized(&headers) {
+        return (StatusCode::UNAUTHORIZED, Html(admin_membrane_refusal_fragment(&toggle_id))).into_response();
+    }
+    let Some((label, path)) = admin_toggle_target(&toggle_id) else {
+        return (StatusCode::NOT_FOUND, Html(admin_membrane_refusal_fragment("unknown admin toggle"))).into_response();
+    };
+    let readback = admin_staff_intent("POST", path, "admin-service-toggle");
+    let result = AdminMutationResult {
+        action: toggle_id.clone(),
+        title: label.to_string(),
+        message: if readback.ok { "Caduceus accepted the mutation; card re-read real state." } else { "Caduceus actuator is not wired or unavailable; card re-read unchanged real state." }.to_string(),
+        ok: readback.ok,
+        first_missing_signal: if readback.ok { "none".to_string() } else { readback.first_missing_signal },
+    };
+    let mut response = Html(render_admin_service_card_result_html(&toggle_id, Some(&result))).into_response();
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>) -> impl IntoResponse {
+    if !admin_headers_authorized(&headers) {
+        return (StatusCode::UNAUTHORIZED, Html(admin_membrane_refusal_fragment(&action_id))).into_response();
+    }
+    let Some((title, method, path, mutation)) = admin_action_target(&action_id) else {
+        return (StatusCode::NOT_FOUND, Html(admin_membrane_refusal_fragment("unknown admin action"))).into_response();
+    };
+    let readback = if mutation { admin_staff_intent(method, path, homeserver_route_family(path)) } else { caduceus_http(method, path) };
+    let class = if readback.ok { "success" } else { "error" };
+    let message = if readback.ok {
+        if mutation { "Caduceus accepted the action." } else { "Readback returned through the Caduceus/crown route." }
+    } else if mutation {
+        "Caduceus actuator is not wired or unavailable; no optimistic success was rendered."
+    } else {
+        "Readback route unavailable; no fabricated logs were rendered."
+    };
+    let body = format!(
+        r#"<div class="update-status-container {class}" data-admin-action-result-fragment="{}" data-admin-action-route="{}" data-og-affordance="toast-mapped-to-result-strip"><strong>{}</strong><span>{}</span><code>{}</code></div>"#,
+        html_escape(&action_id),
+        html_escape(path),
+        html_escape(title),
+        html_escape(message),
+        html_escape(if readback.ok { "none" } else { &readback.first_missing_signal }),
+    );
+    let mut response = Html(body).into_response();
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
