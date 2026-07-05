@@ -1,0 +1,31 @@
+{
+  "schema": "coronatio.shell.ux.index.v1",
+  "children": [
+    "shell/base-and-chrome.css",
+    "library/_badge.css",
+    "library/_breadcrumbs.css",
+    "library/_button.css",
+    "library/_calendar.css",
+    "library/_card.css",
+    "library/_checkbox.css",
+    "library/_collapsible.css",
+    "library/_editable-field.css",
+    "library/_file-input.css",
+    "library/_icon-button.css",
+    "library/_input.css",
+    "library/_plus-button.css",
+    "library/_progress-bar.css",
+    "library/_row-info-tile.css",
+    "library/_select.css",
+    "library/_slider.css",
+    "library/_table.css",
+    "library/_tabs.css",
+    "library/_text-box.css",
+    "library/_time-picker.css",
+    "library/_toggle.css",
+    "library/_visibility-toggle.css",
+    "packs/upload.css",
+    "shell/document-2-css.css"
+  ],
+  "authority": "Serve-time concatenation order IS this list; adding a file means adding it here."
+}

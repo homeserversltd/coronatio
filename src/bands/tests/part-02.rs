@@ -448,11 +448,16 @@
 
     #[test]
     fn shell_projects_expanded_theme_tokens_and_legacy_aliases() {
-        let shell = ["src/bands/shell/document-1.rs", "src/bands/shell/document-2.rs", "src/bands/shell/document-3.rs"]
-            .iter()
-            .map(|path| std::fs::read_to_string(path).unwrap())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let shell = [
+            "src/bands/shell/document-1.rs",
+            "src/bands/shell/document-2.rs",
+            "src/bands/shell/document-3.rs",
+            "src/bands/shell/ux/shell/base-and-chrome.css",
+        ]
+        .iter()
+        .map(|path| std::fs::read_to_string(path).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
         for marker in [
             "--theme-control-height",
             "--theme-content-padding",
