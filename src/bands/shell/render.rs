@@ -43,11 +43,11 @@ const CROWN_SHELL_CSS: &str = r#"
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; background: var(--ux-surface-0); color: var(--ux-text); font-family: var(--ux-font-body); }
-body { min-height: 100vh; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ux-surface-0); color: var(--ux-text); font-family: var(--ux-font-body); }
+body { height: 100vh; }
 button { font: inherit; }
-.crown-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(14rem, 18rem) 1fr; background: var(--ux-surface-underlay); }
-.crown-rail { border-right: 1px solid var(--ux-outline); background: rgba(7, 19, 15, 0.84); padding: var(--ux-space-5); display: flex; flex-direction: column; gap: var(--ux-space-5); }
+.crown-shell { height: 100vh; min-height: 0; display: grid; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); background: var(--ux-surface-underlay); overflow: hidden; }
+.crown-rail { min-height: 0; overflow-y: auto; border-right: 1px solid var(--ux-outline); background: rgba(7, 19, 15, 0.84); padding: var(--ux-space-5); display: flex; flex-direction: column; gap: var(--ux-space-5); }
 .crown-mark { display: grid; gap: var(--ux-space-2); }
 .crown-mark strong { color: var(--ux-color-crown-bright); font-family: var(--ux-font-display); font-size: var(--ux-type-crown); letter-spacing: 0.04em; }
 .crown-mark span { color: var(--ux-text-muted); font-size: var(--ux-type-small); line-height: 1.45; }
@@ -56,28 +56,60 @@ button { font: inherit; }
 .crown-tab:hover, .crown-tab[aria-selected="true"] { border-color: var(--ux-color-crown); color: var(--ux-text-strong); box-shadow: inset 0 0 0 1px rgba(217, 182, 111, 0.22); }
 .crown-tab__title { font-weight: 700; }
 .crown-tab__kind { color: var(--ux-text-muted); font-size: var(--ux-type-small); }
-.crown-main { min-width: 0; padding: var(--ux-space-5); display: grid; grid-template-rows: auto 1fr; gap: var(--ux-space-4); }
+.crown-main { min-width: 0; min-height: 0; padding: var(--ux-space-5); display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--ux-space-4); overflow: hidden; }
 .crown-topline { border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); background: rgba(12, 31, 25, 0.72); box-shadow: var(--ux-shadow-crown); padding: var(--ux-space-4); display: flex; justify-content: space-between; gap: var(--ux-space-4); align-items: center; }
 .crown-topline h1 { margin: 0; color: var(--ux-text-strong); font-size: var(--ux-type-title); }
 .crown-topline p { margin: var(--ux-space-1) 0 0; color: var(--ux-text-muted); font-size: var(--ux-type-body); }
-.crown-stage { position: relative; min-height: 32rem; border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); overflow: hidden; background: rgba(6, 16, 13, 0.72); }
+.crown-stage { position: relative; min-height: 0; height: 100%; border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); overflow-y: auto; overflow-x: hidden; background: rgba(6, 16, 13, 0.72); }
 .crown-layer-zero { position: absolute; inset: 0; z-index: 0; display: grid; place-items: center; padding: var(--ux-space-6); background: var(--ux-surface-underlay); opacity: 0; transition: opacity 160ms ease; pointer-events: none; }
 .crown-stage[data-underlay-state="visible"] .crown-layer-zero { opacity: 1; pointer-events: auto; }
-.crown-underlay-card { max-width: 40rem; border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); background: rgba(7, 19, 15, 0.86); padding: var(--ux-space-5); text-align: center; }
-.crown-underlay-card h2 { margin: 0 0 var(--ux-space-2); color: var(--ux-color-crown-bright); font-family: var(--ux-font-display); }
+.crown-underlay-card { max-width: 40rem; border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); background: rgba(7, 19, 15, 0.9); padding: var(--ux-space-5); text-align: left; display: grid; gap: var(--ux-space-3); }
+.crown-underlay-card h2 { margin: 0; color: var(--ux-color-crown-bright); font-family: var(--ux-font-display); }
 .crown-underlay-card p { margin: 0; color: var(--ux-text-muted); line-height: 1.55; }
-.crown-layer-one { position: relative; z-index: 1; min-height: inherit; }
-.crown-view-panel { min-height: inherit; padding: var(--ux-space-5); }
+.crown-layer-one { position: relative; z-index: 1; min-height: 100%; }
+.crown-view-panel { min-height: 100%; padding: var(--ux-space-5); }
 .crown-view-panel[hidden] { display: none; }
 .crown-view-panel[data-empty="true"] { pointer-events: none; }
-.crown-fragment { background: var(--ux-surface-1); color: var(--ux-text); border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); padding: var(--ux-space-4); }
-.crown-fragment h2 { color: var(--ux-text-strong); font-family: var(--ux-font-display); }
+.crown-fragment { background: var(--ux-surface-1); color: var(--ux-text); border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); padding: var(--ux-space-4); display: grid; gap: var(--ux-space-4); }
+.crown-fragment h2, .crown-fragment h3, .crown-fragment h4 { margin: 0; color: var(--ux-text-strong); }
+.crown-fragment h2 { font-family: var(--ux-font-display); }
+.crown-fragment p { margin: 0; color: var(--ux-text-muted); line-height: 1.45; }
 .crown-fragment__button { background: var(--ux-color-crown); color: var(--ux-surface-0); border: 0; border-radius: var(--ux-radius-pill); padding: var(--ux-space-2) var(--ux-space-4); }
-.crown-iframe-guest { display: grid; gap: var(--ux-space-3); min-height: 30rem; }
+.crown-block-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--ux-space-3); }
+.crown-block-card, .crown-status-strip, .crown-token-sample, .crown-readback { border: 1px solid var(--ux-outline-soft); border-radius: var(--ux-radius-md); background: var(--ux-surface-2); padding: var(--ux-space-3); }
+.crown-status-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ux-space-3); }
+.crown-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ux-space-3); }
+.crown-chip-row { display: flex; flex-wrap: wrap; gap: var(--ux-space-2); align-items: center; }
+.crown-chip { border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-pill); padding: var(--ux-space-1) var(--ux-space-2); color: var(--ux-color-crown-bright); background: rgba(61, 220, 151, 0.12); font-size: var(--ux-type-small); }
+.crown-chip[data-posture="muted"] { color: var(--ux-text-muted); background: rgba(146, 170, 157, 0.1); }
+.crown-definition-grid { display: grid; gap: var(--ux-space-2); }
+.crown-definition-row { display: grid; grid-template-columns: minmax(7rem, .45fr) minmax(0, 1fr); gap: var(--ux-space-3); align-items: start; }
+.crown-definition-row dt { color: var(--ux-text-muted); }
+.crown-definition-row dd { margin: 0; color: var(--ux-text-strong); min-width: 0; overflow-wrap: anywhere; }
+.crown-headline-number { display: block; color: var(--ux-color-crown-bright); font-size: var(--ux-type-crown); font-weight: 800; }
+.crown-link-row { display: flex; flex-wrap: wrap; gap: var(--ux-space-2); }
+.crown-link-row a { color: var(--ux-color-sky); text-decoration: none; }
+.crown-token-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--ux-space-3); }
+.crown-token-chip { min-height: 4.5rem; display: grid; align-content: end; gap: var(--ux-space-1); border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-md); padding: var(--ux-space-3); background: var(--token-value, var(--ux-surface-2)); color: var(--ux-text-strong); }
+.token-surface-0 { --token-value: var(--ux-surface-0); }
+.token-surface-1 { --token-value: var(--ux-surface-1); }
+.token-crown { --token-value: var(--ux-color-crown); }
+.token-leaf { --token-value: var(--ux-color-leaf); }
+.token-sky { --token-value: var(--ux-color-sky); }
+.token-outline { --token-value: var(--ux-outline); }
+.crown-type-sample { display: grid; gap: var(--ux-space-2); }
+.crown-radius-samples { display: flex; flex-wrap: wrap; gap: var(--ux-space-3); }
+.crown-radius-sample { min-width: 7rem; min-height: 3rem; border: 1px solid var(--ux-outline); background: var(--ux-surface-2); display: grid; place-items: center; padding: var(--ux-space-2); }
+.crown-radius-sample[data-radius="sm"] { border-radius: var(--ux-radius-sm); }
+.crown-radius-sample[data-radius="md"] { border-radius: var(--ux-radius-md); }
+.crown-radius-sample[data-radius="lg"] { border-radius: var(--ux-radius-lg); }
+.crown-readback summary { cursor: pointer; color: var(--ux-color-crown-bright); }
+.crown-readback pre { max-height: 18rem; overflow: auto; margin: var(--ux-space-3) 0 0; color: var(--ux-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.crown-iframe-guest { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--ux-space-3); min-height: 100%; }
 .crown-iframe-guest__chrome { display: flex; align-items: center; justify-content: space-between; gap: var(--ux-space-3); border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-md); background: var(--ux-surface-1); padding: var(--ux-space-3) var(--ux-space-4); color: var(--ux-text); }
 .crown-iframe-guest__chrome h2 { margin: 0; color: var(--ux-text-strong); font-size: var(--ux-type-title); }
 .crown-iframe-guest__chip { border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-pill); padding: var(--ux-space-1) var(--ux-space-3); color: var(--ux-color-crown-bright); background: rgba(61, 220, 151, 0.12); font-size: var(--ux-type-small); }
-.crown-iframe-guest__frame { width: 100%; min-height: 28rem; border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); background: var(--ux-surface-0); }
+.crown-iframe-guest__frame { width: 100%; height: 100%; min-height: 30rem; border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); background: var(--ux-surface-0); }
 @media (max-width: 760px) { .crown-shell { grid-template-columns: 1fr; } .crown-rail { border-right: 0; border-bottom: 1px solid var(--ux-outline); } }
 "#;
 
@@ -270,16 +302,75 @@ fn render_crown_shell_with_registry(registry_tabs: &[TabManifest]) -> String {
     render_crown_shell_tabs(&tabs).into_string()
 }
 
+fn selected_crown_theme_name() -> String {
+    read_first_json(&homeserver_config_candidates())
+        .ok()
+        .and_then(|(_source, value)| {
+            value
+                .get("global")
+                .and_then(|global| global.get("theme"))
+                .and_then(|theme| theme.get("name"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "dark".to_string())
+}
+
+fn theme_token<'a>(theme: &'a BTreeMap<String, String>, key: &str, fallback: &'a str) -> &'a str {
+    theme.get(key).map(String::as_str).unwrap_or(fallback)
+}
+
+fn crown_theme_projection_css(theme_name: &str) -> String {
+    let catalog = firmware_theme_catalog(theme_name.to_string());
+    let selected = catalog.themes.get(&catalog.default).or_else(|| catalog.themes.get("dark"));
+    let Some(theme) = selected else { return String::new(); };
+    format!(
+        ":root{{--ux-surface-0:{surface0};--ux-surface-1:{surface1};--ux-surface-2:{surface2};--ux-surface-underlay:{underlay};--ux-text-strong:{text};--ux-text:{text};--ux-text-muted:{muted};--ux-outline:{outline};--ux-outline-soft:{outline_soft};--ux-color-crown:{crown};--ux-color-crown-bright:{crown_bright};--ux-color-leaf:{leaf};--ux-color-sky:{sky};--ux-color-danger:{danger};--ux-space-1:{space1};--ux-space-2:{space2};--ux-space-3:{space3};--ux-space-4:{space4};--ux-space-5:{space5};--ux-space-6:{space6};--ux-radius-sm:{radius_sm};--ux-radius-md:{radius_md};--ux-radius-lg:{radius_lg};--ux-radius-pill:{radius_pill};--ux-font-body:{font_body};--ux-type-small:{type_small};--ux-type-body:{type_body};--ux-type-title:{type_title};--ux-type-crown:{type_crown};--ux-shadow-crown:{shadow};}}",
+        surface0 = theme_token(theme, "surface-0", "#0A0A0A"),
+        surface1 = theme_token(theme, "surface-1", "#111827"),
+        surface2 = theme_token(theme, "surface-2", "#1E293B"),
+        underlay = theme_token(theme, "gradient-surface", "linear-gradient(135deg, #091711, #101f1b 70%)"),
+        text = theme_token(theme, "on-surface", "#E0E0E0"),
+        muted = theme_token(theme, "on-surface-muted", "#9CA3AF"),
+        outline = theme_token(theme, "outline", "#6B7280"),
+        outline_soft = theme_token(theme, "outline-variant", "#1E293B"),
+        crown = theme_token(theme, "role-primary", "#323840"),
+        crown_bright = theme_token(theme, "accent-warm", "#FBBF24"),
+        leaf = theme_token(theme, "status-success", "#10B981"),
+        sky = theme_token(theme, "accent-cool", "#90cff3"),
+        danger = theme_token(theme, "status-error", "#F87171"),
+        space1 = theme_token(theme, "spacing-xs", "0.25rem"),
+        space2 = theme_token(theme, "spacing-sm", "0.5rem"),
+        space3 = theme_token(theme, "spacing-md", "0.75rem"),
+        space4 = theme_token(theme, "spacing-md", "1rem"),
+        space5 = theme_token(theme, "spacing-lg", "1.5rem"),
+        space6 = theme_token(theme, "spacing-xl", "2rem"),
+        radius_sm = theme_token(theme, "radius-sm", "0.5rem"),
+        radius_md = theme_token(theme, "radius-md", "0.85rem"),
+        radius_lg = theme_token(theme, "radius-lg", "1.25rem"),
+        radius_pill = theme_token(theme, "radius-pill", "999px"),
+        font_body = theme_token(theme, "font-family", "Inter, ui-sans-serif, system-ui, sans-serif"),
+        type_small = theme_token(theme, "font-size-xs", "0.82rem"),
+        type_body = theme_token(theme, "font-size-base", "0.95rem"),
+        type_title = theme_token(theme, "font-size-lg", "1.2rem"),
+        type_crown = theme_token(theme, "font-size-xl", "1.55rem"),
+        shadow = theme_token(theme, "elevation-3", "0 24px 70px rgba(0,0,0,.35)"),
+    )
+}
+
 fn render_crown_shell_tabs(tabs: &[CrownShellTab]) -> maud::Markup {
     let active = tabs.first().map(|tab| tab.id.as_str()).unwrap_or("fallback");
+    let selected_theme = selected_crown_theme_name();
+    let theme_css = crown_theme_projection_css(&selected_theme);
     maud::html! {
         (maud::DOCTYPE)
-        html lang="en" data-product="Coronatio" data-crown-law="compiled-vessel" {
+        html lang="en" data-product="Coronatio" data-crown-law="compiled-vessel" data-theme=(selected_theme) {
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Coronatio" }
                 link rel="stylesheet" href=(CROWN_SHELL_STYLESHEET_PATH);
+                style data-crown-theme-projection="homeserver-json-default" { (maud::PreEscaped(theme_css)) }
                 script defer src=(CROWN_HTMX_SCRIPT_PATH) {}
                 script defer src=(CROWN_SHELL_SCRIPT_PATH) {}
             }
@@ -320,9 +411,15 @@ fn render_crown_shell_tabs(tabs: &[CrownShellTab]) -> maud::Markup {
                         section.crown-stage data-crown-stage="true" data-underlay-state="visible" aria-label="Coronatio viewport stage" {
                             div.crown-layer-zero data-layer="0" data-crown-underlay="fallback" aria-live="polite" {
                                 div.crown-underlay-card {
-                                    h2 { "Fallback underlay" }
-                                    p { "The crown-owned safety floor is always mounted: logo, recovery posture, and service health will stand here while layer 1 is empty or faulted." }
-                                    p { "Last pane fault: " span data-underlay-fault-kind="none" { "none" } }
+                                    div.crown-mark {
+                                        strong { "Coronatio" }
+                                        span { "Recovery posture: the crown mark remains warm while a viewport is empty or faulted." }
+                                    }
+                                    dl.crown-definition-grid {
+                                        div.crown-definition-row { dt { "StartupPhase" } dd data-underlay-startup-phase=(startup_readback().current_phase) { (startup_readback().current_phase) } }
+                                        div.crown-definition-row { dt { "Service health" } dd { "shell standing; layer-1 admission isolated" } }
+                                        div.crown-definition-row { dt { "Fault line" } dd { "Last pane fault: " span data-underlay-fault-kind="none" { "none" } } }
+                                    }
                                 }
                             }
                             div.crown-layer-one data-layer="1" {

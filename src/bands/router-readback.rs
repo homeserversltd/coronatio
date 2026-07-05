@@ -411,8 +411,8 @@ fn fragment_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKi
 
 fn render_native_pane_fragment(pane: &CrownPane) -> String {
     match pane.id.as_str() {
-        "stats" => render_json_fragment(&pane.title, "coronatio.stats.fragment.v1", serde_json::to_value(stats_snapshot()).unwrap_or(serde_json::Value::Null)),
-        "portals" => render_json_fragment(&pane.title, "coronatio.portals.fragment.v1", serde_json::to_value(read_portals_config().unwrap_or_else(|signal| PortalConfigResponse {
+        "stats" => render_stats_fragment(stats_snapshot()),
+        "portals" => render_portals_fragment(read_portals_config().unwrap_or_else(|signal| PortalConfigResponse {
             schema: "coronatio.portals.config.v1".to_string(),
             route: "/api/portals".to_string(),
             success: false,
@@ -421,19 +421,184 @@ fn render_native_pane_fragment(pane: &CrownPane) -> String {
             portals: Vec::new(),
             factory_portals: Vec::new(),
             first_missing_signal: signal,
-        })).unwrap_or(serde_json::Value::Null)),
-        "upload" => render_json_fragment(&pane.title, "coronatio.upload.fragment.v1", serde_json::json!({"schema":"coronatio.upload.history.v1","ok":true,"history":[],"firstMissingSignal":"none"})),
-        "admin" => render_json_fragment(&pane.title, "coronatio.admin.fragment.v1", serde_json::to_value(admin_session_readback()).unwrap_or(serde_json::Value::Null)),
+        })),
+        "upload" => render_upload_fragment(serde_json::json!({"schema":"coronatio.upload.history.v1","ok":true,"history":[],"firstMissingSignal":"none"})),
+        "admin" => render_admin_fragment(admin_session_readback()),
+        "testtab" => render_testtab_token_lab(),
         _ => render_json_fragment(&pane.title, "coronatio.native.fragment.v1", serde_json::to_value(pane).unwrap_or(serde_json::Value::Null)),
     }
 }
 
-fn render_json_fragment(title: &str, schema: &str, value: serde_json::Value) -> String {
-    let pretty = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
+fn json_pretty(value: &serde_json::Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
+}
+
+fn render_readback_details(schema: &str, value: &serde_json::Value) -> maud::Markup {
+    let pretty = json_pretty(value);
     maud::html! {
-        article .crown-fragment data-fragment-schema=(schema) {
+        details.crown-readback data-crown-readback="true" {
+            summary { "Raw JSON readback" }
+            pre data-native-readback="json" data-fragment-schema=(schema) { (pretty) }
+        }
+    }
+}
+
+fn format_optional_percent(value: Option<u8>) -> String {
+    value.map(|percent| format!("{percent}%")).unwrap_or_else(|| "n/a".to_string())
+}
+
+fn format_optional_f64(value: Option<f64>, suffix: &str) -> String {
+    value.map(|number| format!("{number:.1}{suffix}")).unwrap_or_else(|| "n/a".to_string())
+}
+
+fn format_bytes(value: Option<u64>) -> String {
+    let Some(bytes) = value else { return "n/a".to_string(); };
+    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+    const MIB: f64 = 1024.0 * 1024.0;
+    if bytes as f64 >= GIB {
+        format!("{:.1} GiB", bytes as f64 / GIB)
+    } else if bytes as f64 >= MIB {
+        format!("{:.1} MiB", bytes as f64 / MIB)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+fn render_portals_fragment(response: PortalConfigResponse) -> String {
+    let value = serde_json::to_value(&response).unwrap_or(serde_json::Value::Null);
+    maud::html! {
+        article.crown-fragment.crown-fragment--portals data-fragment-schema="coronatio.portals.fragment.v1" data-crown-block-shape="portal-card-row" {
+            header.crown-status-strip {
+                div { h2 { "Portals" } p { "Crown service ingress from homeserver.json." } }
+                div.crown-chip-row {
+                    span.crown-chip { (if response.success { "config read" } else { "config fallback" }) }
+                    span.crown-chip data-posture="muted" { (response.portals.len()) " portal cards" }
+                }
+            }
+            section.crown-block-grid aria-label="Portal cards" {
+                @if response.portals.is_empty() {
+                    article.crown-block-card { h3 { "No visible portals" } p { (response.first_missing_signal.clone()) } }
+                } @else {
+                    @for portal in &response.portals {
+                        article.crown-block-card data-portal-name=(portal.name) {
+                            div.crown-card-head { h3 { (portal.name) } span.crown-chip { (if portal.visible { "visible" } else { "hidden" }) } }
+                            p { (portal.description) }
+                            div.crown-link-row {
+                                a href=(portal.local_url) { "local" }
+                                @if let Some(remote) = &portal.remote_url { a href=(remote) { "remote" } }
+                            }
+                            dl.crown-definition-grid {
+                                div.crown-definition-row { dt { "port" } dd { (portal.port.map(|port| port.to_string()).unwrap_or_else(|| "n/a".to_string())) } }
+                                div.crown-definition-row { dt { "type" } dd { (portal.r#type) } }
+                                div.crown-definition-row { dt { "services" } dd { (if portal.services.is_empty() { "none".to_string() } else { portal.services.join(", ") }) } }
+                            }
+                        }
+                    }
+                }
+            }
+            (render_readback_details("coronatio.portals.fragment.v1", &value))
+        }
+    }.into_string()
+}
+
+fn render_stats_fragment(snapshot: StatsSnapshot) -> String {
+    let value = serde_json::to_value(&snapshot).unwrap_or(serde_json::Value::Null);
+    let disk = snapshot.storage.first();
+    let disk_label = disk.map(|drive| format_optional_percent(drive.usage_percent)).unwrap_or_else(|| "n/a".to_string());
+    let network_total = snapshot.network.interfaces.iter().map(|iface| iface.rx_bytes.saturating_add(iface.tx_bytes)).sum::<u64>();
+    maud::html! {
+        article.crown-fragment.crown-fragment--stats data-fragment-schema="coronatio.stats.fragment.v1" data-crown-block-shape="stat-workbench-grid" {
+            header.crown-status-strip {
+                div { h2 { "Stats" } p { "Honest /proc and host readbacks shaped as crown stat cards." } }
+                span.crown-chip { (snapshot.transport.stream_status) }
+            }
+            section.crown-block-grid aria-label="Stat workbench" {
+                article.crown-block-card data-stat-card="cpu" { span.crown-headline-number { (format_optional_f64(snapshot.resources.load.one, "")) } p { "CPU load" } }
+                article.crown-block-card data-stat-card="memory" { span.crown-headline-number { (format_optional_percent(snapshot.resources.memory.percent)) } p { "memory used · " (format_bytes(snapshot.resources.memory.used_bytes)) } }
+                article.crown-block-card data-stat-card="disk" { span.crown-headline-number { (disk_label) } p { "disk used" } }
+                article.crown-block-card data-stat-card="network" { span.crown-headline-number { (format_bytes(Some(network_total))) } p { "network rx+tx" } }
+                article.crown-block-card data-stat-card="connections" { span.crown-headline-number { (snapshot.network.connections.total) } p { "connections" } }
+            }
+            (render_readback_details("coronatio.stats.fragment.v1", &value))
+        }
+    }.into_string()
+}
+
+fn render_admin_fragment(readback: AdminSessionReadback) -> String {
+    let value = serde_json::to_value(&readback).unwrap_or(serde_json::Value::Null);
+    maud::html! {
+        article.crown-fragment.crown-fragment--admin data-fragment-schema="coronatio.admin.fragment.v1" data-crown-block-shape="status-strip-admin-cards" {
+            header.crown-status-strip {
+                div { h2 { "Admin" } p { "Session state and mutation membrane posture." } }
+                div.crown-chip-row { span.crown-chip { "session membrane" } span.crown-chip data-posture="muted" { (readback.caduceus_membrane.first_missing_signal.clone()) } }
+            }
+            section.crown-block-grid aria-label="Admin topics" {
+                article.crown-block-card { h3 { "Session" } dl.crown-definition-grid {
+                    div.crown-definition-row { dt { "PIN route" } dd { (readback.pin_validation) } }
+                    div.crown-definition-row { dt { "timeout" } dd { (readback.session_timeout_seconds) " seconds" } }
+                    div.crown-definition-row { dt { "keepalive" } dd { (readback.keepalive_route) } }
+                    div.crown-definition-row { dt { "logout" } dd { (readback.logout_route) } }
+                } }
+                article.crown-block-card { h3 { "Caduceus" } dl.crown-definition-grid {
+                    div.crown-definition-row { dt { "Coronatio" } dd { (readback.caduceus_membrane.coronatio_role) } }
+                    div.crown-definition-row { dt { "Caduceus" } dd { (readback.caduceus_membrane.caduceus_role) } }
+                    div.crown-definition-row { dt { "mutations" } dd { (readback.caduceus_membrane.privileged_mutations.join(", ")) } }
+                } }
+                article.crown-block-card { h3 { "Enhanced topics" } dl.crown-definition-grid {
+                    @for filter in &readback.admin_enhanced_filtering {
+                        div.crown-definition-row { dt { (filter.topic) } dd { (filter.admin_fields.join(", ")) } }
+                    }
+                } }
+            }
+            (render_readback_details("coronatio.admin.fragment.v1", &value))
+        }
+    }.into_string()
+}
+
+fn render_upload_fragment(value: serde_json::Value) -> String {
+    maud::html! {
+        article.crown-fragment.crown-fragment--upload data-fragment-schema="coronatio.upload.fragment.v1" data-crown-block-shape="single-ingress-card" {
+            header.crown-status-strip { div { h2 { "Upload" } p { "Single file ingress through the Caduceus mutation membrane." } } span.crown-chip { "receipt lane" } }
+            section.crown-block-grid aria-label="Upload ingress" {
+                article.crown-block-card { h3 { "Ingress" } dl.crown-definition-grid {
+                    div.crown-definition-row { dt { "route" } dd { "/api/files/upload" } }
+                    div.crown-definition-row { dt { "posture" } dd { "multipart accepted by Coronatio; privileged storage posture remains behind Caduceus" } }
+                    div.crown-definition-row { dt { "receipt" } dd { "coronatio.upload.history.v1" } }
+                } }
+            }
+            (render_readback_details("coronatio.upload.fragment.v1", &value))
+        }
+    }.into_string()
+}
+
+fn render_testtab_token_lab() -> String {
+    let value = serde_json::json!({"schema":"coronatio.testtab.token_lab.v1","tokens":["--ux-surface-0","--ux-surface-1","--ux-color-crown","--ux-color-leaf","--ux-color-sky","--ux-text","--ux-outline"],"blockShape":"token-lab"});
+    maud::html! {
+        article.crown-fragment.crown-fragment--testtab data-fragment-schema="coronatio.testtab.fragment.v1" data-crown-block-shape="token-lab" {
+            header.crown-status-strip { div { h2 { "TestTab" } p { "Token lab: live crown --ux-* color, type, radius, and spacing samples." } } span.crown-chip { "--ux-*" } }
+            section.crown-token-grid aria-label="Live UX token swatches" {
+                article.crown-token-chip.token-surface-0 { strong { "surface 0" } code { "var(--ux-surface-0)" } }
+                article.crown-token-chip.token-surface-1 { strong { "surface 1" } code { "var(--ux-surface-1)" } }
+                article.crown-token-chip.token-crown { strong { "crown" } code { "var(--ux-color-crown)" } }
+                article.crown-token-chip.token-leaf { strong { "leaf" } code { "var(--ux-color-leaf)" } }
+                article.crown-token-chip.token-sky { strong { "sky" } code { "var(--ux-color-sky)" } }
+                article.crown-token-chip.token-outline { strong { "outline" } code { "var(--ux-outline)" } }
+            }
+            section.crown-block-grid aria-label="Type spacing and radius samples" {
+                article.crown-block-card.crown-type-sample { h3 { "Type scale" } span.crown-headline-number { "Crown" } p { "body text · small label" } }
+                article.crown-block-card { h3 { "Spacing" } div.crown-chip-row { span.crown-chip { "space-2" } span.crown-chip { "space-3" } span.crown-chip { "space-4" } } }
+                article.crown-block-card { h3 { "Radius" } div.crown-radius-samples { span.crown-radius-sample data-radius="sm" { "sm" } span.crown-radius-sample data-radius="md" { "md" } span.crown-radius-sample data-radius="lg" { "lg" } } }
+            }
+            (render_readback_details("coronatio.testtab.fragment.v1", &value))
+        }
+    }.into_string()
+}
+
+fn render_json_fragment(title: &str, schema: &str, value: serde_json::Value) -> String {
+    maud::html! {
+        article.crown-fragment data-fragment-schema=(schema) data-crown-block-shape="readback-card" {
             h2 { (title) }
-            pre data-native-readback="json" { (pretty) }
+            (render_readback_details(schema, &value))
         }
     }.into_string()
 }

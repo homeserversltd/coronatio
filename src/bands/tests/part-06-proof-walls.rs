@@ -212,6 +212,64 @@
         assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
+    #[test]
+    fn coro_007_native_panes_are_composed_crown_blocks_with_details_readbacks() {
+        let expected = [
+            ("portals", "portal-card-row"),
+            ("stats", "stat-workbench-grid"),
+            ("admin", "status-strip-admin-cards"),
+            ("upload", "single-ingress-card"),
+            ("testtab", "token-lab"),
+        ];
+        for (pane_id, block_shape) in expected {
+            let pane = native_crown_panes().into_iter().find(|pane| pane.id == pane_id).unwrap();
+            let html = render_native_pane_fragment(&pane);
+            assert!(html.contains("class=\"crown-fragment"), "{pane_id} missing crown fragment class");
+            assert!(html.contains(&format!("data-crown-block-shape=\"{block_shape}\"")), "{pane_id} missing block shape {block_shape}");
+            assert!(html.contains("data-crown-readback=\"true\""), "{pane_id} raw JSON not behind details");
+            assert!(html.contains("data-native-readback=\"json\""), "{pane_id} raw JSON pre missing");
+            assert!(!html.contains(" style="), "{pane_id} carries inline style");
+            assert!(!html.trim_start().starts_with("<pre"), "{pane_id} is still pre-only");
+        }
+    }
+
+    #[test]
+    fn coro_007_body_scroll_is_contained_by_stage_and_iframe_husk_fills_stage() {
+        assert!(CROWN_SHELL_CSS.contains("html, body { margin: 0; height: 100%; overflow: hidden"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-shell { height: 100vh"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-main { min-width: 0; min-height: 0"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-stage { position: relative; min-height: 0; height: 100%"));
+        assert!(CROWN_SHELL_CSS.contains("overflow-y: auto"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-iframe-guest { display: grid; grid-template-rows: auto minmax(0, 1fr)"));
+        assert!(CROWN_SHELL_CSS.contains(".crown-iframe-guest__frame { width: 100%; height: 100%"));
+    }
+
+    #[test]
+    fn coro_007_shell_projects_selected_theme_and_underlay_recovery_posture() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("data-theme="));
+        assert!(shell.contains("data-crown-theme-projection=\"homeserver-json-default\""));
+        assert!(shell.contains("--ux-surface-0:"));
+        assert!(shell.contains("--ux-color-crown:"));
+        assert!(shell.contains("Recovery posture"));
+        assert!(shell.contains("data-underlay-startup-phase=\"app-ready\""));
+        assert!(shell.contains("Service health"));
+        assert!(shell.contains("data-underlay-fault-kind=\"none\""));
+    }
+
+    #[test]
+    fn coro_007_testtab_is_live_ux_token_lab() {
+        let pane = native_crown_panes().into_iter().find(|pane| pane.id == "testtab").unwrap();
+        let html = render_native_pane_fragment(&pane);
+        for token in ["--ux-surface-0", "--ux-color-crown", "--ux-color-leaf", "--ux-outline"] {
+            assert!(html.contains(token), "missing token sample {token}");
+        }
+        assert!(html.contains("Live UX token swatches"));
+        assert!(html.contains("Type scale"));
+        assert!(html.contains("Radius"));
+        assert!(!html.contains("style="));
+    }
+
     #[tokio::test]
     async fn wall_5_reactivation_refetches_upstream_and_admission_is_no_store() {
         let temp = test_tab_root("wall-5-staleness");
