@@ -531,21 +531,35 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     }
 
 
-    // TEST-001: og Test UX-library chrome is allowed here: sub-tab/category switching, demo modal, demo readbacks.
-    function switchScopedTabs(tabSelector, panelSelector, attrName, selectedName) {
-      document.querySelectorAll(tabSelector).forEach(tab => {
-        const selected = tab.dataset[attrName] === selectedName;
+    // TEST-001: og Test UX-library chrome is allowed here: generic scoped tabs, demo modal, demo readbacks.
+    function inTabScope(element, scope) {
+      return element && element.closest('[data-tab-scope]') === scope;
+    }
+    function switchScopedTabs(tabButton) {
+      const scope = tabButton?.closest('[data-tab-scope]');
+      const selectedName = tabButton?.dataset.tabId;
+      if (!scope || !selectedName) return;
+      scope.querySelectorAll('[data-tab-id]').forEach(tab => {
+        if (!inTabScope(tab, scope)) return;
+        const selected = tab.dataset.tabId === selectedName;
         tab.classList.toggle('active', selected);
         tab.classList.toggle('ui-tab--active', selected);
         tab.setAttribute('aria-selected', String(selected));
       });
-      document.querySelectorAll(panelSelector).forEach(panel => panel.classList.toggle('active', panel.dataset[attrName.replace('Tab','Panel')] === selectedName));
+      scope.querySelectorAll('[data-tab-panel]').forEach(panel => {
+        if (!inTabScope(panel, scope)) return;
+        panel.classList.toggle('active', panel.dataset.tabPanel === selectedName);
+      });
     }
     document.body.addEventListener('click', event => {
-      const testTab = event.target.closest('[data-test-tab]');
-      if (testTab) return switchScopedTabs('[data-test-tab]', '[data-test-panel]', 'testTab', testTab.dataset.testTab);
-      const showcaseTab = event.target.closest('[data-showcase-tab]');
-      if (showcaseTab) return switchScopedTabs('[data-showcase-tab]', '[data-showcase-panel]', 'showcaseTab', showcaseTab.dataset.showcaseTab);
+      const scopedTab = event.target.closest('[data-tab-id]');
+      if (scopedTab) return switchScopedTabs(scopedTab);
+      const health = event.target.closest('[data-test-health-check]');
+      if (health) {
+        const out = document.querySelector('[data-test-health-output]');
+        if (out) out.textContent = JSON.stringify({ schema: 'coronatio.test.health.v1', status: 'ready', dependencies: { rust_shell: true, theme_catalog: Boolean(themeCatalog?.themes), ux_library: true }, theme: headerState.theme }, null, 2);
+        return;
+      }
       const reset = event.target.closest('[data-reset-breadcrumbs]');
       if (reset) { const out = document.querySelector('[data-breadcrumb-path]'); if (out) out.textContent = '/mnt/nas'; return; }
       const expand = event.target.closest('[data-test-card-expand]');
@@ -624,11 +638,6 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         apply();
       });
     }
-    document.querySelectorAll('[data-test-health-check]').forEach(button => button.addEventListener('click', () => {
-      const out = document.querySelector('[data-test-health-output]');
-      if (out) out.textContent = JSON.stringify({ schema: 'coronatio.test.health.v1', status: 'ready', dependencies: { rust_shell: true, theme_catalog: Boolean(themeCatalog?.themes), ux_library: true }, theme: headerState.theme }, null, 2);
-    }));
-
     hydrateFavoriteManifest();
     hydrateThemeTruth();
     hydrateThemeTokenLab();
