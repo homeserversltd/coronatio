@@ -657,14 +657,16 @@ fn render_flask_react_tabbar_quarry() -> String {
                 )
             };
             let admin_only_attr = if pane.admin_only { r##" data-admin-only="true" hidden"## } else { "" };
+            let hx_trigger = if is_starred { "load, click" } else { "click" };
             format!(
-                r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}"{admin_only_attr}>{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
+                r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}" hx-get="/admit/{id}" hx-target="[data-view-panel='{id}']" hx-swap="innerHTML" hx-trigger="{hx_trigger}"{admin_only_attr}>{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
                 id = pane.id,
                 title = pane.title,
                 admin_only_attr = admin_only_attr,
                 active_class = if active { "active" } else { "" },
                 selected = active,
                 visibility = visibility,
+                hx_trigger = hx_trigger,
                 visibility_button = visibility_button,
                 star_button = star_button
             )

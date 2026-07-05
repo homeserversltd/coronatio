@@ -233,7 +233,7 @@ fn shell_document_2() -> &'static str {
     </div>
     <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist" data-admin-mode="false" data-hidden="false">__NAV__</nav>
     <section class="content">
-      <section class="pane" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
+      <section class="pane" id="pane-admin" data-pane-panel="admin" data-view-panel="admin" role="tabpanel" aria-label="Admin">
 
         <div class="admin-tablet admin-visual-port" data-admin-quarry="flask-react-admin" data-admin-quarry-button-total="74" data-admin-only="true" data-admin-viewport="admin" data-admin-visual-port="one-to-one-best-effort">
           <section class="system-controls-container" data-admin-quarry-group="system-controls" aria-label="System controls">
@@ -302,7 +302,7 @@ fn shell_document_2() -> &'static str {
           </section>
         </div>
       </section>
-      <section class="pane active" id="pane-stats" data-pane-panel="stats" role="tabpanel" aria-label="Stats">
+      <section class="pane active" id="pane-stats" data-pane-panel="stats" data-view-panel="stats" role="tabpanel" aria-label="Stats">
         <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
           <div class="stat-element" data-stat-element-id="cpu-chart" data-visible="true">
             <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="cpu-chart" data-visible="true" aria-label="Hide CPU Usage & Load">👁</button><h3 class="stat-title">CPU Usage &amp; Load</h3></div>
@@ -334,12 +334,12 @@ fn shell_document_2() -> &'static str {
           </div>
         </div>
       </section>
-      <section class="pane" id="pane-portals" data-pane-panel="portals" role="tabpanel" aria-label="Portals">
+      <section class="pane" id="pane-portals" data-pane-panel="portals" data-view-panel="portals" role="tabpanel" aria-label="Portals">
         <div class="portal-grid" data-portals-grid data-portals-source="/api/portals">
           <article class="card portal-card portal-loading" data-portals-loading><div><h2>Admitted services</h2><p>Reading homeserver.json portal entries.</p></div></article>
         </div>
       </section>
-      <section class="pane" id="pane-upload" data-pane-panel="upload" role="tabpanel" aria-label="Upload">
+      <section class="pane" id="pane-upload" data-pane-panel="upload" data-view-panel="upload" role="tabpanel" aria-label="Upload">
         <div class="upload-tablet" data-upload-viewport data-react-quarry="UploadTablet" data-identity-standard="one-to-one">
           <div class="upload-progress-list" data-upload-progress-list hidden></div>
           <div class="upload-controls">
@@ -384,22 +384,22 @@ fn shell_document_2() -> &'static str {
           <pre class="readout admin-quarry-note" id="upload-readout" data-upload-receipt-readout>Upload Caduceus receipts are diagnostic evidence, not the visible progress UI.</pre>
         </div>
       </section>
-      <section class="pane" id="pane-backblaze" data-pane-panel="backblaze" role="tabpanel" aria-label="backBlaze">
+      <section class="pane" id="pane-backblaze" data-pane-panel="backblaze" data-view-panel="backblaze" role="tabpanel" aria-label="backBlaze">
         <article class="card og-stub-pane" data-og-stub-pane="backblaze"><h2>backBlaze</h2><p>not yet ported</p></article>
       </section>
-      <section class="pane" id="pane-wake-on-lan" data-pane-panel="wake-on-lan" role="tabpanel" aria-label="Wake on LAN">
+      <section class="pane" id="pane-wake-on-lan" data-pane-panel="wake-on-lan" data-view-panel="wake-on-lan" role="tabpanel" aria-label="Wake on LAN">
         <article class="card og-stub-pane" data-og-stub-pane="wake-on-lan"><h2>Wake on LAN</h2><p>not yet ported</p></article>
       </section>
-      <section class="pane" id="pane-test" data-pane-panel="test" role="tabpanel" aria-label="Test">
+      <section class="pane" id="pane-test" data-pane-panel="test" data-view-panel="test" role="tabpanel" aria-label="Test">
         <article class="card og-stub-pane" data-og-stub-pane="test"><h2>Test</h2><p>not yet ported</p></article>
       </section>
-      <section class="pane" id="pane-chia-mining" data-pane-panel="chia-mining" role="tabpanel" aria-label="Chia Mining">
+      <section class="pane" id="pane-chia-mining" data-pane-panel="chia-mining" data-view-panel="chia-mining" role="tabpanel" aria-label="Chia Mining">
         <article class="card og-stub-pane" data-og-stub-pane="chia-mining"><h2>Chia Mining</h2><p>not yet ported</p></article>
       </section>
-      <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" role="tabpanel" aria-label="DHCP">
+      <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" role="tabpanel" aria-label="DHCP">
         <article class="card og-stub-pane" data-og-stub-pane="dhcp"><h2>DHCP</h2><p>not yet ported</p></article>
       </section>
-      <section class="pane" id="pane-youtube" data-pane-panel="youtube" role="tabpanel" aria-label="YouTube">
+      <section class="pane" id="pane-youtube" data-pane-panel="youtube" data-view-panel="youtube" role="tabpanel" aria-label="YouTube">
         <article class="card og-stub-pane" data-og-stub-pane="youtube"><h2>YouTube</h2><p>not yet ported</p></article>
       </section>
       __TESTTAB__
@@ -410,6 +410,45 @@ fn shell_document_2() -> &'static str {
     const tabBar = document.querySelector('[role="tablist"]');
     const tabs = [...document.querySelectorAll('[data-pane]')];
     const panes = [...document.querySelectorAll('[data-pane-panel]')];
+    const htmxOrgan = window.htmx;
+    if (htmxOrgan && htmxOrgan.config) {
+      htmxOrgan.config.allowScriptTags = false;
+      htmxOrgan.config.selfRequestsOnly = true;
+      htmxOrgan.config.includeIndicatorStyles = false;
+    }
+    function panelFromHtmxEvent(event) {
+      const detail = event.detail || {};
+      const candidate = detail.target || detail.elt || event.target;
+      return candidate instanceof Element ? candidate.closest('[data-view-panel]') : null;
+    }
+    function faultKindFromResponse(event, fallback) {
+      const text = event.detail?.xhr?.responseText || '';
+      if (!text.includes('data-cartridge-fault-kind')) return fallback;
+      const template = document.createElement('template');
+      template.innerHTML = text;
+      const fault = template.content.querySelector('[data-cartridge-fault-kind]');
+      return fault instanceof HTMLElement && fault.dataset.cartridgeFaultKind ? fault.dataset.cartridgeFaultKind : fallback;
+    }
+    function presentCartridgeFault(kind, event) {
+      const panel = panelFromHtmxEvent(event);
+      if (panel instanceof HTMLElement) {
+        panel.innerHTML = `<section class="card error-message" data-cartridge-fault-presentation="og-pane"><h2>Cartridge fault</h2><p>${kind}</p></section>`;
+        panel.dataset.viewportFaulted = 'true';
+      }
+      document.documentElement.dataset.cartridgeFaultReceipt = 'typed';
+      document.documentElement.dataset.cartridgeFaultLast = kind;
+    }
+    document.body.addEventListener('htmx:timeout', event => presentCartridgeFault('timeout', event));
+    document.body.addEventListener('htmx:responseError', event => presentCartridgeFault(faultKindFromResponse(event, 'upstream-error'), event));
+    document.body.addEventListener('htmx:sendError', event => presentCartridgeFault('proxy-unreachable', event));
+    document.body.addEventListener('htmx:afterSwap', event => {
+      const panel = panelFromHtmxEvent(event);
+      if (!(panel instanceof HTMLElement)) return;
+      panel.dataset.viewportFaulted = 'false';
+      const id = panel.dataset.viewPanel || panel.dataset.panePanel || '';
+      if (id === 'stats') hydrateStats();
+      if (id === 'portals') hydratePortals();
+    });
     const fallbackTab = 'admin';
     const storageKey = 'coronatio.flask-react-tabbar.v1';
     const loadTabState = () => {
