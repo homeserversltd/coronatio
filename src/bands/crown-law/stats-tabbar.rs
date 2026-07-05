@@ -257,18 +257,23 @@ fn render_flask_react_tabbar_quarry() -> String {
     native_crown_panes()
         .into_iter()
         .map(|pane| {
+            let hidden_by_default = matches!(pane.id.as_str(), "chia-mining" | "dhcp" | "youtube");
             let is_starred = pane.id == starred_tab;
             let active = pane.id == starred_tab;
+            let visibility = if hidden_by_default { "hidden" } else { "visible" };
             let visibility_button = if pane.admin_only {
                 r##"<div class="tab-visibility-column" aria-hidden="true"></div>"##.to_string()
             } else {
                 format!(
-                    r##"<div class="tab-visibility-column"><button type="button" class="visibility-toggle" data-admin-only="true" data-tab-visibility-toggle="{id}" data-visible="true" aria-label="Hide {title} tab" title="Hide {title} tab"><span class="eye-icon" aria-hidden="true">👁</span></button></div>"##,
+                    r##"<div class="tab-visibility-column"><button type="button" class="visibility-toggle" data-admin-only="true" data-tab-visibility-toggle="{id}" data-visible="{visible}" aria-label="{verb} {title} tab" title="{verb} {title} tab"><span class="eye-icon" aria-hidden="true">{eye}</span></button></div>"##,
                     id = pane.id,
-                    title = pane.title
+                    title = pane.title,
+                    visible = !hidden_by_default,
+                    verb = if hidden_by_default { "Show" } else { "Hide" },
+                    eye = if hidden_by_default { "🙈" } else { "👁" },
                 )
             };
-            let star_button = if pane.admin_only {
+            let star_button = if pane.admin_only || hidden_by_default {
                 r##"<div class="tab-star-column" aria-hidden="true"></div>"##.to_string()
             } else {
                 format!(
@@ -285,16 +290,18 @@ fn render_flask_react_tabbar_quarry() -> String {
             };
             let admin_only_attr = if pane.admin_only { r##" data-admin-only="true""## } else { "" };
             format!(
-                r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="visible"{admin_only_attr}>{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
+                r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}"{admin_only_attr}>{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
                 id = pane.id,
                 title = pane.title,
                 admin_only_attr = admin_only_attr,
                 active_class = if active { "active" } else { "" },
                 selected = active,
+                visibility = visibility,
                 visibility_button = visibility_button,
                 star_button = star_button
             )
         })
+        .chain(std::iter::once(r#"<button type="button" class="tab add-tab-button" data-admin-only="true" data-add-tab-button title="Add tab" aria-label="Add tab"><span class="tab-name">+</span></button>"#.to_string()))
         .collect::<Vec<_>>()
         .join("")
 }

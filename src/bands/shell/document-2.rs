@@ -191,12 +191,12 @@ fn shell_document_2() -> &'static str {
             <button type="button" class="indicator ok tailscale-indicator" data-indicator="tailscale" data-modal-kind="tailscale" data-modal-title="Tailscale Status" aria-label="Tailscale Status" title="Tailscale Status"><svg class="indicator-icon" data-packed-icon="network-wired" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v8H4V5zm2 2v4h12V7H6zm5 8h2v2h7v2h-7v2h-2v-2H4v-2h7v-2z"/></svg></button>
             <button type="button" class="indicator loading internet-indicator" data-indicator="internet" data-modal-kind="internet" data-modal-title="Internet Status" data-internet-status-indicator aria-label="Checking Internet Status" title="Checking internet connection..."><svg class="indicator-icon indicator-icon-plug" data-packed-icon="plug" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h2v5h2V2h2v5h2V2h2v7a5 5 0 0 1-4 4.9V17h3v2h-3v3h-2v-3H8v-2h3v-3.1A5 5 0 0 1 7 9V2z"/></svg><svg class="indicator-icon indicator-icon-spinner" data-packed-icon="spinner" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 1 10 10h-3a7 7 0 0 0-7-7V2z"/></svg></button>
             <button type="button" class="indicator warn openvpn-indicator" data-indicator="openvpn" data-modal-kind="openvpn" data-modal-title="VPN & Transmission Configuration" aria-label="VPN & Transmission Configuration" title="VPN & Transmission Configuration"><svg class="indicator-icon" data-packed-icon="lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2h2v11H5V10h2zm2 0h6V8a3 3 0 0 0-6 0v2zm2 4v3h2v-3h-2z"/></svg></button>
-            <button type="button" class="indicator ok services-indicator" data-indicator="services" data-modal-kind="services" data-modal-title="Services Status" aria-label="Services Status" title="Services Status"><svg class="indicator-icon" data-packed-icon="server" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v8H4V3zm2 2v4h12V5H6zm-2 8h16v8H4v-8zm2 2v4h12v-4H6zm9-8h2v2h-2V7zm0 10h2v2h-2v-2z"/></svg></button>
-            <button type="button" class="indicator warn power-indicator" data-indicator="power-meter" data-modal-kind="power-meter" data-modal-title="Power Consumption" aria-label="Measuring Power Usage" title="Measuring power usage"><svg class="indicator-icon" data-packed-icon="bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 10-13h-7l1-7z"/></svg><span class="power-value-small" data-power-indicator-value><span class="power-value-small-number">—</span><span class="power-value-small-unit">W</span></span></button>
+            <button type="button" class="indicator warn services-indicator" data-indicator="services" data-modal-kind="services" data-modal-title="Services Status" aria-label="Services Status" title="Services Status"><svg class="indicator-icon" data-packed-icon="server" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v8H4V3zm2 2v4h12V5H6zm-2 8h16v8H4v-8zm2 2v4h12v-4H6zm9-8h2v2h-2V7zm0 10h2v2h-2v-2z"/></svg></button>
+            <button type="button" class="indicator power-indicator" data-indicator="power-meter" data-modal-kind="power-meter" data-modal-title="Power Consumption" aria-label="Measuring Power Usage" title="Measuring power usage"><svg class="indicator-icon" data-packed-icon="bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 10-13h-7l1-7z"/></svg><span class="power-value-small" data-power-indicator-value><span class="power-value-small-number">—</span><span class="power-value-small-unit">W</span></span></button>
           </div>
         </div>
         <div class="header-right">
-          <button type="button" class="theme-button" data-theme-button title="Current theme: dark. Click to switch theme."><span>dark</span></button>
+          <button type="button" class="theme-button" data-theme-button data-admin-only="true" hidden title="Current theme: light. Click to switch theme."><span>light</span></button>
           <button type="button" class="change-admin-pin-button" data-change-pin-button hidden>Change PIN</button>
           <button type="button" class="admin-button" data-admin-button data-admin-state="logged-out">Enter Admin Mode</button>
         </div>
@@ -226,7 +226,7 @@ fn shell_document_2() -> &'static str {
     </div>
     <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist" data-admin-mode="false" data-hidden="false">__NAV__</nav>
     <section class="content">
-      <section class="pane active" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
+      <section class="pane" id="pane-admin" data-pane-panel="admin" role="tabpanel" aria-label="Admin">
 
         <div class="admin-tablet admin-visual-port" data-admin-quarry="flask-react-admin" data-admin-quarry-button-total="87" data-admin-only="true" data-admin-viewport="admin" data-admin-visual-port="one-to-one-best-effort">
           <section class="system-controls-container" data-admin-quarry-group="system-controls" aria-label="System controls">
@@ -289,7 +289,7 @@ fn shell_document_2() -> &'static str {
           </section>
         </div>
       </section>
-      <section class="pane" id="pane-stats" data-pane-panel="stats" role="tabpanel" aria-label="Stats">
+      <section class="pane active" id="pane-stats" data-pane-panel="stats" role="tabpanel" aria-label="Stats">
         <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
           <div class="stat-element" data-stat-element-id="cpu-chart" data-visible="true">
             <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="cpu-chart" data-visible="true" aria-label="Hide CPU Usage & Load">👁</button><h3 class="stat-title">CPU Usage &amp; Load</h3></div>
@@ -371,6 +371,24 @@ fn shell_document_2() -> &'static str {
           <pre class="readout admin-quarry-note" id="upload-readout" data-upload-receipt-readout>Upload Caduceus receipts are diagnostic evidence, not the visible progress UI.</pre>
         </div>
       </section>
+      <section class="pane" id="pane-backblaze" data-pane-panel="backblaze" role="tabpanel" aria-label="backBlaze">
+        <article class="card og-stub-pane" data-og-stub-pane="backblaze"><h2>backBlaze</h2><p>not yet ported</p></article>
+      </section>
+      <section class="pane" id="pane-wake-on-lan" data-pane-panel="wake-on-lan" role="tabpanel" aria-label="Wake on LAN">
+        <article class="card og-stub-pane" data-og-stub-pane="wake-on-lan"><h2>Wake on LAN</h2><p>not yet ported</p></article>
+      </section>
+      <section class="pane" id="pane-test" data-pane-panel="test" role="tabpanel" aria-label="Test">
+        <article class="card og-stub-pane" data-og-stub-pane="test"><h2>Test</h2><p>not yet ported</p></article>
+      </section>
+      <section class="pane" id="pane-chia-mining" data-pane-panel="chia-mining" role="tabpanel" aria-label="Chia Mining">
+        <article class="card og-stub-pane" data-og-stub-pane="chia-mining"><h2>Chia Mining</h2><p>not yet ported</p></article>
+      </section>
+      <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" role="tabpanel" aria-label="DHCP">
+        <article class="card og-stub-pane" data-og-stub-pane="dhcp"><h2>DHCP</h2><p>not yet ported</p></article>
+      </section>
+      <section class="pane" id="pane-youtube" data-pane-panel="youtube" role="tabpanel" aria-label="YouTube">
+        <article class="card og-stub-pane" data-og-stub-pane="youtube"><h2>YouTube</h2><p>not yet ported</p></article>
+      </section>
       __TESTTAB__
     </section>
   </main>
@@ -386,15 +404,15 @@ fn shell_document_2() -> &'static str {
       catch (_) { return {}; }
     };
     const saveTabState = state => localStorage.setItem(storageKey, JSON.stringify(state));
-    const tabState = Object.assign({ starredTab: 'upload', hiddenTabs: [] }, loadTabState());
+    const tabState = Object.assign({ starredTab: 'stats', hiddenTabs: ['chia-mining', 'dhcp', 'youtube'] }, loadTabState());
     const headerStateKey = 'coronatio.flask-react-header.v1';
     const preferredThemeKey = 'preferred-theme';
     const themeDataKey = 'themeData';
-    let themeCatalog = { default: 'dark', themes: {} };
+    let themeCatalog = { default: 'light', themes: {} };
     let themes = [];
     const savedHeaderState = (() => { try { return JSON.parse(localStorage.getItem(headerStateKey) || '{}'); } catch (_) { return {}; } })();
     const savedPreferredTheme = localStorage.getItem(preferredThemeKey);
-    const headerState = { theme: savedPreferredTheme || savedHeaderState.theme || 'dark', isAdmin: false };
+    const headerState = { theme: savedPreferredTheme || savedHeaderState.theme || 'light', isAdmin: false };
     const saveHeaderState = () => {
       localStorage.setItem(headerStateKey, JSON.stringify({ theme: headerState.theme }));
       localStorage.setItem(preferredThemeKey, headerState.theme);
@@ -428,7 +446,7 @@ fn shell_document_2() -> &'static str {
       return ':root {\n' + lines.join('\n') + '\n}';
     }
     function themeLabel(name) {
-      return name.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+      return name;
     }
     function renderThemeChoices() {
       if (!themeChoiceRow) return;

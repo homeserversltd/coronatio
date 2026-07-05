@@ -20,7 +20,7 @@ fn shell_document_3() -> &'static str {
       return style;
     }
     function applyTheme() {
-      if (!themes.includes(headerState.theme)) headerState.theme = themeCatalog.default || themes[0] || 'dark';
+      if (!themes.includes(headerState.theme)) headerState.theme = themeCatalog.default || themes[0] || 'light';
       const theme = themeCatalog.themes[headerState.theme];
       document.documentElement.dataset.theme = headerState.theme;
       ensureThemeStyleElement().textContent = themeToCss(theme);
@@ -156,14 +156,7 @@ fn shell_document_3() -> &'static str {
     const POWER_DISPLAY_FACTOR = 1.6;
     function formatPowerWatts(watts) {
       const value = Number(watts);
-      return Number.isFinite(value) ? (value * POWER_DISPLAY_FACTOR).toFixed(2) : 'unavailable';
-    }
-    function powerColorClass(watts) {
-      const value = Number(watts);
-      if (!Number.isFinite(value)) return 'warn';
-      if (value < 1) return 'ok';
-      if (value < 5) return 'warn';
-      return 'error';
+      return Number.isFinite(value) ? (value * POWER_DISPLAY_FACTOR).toFixed(1) : 'unavailable';
     }
     function hydratePowerIndicator(data) {
       const button = document.querySelector('[data-indicator="power-meter"]');
@@ -173,13 +166,11 @@ fn shell_document_3() -> &'static str {
         const display = formatPowerWatts(data.current);
         number.textContent = display;
         button.classList.remove('ok', 'warn', 'error');
-        button.classList.add(powerColorClass(data.current));
         button.title = 'Power: ' + display + 'W';
         button.setAttribute('aria-label', 'Power Usage ' + display + ' Watts');
       } else {
         number.textContent = '—';
-        button.classList.remove('ok', 'error');
-        button.classList.add('warn');
+        button.classList.remove('ok', 'warn', 'error');
         button.title = 'Power readback unavailable';
         button.setAttribute('aria-label', 'Power readback unavailable');
       }

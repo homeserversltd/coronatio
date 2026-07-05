@@ -166,12 +166,47 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     fetch('/api/upload/pin-required-status').then(r => r.json()).then(data => { uploadState.pinRequired = !!data.isPinRequired; const b = document.querySelector('[data-upload-pin-toggle]'); b?.classList.toggle('active', uploadState.pinRequired); }).catch(() => {});
     loadUploadDirectory('/mnt/nas', false);
 
+    let uptimeBaseSeconds = null;
+    let uptimeBaseStamp = 0;
+    function secondsFromUptimeText(text) {
+      const raw = String(text || '');
+      const days = Number((raw.match(/(\d+)d/) || [0, 0])[1]);
+      const hours = Number((raw.match(/(\d+)h/) || [0, 0])[1]);
+      const minutes = Number((raw.match(/(\d+)m/) || [0, 0])[1]);
+      const seconds = Number((raw.match(/(\d+)s/) || [0, 0])[1]);
+      const total = days * 86400 + hours * 3600 + minutes * 60 + seconds;
+      return total > 0 ? total : null;
+    }
+    function formatUptimeSeconds(total) {
+      total = Math.max(0, Math.floor(Number(total) || 0));
+      const days = Math.floor(total / 86400);
+      const hours = Math.floor((total % 86400) / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const seconds = total % 60;
+      const parts = [];
+      if (days > 0) parts.push(days + 'd');
+      if (hours > 0) parts.push(hours + 'h');
+      if (minutes > 0) parts.push(minutes + 'm');
+      parts.push(seconds + 's');
+      return parts.join(' ');
+    }
+    function tickUptime() {
+      const uptime = document.querySelector('[data-uptime-indicator]');
+      if (!uptime || uptimeBaseSeconds === null) return;
+      const elapsed = Math.floor((Date.now() - uptimeBaseStamp) / 1000);
+      uptime.textContent = formatUptimeSeconds(uptimeBaseSeconds + elapsed);
+      uptime.dataset.uptimeIncludesSeconds = 'true';
+    }
     async function hydrateUptime() {
       const uptime = document.querySelector('[data-uptime-indicator]');
       if (!uptime) return;
       try {
         const data = await fetch('/api/uptime').then(r => r.json()).catch(() => null);
-        uptime.textContent = data?.uptime || (data?.uptimeSeconds ? data.uptimeSeconds + 's' : 'uptime unavailable');
+        const seconds = Number(data?.uptimeSeconds ?? data?.seconds ?? NaN);
+        uptimeBaseSeconds = Number.isFinite(seconds) ? seconds : secondsFromUptimeText(data?.uptime);
+        uptimeBaseStamp = Date.now();
+        if (uptimeBaseSeconds !== null) tickUptime();
+        else uptime.textContent = 'uptime unavailable';
         uptime.dataset.uptimeLoaded = data?.ok ? 'true' : 'false';
       } catch (_) { uptime.textContent = navigator.onLine ? 'uptime unavailable' : 'disconnected'; uptime.dataset.uptimeLoaded = 'false'; }
     }

@@ -68,8 +68,8 @@
             .await
             .unwrap();
         let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(root.primary_tabs, ["admin", "stats", "portals", "upload", "testtab"]);
-        assert_eq!(root.first_party_panes.len(), 5);
+        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"]);
+        assert_eq!(root.first_party_panes.len(), PRIMARY_TABS.len());
     }
 
     #[tokio::test]
@@ -98,7 +98,9 @@
         assert!(body.contains("Portals"));
         assert!(body.contains("Upload"));
         assert!(body.contains("TestTab"));
-        assert!(!body.contains("YouTube"));
+        assert!(body.contains("backBlaze"));
+        assert!(body.contains("Wake on LAN"));
+        assert!(body.contains("YouTube"));
     }
 
     #[tokio::test]
@@ -137,7 +139,7 @@
         assert!(!body.contains("Coronatio crown shell"));
         assert!(!body.contains("class=\"crown-card\""));
         assert!(!body.contains("Arcadia"));
-        assert!(!body.contains("YouTube"));
+        assert!(body.contains("YouTube"));
     }
 
     #[test]
@@ -166,7 +168,7 @@
     #[test]
     fn normal_mode_keeps_primary_tabs_visible_and_admin_only_enhances_controls() {
         let shell = render_crown_shell();
-        for pane in ["stats", "portals", "upload"] {
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             let marker = format!(r#"data-tab-id="{}""#, pane);
             let start = shell.find(&marker).expect("normal tab marker present");
             let tab_start = shell[..start]
@@ -191,7 +193,7 @@
             );
         }
         assert!(shell.contains(r#"data-tab-id="admin" data-visibility="visible" data-admin-only="true""#));
-        for pane in ["stats", "portals", "upload"] {
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!(r#"data-admin-only="true" data-tab-visibility-toggle="{}""#, pane)), "{pane} eye control is admin enhancement");
         }
         assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));
@@ -223,16 +225,16 @@
         let mut contracts = native_tab_contracts();
         contracts
             .iter_mut()
-            .find(|tab| tab.id == "upload")
-            .expect("upload tab exists")
+            .find(|tab| tab.id == "youtube")
+            .expect("youtube tab exists")
             .visibility
             .tab = false;
         let regular = visible_tab_ids(&contracts, false);
         let admin = visible_tab_ids(&contracts, true);
-        assert!(!regular.contains(&"upload".to_string()));
-        assert!(admin.contains(&"upload".to_string()));
+        assert!(!regular.contains(&"youtube".to_string()));
+        assert!(admin.contains(&"youtube".to_string()));
         assert!(admin.contains(&"admin".to_string()));
-        assert!(!eligible_starred_tab_ids(&contracts).contains(&"upload".to_string()));
+        assert!(!eligible_starred_tab_ids(&contracts).contains(&"youtube".to_string()));
     }
 
     #[test]
@@ -240,12 +242,12 @@
         let shell = render_crown_shell();
         assert!(shell.contains("class=\"tab-bar\""));
         assert!(shell.contains("data-admin-mode=\"true\""));
-        for pane in ["admin", "stats", "portals", "upload"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"] {
             assert!(shell.contains("class=\"tab active\""));
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
             assert!(shell.contains(&format!("data-pane=\"{}\"", pane)));
         }
-        for pane in ["stats", "portals", "upload"] {
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!("data-tab-visibility-toggle=\"{}\"", pane)));
             assert!(shell.contains(&format!("data-tab-star=\"{}\"", pane)));
         }
@@ -282,6 +284,7 @@
         assert!(shell.contains("data-uptime-indicator"));
         assert!(shell.contains(r#"class="theme-button""#));
         assert!(shell.contains("data-theme-button"));
+        assert!(shell.contains(r#"data-theme-button data-admin-only="true" hidden"#));
         assert!(shell.contains("Click to switch theme"));
         assert!(!shell.contains("Open theme selector"));
         assert!(shell.contains(r#"data-theme-json-source="/api/themes""#));
@@ -368,7 +371,7 @@
         ] {
             assert!(shell.contains(preserved), "theme membrane marker missing: {}", preserved);
         }
-        for pane in ["admin", "stats", "portals", "upload"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"] {
             assert!(shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
         }
         assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));
