@@ -2,13 +2,12 @@
     fn admin_pane_stubs_original_flask_react_admin_button_inventory() {
         let shell = render_crown_shell();
         assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
-        assert!(shell.contains(r#"data-admin-quarry-button-total="87""#));
-        assert_eq!(shell.matches("data-admin-quarry-button").count(), 88);
-        assert_eq!(shell.matches("data-admin-quarry-index=").count(), 87);
+        assert!(shell.contains(r#"data-admin-quarry-button-total="74""#));
+        assert_eq!(shell.matches("data-admin-quarry-button").count(), 75);
+        assert_eq!(shell.matches("data-admin-quarry-index=").count(), 74);
         for (group, count) in [
             ("system-controls", 7),
-            ("disk-manager", 12),
-            ("key-manager", 4),
+            ("key-manager", 3),
             ("admin-password-modal", 2),
             ("create-key-modal", 2),
             ("hard-drive-test-modal", 6),
@@ -28,15 +27,42 @@
             "Hard Drive Test",
             "Restart Website",
             "Install Certificate",
-            "Assign as primary NAS",
+            "+ Create New Key",
+            "⟳ Update Key on Drive",
+            "🔒 Admin Password",
             "Auto Sync Schedule",
-            "Create New Key",
-            "View Full Guide &amp; Critical Warnings",
             "Validate &amp; Clone",
             "Force Update",
         ] {
             assert!(shell.contains(label), "missing admin quarry button label: {}", label);
         }
+        assert!(shell.contains(r#"data-admin-action-strip="single-row""#));
+        assert!(shell.contains(r#"data-admin-action-strip-count="7""#));
+        assert!(shell.contains("SSH Password Authentication"));
+        assert!(shell.contains(r#"data-service-card="ssh-password-authentication""#));
+        assert!(shell.contains("SSH Service"));
+        assert!(shell.contains(r#"data-service-card="ssh-service""#));
+        assert!(shell.contains("Samba File Sharing"));
+        assert!(shell.contains(r#"data-service-card="samba-file-sharing""#));
+        assert!(shell.contains(r#"data-state-source="/api/services/data""#));
+        assert!(shell.contains("Key Management"));
+        assert!(shell.contains("This is the key to your vault. When you boot your HOMESERVER and visit home.arpa, this is what unlocks your encrypted storage system - just like unlocking your smartphone. Your /vault partition contains the sensitive keys stored on the device. Unlock the vault and everything HOMESERVER specifically stores is accessible. This is the device's master key."));
+        assert!(shell.contains("Available Devices"));
+        assert!(shell.contains("Mount Destinations"));
+        assert!(shell.contains(r#"data-admin-devices-readback="/api/services/data""#));
+        assert!(shell.contains(r#"data-admin-mounts-readback="/api/services/data""#));
+        assert!(shell.contains("disk-item"));
+        assert!(shell.contains("disk-space-usage") || shell.contains("No /dev-backed mounts were observed"));
+        assert!(!shell.contains("1.7T/3.7T (45%) - 2.1T free"));
+        assert!(!shell.contains("Mapper: sdb1_crypt"));
+        assert!(!shell.contains("Device: <span class=\"device-label\">sdb</span>"));
+        assert!(shell.contains("In Use") || shell.contains("NAS destinations idle"));
+        assert!(!shell.contains("<h3>Key Manager</h3>"));
+        assert!(!shell.contains("<h3>Disk Manager</h3>"));
+        assert!(!shell.contains("Available Drives"));
+        assert!(!shell.contains("Drive Actions"));
+        assert!(!shell.contains("Format Drive"));
+        assert!(!shell.contains("Assign as primary NAS"));
         assert!(shell.contains(r#"data-admin-visual-port="one-to-one-best-effort""#));
         assert!(shell.contains("system-controls-btn"));
         assert!(shell.contains("key-manager-content"));

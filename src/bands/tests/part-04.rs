@@ -287,6 +287,24 @@
             .any(|topic| topic.topic == "services.status"
                 && topic.admin_fields.contains(&"isEnabled".to_string())));
         assert!(data.broadcast_law.transport_replacement.contains("SSE"));
+        assert!(data.admin_runtime.source.contains("/proc/mounts"));
+        assert_eq!(data.admin_runtime.services.len(), 3);
+        assert!(data
+            .admin_runtime
+            .services
+            .iter()
+            .any(|service| service.id == "ssh-password-authentication"
+                && service.source.contains("PasswordAuthentication")));
+        assert!(data
+            .admin_runtime
+            .services
+            .iter()
+            .any(|service| service.id == "ssh-service"));
+        assert!(data
+            .admin_runtime
+            .mount_destinations
+            .iter()
+            .any(|destination| destination.path == "/mnt/nas" && destination.role == "Primary NAS"));
         assert!(data
             .first_missing_live_signal
             .contains("service collectors and monitor broadcasters are not wired"));

@@ -37,7 +37,8 @@ fn service_data_readback() -> ServiceDataReadback {
             ui_state_law: "monitor data becomes current service cards, indicator chips, and pane snapshots; unavailable collectors surface firstMissingSignal instead of fake green".to_string(),
         },
         admin_field_law: admin_field_filters(),
-        first_missing_live_signal: "service collectors and monitor broadcasters are not wired; Coronatio does not run systemctl, ping, tailscale, vpn, disk, rsync, smartctl, or power sensors in this tranche".to_string(),
+        admin_runtime: admin_runtime_readback(),
+        first_missing_live_signal: "service collectors and monitor broadcasters are not wired; Coronatio reads admin disk and service display facts directly from the local host while mutation remains behind Caduceus".to_string(),
     }
 }
 
