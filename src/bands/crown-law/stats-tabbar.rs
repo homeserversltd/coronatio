@@ -41,6 +41,361 @@ fn stats_storage() -> Vec<StatsDrive> {
     drives
 }
 
+fn admin_runtime_readback() -> AdminRuntimeReadback {
+    let mounts = read_proc_mounts();
+    let devices = admin_block_devices_from_mounts(&mounts);
+    let mount_destinations = admin_mount_destinations_from_mounts(&mounts);
+    let services = vec![
+        ssh_password_auth_state(),
+        systemd_service_state("ssh-service", "SSH Service", &["sshd", "ssh"]),
+        systemd_service_state("samba-file-sharing", "Samba File Sharing", &["smb", "smbd", "samba"]),
+    ];
+    AdminRuntimeReadback {
+        devices,
+        mount_destinations,
+        services,
+        source: "/proc/mounts + /sys/block + df -B1 -P + systemctl + sshd_config readback".to_string(),
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ProcMountReadback {
+    device: String,
+    mount: String,
+    filesystem: String,
+}
+
+fn read_proc_mounts() -> Vec<ProcMountReadback> {
+    let raw = std::env::var("CORONATIO_PROC_MOUNTS_FIXTURE")
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .or_else(|| std::fs::read_to_string("/proc/mounts").ok())
+        .unwrap_or_default();
+    raw.lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let device = parts.next()?.replace("\\040", " ");
+            let mount = parts.next()?.replace("\\040", " ");
+            let filesystem = parts.next()?.to_string();
+            Some(ProcMountReadback { device, mount, filesystem })
+        })
+        .collect()
+}
+
+fn admin_block_devices_from_mounts(mounts: &[ProcMountReadback]) -> Vec<AdminBlockDeviceReadback> {
+    let mut devices = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for mount in mounts {
+        if !mount.device.starts_with("/dev/") || mount.mount.starts_with("/snap/") {
+            continue;
+        }
+        let real_device = canonical_device_path(&mount.device);
+        if !seen.insert((real_device.clone(), mount.mount.clone())) {
+            continue;
+        }
+        let space = df_space_for_mount(&mount.mount);
+        let mapper = mapper_name(&mount.device);
+        let encrypted = mapper.is_some() || device_has_dm_holder(&real_device);
+        devices.push(AdminBlockDeviceReadback {
+            name: best_device_name(&mount.device, &real_device, &mount.mount),
+            device: short_device_name(&real_device),
+            mount: Some(mount.mount.clone()),
+            role: nas_role_for_mount(&mount.mount).map(str::to_string),
+            filesystem: Some(mount.filesystem.clone()),
+            total_bytes: space.as_ref().and_then(|space| space.total_bytes),
+            used_bytes: space.as_ref().and_then(|space| space.used_bytes),
+            free_bytes: space.as_ref().and_then(|space| space.free_bytes),
+            usage_percent: space.as_ref().and_then(|space| space.usage_percent),
+            encrypted,
+            mapper,
+            lock_state: if encrypted { "Unlocked" } else { "Available" }.to_string(),
+        });
+    }
+    devices.sort_by(|left, right| {
+        let left_rank = if left.role.is_some() { 0 } else { 1 };
+        let right_rank = if right.role.is_some() { 0 } else { 1 };
+        (left_rank, left.mount.clone()).cmp(&(right_rank, right.mount.clone()))
+    });
+    devices
+}
+
+fn admin_mount_destinations_from_mounts(mounts: &[ProcMountReadback]) -> Vec<AdminMountDestinationReadback> {
+    [("Primary NAS", "/mnt/nas"), ("NAS Backup", "/mnt/nas_backup")]
+        .into_iter()
+        .map(|(role, path)| {
+            let mounted = mounts.iter().find(|mount| mount.mount == path);
+            let space = mounted.and_then(|mount| df_space_for_mount(&mount.mount));
+            AdminMountDestinationReadback {
+                role: role.to_string(),
+                path: path.to_string(),
+                device: mounted.map(|mount| short_device_name(&canonical_device_path(&mount.device))),
+                filesystem: mounted.map(|mount| mount.filesystem.clone()),
+                total_bytes: space.as_ref().and_then(|space| space.total_bytes),
+                used_bytes: space.as_ref().and_then(|space| space.used_bytes),
+                free_bytes: space.as_ref().and_then(|space| space.free_bytes),
+                usage_percent: space.as_ref().and_then(|space| space.usage_percent),
+                in_use: mounted.is_some(),
+            }
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone)]
+struct DfSpaceReadback {
+    total_bytes: Option<u64>,
+    used_bytes: Option<u64>,
+    free_bytes: Option<u64>,
+    usage_percent: Option<u8>,
+}
+
+fn df_space_for_mount(mount: &str) -> Option<DfSpaceReadback> {
+    let output = Command::new("df").args(["-B1", "-P", mount]).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let line = raw.lines().skip(1).last()?;
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 6 {
+        return None;
+    }
+    Some(DfSpaceReadback {
+        total_bytes: parts[1].parse::<u64>().ok(),
+        used_bytes: parts[2].parse::<u64>().ok(),
+        free_bytes: parts[3].parse::<u64>().ok(),
+        usage_percent: parts[4].trim_end_matches('%').parse::<u8>().ok(),
+    })
+}
+
+fn nas_role_for_mount(mount: &str) -> Option<&'static str> {
+    match mount {
+        "/mnt/nas" => Some("Primary NAS"),
+        "/mnt/nas_backup" => Some("NAS Backup"),
+        _ => None,
+    }
+}
+
+fn canonical_device_path(device: &str) -> String {
+    std::fs::canonicalize(device)
+        .ok()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| device.to_string())
+}
+
+fn short_device_name(device: &str) -> String {
+    FsPath::new(device)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(device)
+        .to_string()
+}
+
+fn best_device_name(device: &str, real_device: &str, mount: &str) -> String {
+    if let Some(role) = nas_role_for_mount(mount) {
+        return match role {
+            "Primary NAS" => "homeserver-primary-nas".to_string(),
+            "NAS Backup" => "homeserver-backup-nas".to_string(),
+            _ => short_device_name(real_device),
+        };
+    }
+    if device.starts_with("/dev/disk/by-partlabel/") {
+        return short_device_name(device);
+    }
+    short_device_name(real_device)
+}
+
+fn mapper_name(device: &str) -> Option<String> {
+    if device.starts_with("/dev/mapper/") {
+        Some(short_device_name(device))
+    } else {
+        None
+    }
+}
+
+fn device_has_dm_holder(real_device: &str) -> bool {
+    let Some(name) = FsPath::new(real_device).file_name().and_then(|name| name.to_str()) else { return false; };
+    let holders = format!("/sys/class/block/{name}/holders");
+    std::fs::read_dir(holders)
+        .ok()
+        .map(|mut entries| entries.next().is_some())
+        .unwrap_or(false)
+}
+
+fn ssh_password_auth_state() -> AdminServiceStateReadback {
+    let state = read_sshd_password_auth()
+        .map(|enabled| if enabled { "Enabled" } else { "Disabled" }.to_string())
+        .unwrap_or_else(|| "Unknown".to_string());
+    AdminServiceStateReadback {
+        id: "ssh-password-authentication".to_string(),
+        label: "SSH Password Authentication".to_string(),
+        enabled: state == "Enabled",
+        state,
+        source: "sshd_config PasswordAuthentication readback".to_string(),
+    }
+}
+
+fn read_sshd_password_auth() -> Option<bool> {
+    let paths = sshd_config_paths();
+    let mut value = None;
+    for path in paths {
+        let Ok(raw) = std::fs::read_to_string(path) else { continue; };
+        for line in raw.lines() {
+            let line = line.split('#').next().unwrap_or("").trim();
+            let mut parts = line.split_whitespace();
+            let Some(key) = parts.next() else { continue; };
+            if key.eq_ignore_ascii_case("PasswordAuthentication") {
+                match parts.next().map(|raw| raw.to_ascii_lowercase()) {
+                    Some(raw) if raw == "yes" => value = Some(true),
+                    Some(raw) if raw == "no" => value = Some(false),
+                    _ => {}
+                }
+            }
+        }
+    }
+    value
+}
+
+fn sshd_config_paths() -> Vec<PathBuf> {
+    if let Ok(path) = std::env::var("CORONATIO_SSHD_CONFIG_FIXTURE") {
+        return vec![PathBuf::from(path)];
+    }
+    let mut paths = vec![PathBuf::from("/etc/ssh/sshd_config")];
+    if let Ok(entries) = std::fs::read_dir("/etc/ssh/sshd_config.d") {
+        let mut dropins: Vec<PathBuf> = entries.filter_map(|entry| entry.ok().map(|entry| entry.path())).collect();
+        dropins.sort();
+        paths.extend(dropins);
+    }
+    paths
+}
+
+fn systemd_service_state(id: &str, label: &str, units: &[&str]) -> AdminServiceStateReadback {
+    let active_unit = units.iter().find_map(|unit| systemctl_is_active(unit).map(|state| (unit, state)));
+    let state = active_unit
+        .as_ref()
+        .map(|(_, state)| if state == "active" { "Running" } else { "Stopped" }.to_string())
+        .unwrap_or_else(|| "Unavailable".to_string());
+    AdminServiceStateReadback {
+        id: id.to_string(),
+        label: label.to_string(),
+        enabled: state == "Running",
+        state,
+        source: active_unit
+            .map(|(unit, _)| format!("systemctl is-active {unit}"))
+            .unwrap_or_else(|| "systemctl readback unavailable".to_string()),
+    }
+}
+
+fn systemctl_is_active(unit: &str) -> Option<String> {
+    let output = Command::new("systemctl").args(["is-active", unit]).output().ok()?;
+    let state = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if state.is_empty() || state == "unknown" {
+        None
+    } else {
+        Some(state)
+    }
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn format_admin_bytes(bytes: Option<u64>) -> String {
+    let Some(bytes) = bytes else { return "—".to_string(); };
+    let units = [(1_u64 << 40, "T"), (1_u64 << 30, "G"), (1_u64 << 20, "M"), (1_u64 << 10, "K")];
+    for (unit, label) in units {
+        if bytes >= unit {
+            let value = bytes as f64 / unit as f64;
+            return format!("{value:.1}{label}");
+        }
+    }
+    format!("{bytes}B")
+}
+
+fn format_space(used: Option<u64>, total: Option<u64>, free: Option<u64>, percent: Option<u8>) -> String {
+    format!(
+        "{}/{} ({}) - {} free",
+        format_admin_bytes(used),
+        format_admin_bytes(total),
+        percent.map(|value| format!("{value}%")).unwrap_or_else(|| "—".to_string()),
+        format_admin_bytes(free),
+    )
+}
+
+fn render_admin_service_card_html(id: &str) -> String {
+    let runtime = admin_runtime_readback();
+    let Some(service) = runtime.services.into_iter().find(|service| service.id == id) else {
+        return "<div class=\"ssh-status\"><h3>Service</h3><div class=\"ssh-toggle\"><span class=\"toggle-label\">Unavailable</span></div></div>".to_string();
+    };
+    let checked = if service.enabled { " checked" } else { "" };
+    let icon_class = if service.enabled { "enabled" } else { "disabled" };
+    let icon = match id {
+        "ssh-password-authentication" if service.enabled => "🔓",
+        "ssh-password-authentication" => "🔒",
+        "samba-file-sharing" => "↗",
+        _ if service.enabled => "▶",
+        _ => "■",
+    };
+    let outer_class = if id == "samba-file-sharing" { "samba-status" } else { "ssh-status" };
+    let toggle_class = if id == "samba-file-sharing" { "samba-toggle" } else { "ssh-toggle" };
+    let icon_span_class = if id == "samba-file-sharing" { "samba-icon" } else { "ssh-icon" };
+    format!(
+        "<div class=\"{outer_class}\"><h3>{}</h3><div class=\"{toggle_class}\"><label class=\"toggle-switch\"><input type=\"checkbox\"{checked} disabled data-state-source=\"{}\"><span class=\"toggle-slider\"></span></label><span class=\"toggle-label\">{}</span><span class=\"{icon_span_class} {icon_class}\">{icon}</span></div></div>",
+        html_escape(&service.label),
+        html_escape(&service.source),
+        html_escape(&service.state),
+    )
+}
+
+fn render_admin_available_devices_html() -> String {
+    let runtime = admin_runtime_readback();
+    if runtime.devices.is_empty() {
+        return "<div class=\"disk-item empty\"><span class=\"disk-icon\">▣</span><div class=\"disk-info\"><div class=\"disk-name\">No block devices mounted</div><div class=\"disk-details\">No /dev-backed mounts were observed on this body.</div></div></div>".to_string();
+    }
+    runtime.devices.into_iter().map(|device| {
+        let role = device.role.as_ref().map(|role| {
+            let class = if role == "Primary NAS" { "nas-role-primary" } else { "nas-role-backup" };
+            format!(" <span class=\"nas-role-badge {class}\">{}</span>", html_escape(role))
+        }).unwrap_or_default();
+        let mount = device.mount.as_ref().map(|mount| format!("<div class=\"disk-mount-info prominent\"><strong>Mounted at:</strong> {}{}</div>", html_escape(mount), if device.role.is_some() { " <span class=\"destination-label\">(NAS)</span>" } else { "" })).unwrap_or_default();
+        let fs = device.filesystem.clone().unwrap_or_else(|| "unknown".to_string());
+        let encrypted_label = if device.encrypted { " (encrypted)" } else { "" };
+        let mapper = device.mapper.as_ref().map(|mapper| format!("<div class=\"mapper-info\">Mapper: {}</div>", html_escape(mapper))).unwrap_or_default();
+        let lock_class = if device.encrypted { "unlocked" } else { "available" };
+        let lock_icon = if device.encrypted { "🔓" } else { "▣" };
+        format!(
+            "<div class=\"disk-item selected available{}\"><span class=\"lock-icon\">{lock_icon}</span><span class=\"disk-icon\">▣</span><div class=\"disk-info\"><div class=\"disk-name\">{}{role}</div>{mount}<div class=\"disk-details\">{} - {}{encrypted_label}</div><div class=\"disk-space-usage\"><strong>Space:</strong> {}</div>{mapper}<div class=\"encryption-status {lock_class}\">{lock_icon} {} <span class=\"filesystem-label\">({})</span></div></div></div>",
+            if device.role.is_some() { " nas-compatible" } else { "" },
+            html_escape(&device.name),
+            format_admin_bytes(device.total_bytes),
+            html_escape(&fs.to_uppercase()),
+            format_space(device.used_bytes, device.total_bytes, device.free_bytes, device.usage_percent),
+            html_escape(&device.lock_state),
+            html_escape(&fs),
+        )
+    }).collect::<Vec<_>>().join("")
+}
+
+fn render_admin_mount_destinations_html() -> String {
+    let runtime = admin_runtime_readback();
+    let mounted: Vec<_> = runtime.mount_destinations.into_iter().filter(|dest| dest.in_use).collect();
+    if mounted.is_empty() {
+        return "<div class=\"disk-item empty\"><span class=\"lock-icon\">🔒</span><span class=\"disk-icon\">▦</span><div class=\"disk-info\"><div class=\"disk-name\">NAS destinations idle</div><div class=\"disk-details\">/mnt/nas and /mnt/nas_backup are not mounted on this body.</div></div></div>".to_string();
+    }
+    mounted.into_iter().map(|dest| {
+        format!(
+            "<div class=\"disk-item selected mounted locked-pair\"><span class=\"lock-icon\">🔒</span><span class=\"disk-icon\">▦</span><div class=\"disk-info\"><div class=\"disk-name\">{}</div><div class=\"disk-details\">{}</div><div class=\"disk-mount-info\">Device: <span class=\"device-label\">{}</span><div class=\"disk-space-usage\"><strong>Space:</strong> {}</div></div><span class=\"nas-badge\">In Use</span></div></div>",
+            html_escape(&dest.role),
+            html_escape(&dest.path),
+            html_escape(&dest.device.unwrap_or_else(|| "unknown".to_string())),
+            format_space(dest.used_bytes, dest.total_bytes, dest.free_bytes, dest.usage_percent),
+        )
+    }).collect::<Vec<_>>().join("")
+}
+
 
 fn stats_io(storage: &[StatsDrive]) -> StatsIo {
     let mut mount_by_device = BTreeMap::new();

@@ -251,14 +251,14 @@ fn shell_document_2() -> &'static str {
             <div class="system-service-controls" data-admin-service-controls data-state-source="/api/services/data">
               <div class="ssh-controls">
                 <div class="ssh-control" data-service-card="ssh-password-authentication" data-state-field="ssh.password_auth_enabled" data-state-source="/api/services/data">
-                  <div class="ssh-status"><h3>SSH Password Authentication</h3><div class="ssh-toggle"><label class="toggle-switch"><input type="checkbox" disabled><span class="toggle-slider"></span></label><span class="toggle-label">Disabled</span><span class="ssh-icon disabled">🔒</span></div></div>
+                  __ADMIN_SSH_PASSWORD_CARD__
                 </div>
                 <div class="ssh-control" data-service-card="ssh-service" data-state-field="sshd.running" data-state-source="/api/services/data">
-                  <div class="ssh-status"><h3>SSH Service</h3><div class="ssh-toggle"><label class="toggle-switch"><input type="checkbox" checked disabled><span class="toggle-slider"></span></label><span class="toggle-label">Running</span><span class="ssh-icon enabled">▶</span></div></div>
+                  __ADMIN_SSH_SERVICE_CARD__
                 </div>
               </div>
               <div class="samba-control" data-service-card="samba-file-sharing" data-state-field="samba.running" data-state-source="/api/services/data">
-                <div class="samba-status"><h3>Samba File Sharing</h3><div class="samba-toggle"><label class="toggle-switch"><input type="checkbox" checked disabled><span class="toggle-slider"></span></label><span class="toggle-label">Running</span><span class="samba-icon enabled">↗</span></div></div>
+                __ADMIN_SAMBA_SERVICE_CARD__
               </div>
             </div>
           </section>
@@ -282,12 +282,8 @@ fn shell_document_2() -> &'static str {
 
           <section class="disk-manager" data-admin-quarry-group="disk-manager">
             <div class="disk-manager-container">
-              <div class="disk-column"><h4>Available Devices</h4><div class="disk-list">
-                <div class="disk-item selected available nas-compatible unlocked-encrypted"><span class="lock-icon">🔓</span><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">homeserver-primary-nas <span class="nas-role-badge nas-role-primary">Primary NAS</span></div><div class="disk-mount-info prominent"><strong>Mounted at:</strong> /mnt/nas <span class="destination-label">(NAS)</span></div><div class="disk-details">3.7T - XFS (encrypted)</div><div class="disk-space-usage"><strong>Space:</strong> 1.7T/3.7T (45%) - 2.1T free</div><div class="mapper-info">Mapper: sdb1_crypt</div><div class="encryption-status unlocked">🔓 Unlocked <span class="filesystem-label">(xfs)</span></div></div></div>
-              </div></div>
-              <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list">
-                <div class="disk-item selected mounted locked-pair"><span class="lock-icon">🔒</span><span class="disk-icon">▦</span><div class="disk-info"><div class="disk-name">NAS</div><div class="disk-details">/mnt/nas</div><div class="disk-mount-info">Device: <span class="device-label">sdb</span><div class="disk-space-usage"><strong>Space:</strong> 1.7T/3.7T (45%) - 2.1T free</div></div><span class="nas-badge">In Use</span></div></div>
-              </div></div>
+              <div class="disk-column"><h4>Available Devices</h4><div class="disk-list" data-admin-devices-readback="/api/services/data">__ADMIN_AVAILABLE_DEVICES__</div></div>
+              <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list" data-admin-mounts-readback="/api/services/data">__ADMIN_MOUNT_DESTINATIONS__</div></div>
             </div>
           </section>
 
