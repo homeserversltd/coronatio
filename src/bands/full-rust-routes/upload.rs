@@ -251,6 +251,7 @@ async fn upload_tree_fragment_route(headers: axum::http::HeaderMap, Query(query)
     };
     let mut response = Html(body).into_response();
     response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
     response
 }
 

@@ -264,6 +264,7 @@ async fn admit_tab_route(Path(tab_id): Path<String>) -> impl IntoResponse {
         fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound)
     };
     response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
     response
 }
 

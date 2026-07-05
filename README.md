@@ -180,6 +180,12 @@ The old Flask/React theme system is behavior quarry and visual contract. Coronat
 
 Runtime theme selection authority is the single HomeServer config, `homeserver.json`, specifically `global.theme.name`; the installed service prefers `/etc/homeserver.json` and may read the legacy live path only as fallback. Coronatio may carry firmware theme token defaults, but it SHALL NOT treat any Coronatio sidecar file or env override as runtime authority. `/api/themes` exposes the selected homeserver.json theme plus firmware token defaults so the browser derives theme choices, `<html data-theme>`, `preferred-theme`, `themeData`, and `style[data-theme-styles]` from the one config truth. The header theme button is a direct port of the old Header behavior: click cycles to the next JSON theme immediately; it does not open a theme modal.
 
+## HTMX exemplar patterns
+
+- Fragment admission: `/admit/:tab_id` re-admits og panes as no-store HTMX fragments; tests: `hx_005_wall_staleness_admit_refetches_and_fragments_are_no_store`, `hx_005_wall_fault_typed_og_fragment_receipt_siblings_and_recovery`.
+- Live-state tree read: `/admit/upload/tree` is the upload read exemplar; tests: `hx_exemplar_hx_request_expand_rerenders_sibling_child_rows_from_live_state`, `hx_005_wall_dialect_served_markup_and_js_stay_htmx_or_owned_chrome_allowlist`.
+- Membrane mutation: `/admit/admin/toggle/:toggle_id` and `/admit/admin/action/:action_id` are the admin mutation exemplars; tests: `hx_exemplar_admin_toggle_post_rerenders_real_state_card`, `hx_005_wall_mutation_honesty_rereads_state_and_refuses_non_admin_admin_mutations`.
+
 ## Proof commands
 
 ```bash
