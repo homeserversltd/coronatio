@@ -1,4 +1,57 @@
-    
+    #[test]
+    fn admin_pane_stubs_original_flask_react_admin_button_inventory() {
+        let shell = render_crown_shell();
+        assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
+        assert!(shell.contains(r#"data-admin-quarry-button-total="87""#));
+        assert_eq!(shell.matches("data-admin-quarry-button").count(), 88);
+        assert_eq!(shell.matches("data-admin-quarry-index=").count(), 87);
+        for (group, count) in [
+            ("system-controls", 7),
+            ("disk-manager", 12),
+            ("key-manager", 4),
+            ("admin-password-modal", 2),
+            ("create-key-modal", 2),
+            ("hard-drive-test-modal", 6),
+            ("log-viewer-modal", 6),
+            ("password-input-modal", 3),
+            ("premium-tab-modal", 16),
+            ("root-ca-modal", 5),
+            ("sync-schedule-modal", 2),
+            ("system-action-modal", 1),
+            ("update-key-modal", 2),
+            ("update-manager-modal", 19),
+        ] {
+            assert!(shell.contains(&format!(r#"data-admin-quarry-group="{}""#, group)));
+            assert!(shell.contains(&format!("{} buttons", count)));
+        }
+        for label in [
+            "Hard Drive Test",
+            "Restart Website",
+            "Install Certificate",
+            "Assign as primary NAS",
+            "Auto Sync Schedule",
+            "Create New Key",
+            "View Full Guide &amp; Critical Warnings",
+            "Validate &amp; Clone",
+            "Force Update",
+        ] {
+            assert!(shell.contains(label), "missing admin quarry button label: {}", label);
+        }
+        assert!(shell.contains(r#"data-admin-visual-port="one-to-one-best-effort""#));
+        assert!(shell.contains("system-controls-btn"));
+        assert!(shell.contains("key-manager-content"));
+        assert!(shell.contains("disk-manager-container"));
+        assert!(shell.contains("modal-window update-manager-modal"));
+        assert!(shell.contains("view-tabs"));
+        assert!(shell.contains("modules-table"));
+        assert!(shell.contains("data-stub-action=\"true\""));
+        assert!(!shell.contains("WebSocket Subscriptions"));
+        assert!(!shell.contains("debug-subscriptions"));
+        assert!(!shell.contains("components/DebugSubscriptions.tsx"));
+        assert!(!shell.contains("subscription-debug-panel"));
+        assert!(!shell.contains("Front-end stubs mirror the original Flask/React admin-page button inventory from the quarry."));
+    }
+
     #[tokio::test]
     async fn themes_route_reads_homeserver_json_theme_selection() {
         let temp = test_tab_root("homeserver-json-theme");
@@ -182,7 +235,82 @@
         assert_eq!(stats.state_route, "/api/stats");
     }
 
-    
+    #[test]
+    fn stats_viewport_is_react_tablet_one_to_one_inventory() {
+        let shell = render_crown_shell();
+        for marker in [
+            r#"class="stats-tablet""#,
+            r#"data-react-quarry="StatsTablet""#,
+            r#"data-identity-standard="one-to-one""#,
+            r#"data-stat-element-id="cpu-chart""#,
+            r#"data-stat-element-id="network""#,
+            r#"data-stat-element-id="io-section""#,
+            r#"data-stat-element-id="memory""#,
+            r#"data-stat-element-id="disk-usage""#,
+            r#"data-stat-element-id="kea-leases""#,
+            r#"data-stat-element-id="process-usage""#,
+            r#"class="stat-header""#,
+            r#"class="stat-title""#,
+            r#"class="stat-content""#,
+            r#"CPU Usage &amp; Load"#,
+            r#"Network Traffic (WAN)"#,
+            r#"Disk I/O"#,
+            r#"Memory Usage"#,
+            r#"Disk Usage"#,
+            r#"DHCP Leases"#,
+            r#"CPU Usage by Process"#,
+            r#"class="cpu-stats-container""#,
+            r#"class="cpu-chart""#,
+            r#"class="load-averages""#,
+            r#"1 min:"#,
+            r#"5 min:"#,
+            r#"15 min:"#,
+            r#"class="network-stats-container""#,
+            r#"class="network-speed-chart""#,
+            r#"class="network-interfaces-table""#,
+            r#"<th>Interface</th><th>Total Received</th><th>Total Sent</th>"#,
+            r#"class="disk-io-chart""#,
+            r#"class="device-controls""#,
+            r#"name="read-"#,
+            r#"name="write-"#,
+            r#"class="memory-stats""#,
+            r#"class="memory-current""#,
+            r#"class="memory-label">RAM"#,
+            r#"class="memory-label">Swap"#,
+            r#"class="disk-usage-stats""#,
+            r#"class="disk-usage-item"#,
+            r#"class="kea-leases-table""#,
+            r#"<th>Device Note</th><th>Hostname</th><th>IP Address</th><th>MAC Address</th>"#,
+            r#"class="process-usage-list""#,
+            r#"class="process-bar"#,
+            r#"renderRechartsLine"#,
+            r#"recharts-wrapper"#,
+            r#"recharts-surface"#,
+        ] {
+            assert!(shell.contains(marker), "React Stats identity marker missing: {}", marker);
+        }
+        assert_eq!(shell.matches("class=\"stat-element\"").count(), 7, "Stats must render exactly seven React StatElement blocks");
+        for extra_or_old in [
+            r#"class="stats-section services""#,
+            r#"aria-label="Stats stream""#,
+            r#"Stream lane"#,
+            r#"Read event frame"#,
+            r#"Renew lease"#,
+            r#"stats-readout"#,
+            r#"id="cpu-gauge""#,
+            r#"id="memory-chart""#,
+            r#"<canvas id="cpuChart""#,
+            r#"<canvas id="networkChart""#,
+            r#"<canvas id="io-chart""#,
+            r#"type: 'doughnut'"#,
+            r#"class="stats-section resources""#,
+            r#"class="stats-section drives""#,
+            r#"class="stats-section network""#,
+        ] {
+            assert!(!shell.contains(extra_or_old), "non-React Stats divergence survived: {}", extra_or_old);
+        }
+    }
+
     #[test]
     fn static_root_prefers_installed_source_and_allows_env_override() {
         std::env::remove_var("CORONATIO_STATIC_ROOT");
@@ -356,9 +484,9 @@
         let response = app.oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let shell = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(shell.contains("data-crown-shell=\"maud\""));
-        assert!(shell.contains("data-crown-underlay=\"fallback\""));
-        assert!(shell.contains(CROWN_SHELL_SCRIPT_PATH));
-        assert!(!shell.contains("fetch("));
+        assert!(shell.contains("const tabState = Object.assign({ starredTab: 'upload'"));
+        assert!(shell.contains("fetch('/api/favorites')"));
+        assert!(shell.contains("fetch('/api/set_starred_tab'"));
+        assert!(shell.contains("Upload tab is starred"));
     }
 

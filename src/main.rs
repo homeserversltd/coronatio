@@ -1,19 +1,19 @@
 use axum::{
     extract::{Multipart, Path, State},
-    http::{header, HeaderMap, Method, StatusCode, Uri},
+    http::{header, Method, StatusCode, Uri},
     response::{Html, IntoResponse, Response},
     routing::{delete, get, post, put},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::BTreeMap,
     env,
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::PathBuf,
     process::Command,
-    sync::{Arc, Mutex, OnceLock},
+    sync::Arc,
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
