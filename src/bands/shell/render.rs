@@ -93,6 +93,16 @@ const CROWN_SHELL_JS: &str = r#"
     return panel instanceof HTMLElement ? panel.dataset.viewPanel || 'unknown' : 'unknown';
   }
 
+  /** @param {'timeout' | 'upstream-error' | 'proxy-unreachable' | string} faultKind */
+  function writeUnderlayFault(faultKind) {
+    const underlay = document.querySelector('[data-crown-underlay]');
+    const underlayFault = underlay ? underlay.querySelector('[data-underlay-fault-kind]') : null;
+    if (underlayFault instanceof HTMLElement) {
+      underlayFault.dataset.underlayFaultKind = faultKind;
+      underlayFault.textContent = faultKind;
+    }
+  }
+
   /**
    * CORO-004 typed CartridgeFaultReceipt front seam: guest failure clears only the faulted pane.
    * @param {'timeout' | 'upstream-error' | 'proxy-unreachable'} faultKind
@@ -112,11 +122,9 @@ const CROWN_SHELL_JS: &str = r#"
     document.documentElement.dataset.cartridgeFaultTab = activeTab;
     if (stage) {
       stage.dataset.underlayState = 'visible';
-      stage.dataset.underlayFaultKind = faultKind;
       stage.dataset.underlayFaultTab = activeTab;
     }
-    const underlayFault = document.querySelector('[data-underlay-fault-kind]');
-    if (underlayFault instanceof HTMLElement) underlayFault.textContent = faultKind;
+    writeUnderlayFault(faultKind);
   }
 
   document.body.addEventListener('htmx:timeout', (event) => emitCartridgeFaultReceipt('timeout', event));
@@ -150,11 +158,9 @@ const CROWN_SHELL_JS: &str = r#"
       panel.hidden = true;
       if (stage) {
         stage.dataset.underlayState = 'visible';
-        stage.dataset.underlayFaultKind = kind;
         stage.dataset.underlayFaultTab = panel.dataset.viewPanel || 'unknown';
       }
-      const underlayFault = document.querySelector('[data-underlay-fault-kind]');
-      if (underlayFault instanceof HTMLElement) underlayFault.textContent = kind;
+      writeUnderlayFault(kind);
       return;
     }
     panel.dataset.viewportFaulted = 'false';
@@ -270,7 +276,7 @@ fn render_crown_shell_tabs(tabs: &[CrownShellTab]) -> maud::Markup {
                                     hx-get=(admit_route_for_tab(&tab.id))
                                     hx-target=(viewport_target_for_tab(&tab.id))
                                     hx-swap="innerHTML"
-                                    hx-trigger="click, keyup[key=='Enter'], keyup[key==' ']" {
+                                    hx-trigger="click" {
                                     span.crown-tab__title { (tab.title) }
                                     span.crown-tab__kind { (tab.kind) }
                                 }
@@ -290,7 +296,7 @@ fn render_crown_shell_tabs(tabs: &[CrownShellTab]) -> maud::Markup {
                                 div.crown-underlay-card {
                                     h2 { "Fallback underlay" }
                                     p { "The crown-owned safety floor is always mounted: logo, recovery posture, and service health will stand here while layer 1 is empty or faulted." }
-                                    p { "Last pane fault: " span data-underlay-fault-kind="true" { "none" } }
+                                    p { "Last pane fault: " span data-underlay-fault-kind="none" { "none" } }
                                 }
                             }
                             div.crown-layer-one data-layer="1" {

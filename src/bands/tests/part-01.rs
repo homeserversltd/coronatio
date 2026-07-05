@@ -136,7 +136,9 @@
         assert!(body.contains("hx-get=\"/admit/admin\""));
         assert!(body.contains("hx-target=\"#viewport-admin\""));
         assert!(body.contains("hx-swap=\"innerHTML\""));
-        assert!(body.contains("hx-trigger=\"click, keyup[key=='Enter'], keyup[key==' ']\""));
+        assert!(body.contains("hx-trigger=\"click\""));
+        assert!(!body.contains("keyup["));
+        assert!(!body.contains(" style="));
         assert!(!body.contains("Arcadia"));
         assert!(!body.contains("YouTube"));
     }
@@ -184,9 +186,11 @@
             assert!(shell.contains(&format!("hx-target=\"#viewport-{}\"", pane)));
         }
         assert!(shell.contains("hx-swap=\"innerHTML\""));
-        assert!(shell.contains("hx-trigger=\"click, keyup[key=='Enter'], keyup[key==' ']\""));
+        assert!(shell.contains("hx-trigger=\"click\""));
+        assert!(!shell.contains("keyup["));
+        assert!(!shell.contains(" style="));
         assert!(shell.contains(r#"data-underlay-state="visible""#));
-        assert!(shell.contains("data-underlay-fault-kind"));
+        assert!(shell.contains(r#"data-underlay-fault-kind="none""#));
     }
 
     #[test]
@@ -371,9 +375,29 @@
             assert!(shell.contains(&format!("hx-get=\"/admit/{}\"", pane)));
             assert!(shell.contains(&format!("hx-target=\"#viewport-{}\"", pane)));
         }
-        assert!(shell.contains("hx-trigger=\"click, keyup[key=='Enter'], keyup[key==' ']\""));
+        assert!(shell.contains("hx-trigger=\"click\""));
+        assert!(!shell.contains("keyup["));
         assert!(!shell.contains("hx-trigger=\"load"));
         assert!(!shell.contains("hx-trigger=\"revealed"));
+    }
+
+    #[test]
+    fn coro_004_chrome_fault_handler_preserves_stage_children_and_scopes_fault_readout() {
+        let shell = render_crown_shell();
+        let chrome = CROWN_SHELL_JS;
+        assert!(shell.contains(r#"data-crown-underlay="fallback""#));
+        assert!(shell.contains(r#"data-underlay-fault-kind="none""#));
+        for pane in PRIMARY_TABS {
+            assert!(shell.contains(&format!(r#"section class="crown-view-panel" id="viewport-{}""#, pane))
+                || shell.contains(&format!(r#"id="viewport-{}""#, pane)));
+            assert!(shell.contains(&format!(r#"data-view-panel="{}""#, pane)));
+        }
+        assert!(chrome.contains("panel.replaceChildren();"));
+        assert!(chrome.contains("underlay.querySelector('[data-underlay-fault-kind]')"));
+        assert!(chrome.contains("writeUnderlayFault(faultKind);"));
+        assert!(!chrome.contains("stage.dataset.underlayFaultKind"));
+        assert!(!chrome.contains("document.querySelector('[data-underlay-fault-kind]')"));
+        assert!(!chrome.contains("stage.textContent"));
     }
 
     #[tokio::test]
