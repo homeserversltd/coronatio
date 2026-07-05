@@ -541,13 +541,32 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       });
       document.querySelectorAll(panelSelector).forEach(panel => panel.classList.toggle('active', panel.dataset[attrName.replace('Tab','Panel')] === selectedName));
     }
-    document.querySelectorAll('[data-test-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-test-tab]', '[data-test-panel]', 'testTab', tab.dataset.testTab)));
-    document.querySelectorAll('[data-showcase-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-showcase-tab]', '[data-showcase-panel]', 'showcaseTab', tab.dataset.showcaseTab)));
-    document.querySelectorAll('[data-ui-slider]').forEach(slider => slider.addEventListener('input', () => slider.closest('.showcase-item')?.querySelector('[data-slider-value]') && (slider.closest('.showcase-item').querySelector('[data-slider-value]').textContent = slider.value)));
-    document.querySelectorAll('[data-ui-time-picker]').forEach(input => input.addEventListener('input', () => document.querySelector('[data-ui-time-output]') && (document.querySelector('[data-ui-time-output]').textContent = input.value)));
-    document.querySelectorAll('[data-reset-breadcrumbs]').forEach(button => button.addEventListener('click', () => { const out = document.querySelector('[data-breadcrumb-path]'); if (out) out.textContent = '/mnt/nas'; }));
-    document.querySelectorAll('[data-test-card-expand]').forEach(button => button.addEventListener('click', () => { const expanded = button.closest('.test-card')?.querySelector('.test-card-expanded'); if (expanded) { expanded.hidden = !expanded.hidden; button.textContent = expanded.hidden ? '+' : '−'; } }));
-    document.querySelectorAll('[data-file-input-label]').forEach(label => { const input = label.closest('.file-input')?.querySelector('input[type="file"]'); input?.addEventListener('change', () => { label.textContent = input.files?.[0]?.name || 'Choose file'; }); });
+    document.body.addEventListener('click', event => {
+      const testTab = event.target.closest('[data-test-tab]');
+      if (testTab) return switchScopedTabs('[data-test-tab]', '[data-test-panel]', 'testTab', testTab.dataset.testTab);
+      const showcaseTab = event.target.closest('[data-showcase-tab]');
+      if (showcaseTab) return switchScopedTabs('[data-showcase-tab]', '[data-showcase-panel]', 'showcaseTab', showcaseTab.dataset.showcaseTab);
+      const reset = event.target.closest('[data-reset-breadcrumbs]');
+      if (reset) { const out = document.querySelector('[data-breadcrumb-path]'); if (out) out.textContent = '/mnt/nas'; return; }
+      const expand = event.target.closest('[data-test-card-expand]');
+      if (expand) { const expanded = expand.closest('.test-card')?.querySelector('.test-card-expanded'); if (expanded) { expanded.hidden = !expanded.hidden; expand.textContent = expanded.hidden ? '+' : '−'; } return; }
+      const modalOpen = event.target.closest('[data-ux-modal-open]');
+      if (modalOpen) return openUxModalDemo(modalOpen.dataset.uxModalOpen);
+      const modalClose = event.target.closest('[data-ux-modal-close]');
+      if (modalClose) return closeUxModalDemo();
+      const backdrop = event.target.closest('[data-ux-modal-demo-backdrop]');
+      if (backdrop && event.target === backdrop) return closeUxModalDemo();
+    });
+    document.body.addEventListener('input', event => {
+      const slider = event.target.closest('[data-ui-slider]');
+      if (slider) { const out = slider.closest('.showcase-item')?.querySelector('[data-slider-value]'); if (out) out.textContent = slider.value; return; }
+      const time = event.target.closest('[data-ui-time-picker]');
+      if (time) { const out = document.querySelector('[data-ui-time-output]'); if (out) out.textContent = time.value; }
+    });
+    document.body.addEventListener('change', event => {
+      const box = event.target.closest('.file-input');
+      if (box && event.target.matches('input[type="file"]')) { const label = box.querySelector('[data-file-input-label]'); if (label) label.textContent = event.target.files?.[0]?.name || 'Choose file'; }
+    });
     function openUxModalDemo(size) {
       const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
       const win = document.querySelector('[data-ux-modal-demo-window]');
@@ -572,9 +591,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       backdrop.classList.remove('open');
       backdrop.setAttribute('aria-hidden', 'true');
     }
-    document.querySelectorAll('[data-ux-modal-open]').forEach(button => button.addEventListener('click', () => openUxModalDemo(button.dataset.uxModalOpen)));
-    document.querySelectorAll('[data-ux-modal-close]').forEach(button => button.addEventListener('click', closeUxModalDemo));
-    document.querySelectorAll('[data-ux-modal-demo-backdrop]').forEach(backdrop => backdrop.addEventListener('click', event => { if (event.target === event.currentTarget) closeUxModalDemo(); }));
+    // modal open/close/backdrop clicks handled by the delegated body click listener above (survives HTMX swaps)
     function hydrateThemeTruth() {
       const target = document.querySelector('[data-theme-token-readout]');
       if (!target) return;
