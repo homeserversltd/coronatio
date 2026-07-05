@@ -420,11 +420,47 @@
         std::env::remove_var("CORONATIO_PORTAL_IMAGE_ROOT");
     }
 
-    
+    #[test]
+    fn portals_viewport_hydrates_cards_from_api_not_static_scaffold() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("data-portals-grid"));
+        assert!(shell.contains("data-portals-source=\"/api/portals\""));
+        assert!(shell.contains("function hydratePortals()"));
+        assert!(shell.contains("renderPortalCard(portal, factoryNames)"));
+        assert!(shell.contains("/api/portals/images/${encodeURIComponent(portal.name)}.png"));
+        assert!(!shell.contains("Rust crown preview, port 3013"));
+        assert!(!shell.contains("Privileged actuator membrane, port 3014"));
+    }
 
 
-    
-    
+
+    #[test]
+    fn portals_visibility_uses_admin_mode_not_missing_apply_admin_mode() {
+        let shell = render_crown_shell();
+        assert!(!shell.contains("applyAdminMode()"));
+        assert!(shell.contains("setAdminMode(headerState.isAdmin)"));
+        assert!(shell.contains("data-portal-element data-visible=\"${isVisible}\""));
+        assert!(shell.contains("data-portal-visibility-toggle"));
+        assert!(shell.contains("portal.visible !== false"));
+        assert!(shell.contains("[data-admin-mode=\"false\"] [data-portal-element][data-visible=\"false\"]"));
+        assert!(shell.contains("[data-admin-mode=\"true\"] [data-portal-element][data-visible=\"false\"]"));
+    }
+
+    #[test]
+    fn portals_admin_mode_ports_original_service_controls() {
+        let shell = render_crown_shell();
+        assert!(shell.contains("data-service-action=\"start\""));
+        assert!(shell.contains("data-service-action=\"stop\""));
+        assert!(shell.contains("data-service-action=\"restart\""));
+        assert!(shell.contains("data-service-action=\"enable\""));
+        assert!(shell.contains("data-service-action=\"disable\""));
+        assert!(shell.contains("data-service-action=\"status\""));
+        assert!(shell.contains("data-portal-services"));
+        assert!(shell.contains("function handlePortalServiceAction(event)"));
+        assert!(shell.contains("fetch('/api/service/control'"));
+        assert!(shell.contains("data-admin-only data-admin-viewport=\"portals\""));
+    }
+
     #[tokio::test]
     async fn portals_service_control_validates_and_enters_caduceus_staff_intent() {
         let temp = test_tab_root("portal-service-control");

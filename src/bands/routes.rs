@@ -1,21 +1,5 @@
-async fn crown_shell_route(State(state): State<AppState>) -> impl IntoResponse {
-    let tabs = load_tab_manifests(&state.tab_root).await.unwrap_or_default();
-    (
-        [(header::CONTENT_SECURITY_POLICY, CROWN_CONTENT_SECURITY_POLICY)],
-        Html(render_crown_shell_with_registry(&tabs)),
-    )
-}
-
-async fn crown_stylesheet_route() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], CROWN_SHELL_CSS)
-}
-
-async fn crown_htmx_script_route() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "application/javascript; charset=utf-8")], CROWN_HTMX_JS)
-}
-
-async fn crown_chrome_script_route() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "application/javascript; charset=utf-8")], CROWN_SHELL_JS)
+async fn crown_shell_route() -> impl IntoResponse {
+    Html(render_crown_shell())
 }
 
 async fn health_route() -> impl IntoResponse {
@@ -61,11 +45,8 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/stats/events".to_string(),
             "/api/stats/events/renew".to_string(),
             "/api/stats".to_string(),
-            "/api/faults".to_string(),
             "/api/tabs".to_string(),
             "/api/tabs/:tab_id/manifest".to_string(),
-            "/admit/:tab_id".to_string(),
-            "/static/vendor/htmx.min.js".to_string(),
             "/static/vendor/chart.umd.min.js".to_string(),
             "/static/vendor/chartjs-plugin-datalabels.min.js".to_string(),
             "/tabs/<tab-id>/static/...".to_string(),
