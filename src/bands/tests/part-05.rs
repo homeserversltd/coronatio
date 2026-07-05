@@ -310,8 +310,12 @@
         ] {
             assert!(shell.contains(marker), "served shell missing generic tab-scope marker: {marker}");
         }
-        assert!(!shell.contains("data-test-tab="));
-        assert!(!shell.contains("data-showcase-tab="));
+        assert!(shell.contains(".showcase-section[data-tab-panel] { display:none; }"));
+        assert!(shell.contains(".showcase-section[data-tab-panel].active { display:block; }"));
+        for retired_hook in ["data-test-tab", "data-showcase-tab", "data-showcase-panel", "data-test-panel"] {
+            assert!(!shell.contains(retired_hook), "served shell still carries retired tab hook: {retired_hook}");
+        }
+        assert!(!shell.contains("[data-showcase-panel]"));
         let chrome = router.oneshot(Request::builder().uri("/static/crown/chrome.js").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(chrome.status(), StatusCode::OK);
         let chrome_body = String::from_utf8(axum::body::to_bytes(chrome.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
@@ -319,8 +323,9 @@
         assert!(chrome_body.contains("closest('[data-tab-scope]')"));
         assert!(chrome_body.contains("event.target.closest('[data-tab-id]')"));
         assert!(chrome_body.contains("event.target.closest('[data-test-health-check]')"));
-        assert!(!chrome_body.contains("closest('[data-test-tab]')"));
-        assert!(!chrome_body.contains("closest('[data-showcase-tab]')"));
+        for retired_hook in ["closest('[data-test-tab]')", "closest('[data-showcase-tab]')", "[data-showcase-panel]", "[data-test-panel]"] {
+            assert!(!chrome_body.contains(retired_hook), "chrome still carries retired tab hook: {retired_hook}");
+        }
         assert!(!chrome_body.contains("document.querySelectorAll('[data-test-health-check]').forEach"));
     }
 
