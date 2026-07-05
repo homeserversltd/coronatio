@@ -262,3 +262,67 @@
         let directory_rule = html.split(".directory-entry { ").nth(1).unwrap().split(" }").next().unwrap();
         assert!(!directory_rule.contains("min-height"), "directory rows must not invent non-quarry row height: {directory_rule}");
     }
+
+
+    #[tokio::test]
+    async fn hx_001_seats_vendored_htmx_csp_and_external_chrome() {
+        let temp = test_tab_root("hx-001-htmx");
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let response = router.clone().oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let csp = response.headers().get(header::CONTENT_SECURITY_POLICY).and_then(|value| value.to_str().ok()).unwrap();
+        assert!(csp.contains("script-src 'self'"));
+        assert!(csp.contains("style-src 'self' 'unsafe-inline'"));
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains(r#"<script defer src="/static/vendor/htmx.min.js" data-htmx-organ="2.0.10"></script>"#));
+        assert!(body.contains(r#"<script defer src="/static/crown/chrome.js" data-crown-chrome="og-htmx"></script>"#));
+        assert!(body.contains(r#"<template data-crown-chrome-source="externalized-for-csp">"#));
+        let htmx = router.clone().oneshot(Request::builder().uri("/static/vendor/htmx.min.js").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(htmx.status(), StatusCode::OK);
+        let htmx_body = String::from_utf8(axum::body::to_bytes(htmx.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(htmx_body.starts_with("var htmx=function()"));
+        assert!(htmx_body.contains("version:\"2.0.10\""));
+        let chrome = router.oneshot(Request::builder().uri("/static/crown/chrome.js").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(chrome.status(), StatusCode::OK);
+        let chrome_body = String::from_utf8(axum::body::to_bytes(chrome.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(chrome_body.contains("htmxOrgan.config.allowScriptTags = false"));
+        assert!(chrome_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
+        assert!(chrome_body.contains("htmx:afterSwap"));
+        assert!(chrome_body.contains("if (id === 'stats') hydrateStats();"));
+    }
+
+    #[tokio::test]
+    async fn hx_001_admit_route_serves_og_pane_fragments_fresh_and_records_faults() {
+        let temp = test_tab_root("hx-001-admit");
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let shell = render_crown_shell();
+        for pane in ["portals", "stats", "upload", "admin"] {
+            let response = router.clone().oneshot(Request::builder().uri(format!("/admit/{pane}")).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{pane} admits");
+            assert_eq!(response.headers().get(header::CACHE_CONTROL).and_then(|value| value.to_str().ok()), Some("no-store"));
+            let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            let expected = extract_pane_inner_html(&shell, pane).unwrap();
+            assert_eq!(body, expected, "{pane} fragment is exact og pane body");
+        }
+        let missing = router.clone().oneshot(Request::builder().uri("/admit/missing-tab").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        let fault_body = String::from_utf8(axum::body::to_bytes(missing.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(fault_body.contains("data-cartridge-fault=\"true\""));
+        assert!(fault_body.contains("data-cartridge-fault-kind=\"tab-not-found\""));
+        let faults = router.oneshot(Request::builder().uri("/api/faults").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(faults.status(), StatusCode::OK);
+        let body = String::from_utf8(axum::body::to_bytes(faults.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("coronatio.cartridge-faults.v1"));
+        assert!(body.contains("missing-tab"));
+    }
+
+    #[test]
+    fn hx_001_tabs_are_hypermedia_activation_controls() {
+        let shell = render_crown_shell();
+        for pane in ["portals", "stats", "upload", "admin"] {
+            assert!(shell.contains(&format!(r#"hx-get="/admit/{pane}""#)));
+            assert!(shell.contains(&format!(r#"hx-target="[data-view-panel='{pane}']""#)));
+            assert!(shell.contains("hx-swap=\"innerHTML\""));
+        }
+        assert!(shell.contains(r#"data-tab-id="stats" data-visibility="visible" hx-get="/admit/stats" hx-target="[data-view-panel='stats']" hx-swap="innerHTML" hx-trigger="load, click""#));
+    }
