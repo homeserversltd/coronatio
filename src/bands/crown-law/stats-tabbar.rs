@@ -301,7 +301,7 @@ fn render_flask_react_tabbar_quarry() -> String {
                     }
                 )
             };
-            let admin_only_attr = "";
+            let admin_only_attr = if pane.admin_only { r##" data-admin-only="true" hidden"## } else { "" };
             format!(
                 r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}"{admin_only_attr}>{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
                 id = pane.id,

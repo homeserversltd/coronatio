@@ -218,6 +218,10 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       while (next >= 1024 && unit < units.length - 1) { next = next / 1024; unit += 1; }
       return next.toFixed(next >= 10 || unit === 0 ? 0 : 1) + ' ' + units[unit];
     }
+    function formatChartTime(value = Date.now()) {
+      const date = value instanceof Date ? value : new Date(value);
+      return date.getMinutes() + ':' + date.getSeconds().toString().padStart(2, '0');
+    }
     function metricPercent(value) { return value === null || value === undefined ? '—' : Number(value).toFixed(1) + '%'; }
     function loadToPercent(load) {
       const cores = navigator.hardwareConcurrency || 4;
@@ -232,7 +236,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       const cpu = loadToPercent(data.resources?.load?.one);
       const temp = Number(data.resources?.load?.cpuTemperatureCelsius || 0);
       const now = Date.now();
-      statsChartState.labels = Array.from({ length: 24 }, (_, index) => new Date(now - (23 - index) * 5000).toLocaleTimeString());
+      statsChartState.labels = Array.from({ length: 24 }, (_, index) => formatChartTime(now - (23 - index) * 5000));
       statsChartState.cpu = seedSeries(cpu);
       statsChartState.temp = seedSeries(temp);
       statsChartState.upload = seedSeries(0);
@@ -278,8 +282,8 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     function destroyStatsChart(key) {
       if (statsCharts[key]) { statsCharts[key].destroy(); statsCharts[key] = null; }
     }
-    function chartTicks(color) { return { color, maxTicksLimit: 10, autoSkip: true }; }
-    function chartGrid() { return { color: 'rgba(200, 200, 200, 0.1)' }; }
+    function chartTicks(color, callback) { return { color, maxTicksLimit: 10, autoSkip: true, callback }; }
+    function chartGrid() { return { color: 'var(--border)', borderDash: [3, 3] }; }
     function chartTooltip(labelFormatter) {
       return { enabled: true, mode: 'index', intersect: false, callbacks: { label: labelFormatter } };
     }
@@ -292,38 +296,43 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         animation: { duration: 0 }
       };
     }
+    function lineDataset(label, data, color, yAxisID) {
+      return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4, yAxisID };
+    }
     function createCPUChart(ctx, labels, cpuData, tempData) {
       destroyStatsChart('cpu');
       statsCharts.cpu = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets: [
-          { label: 'CPU Usage', data: cpuData, borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.1)', borderWidth: 2, fill: true, tension: 0.4, yAxisID: 'y-cpu' },
-          { label: 'Temperature', data: tempData, borderColor: 'rgb(255, 99, 132)', backgroundColor: 'rgba(255, 99, 132, 0.1)', borderWidth: 2, fill: true, tension: 0.4, yAxisID: 'y-temp' }
+          lineDataset('CPU Usage', cpuData, '#4A5568', 'y-cpu'),
+          lineDataset('Temperature', tempData, '#90cff3', 'y-temp')
         ] },
         options: Object.assign(chartCommonOptions(), {
-          plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + Number(context.parsed.y || 0).toFixed(1) + (context.dataset.yAxisID === 'y-temp' ? '°C' : '%')), legend: { position: 'top' } },
+          plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + Number(context.parsed.y || 0).toFixed(1) + (context.dataset.yAxisID === 'y-temp' ? '°C' : '%')), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
           scales: {
-            x: { ticks: chartTicks('#888'), grid: { display: false } },
-            'y-cpu': { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, title: { display: true, text: 'CPU Usage (%)', color: '#888' }, ticks: chartTicks('#888'), grid: chartGrid() },
-            'y-temp': { type: 'linear', display: true, position: 'right', beginAtZero: true, max: 100, title: { display: true, text: 'Temperature (°C)', color: '#888' }, ticks: chartTicks('#888'), grid: { display: false } }
+            x: { ticks: chartTicks('var(--hiddenTabText)', value => labels[value] || value), grid: { display: false } },
+            'y-cpu': { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, ticks: chartTicks('var(--hiddenTabText)', value => Number(value).toFixed(0) + '%'), grid: chartGrid() },
+            'y-temp': { type: 'linear', display: true, position: 'right', beginAtZero: true, max: 100, ticks: chartTicks('var(--hiddenTabText)', value => Number(value).toFixed(0) + '°C'), grid: { display: false } }
           }
         })
       });
     }
     function createNetworkChart(ctx, labels, downloadData, uploadData) {
       destroyStatsChart('network');
+      const networkMax = Math.max(1, ...downloadData, ...uploadData) * 1.1;
+      const networkTicks = { color: 'var(--hiddenTabText)', maxTicksLimit: 10, autoSkip: true, callback: value => fmtBytes(value) + '/s' };
       statsCharts.network = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets: [
-          { label: 'Download Speed', data: downloadData, borderColor: 'rgb(255, 99, 132)', backgroundColor: 'rgba(255, 99, 132, 0.1)', borderWidth: 2, fill: true, tension: 0.4, yAxisID: 'y' },
-          { label: 'Upload Speed', data: uploadData, borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.1)', borderWidth: 2, fill: true, tension: 0.4, yAxisID: 'y-right' }
+          lineDataset('Download Speed', downloadData, '#4A5568', 'y'),
+          lineDataset('Upload Speed', uploadData, '#90cff3', 'y-right')
         ] },
         options: Object.assign(chartCommonOptions(), {
-          plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + fmtBytes(context.parsed.y) + '/s'), legend: { position: 'top' } },
+          plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + fmtBytes(context.parsed.y) + '/s'), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
           scales: {
-            x: { ticks: chartTicks('#888'), grid: { display: false } },
-            y: { beginAtZero: true, suggestedMin: 0, title: { display: true, text: 'Speed (B/s)', color: '#888' }, ticks: { color: '#888', callback: value => fmtBytes(value) + '/s' }, grid: chartGrid() },
-            'y-right': { beginAtZero: true, suggestedMin: 0, position: 'right', title: { display: true, text: 'Speed (B/s)', color: '#888' }, ticks: { color: '#888', callback: value => fmtBytes(value) + '/s' }, grid: { display: false } }
+            x: { ticks: chartTicks('var(--hiddenTabText)', value => labels[value] || value), grid: { display: false } },
+            y: { beginAtZero: true, suggestedMin: 0, max: networkMax, ticks: networkTicks, grid: chartGrid() },
+            'y-right': { beginAtZero: true, suggestedMin: 0, max: networkMax, position: 'right', ticks: networkTicks, grid: { display: false } }
           }
         })
       });
@@ -343,8 +352,8 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         options: Object.assign(chartCommonOptions(), {
           plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { label: context => context.dataset.label + ': ' + Number(context.parsed.y || 0).toFixed(2) + ' MB/s' } } },
           scales: {
-            x: { title: { display: true, text: 'Time', padding: {top: 10, bottom: 10} }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
-            y: { title: { display: true, text: 'Speed (MB/s)' }, ticks: { callback: value => Number(value).toFixed(2) } }
+            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6, callback: value => labels[value] || value } },
+            y: { ticks: { callback: value => Number(value).toFixed(2) } }
           }
         })
       });
@@ -430,7 +439,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     async function hydrateStats() {
       try {
         const data = await fetch('/api/stats').then(r => r.json());
-        const label = new Date().toLocaleTimeString();
+        const label = formatChartTime();
         pushChartPoint(label, data);
         renderCpuChart(data);
         renderNetwork(data);

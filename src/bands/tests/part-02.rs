@@ -320,17 +320,44 @@
         let shell = render_crown_shell();
         for marker in [
             r#"<script src="/static/vendor/chart.umd.min.js" data-chart-dependency="chartjs-4.4.0""#,
-            r#"<canvas id="cpuChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-left-axis="CPU Usage (%)" data-right-axis="Temperature (°C)""#,
-            r#"<canvas id="networkChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-left-axis="Speed (B/s)" data-right-axis="Speed (B/s)""#,
+            r#"<canvas id="cpuChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-chart-left-axis="percent-suffix" data-chart-right-axis="celsius-suffix""#,
+            r#"<canvas id="networkChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-chart-left-axis="byte-rate-suffix" data-chart-right-axis="byte-rate-suffix" data-synchronized-axes="true""#,
             r#"<canvas id="io-chart" class="coronatio-chart-canvas" data-full-width-canvas="true""#,
             "maintainAspectRatio: false",
             "interaction: { mode: 'index', intersect: false }",
             "tooltip: chartTooltip",
+            "lineDataset('CPU Usage', cpuData, '#4A5568', 'y-cpu')",
+            "lineDataset('Temperature', tempData, '#90cff3', 'y-temp')",
+            "lineDataset('Download Speed', downloadData, '#4A5568', 'y')",
+            "lineDataset('Upload Speed', uploadData, '#90cff3', 'y-right')",
+            "fill: false",
+            "pointRadius: 0",
+            "legend: { position: 'bottom', align: 'center'",
+            "value => Number(value).toFixed(0) + '%'",
+            "value => Number(value).toFixed(0) + '°C'",
+            "callback: value => fmtBytes(value) + '/s'",
+            "function formatChartTime(value = Date.now())",
+            "const networkMax = Math.max(1, ...downloadData, ...uploadData) * 1.1",
             "'y-cpu': { type: 'linear', display: true, position: 'left'",
             "'y-temp': { type: 'linear', display: true, position: 'right'",
-            "'y-right': { beginAtZero: true, suggestedMin: 0, position: 'right'",
+            "'y-right': { beginAtZero: true, suggestedMin: 0, max: networkMax, position: 'right'",
         ] {
             assert!(shell.contains(marker), "missing Chart.js parity marker: {marker}");
+        }
+        for drift in [
+            "rgb(75, 192, 192)",
+            "rgb(255, 99, 132)",
+            "rgba(75, 192, 192, 0.1)",
+            "rgba(255, 99, 132, 0.1)",
+            "fill: true",
+            "legend: { position: 'top' }",
+            "title: { display: true",
+            "CPU Usage (%)",
+            "Temperature (°C)",
+            "Speed (B/s)",
+            "toLocaleTimeString()",
+        ] {
+            assert!(!shell.contains(drift), "Chart.js quarry drift survived: {drift}");
         }
     }
 

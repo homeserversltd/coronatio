@@ -198,7 +198,8 @@
         let admin_tag_end = shell[admin_start..].find('>').map(|offset| admin_start + offset).expect("admin tab opening closes");
         let admin_opening_tag = &shell[admin_tag_start..admin_tag_end];
         assert!(admin_opening_tag.contains(r#"role="tab""#));
-        assert!(!admin_opening_tag.contains("data-admin-only"), "Admin must be a same-style tab bar member, not an admin-only floating control");
+        assert!(admin_opening_tag.contains(r#"data-admin-only="true""#), "Admin tab must be admin-session-only while retaining tab member markup");
+        assert!(admin_opening_tag.contains("hidden"), "Admin tab must start hidden in regular mode");
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!(r#"data-admin-only="true" data-tab-visibility-toggle="{}""#, pane)), "{pane} eye control is admin enhancement");
         }
