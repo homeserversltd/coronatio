@@ -490,7 +490,17 @@ fn render_portals_fragment(response: PortalConfigResponse) -> String {
                             dl.crown-definition-grid {
                                 div.crown-definition-row { dt { "port" } dd { (portal.port.map(|port| port.to_string()).unwrap_or_else(|| "n/a".to_string())) } }
                                 div.crown-definition-row { dt { "type" } dd { (portal.r#type) } }
-                                div.crown-definition-row { dt { "services" } dd { (if portal.services.is_empty() { "none".to_string() } else { portal.services.join(", ") }) } }
+                                div.crown-definition-row { dt { "services" } dd {
+                                    div.crown-chip-row.crown-service-chip-row {
+                                        @if portal.services.is_empty() {
+                                            span.crown-chip.crown-service-chip data-posture="muted" title="none" { "none" }
+                                        } @else {
+                                            @for service in &portal.services {
+                                                span.crown-chip.crown-service-chip title=(service) data-portal-service=(service) { (service) }
+                                            }
+                                        }
+                                    }
+                                } }
                             }
                         }
                     }
