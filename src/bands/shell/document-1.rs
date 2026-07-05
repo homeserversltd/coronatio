@@ -359,9 +359,10 @@ fn shell_document_1() -> &'static str {
     .button-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .85rem; }
     .admin-tablet { display: flex; flex-direction: column; gap: .5rem; color: var(--text); }
     .admin-visual-port { display: flex; flex-direction: column; gap: .5rem; }
-    .admin-tablet .system-controls { display: flex; flex-wrap: wrap; gap: 1rem; width: 100%; margin: 0 auto; box-shadow: 0 2px 0 var(--border); justify-content: center; padding-bottom: .7rem; }
+    .admin-tablet .system-controls { display: flex; flex-wrap: nowrap; gap: 1rem; width: 100%; margin: 0 auto; box-shadow: 0 2px 0 var(--border); justify-content: center; padding-bottom: .7rem; overflow-x: auto; }
     .system-controls-container, .admin-tablet .key-manager, .admin-tablet .disk-manager, .admin-modal-shelf { background-color: var(--background); border-radius: var(--theme-card-radius); box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border); padding: 15px; color: var(--text); }
     .system-controls-btn { display: flex; justify-content: center; align-items: center; gap: 10px; padding: 10px 15px; border-radius: 4px; border: none; background: var(--primary); color: #fff; font-size: .9rem; font-weight: 500; min-width: 180px; width: 180px; flex: 0 0 auto; transition: background-color .2s, transform .1s, box-shadow .2s; position: relative; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,.1), 0 2px 4px rgba(0,0,0,.1); }
+    .admin-action-icon { position: relative; filter: drop-shadow(0 1px 1px rgba(0,0,0,.2)); }
     .system-controls-btn::before { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(255,255,255,.15) 0%, rgba(0,0,0,.1) 100%); mix-blend-mode: overlay; pointer-events: none; opacity: .6; }
     .system-controls-btn:hover { transform: translateY(-2px); background-color: var(--primaryHover); box-shadow: inset 0 2px 4px rgba(0,0,0,.1), 0 4px 8px rgba(0,0,0,.15); }
     .system-controls-btn span { position: relative; text-shadow: 0 1px 1px rgba(0,0,0,.2); }
@@ -375,6 +376,24 @@ fn shell_document_1() -> &'static str {
     .status-item { display: flex; align-items: flex-start; gap: 12px; padding: 15px; background-color: var(--border); border-radius: var(--theme-card-radius); border-left: 4px solid transparent; border-color: var(--border); transition: transform .2s ease, box-shadow .2s ease; }
     .status-item:hover { transform: translateX(5px); }
     .status-icon { font-size: 1.5rem; margin-top: 2px; color: var(--success); }
+    .system-service-controls { margin-top: 20px; display: flex; gap: 15px; flex-wrap: wrap; }
+    .ssh-control, .samba-control { display: flex; flex-direction: column; gap: 8px; padding: 15px; border-radius: var(--theme-card-radius); background-color: var(--primary); box-shadow: 0 2px 4px var(--border); flex: 1; min-width: 250px; }
+    .ssh-controls { display: contents; }
+    .ssh-status, .samba-status { display: flex; justify-content: space-between; align-items: center; }
+    .ssh-status h3, .samba-status h3 { margin: 0; font-size: 16px; font-weight: 500; max-width: min-content; }
+    .ssh-toggle, .samba-toggle { display: flex; align-items: center; gap: 10px; min-width: 120px; justify-content: flex-end; }
+    .admin-tablet .toggle-switch { position: relative; display: inline-block; width: 46px; height: 24px; }
+    .admin-tablet .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .admin-tablet .toggle-slider { position: absolute; cursor: pointer; inset: 0; background-color: var(--secondary); transition: .4s; border-radius: 24px; }
+    .admin-tablet .toggle-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    .admin-tablet input:checked + .toggle-slider { background-color: var(--success); }
+    .admin-tablet input:disabled + .toggle-slider { background-color: var(--secondary); cursor: not-allowed; }
+    .admin-tablet input:checked + .toggle-slider:before { transform: translateX(22px); }
+    .admin-tablet .toggle-label { font-size: 14px; min-width: 60px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ssh-icon, .samba-icon { font-size: 16px; }
+    .ssh-icon.enabled, .samba-icon.enabled { color: var(--success); }
+    .ssh-icon.disabled { color: var(--warning); }
+    .samba-icon.disabled { color: var(--error); }
     .key-manager .action-button, .disk-actions .action-button, .modal-button, .refresh-button, .tab-button { color: var(--text); cursor: pointer; font-weight: bold; transition: all .2s ease; }
     .key-manager .action-button { width: 100%; padding: 15px; border-radius: var(--theme-card-radius); border: none; display: flex; align-items: center; justify-content: center; gap: 10px; background-color: var(--primary); }
     .key-manager .action-button:hover { background-color: var(--primaryHover); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
@@ -395,6 +414,9 @@ fn shell_document_1() -> &'static str {
     .nas-badge, .nas-role-badge { font-size: .7rem; padding: 2px 6px; border-radius: 4px; margin-left: 8px; font-weight: 600; background-color: var(--success); color: var(--background); }
     .nas-role-backup { background-color: var(--info); }
     .disk-details, .disk-mount-info { font-size: .85rem; color: var(--secondary); margin: 5px 0; }
+    .disk-mount-info.prominent { font-size: .95rem; color: var(--text); margin: 8px 0; padding: 4px 8px; background-color: var(--hiddenTabBackground); border-radius: 4px; border-left: 3px solid var(--success); }
+    .device-label { font-weight: bold; color: var(--accent); }
+    .lock-icon { position: absolute; top: 10px; right: 10px; color: var(--warning); }
     .disk-serial { font-size: .8rem; color: var(--secondary); margin-bottom: 5px; font-family: monospace; }
     .disk-space-usage { font-size: .85rem; color: var(--secondary); margin-top: 5px; padding: 3px 6px; background-color: var(--hiddenTabBackground); border-radius: 3px; border-left: 3px solid var(--info); }
     .disk-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 20px; }
