@@ -531,16 +531,23 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     }
 
 
+    // TEST-001: og TestTab UX-library chrome is allowed here: sub-tab/category switching, demo modal, demo readbacks.
     function switchScopedTabs(tabSelector, panelSelector, attrName, selectedName) {
       document.querySelectorAll(tabSelector).forEach(tab => {
         const selected = tab.dataset[attrName] === selectedName;
         tab.classList.toggle('active', selected);
+        tab.classList.toggle('ui-tab--active', selected);
         tab.setAttribute('aria-selected', String(selected));
       });
       document.querySelectorAll(panelSelector).forEach(panel => panel.classList.toggle('active', panel.dataset[attrName.replace('Tab','Panel')] === selectedName));
     }
     document.querySelectorAll('[data-testtab-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-testtab-tab]', '[data-testtab-panel]', 'testtabTab', tab.dataset.testtabTab)));
     document.querySelectorAll('[data-showcase-tab]').forEach(tab => tab.addEventListener('click', () => switchScopedTabs('[data-showcase-tab]', '[data-showcase-panel]', 'showcaseTab', tab.dataset.showcaseTab)));
+    document.querySelectorAll('[data-ui-slider]').forEach(slider => slider.addEventListener('input', () => slider.closest('.showcase-item')?.querySelector('[data-slider-value]') && (slider.closest('.showcase-item').querySelector('[data-slider-value]').textContent = slider.value)));
+    document.querySelectorAll('[data-ui-time-picker]').forEach(input => input.addEventListener('input', () => document.querySelector('[data-ui-time-output]') && (document.querySelector('[data-ui-time-output]').textContent = input.value)));
+    document.querySelectorAll('[data-reset-breadcrumbs]').forEach(button => button.addEventListener('click', () => { const out = document.querySelector('[data-breadcrumb-path]'); if (out) out.textContent = '/mnt/nas'; }));
+    document.querySelectorAll('[data-test-card-expand]').forEach(button => button.addEventListener('click', () => { const expanded = button.closest('.test-card')?.querySelector('.test-card-expanded'); if (expanded) { expanded.hidden = !expanded.hidden; button.textContent = expanded.hidden ? '+' : '−'; } }));
+    document.querySelectorAll('[data-file-input-label]').forEach(label => { const input = label.closest('.file-input')?.querySelector('input[type="file"]'); input?.addEventListener('change', () => { label.textContent = input.files?.[0]?.name || 'Choose file'; }); });
     function openUxModalDemo(size) {
       const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
       const win = document.querySelector('[data-ux-modal-demo-window]');
