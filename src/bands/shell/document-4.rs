@@ -567,6 +567,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     hydrateUptime();
     hydrateStats();
     hydratePortals();
+    setInterval(tickUptime, 1000);
     setInterval(hydrateStats, 5000);
   </script>
 </body>
