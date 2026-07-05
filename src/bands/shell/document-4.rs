@@ -44,7 +44,7 @@ fn shell_document_4() -> &'static str {
       uploadProgressList.innerHTML = uploads.map(upload => `
         <div class="upload-progress ${upload.status}" data-upload-progress="${upload.filename}">
           <div class="upload-header"><span class="status-icon">${uploadStatusIcon(upload.status)}</span><span class="filename">${upload.filename}</span><button type="button" class="remove-button" data-upload-remove="${upload.filename}" aria-label="Remove upload">×</button></div>
-          <div class="progress-section"><div class="progress-bar-container"><div class="progress-bar" style="width:${upload.progress}%;background-color:${uploadStatusColor(upload.status)}"><span class="progress-text">${upload.progress.toFixed(1)}%</span></div></div><div class="upload-stats"><span class="size">${uploadFormatSize(upload.uploaded)} / ${uploadFormatSize(upload.total)}</span>${upload.status === 'uploading' ? `<span class="speed">${uploadFormatSize(upload.speed)}/s</span>` : ''}</div>${upload.status === 'error' ? `<div class="error-message">${upload.error || 'Upload failed'}</div>` : ''}</div>
+          <div class="progress-section"><div class="progress-bar-container" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${upload.progress.toFixed(1)}"><div class="progress-bar" style="width:${upload.progress}%;background-color:${uploadStatusColor(upload.status)};transition:width 0.3s ease-in-out"><span class="progress-text">${upload.progress.toFixed(1)}%</span></div></div><div class="upload-stats"><span class="size">${uploadFormatSize(upload.uploaded)} / ${uploadFormatSize(upload.total)}</span>${upload.status === 'uploading' ? `<span class="speed">${uploadFormatSize(upload.speed)}/s</span>` : ''}</div>${upload.status === 'error' ? `<div class="error-message">${upload.error || 'Upload failed'}</div>` : ''}</div>
         </div>`).join('');
       uploadProgressList.querySelectorAll('[data-upload-remove]').forEach(button => button.addEventListener('click', () => { uploadState.activeUploads.delete(button.dataset.uploadRemove); renderUploadProgress(); }));
     }
@@ -56,6 +56,12 @@ fn shell_document_4() -> &'static str {
     function setUploadSelection() {
       uploadState.selectedFiles = Array.from(uploadFileInput?.files || []);
       if (uploadSubmit) uploadSubmit.disabled = uploadState.selectedFiles.length === 0 || uploadState.uploading;
+      const display = document.querySelector('[data-upload-file-display]');
+      if (display) {
+        const label = uploadState.selectedFiles.length ? uploadState.selectedFiles.map(file => file.name).join(', ') : 'No files selected';
+        display.value = label;
+        display.setAttribute('aria-label', 'Selected files: ' + label);
+      }
     }
     function uploadCurrentPath() {
       return document.querySelector('[data-upload-current-path]')?.value || uploadState.currentPath || '/mnt/nas';
@@ -554,6 +560,8 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     document.body.addEventListener('click', event => {
       const scopedTab = event.target.closest('[data-tab-id]');
       if (scopedTab) return switchScopedTabs(scopedTab);
+      const fileButton = event.target.closest('[data-upload-file-button]');
+      if (fileButton) { uploadFileInput?.click(); return; }
       const health = event.target.closest('[data-test-health-check]');
       if (health) {
         const out = document.querySelector('[data-test-health-output]');
