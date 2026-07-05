@@ -61,7 +61,7 @@ button { font: inherit; }
 .crown-topline p { margin: var(--ux-space-1) 0 0; color: var(--ux-text-muted); font-size: var(--ux-type-body); }
 .crown-stage { position: relative; min-height: 32rem; border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); overflow: hidden; background: rgba(6, 16, 13, 0.72); }
 .crown-layer-zero { position: absolute; inset: 0; z-index: 0; display: grid; place-items: center; padding: var(--ux-space-6); background: var(--ux-surface-underlay); opacity: 0; transition: opacity 160ms ease; pointer-events: none; }
-.crown-stage[data-underlay-state="visible"] .crown-layer-zero { opacity: 1; }
+.crown-stage[data-underlay-state="visible"] .crown-layer-zero { opacity: 1; pointer-events: auto; }
 .crown-underlay-card { max-width: 40rem; border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); background: rgba(7, 19, 15, 0.86); padding: var(--ux-space-5); text-align: center; }
 .crown-underlay-card h2 { margin: 0 0 var(--ux-space-2); color: var(--ux-color-crown-bright); font-family: var(--ux-font-display); }
 .crown-underlay-card p { margin: 0; color: var(--ux-text-muted); line-height: 1.55; }
@@ -81,20 +81,55 @@ const CROWN_SHELL_JS: &str = r#"
     htmxOrgan.config.selfRequestsOnly = true;
   }
 
-  /**
-   * CORO-004 seam: typed CartridgeFaultReceipt stub until the full receipt path is seated.
-   * @param {'htmx-timeout' | 'htmx-error'} faultKind
-   * @param {Event} event
-   */
-  function emitCartridgeFaultReceiptStub(faultKind, event) {
-    document.documentElement.dataset.cartridgeFaultReceipt = 'stubbed';
-    document.documentElement.dataset.cartridgeFaultLast = faultKind;
-    console.warn('coronatio CartridgeFaultReceipt stub', { faultKind, event });
+  /** @param {Event} event */
+  function eventViewportPanel(event) {
+    const detail = /** @type {{ target?: Element, elt?: Element }} */ (event.detail || {});
+    const candidate = detail.target || detail.elt || event.target;
+    return candidate instanceof Element ? candidate.closest('[data-view-panel]') : null;
   }
 
-  document.body.addEventListener('htmx:timeout', (event) => emitCartridgeFaultReceiptStub('htmx-timeout', event));
-  document.body.addEventListener('htmx:responseError', (event) => emitCartridgeFaultReceiptStub('htmx-error', event));
-  document.body.addEventListener('htmx:sendError', (event) => emitCartridgeFaultReceiptStub('htmx-error', event));
+  /** @param {Element | null} panel */
+  function panelTabId(panel) {
+    return panel instanceof HTMLElement ? panel.dataset.viewPanel || 'unknown' : 'unknown';
+  }
+
+  /** @param {'timeout' | 'upstream-error' | 'proxy-unreachable' | string} faultKind */
+  function writeUnderlayFault(faultKind) {
+    const underlay = document.querySelector('[data-crown-underlay]');
+    const underlayFault = underlay ? underlay.querySelector('[data-underlay-fault-kind]') : null;
+    if (underlayFault instanceof HTMLElement) {
+      underlayFault.dataset.underlayFaultKind = faultKind;
+      underlayFault.textContent = faultKind;
+    }
+  }
+
+  /**
+   * CORO-004 typed CartridgeFaultReceipt front seam: guest failure clears only the faulted pane.
+   * @param {'timeout' | 'upstream-error' | 'proxy-unreachable'} faultKind
+   * @param {Event} event
+   */
+  function emitCartridgeFaultReceipt(faultKind, event) {
+    const panel = eventViewportPanel(event);
+    if (panel instanceof HTMLElement) {
+      panel.replaceChildren();
+      panel.dataset.viewportFaulted = 'true';
+      panel.dataset.empty = 'true';
+      panel.hidden = true;
+    }
+    const activeTab = panelTabId(panel);
+    document.documentElement.dataset.cartridgeFaultReceipt = 'typed';
+    document.documentElement.dataset.cartridgeFaultLast = faultKind;
+    document.documentElement.dataset.cartridgeFaultTab = activeTab;
+    if (stage) {
+      stage.dataset.underlayState = 'visible';
+      stage.dataset.underlayFaultTab = activeTab;
+    }
+    writeUnderlayFault(faultKind);
+  }
+
+  document.body.addEventListener('htmx:timeout', (event) => emitCartridgeFaultReceipt('timeout', event));
+  document.body.addEventListener('htmx:responseError', (event) => emitCartridgeFaultReceipt('upstream-error', event));
+  document.body.addEventListener('htmx:sendError', (event) => emitCartridgeFaultReceipt('proxy-unreachable', event));
 
   /** @type {NodeListOf<HTMLButtonElement>} */
   const tabs = document.querySelectorAll('[data-crown-tab]');
@@ -111,7 +146,29 @@ const CROWN_SHELL_JS: &str = r#"
   /** @param {string} id */
   function selectViewport(id) {
     let activePanel = null;
-    tabs.forEach((tab) => {
+    document.body.addEventListener('htmx:afterSwap', (event) => {
+    const panel = eventViewportPanel(event);
+    if (!(panel instanceof HTMLElement)) return;
+    const fault = panel.querySelector('[data-cartridge-fault="true"]');
+    if (fault instanceof HTMLElement) {
+      const kind = fault.dataset.cartridgeFaultKind || 'upstream-error';
+      panel.replaceChildren();
+      panel.dataset.viewportFaulted = 'true';
+      panel.dataset.empty = 'true';
+      panel.hidden = true;
+      if (stage) {
+        stage.dataset.underlayState = 'visible';
+        stage.dataset.underlayFaultTab = panel.dataset.viewPanel || 'unknown';
+      }
+      writeUnderlayFault(kind);
+      return;
+    }
+    panel.dataset.viewportFaulted = 'false';
+    panel.dataset.empty = panelIsEmptyOrFaulted(panel) ? 'true' : 'false';
+    if (!panel.hidden && stage) stage.dataset.underlayState = panelIsEmptyOrFaulted(panel) ? 'visible' : 'occupied';
+  });
+
+  tabs.forEach((tab) => {
       const active = tab.dataset.crownTab === id;
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
       tab.tabIndex = active ? 0 : -1;
@@ -123,7 +180,7 @@ const CROWN_SHELL_JS: &str = r#"
       if (active) activePanel = panel;
     });
     if (stage && activePanel) {
-      stage.dataset.underlayState = panelIsEmptyOrFaulted(activePanel) ? 'visible' : 'covered';
+      stage.dataset.underlayState = panelIsEmptyOrFaulted(activePanel) ? 'visible' : 'occupied';
     }
   }
 
@@ -219,7 +276,7 @@ fn render_crown_shell_tabs(tabs: &[CrownShellTab]) -> maud::Markup {
                                     hx-get=(admit_route_for_tab(&tab.id))
                                     hx-target=(viewport_target_for_tab(&tab.id))
                                     hx-swap="innerHTML"
-                                    hx-trigger="click, keyup[key=='Enter'], keyup[key==' ']" {
+                                    hx-trigger="click" {
                                     span.crown-tab__title { (tab.title) }
                                     span.crown-tab__kind { (tab.kind) }
                                 }
@@ -239,6 +296,7 @@ fn render_crown_shell_tabs(tabs: &[CrownShellTab]) -> maud::Markup {
                                 div.crown-underlay-card {
                                     h2 { "Fallback underlay" }
                                     p { "The crown-owned safety floor is always mounted: logo, recovery posture, and service health will stand here while layer 1 is empty or faulted." }
+                                    p { "Last pane fault: " span data-underlay-fault-kind="none" { "none" } }
                                 }
                             }
                             div.crown-layer-one data-layer="1" {

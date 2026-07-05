@@ -69,6 +69,7 @@ fn app(state: AppState) -> Router {
         .route("/api/stats/events", get(stats_events_route))
         .route("/api/stats/events/renew", post(stats_events_renew_route))
         .route("/api/stats", get(stats_route))
+        .route("/api/faults", get(faults_route))
         .route("/api/tabs", get(tabs_route))
         .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
         .route("/admit/:tab_id", get(admit_tab_route))
