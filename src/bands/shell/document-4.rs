@@ -90,6 +90,13 @@ fn shell_document_4() -> &'static str {
     function renderDirectoryEntries(entries, depth = 0) {
       return (entries || []).map(entry => `<div class="directory-entry ${entry.path === uploadState.currentPath ? 'selected' : ''}" data-directory-path="${entry.path}" role="treeitem" aria-selected="${entry.path === uploadState.currentPath}" aria-expanded="${entry.hasChildren ? !!entry.isExpanded : 'false'}" style="padding-left:${24 * depth + 12}px">${depth > 0 ? '<div class="tree-line horizontal"></div>' : ''}<span class="expand-control" aria-label="${entry.isExpanded ? 'Collapse' : 'Expand'}">${entry.hasChildren ? (entry.isLoading ? '⟳' : (entry.isExpanded ? '▼' : '▶')) : ''}</span><span class="entry-icon">📁</span><span class="entry-name">${entry.name}</span><span class="entry-selected" aria-hidden="true" ${entry.path === uploadState.currentPath ? '' : 'hidden'}>✓</span></div>${entry.isExpanded ? renderDirectoryEntries(entry.children || [], depth + 1) : ''}`).join('');
     }
+    function setUploadDirectoryError(message) {
+      const error = document.querySelector('[data-upload-directory-error]');
+      uploadTreeEntries = [{ name: 'nas', path: '/mnt/nas', type: 'directory', hasChildren: false, isExpanded: false, children: [] }];
+      if (uploadTree) uploadTree.innerHTML = renderDirectoryEntries(uploadTreeEntries);
+      selectUploadPath('/mnt/nas');
+      if (error) { error.hidden = false; error.textContent = message || '⚠️ NAS Storage Unavailable'; }
+    }
     function wireUploadTreeRows() {
       uploadTree?.querySelectorAll('.directory-entry').forEach(row => {
         const path = row.dataset.directoryPath || '/mnt/nas';
@@ -110,6 +117,7 @@ fn shell_document_4() -> &'static str {
       if (error) error.hidden = true;
       try {
         const data = await fetch('/api/files/browse-hierarchical?path=' + encodeURIComponent(path) + '&expand=' + expand).then(r => r.json());
+        if (data.ok === false) { setUploadDirectoryError(data.error || '⚠️ NAS Storage Unavailable'); return; }
         const entries = data.entries || [];
         if (path === '/mnt/nas') uploadTreeEntries = [{ name: 'nas', path: '/mnt/nas', type: 'directory', hasChildren: data.hasChildren !== false, isExpanded: true, children: entries }];
         else {
@@ -120,7 +128,7 @@ fn shell_document_4() -> &'static str {
         wireUploadTreeRows();
         selectUploadPath(uploadState.currentPath);
       } catch (err) {
-        if (error) { error.hidden = false; error.textContent = '⚠️ NAS Storage Unavailable'; }
+        setUploadDirectoryError('⚠️ NAS Storage Unavailable');
       } finally { if (loading) loading.hidden = true; }
     }
     async function uploadOneFile(file) {

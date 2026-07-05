@@ -298,6 +298,7 @@
         assert!(shell.contains(r#"class="theme-button""#));
         assert!(shell.contains("data-theme-button"));
         assert!(shell.contains(r#"data-theme-button data-admin-only="true" hidden"#));
+        assert!(shell.contains(r#"data-change-pin-button data-admin-only="true" hidden"#));
         assert!(shell.contains("Click to switch theme"));
         assert!(!shell.contains("Open theme selector"));
         assert!(shell.contains(r#"data-theme-json-source="/api/themes""#));
@@ -320,6 +321,15 @@
         assert!(shell.contains("coronatio.flask-react-header.v1"));
         assert!(shell.contains("setAdminMode"));
         assert!(shell.contains("applyTheme"));
+        let header_right_start = shell.find(r#"<div class="header-right">"#).expect("header right starts");
+        let header_right_end = shell[header_right_start..].find("</div>").map(|offset| header_right_start + offset).expect("header right ends");
+        let header_right = &shell[header_right_start..header_right_end];
+        assert_eq!(header_right.matches(r#"<button type="button"#).count(), 3);
+        assert_eq!(header_right.matches(r#"data-admin-only="true"#).count(), 2);
+        assert!(header_right.contains(r#"data-admin-button data-admin-state="logged-out">Enter Admin Mode</button>"#));
+        for normal_forbidden in ["data-change-pin-button>Change PIN", "data-theme-button title="] {
+            assert!(!header_right.contains(normal_forbidden), "normal-mode header button leaked: {normal_forbidden}");
+        }
         for preserved in [
             "Tailscale Status",
             "Current Tailnet:",

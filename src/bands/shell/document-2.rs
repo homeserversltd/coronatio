@@ -203,7 +203,7 @@ fn shell_document_2() -> &'static str {
         </div>
         <div class="header-right">
           <button type="button" class="theme-button" data-theme-button data-admin-only="true" hidden title="Current theme: light. Click to switch theme."><span>light</span></button>
-          <button type="button" class="change-admin-pin-button" data-change-pin-button hidden>Change PIN</button>
+          <button type="button" class="change-admin-pin-button" data-change-pin-button data-admin-only="true" hidden>Change PIN</button>
           <button type="button" class="admin-button" data-admin-button data-admin-state="logged-out">Enter Admin Mode</button>
         </div>
       </div>
