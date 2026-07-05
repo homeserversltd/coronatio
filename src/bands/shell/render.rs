@@ -32,6 +32,7 @@ const CROWN_SHELL_CSS: &str = r#"
   --ux-radius-sm: 0.5rem;
   --ux-radius-md: 0.85rem;
   --ux-radius-lg: 1.25rem;
+  --ux-radius-pill: 999px;
   --ux-font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --ux-font-display: "Cinzel", Georgia, serif;
   --ux-type-small: 0.82rem;
@@ -69,6 +70,14 @@ button { font: inherit; }
 .crown-view-panel { min-height: inherit; padding: var(--ux-space-5); }
 .crown-view-panel[hidden] { display: none; }
 .crown-view-panel[data-empty="true"] { pointer-events: none; }
+.crown-fragment { background: var(--ux-surface-1); color: var(--ux-text); border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); padding: var(--ux-space-4); }
+.crown-fragment h2 { color: var(--ux-text-strong); font-family: var(--ux-font-display); }
+.crown-fragment__button { background: var(--ux-color-crown); color: var(--ux-surface-0); border: 0; border-radius: var(--ux-radius-pill); padding: var(--ux-space-2) var(--ux-space-4); }
+.crown-iframe-guest { display: grid; gap: var(--ux-space-3); min-height: 30rem; }
+.crown-iframe-guest__chrome { display: flex; align-items: center; justify-content: space-between; gap: var(--ux-space-3); border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-md); background: var(--ux-surface-1); padding: var(--ux-space-3) var(--ux-space-4); color: var(--ux-text); }
+.crown-iframe-guest__chrome h2 { margin: 0; color: var(--ux-text-strong); font-size: var(--ux-type-title); }
+.crown-iframe-guest__chip { border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-pill); padding: var(--ux-space-1) var(--ux-space-3); color: var(--ux-color-crown-bright); background: rgba(61, 220, 151, 0.12); font-size: var(--ux-type-small); }
+.crown-iframe-guest__frame { width: 100%; min-height: 28rem; border: 1px solid var(--ux-outline); border-radius: var(--ux-radius-lg); background: var(--ux-surface-0); }
 @media (max-width: 760px) { .crown-shell { grid-template-columns: 1fr; } .crown-rail { border-right: 0; border-bottom: 1px solid var(--ux-outline); } }
 "#;
 
@@ -78,6 +87,7 @@ const CROWN_SHELL_JS: &str = r#"
   const htmxOrgan = window.htmx;
   if (htmxOrgan && htmxOrgan.config) {
     htmxOrgan.config.allowScriptTags = false;
+    htmxOrgan.config.includeIndicatorStyles = false;
     htmxOrgan.config.selfRequestsOnly = true;
   }
 
@@ -104,8 +114,24 @@ const CROWN_SHELL_JS: &str = r#"
   }
 
   /**
+   * Detached response parser: when the crown sends typed fault markup on an HTMX
+   * error response, its data-cartridge-fault-kind is stronger than the event kind.
+   * @param {Event} event
+   * @param {'timeout' | 'upstream-error' | 'proxy-unreachable' | string} fallback
+   */
+  function faultKindFromResponse(event, fallback) {
+    const detail = /** @type {{ xhr?: XMLHttpRequest }} */ (event.detail || {});
+    const text = detail.xhr && typeof detail.xhr.responseText === 'string' ? detail.xhr.responseText : '';
+    if (!text.includes('data-cartridge-fault-kind')) return fallback;
+    const template = document.createElement('template');
+    template.innerHTML = text;
+    const fault = template.content.querySelector('[data-cartridge-fault-kind]');
+    return fault instanceof HTMLElement && fault.dataset.cartridgeFaultKind ? fault.dataset.cartridgeFaultKind : fallback;
+  }
+
+  /**
    * CORO-004 typed CartridgeFaultReceipt front seam: guest failure clears only the faulted pane.
-   * @param {'timeout' | 'upstream-error' | 'proxy-unreachable'} faultKind
+   * @param {'timeout' | 'upstream-error' | 'proxy-unreachable' | string} faultKind
    * @param {Event} event
    */
   function emitCartridgeFaultReceipt(faultKind, event) {
@@ -128,7 +154,7 @@ const CROWN_SHELL_JS: &str = r#"
   }
 
   document.body.addEventListener('htmx:timeout', (event) => emitCartridgeFaultReceipt('timeout', event));
-  document.body.addEventListener('htmx:responseError', (event) => emitCartridgeFaultReceipt('upstream-error', event));
+  document.body.addEventListener('htmx:responseError', (event) => emitCartridgeFaultReceipt(faultKindFromResponse(event, 'upstream-error'), event));
   document.body.addEventListener('htmx:sendError', (event) => emitCartridgeFaultReceipt('proxy-unreachable', event));
 
   /** @type {NodeListOf<HTMLButtonElement>} */

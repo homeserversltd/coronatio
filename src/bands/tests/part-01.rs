@@ -368,6 +368,118 @@
         assert!(body.contains("data-reference-cartridge=\"inert-fragment\""));
     }
 
+
+    #[tokio::test]
+    async fn coro_005_iframe_manifest_admits_sandboxed_iframe_fragment() {
+        let temp = test_tab_root("coro-005-iframe-static");
+        let tab_dir = temp.join("iframe-guest").join("static");
+        std::fs::create_dir_all(&tab_dir).unwrap();
+        std::fs::write(temp.join("iframe-guest").join("tab.json"), r#"{
+          "id":"iframe-guest",
+          "title":"Iframe Guest",
+          "routePrefix":"/api/tabs/iframe-guest",
+          "fragmentPath":"/static/index.html",
+          "clientClass":"iframe"
+        }"#).unwrap();
+        std::fs::write(tab_dir.join("index.html"), r#"<script>document.body.dataset.sandboxScriptRan='true'</script>"#).unwrap();
+        let response = app(AppState { tab_root: Arc::new(temp) })
+            .oneshot(Request::builder().uri("/admit/iframe-guest").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains(r#"data-fragment-schema="coronatio.iframe-guest.v1""#));
+        assert!(body.contains(r#"data-client-class="iframe""#));
+        assert!(body.contains(r#"src="/tabs/iframe-guest/static/index.html""#));
+        assert!(body.contains(r#"sandbox="allow-scripts allow-forms""#));
+        assert!(body.contains(r#"referrerpolicy="no-referrer""#));
+        assert!(body.contains("crown-iframe-guest__chrome"));
+        assert!(body.contains("iframe guest"));
+    }
+
+    #[test]
+    fn coro_005_iframe_service_url_src_is_guest_owned_context() {
+        let manifest = TabManifest {
+            id: "foreign-app".to_string(),
+            title: "Foreign App".to_string(),
+            description: String::new(),
+            icon: String::new(),
+            display_name: String::new(),
+            order: 81,
+            enabled: true,
+            admin_only: false,
+            visibility: TabVisibility::default(),
+            data: serde_json::Value::Null,
+            route_prefix: "/api/tabs/foreign-app".to_string(),
+            static_dir: "static".to_string(),
+            service_url: Some("http://127.0.0.1:9911/".to_string()),
+            health_route: None,
+            fragment_path: "/app".to_string(),
+            client_class: ClientClass::Iframe,
+            install_mode: InstallMode::DynamicCartridge,
+        };
+        assert!(validate_tab_manifest(&manifest).is_ok());
+        let body = render_iframe_guest_fragment(&manifest);
+        assert!(body.contains(r#"src="http://127.0.0.1:9911/app""#));
+        assert!(body.contains(r#"sandbox="allow-scripts allow-same-origin allow-forms""#));
+    }
+
+    #[test]
+    fn coro_005_iframe_same_host_service_url_keeps_opaque_origin() {
+        let manifest = TabManifest {
+            id: "same-host-app".to_string(),
+            title: "Same Host App".to_string(),
+            description: String::new(),
+            icon: String::new(),
+            display_name: String::new(),
+            order: 82,
+            enabled: true,
+            admin_only: false,
+            visibility: TabVisibility::default(),
+            data: serde_json::Value::Null,
+            route_prefix: "/api/tabs/same-host-app".to_string(),
+            static_dir: "static".to_string(),
+            service_url: Some("http://crown.test".to_string()),
+            health_route: None,
+            fragment_path: "/app".to_string(),
+            client_class: ClientClass::Iframe,
+            install_mode: InstallMode::DynamicCartridge,
+        };
+        let body = render_iframe_guest_fragment_with_crown_origin(&manifest, Some("http://crown.test".to_string()));
+        assert!(body.contains(r#"src="http://crown.test/app""#));
+        assert!(body.contains(r#"sandbox="allow-scripts allow-forms""#));
+        assert!(!body.contains(r#"sandbox="allow-scripts allow-same-origin allow-forms""#));
+    }
+
+    #[test]
+    fn coro_005_guest_class_ladder_and_chrome_fault_policy_are_load_bearing_source() {
+        let constants = std::fs::read_to_string("src/bands/contracts/constants.rs").unwrap();
+        assert!(constants.contains("iframe guest → fragment guest → native pane"));
+        assert!(constants.contains("Iframe guests prove isolated browsing context"));
+        assert!(constants.contains("guests prove inert hypermedia plus crown `--ux-*` token composition"));
+
+        let chrome = CROWN_SHELL_JS;
+        assert!(chrome.contains("htmxOrgan.config.includeIndicatorStyles = false"));
+        assert!(chrome.contains("function faultKindFromResponse(event, fallback)"));
+        assert!(chrome.contains("document.createElement('template')"));
+        assert!(chrome.contains("template.content.querySelector('[data-cartridge-fault-kind]')"));
+        assert!(chrome.contains("faultKindFromResponse(event, 'upstream-error')"));
+    }
+
+    #[test]
+    fn coro_005_reference_fragments_encode_skin_and_script_walls() {
+        let inert = std::fs::read_to_string("tabs/inert-fragment/static/fragment.html").unwrap();
+        assert!(!inert.contains("style="));
+        assert!(inert.contains("class=\"crown-fragment\""));
+        assert!(inert.contains("class=\"crown-fragment__button\""));
+        assert!(inert.contains("<script>document.documentElement.dataset.inertFragmentScriptRan = 'forbidden';</script>"));
+
+        let iframe = std::fs::read_to_string("tabs/iframe-guest/static/index.html").unwrap();
+        assert!(iframe.contains("document.body.dataset.sandboxScriptRan = 'true'"));
+        assert!(iframe.contains("window.parent.document.documentElement.dataset.iframeGuestTouchedCrown"));
+        assert!(iframe.contains("document.body.dataset.crownDocumentAccess = 'blocked'"));
+    }
+
     #[test]
     fn coro_003_rail_markup_fetches_on_every_activation() {
         let shell = render_crown_shell();
@@ -423,6 +535,7 @@
         assert!(js_body.contains("selectViewport"));
         assert!(js_body.contains("data-view-panel"));
         assert!(js_body.contains("htmxOrgan.config.allowScriptTags = false"));
+        assert!(js_body.contains("htmxOrgan.config.includeIndicatorStyles = false"));
         assert!(js_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
         assert!(js_body.contains("emitCartridgeFaultReceipt"));
         assert!(js_body.contains("stage.dataset.underlayState = 'visible'"));
@@ -473,6 +586,7 @@
             .unwrap();
         let chrome_body = String::from_utf8(axum::body::to_bytes(chrome.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(chrome_body.contains("htmxOrgan.config.allowScriptTags = false"));
+        assert!(chrome_body.contains("htmxOrgan.config.includeIndicatorStyles = false"));
         assert!(chrome_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
         assert!(chrome_body.contains("emitCartridgeFaultReceipt"));
     }

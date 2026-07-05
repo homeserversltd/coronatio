@@ -1,0 +1,11 @@
+{
+  "id": "iframe-guest",
+  "title": "Iframe Guest",
+  "description": "Static reference cartridge for CORO-005 sandboxed iframe admission proof.",
+  "routePrefix": "/api/tabs/iframe-guest",
+  "fragmentPath": "/static/index.html",
+  "clientClass": "iframe",
+  "staticDir": "static",
+  "order": 81,
+  "enabled": true
+}
