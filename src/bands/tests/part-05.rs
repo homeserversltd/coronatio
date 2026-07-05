@@ -167,7 +167,7 @@
         assert!(html.contains(r#"class="entry-name""#));
         assert!(html.contains(r#"class="entry-selected""#));
         assert!(html.contains(r#"class="file-upload-section" data-upload-regular="file-ingress""#));
-        assert!(html.contains(r#"type="file" multiple data-upload-file"#));
+        assert!(html.contains(r#"type="file" multiple data-upload-file aria-label="Upload files""#));
         assert!(html.contains("Upload Selected Files"));
         assert!(html.contains(r#"data-upload-history-modal"#));
         assert!(html.contains("No upload history available"));
@@ -223,6 +223,14 @@
     #[test]
     fn upload_script_uses_xhr_progress_and_react_workflows() {
         let html = render_crown_shell();
+        let upload_start = html.find(r#"class="upload-tablet" data-upload-viewport"#).unwrap();
+        let upload_end = html.find(r#"data-upload-history-modal"#).unwrap();
+        let upload = &html[upload_start..upload_end];
+        let script = &html[html.find("function renderUploadProgress").unwrap()..html.find("function setUpload").unwrap()];
+        for forbidden_restore in ["ui-breadcrumbs__item--current", "ui-file-input__display", "ui-progress-bar__fill"] {
+            assert!(!upload.contains(forbidden_restore), "downgraded RESTORE class remains in upload markup: {forbidden_restore}");
+            assert!(!script.contains(forbidden_restore), "downgraded RESTORE class remains in upload script: {forbidden_restore}");
+        }
         for required in [
             "new XMLHttpRequest()",
             "xhr.upload.onprogress",
@@ -242,6 +250,102 @@
         }
     }
 
+
+
+    #[test]
+    fn uxport_001_upload_source_and_library_walls_carry_og_citations() {
+        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
+        for citation in [
+            "src/tablets/upload/index.tsx",
+            "components/DirectoryBrowser.tsx",
+            "components/UploadProgress.tsx",
+            "upload.css",
+            "src/components/ui/{Breadcrumbs,FileInput,ProgressBar}.tsx",
+            "src/styles/common/ui/{_breadcrumbs,_file-input,_progress-bar}.css",
+        ] {
+            assert!(map.contains(citation), "missing og source citation {citation}");
+        }
+        let html = render_crown_shell();
+        assert!(html.contains("UXPORT-001 LIBRARY band: og src/tablets/upload upload domain pack"));
+        for selector in [
+            ".upload-tablet { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto; gap: 12px; scrollbar-width: inherit; }",
+            ".upload-controls { display: flex; flex-direction: column; gap: 16px; overflow: visible; }",
+            ".upload-progress { background: var(--hiddenTabBackground); border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); border: 1px solid var(--border); transition: transform 0.2s ease, box-shadow 0.2s ease; }",
+            ".file-upload-section { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }",
+            ".breadcrumb-item.current { color: var(--primary); background-color: var(--primaryHover); cursor: default; }",
+            ".progress-bar-container { width: 100%; height: 20px; background: var(--hiddenTabBackground); color: var(--text); border-radius: 10px; overflow: hidden; position: relative; }",
+            ".file-upload-section input[type=\"file\"] { background: var(--primary); border: none; border-radius: var(--border-radius); padding: 8px 12px; color: var(--text); cursor: pointer; transition: background var(--transition-fast); font-size: var(--font-size-sm); margin-right: 8px; margin-bottom: 8px; appearance: button; }",
+        ] {
+            assert!(html.contains(selector), "library band missing absorbed selector/declaration: {selector}");
+        }
+        for receipt in ["breadcrumbs=ABSORB", "file-picker=ABSORB", "upload-progress=ABSORB"] {
+            assert!(html.contains(receipt), "missing declaration-diff receipt {receipt}");
+        }
+    }
+
+    #[test]
+    fn uxport_001_upload_markup_wall_uses_library_vocabulary_for_changed_elements() {
+        let html = render_crown_shell();
+        let upload_start = html.find(r#"class="upload-tablet" data-upload-viewport"#).unwrap();
+        let upload_end = html.find(r#"data-upload-history-modal"#).unwrap();
+        let upload = &html[upload_start..upload_end];
+        for required in [
+            r#"class="breadcrumb-navigation" data-upload-breadcrumbs"#,
+            r#"class="breadcrumb-item current"#,
+            r#"<input type="file" multiple data-upload-file aria-label="Upload files">"#,
+            r#"<button type="button" data-upload-submit disabled>Upload Selected Files</button>"#,
+        ] {
+            assert!(upload.contains(required), "upload ABSORB markup missing og vocabulary {required}");
+        }
+        let script = &html[html.find("function renderUploadProgress").unwrap()..html.find("function setUpload").unwrap()];
+        for required in ["progress-bar-container", "class=\"progress-bar\"", "progress-text"] {
+            assert!(script.contains(required), "progress renderer missing ABSORB og vocabulary {required}");
+        }
+        for retired in ["ui-breadcrumbs__item--current", "ui-file-input__display", "ui-progress-bar__container", "ui-progress-bar__fill", "ui-progress-bar__text"] {
+            assert!(!upload.contains(retired), "upload static markup kept downgraded RESTORE vocabulary {retired}");
+            assert!(!script.contains(retired), "upload progress renderer kept downgraded RESTORE vocabulary {retired}");
+        }
+    }
+
+    #[test]
+    fn uxport_001_upload_non_drift_wall_names_old_and_new_class_stacks() {
+        let html = render_crown_shell();
+        let comparisons: [(&str, &[&str]); 3] = [
+            (
+                "breadcrumb-navigation > breadcrumb-item.current + breadcrumb-separator",
+                &["breadcrumb-navigation", "breadcrumb-item current", "breadcrumb-separator"],
+            ),
+            (
+                "native input[type=file] + button",
+                &["file-upload-section", "data-upload-file", "data-upload-submit"],
+            ),
+            (
+                "progress-bar-container > progress-bar > progress-text",
+                &["progress-bar-container", "progress-bar", "progress-text"],
+            ),
+        ];
+        for (old, absorbed_stack) in comparisons {
+            for class_name in absorbed_stack {
+                assert!(html.contains(class_name), "ABSORB class stack absent for {old}: missing {class_name}");
+            }
+        }
+        let upload = &html[html.find("function renderUploadProgress").unwrap()..html.find("function setUpload").unwrap()];
+        assert!(upload.contains("upload-progress ${upload.status}"), "absorbed upload outer stack missing");
+        assert!(upload.contains("upload-stats"), "absorbed upload status stack missing");
+        assert!(upload.contains("error-message"), "absorbed upload error stack missing");
+    }
+
+    #[test]
+    fn uxport_001_power_quarry_gap_is_closed_in_map_without_implementation() {
+        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
+        assert!(map.contains("Runtime DOM truth supplied by operator"));
+        assert!(map.contains(r#"<div class="modal" role="dialog" ...><div class="modal-title">Power Consumption</div>"#));
+        assert!(map.contains("src/components/StatusIndicators/PowerMeterIndicator.tsx"));
+        assert!(map.contains("src/components/StatusIndicators/indicators.css"));
+        assert!(map.contains("src/components/Modal/index.tsx"));
+        assert!(map.contains("src/components/Popup/PopupManager.tsx"));
+        assert!(map.contains("Reclassify as a power-meter domain pack inside the shared modal substrate"));
+    }
 
     #[test]
     fn css_sizing_ports_quarry_verbatim_values_for_port_005_and_retrofit() {
