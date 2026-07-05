@@ -391,7 +391,7 @@
         assert!(body.contains(r#"data-fragment-schema="coronatio.iframe-guest.v1""#));
         assert!(body.contains(r#"data-client-class="iframe""#));
         assert!(body.contains(r#"src="/tabs/iframe-guest/static/index.html""#));
-        assert!(body.contains(r#"sandbox="allow-scripts allow-same-origin allow-forms""#));
+        assert!(body.contains(r#"sandbox="allow-scripts allow-forms""#));
         assert!(body.contains(r#"referrerpolicy="no-referrer""#));
         assert!(body.contains("crown-iframe-guest__chrome"));
         assert!(body.contains("iframe guest"));
@@ -425,6 +425,33 @@
     }
 
     #[test]
+    fn coro_005_iframe_same_host_service_url_keeps_opaque_origin() {
+        let manifest = TabManifest {
+            id: "same-host-app".to_string(),
+            title: "Same Host App".to_string(),
+            description: String::new(),
+            icon: String::new(),
+            display_name: String::new(),
+            order: 82,
+            enabled: true,
+            admin_only: false,
+            visibility: TabVisibility::default(),
+            data: serde_json::Value::Null,
+            route_prefix: "/api/tabs/same-host-app".to_string(),
+            static_dir: "static".to_string(),
+            service_url: Some("http://crown.test".to_string()),
+            health_route: None,
+            fragment_path: "/app".to_string(),
+            client_class: ClientClass::Iframe,
+            install_mode: InstallMode::DynamicCartridge,
+        };
+        let body = render_iframe_guest_fragment_with_crown_origin(&manifest, Some("http://crown.test".to_string()));
+        assert!(body.contains(r#"src="http://crown.test/app""#));
+        assert!(body.contains(r#"sandbox="allow-scripts allow-forms""#));
+        assert!(!body.contains(r#"sandbox="allow-scripts allow-same-origin allow-forms""#));
+    }
+
+    #[test]
     fn coro_005_guest_class_ladder_and_chrome_fault_policy_are_load_bearing_source() {
         let constants = std::fs::read_to_string("src/bands/contracts/constants.rs").unwrap();
         assert!(constants.contains("iframe guest → fragment guest → native pane"));
@@ -442,9 +469,9 @@
     #[test]
     fn coro_005_reference_fragments_encode_skin_and_script_walls() {
         let inert = std::fs::read_to_string("tabs/inert-fragment/static/fragment.html").unwrap();
-        assert!(inert.contains("var(--ux-surface-1)"));
-        assert!(inert.contains("var(--ux-text)"));
-        assert!(inert.contains("var(--ux-color-crown)"));
+        assert!(!inert.contains("style="));
+        assert!(inert.contains("class=\"crown-fragment\""));
+        assert!(inert.contains("class=\"crown-fragment__button\""));
         assert!(inert.contains("<script>document.documentElement.dataset.inertFragmentScriptRan = 'forbidden';</script>"));
 
         let iframe = std::fs::read_to_string("tabs/iframe-guest/static/index.html").unwrap();

@@ -256,7 +256,7 @@ async fn load_tab_manifest(
     Ok(Some(manifest))
 }
 
-async fn admit_tab_route(State(state): State<AppState>, Path(tab_id): Path<String>) -> impl IntoResponse {
+async fn admit_tab_route(State(state): State<AppState>, headers: HeaderMap, Path(tab_id): Path<String>) -> impl IntoResponse {
     if !is_safe_tab_id(&tab_id) {
         return fragment_fault(StatusCode::BAD_REQUEST, &tab_id, CartridgeFaultKind::UpstreamError);
     }
@@ -266,13 +266,13 @@ async fn admit_tab_route(State(state): State<AppState>, Path(tab_id): Path<Strin
     }
 
     match load_tab_manifest(&state.tab_root, &tab_id).await {
-        Ok(Some(manifest)) => admit_registry_manifest(&state, manifest).await,
+        Ok(Some(manifest)) => admit_registry_manifest(&state, &headers, manifest).await,
         Ok(None) => fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound),
         Err(_error) => fragment_fault(StatusCode::INTERNAL_SERVER_ERROR, &tab_id, CartridgeFaultKind::UpstreamError),
     }
 }
 
-async fn admit_registry_manifest(state: &AppState, manifest: TabManifest) -> Response {
+async fn admit_registry_manifest(state: &AppState, headers: &HeaderMap, manifest: TabManifest) -> Response {
     match manifest.client_class {
         ClientClass::Fragment => {
             if let Some(service_url) = manifest.service_url.as_deref().filter(|value| !value.trim().is_empty()) {
@@ -281,7 +281,7 @@ async fn admit_registry_manifest(state: &AppState, manifest: TabManifest) -> Res
             }
             read_static_cartridge_fragment(state, &manifest).await
         }
-        ClientClass::Iframe => Html(render_iframe_guest_fragment(&manifest)).into_response(),
+        ClientClass::Iframe => Html(render_iframe_guest_fragment_for_request(&manifest, headers)).into_response(),
     }
 }
 
@@ -293,8 +293,17 @@ fn iframe_guest_src(manifest: &TabManifest) -> String {
 }
 
 fn render_iframe_guest_fragment(manifest: &TabManifest) -> String {
+    render_iframe_guest_fragment_with_crown_origin(manifest, None)
+}
+
+fn render_iframe_guest_fragment_for_request(manifest: &TabManifest, headers: &HeaderMap) -> String {
+    render_iframe_guest_fragment_with_crown_origin(manifest, crown_origin_from_headers(headers))
+}
+
+fn render_iframe_guest_fragment_with_crown_origin(manifest: &TabManifest, crown_origin: Option<String>) -> String {
     let title = if manifest.title.trim().is_empty() { &manifest.id } else { &manifest.title };
     let src = iframe_guest_src(manifest);
+    let sandbox = iframe_guest_sandbox(&src, crown_origin.as_deref());
     maud::html! {
         article .crown-fragment .crown-iframe-guest data-fragment-schema="coronatio.iframe-guest.v1" data-reference-cartridge=(manifest.id) data-client-class="iframe" {
             header .crown-iframe-guest__chrome {
@@ -305,10 +314,49 @@ fn render_iframe_guest_fragment(manifest: &TabManifest) -> String {
                 class="crown-iframe-guest__frame"
                 title=(title)
                 src=(src)
-                sandbox="allow-scripts allow-same-origin allow-forms"
+                sandbox=(sandbox)
                 referrerpolicy="no-referrer" {}
         }
     }.into_string()
+}
+
+fn crown_origin_from_headers(headers: &HeaderMap) -> Option<String> {
+    let host = headers.get(header::HOST)?.to_str().ok()?.trim();
+    if host.is_empty() {
+        return None;
+    }
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("http");
+    Some(format!("{}://{}", scheme, host))
+}
+
+fn iframe_guest_sandbox(src: &str, crown_origin: Option<&str>) -> &'static str {
+    if iframe_src_is_same_origin(src, crown_origin) {
+        "allow-scripts allow-forms"
+    } else {
+        "allow-scripts allow-same-origin allow-forms"
+    }
+}
+
+fn iframe_src_is_same_origin(src: &str, crown_origin: Option<&str>) -> bool {
+    if src.starts_with('/') {
+        return true;
+    }
+    let Some(crown_origin) = crown_origin else {
+        return false;
+    };
+    let Ok(src_uri) = src.parse::<Uri>() else {
+        return true;
+    };
+    let Ok(crown_uri) = crown_origin.parse::<Uri>() else {
+        return true;
+    };
+    src_uri.scheme_str() == crown_uri.scheme_str() && src_uri.authority() == crown_uri.authority()
 }
 
 async fn fetch_cartridge_fragment(tab_id: &str, url: &str) -> Response {
