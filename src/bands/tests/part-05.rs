@@ -346,7 +346,7 @@
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn hx_exemplar_caret_markup_carries_hx_get_child_pointer() {
+    async fn hx_exemplar_caret_markup_carries_request_time_state_pointer() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let root = test_tab_root("hx-exemplar-caret-root");
         std::fs::create_dir_all(root.join("media/films")).unwrap();
@@ -357,10 +357,21 @@
         std::env::remove_var("CORONATIO_UPLOAD_ROOT");
         assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains(r#"name="selected" data-upload-current-path"#), "{body}");
+        assert!(body.contains(r#"name="expanded" data-upload-expanded-paths"#), "{body}");
         assert!(body.contains(r#"hx-get="/admit/upload/tree?path="#), "{body}");
         assert!(body.contains("depth=1"), "{body}");
-        assert!(body.contains("hx-target=\"#upload-subtree-"), "{body}");
+        assert!(body.contains(r#"hx-include="closest [data-upload-tree]""#), "{body}");
+        assert!(body.contains(r#"hx-target="[data-upload-tree]""#), "{body}");
         assert!(body.contains("hx-swap=\"innerHTML\""), "{body}");
+        assert!(body.contains(r#"hx-trigger="click consume""#), "{body}");
+        for fragment in body.split("hx-get=\"").skip(1) {
+            let url = fragment.split('"').next().unwrap_or("");
+            if url.starts_with("/admit/upload/tree?") {
+                assert!(!url.contains("selected="), "row URL baked stale selected state: {url}");
+                assert!(!url.contains("expanded="), "row URL baked stale expanded state: {url}");
+            }
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -384,7 +395,8 @@
         assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains(&format!("data-directory-path=\"{}\" role=\"treeitem\" aria-selected=\"true\"", films)), "{body}");
-        assert!(body.contains(&format!("data-upload-current-path value=\"{}\"", films)), "{body}");
+        assert!(body.contains(&format!("name=\"selected\" data-upload-current-path value=\"{}\"", films)), "{body}");
+        assert!(body.contains("name=\"expanded\" data-upload-expanded-paths"), "{body}");
         assert!(body.contains(r#"class="entry-name">films</span>"#), "selection must not collapse expanded media subtree: {body}");
     }
 
@@ -398,12 +410,15 @@
         assert!(!chrome.contains("renderDirectoryEntries"), "client-side tree renderer still present");
         assert!(!chrome.contains("loadUploadDirectory"), "client-side tree loader still present");
         assert!(!chrome.contains("/api/files/browse-hierarchical?path="), "tree lane still fetches browse JSON");
+        assert!(!chrome.contains("const uploadTree = document.querySelector('[data-upload-tree]');"), "upload tree state must use the live swapped tree, not a stale captured node");
+        assert!(chrome.contains("const activeUploadTree = document.querySelector('[data-upload-tree]');"), "upload tree selection sync must read the current swapped tree");
         assert!(chrome.contains("new XMLHttpRequest()"), "owned upload progress XHR must stay");
         assert!(chrome.contains("xhr.upload.onprogress"), "owned upload progress XHR must keep progress chrome");
         let shell = render_crown_shell();
         std::env::remove_var("CORONATIO_UPLOAD_ROOT");
         assert!(shell.contains(r#"data-upload-tree role="tree""#));
         assert!(shell.contains("hx-get=\"/admit/upload/tree"));
+        assert!(shell.contains("hx-include=\"closest [data-upload-tree]\""));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -428,6 +443,77 @@
         assert!(second_body.contains("concerts"), "server did not resolve fresh subtree on re-expand: {second_body}");
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn hx_exemplar_hx_request_expand_rerenders_sibling_child_rows_from_live_state() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let root = test_tab_root("hx-exemplar-live-state-root");
+        let music = root.join("music");
+        std::fs::create_dir_all(music.join("albums")).unwrap();
+        std::fs::create_dir_all(music.join("live")).unwrap();
+        let root_display = root.display().to_string();
+        let music_display = format!("{}/music", root.display());
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-exemplar-live-state-app")) });
+        std::env::set_var("CORONATIO_UPLOAD_ROOT", &root);
+        let expand_route = format!(
+            "/admit/upload/tree?path={}&depth=1&selected={}&expanded={}",
+            upload_query_escape(&music_display),
+            upload_query_escape(&root_display),
+            upload_query_escape(&root_display)
+        );
+        let expanded = router
+            .clone()
+            .oneshot(Request::builder().uri(&expand_route).header("hx-request", "true").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(expanded.status(), StatusCode::OK);
+        let expanded_body = String::from_utf8(axum::body::to_bytes(expanded.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(expanded_body.contains("data-upload-expanded-paths"), "{expanded_body}");
+        assert!(expanded_body.contains(r#"class="entry-name">albums</span>"#), "{expanded_body}");
+        assert!(expanded_body.contains(r#"class="entry-name">live</span>"#), "{expanded_body}");
+        let music_row = expanded_body.find(&format!("data-directory-path=\"{}\"", music_display)).unwrap();
+        let subtree = expanded_body[music_row..].find(&format!("data-upload-subtree=\"{}\"", music_display)).map(|idx| music_row + idx).unwrap();
+        let albums = expanded_body.find(r#"class="entry-name">albums</span>"#).unwrap();
+        assert!(music_row < subtree && subtree < albums, "expanded children must render in the sibling subtree after the parent row: {expanded_body}");
+        let select_route = format!(
+            "/admit/upload/tree?path={}&depth=0&selected={}&expanded={}",
+            upload_query_escape(&format!("{}/music/albums", root.display())),
+            upload_query_escape(&root_display),
+            upload_query_escape(&format!("{},{}", root_display, music_display))
+        );
+        let selected = router
+            .clone()
+            .oneshot(Request::builder().uri(&select_route).header("hx-request", "true").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let selected_body = String::from_utf8(axum::body::to_bytes(selected.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(selected_body.contains(&format!("data-directory-path=\"{}/music/albums\" role=\"treeitem\" aria-selected=\"true\"", root.display())), "{selected_body}");
+        let collapse_route = format!(
+            "/admit/upload/tree?path={}&depth=1&selected={}&expanded={}",
+            upload_query_escape(&music_display),
+            upload_query_escape(&format!("{}/music/albums", root.display())),
+            upload_query_escape(&format!("{},{}", root_display, music_display))
+        );
+        let collapsed = router
+            .clone()
+            .oneshot(Request::builder().uri(&collapse_route).header("hx-request", "true").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let collapsed_body = String::from_utf8(axum::body::to_bytes(collapsed.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(!collapsed_body.contains(r#"class="entry-name">albums</span>"#), "collapse must hide children: {collapsed_body}");
+        std::fs::create_dir_all(music.join("sets")).unwrap();
+        let reexpand_route = format!(
+            "/admit/upload/tree?path={}&depth=1&selected={}&expanded={}",
+            upload_query_escape(&music_display),
+            upload_query_escape(&format!("{}/music/albums", root.display())),
+            upload_query_escape(&root_display)
+        );
+        let reexpanded = router.oneshot(Request::builder().uri(&reexpand_route).header("hx-request", "true").body(Body::empty()).unwrap()).await.unwrap();
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
+        let reexpanded_body = String::from_utf8(axum::body::to_bytes(reexpanded.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(reexpanded_body.contains(r#"class="entry-name">albums</span>"#), "{reexpanded_body}");
+        assert!(reexpanded_body.contains(r#"class="entry-name">sets</span>"#), "re-expand must fresh-fetch server children: {reexpanded_body}");
+    }
+
     #[test]
     fn hx_001_tabs_are_hypermedia_activation_controls() {
         let shell = render_crown_shell();
@@ -438,3 +524,4 @@
         }
         assert!(shell.contains(r#"data-tab-id="stats" data-visibility="visible" hx-get="/admit/stats" hx-target="[data-view-panel='stats']" hx-swap="innerHTML" hx-trigger="load, click""#));
     }
+

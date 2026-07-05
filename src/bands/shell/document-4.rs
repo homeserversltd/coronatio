@@ -14,7 +14,6 @@ fn shell_document_4() -> &'static str {
     const uploadFileInput = document.querySelector('[data-upload-file]');
     const uploadSubmit = document.querySelector('[data-upload-submit]');
     const uploadProgressList = document.querySelector('[data-upload-progress-list]');
-    const uploadTree = document.querySelector('[data-upload-tree]');
     const uploadBreadcrumbs = document.querySelector('[data-upload-breadcrumbs]');
     const uploadReadout = document.getElementById('upload-readout');
     function uploadFormatSize(bytes) {
@@ -70,7 +69,8 @@ fn shell_document_4() -> &'static str {
       uploadBreadcrumbs.innerHTML = crumbs.map((crumb, index) => `<span class="breadcrumb-item ${crumb.path === path ? 'current' : ''}" data-path="${crumb.path}">${crumb.name}</span>${index < crumbs.length - 1 ? '<span class="breadcrumb-separator"> / </span>' : ''}`).join('');
     }
     function syncUploadTreeSelection() {
-      const selected = uploadTree?.querySelector('.directory-entry[aria-selected="true"]')?.dataset.directoryPath || uploadCurrentPath();
+      const activeUploadTree = document.querySelector('[data-upload-tree]');
+      const selected = activeUploadTree?.querySelector('.directory-entry[aria-selected="true"]')?.dataset.directoryPath || uploadCurrentPath();
       uploadState.currentPath = selected || '/mnt/nas';
       const field = document.querySelector('[data-upload-current-path]');
       if (field) field.value = uploadState.currentPath;
