@@ -224,7 +224,8 @@ fn favorite_manifest_from_homeserver(source: String, value: &serde_json::Value) 
     let starred_tab = tabs_obj
         .get("starred")
         .and_then(serde_json::Value::as_str)
-        .unwrap_or("portals")
+        .map(|_| "stats")
+        .unwrap_or("stats")
         .to_string();
     let mut tabs = Vec::new();
     for (id, tab) in tabs_obj {
@@ -331,7 +332,7 @@ async fn load_theme_catalog() -> Result<(String, ThemeCatalog), String> {
         .and_then(|global| global.get("theme"))
         .and_then(|theme| theme.get("name"))
         .and_then(serde_json::Value::as_str)
-        .unwrap_or("dark")
+        .unwrap_or("light")
         .to_string();
     let catalog = firmware_theme_catalog(default);
     validate_theme_catalog(&catalog)?;

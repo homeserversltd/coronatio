@@ -12,22 +12,11 @@ fn native_crown_panes() -> Vec<CrownPane> {
             state_route: "/api/panes/admin".to_string(),
         },
         CrownPane {
-            id: "stats".to_string(),
-            title: "Stats".to_string(),
-            role: "machine telemetry".to_string(),
-            summary: "System load, service health, storage posture, and later SSE live readback.".to_string(),
-            order: 10,
-            admin_only: false,
-            install_mode: InstallMode::FirstPartyNative,
-            route: "/#stats".to_string(),
-            state_route: "/api/stats".to_string(),
-        },
-        CrownPane {
             id: "portals".to_string(),
             title: "Portals".to_string(),
             role: "service ingress".to_string(),
             summary: "Admitted HOMESERVER services, local ingress, remote ingress, and service currentness.".to_string(),
-            order: 20,
+            order: 10,
             admin_only: false,
             install_mode: InstallMode::FirstPartyNative,
             route: "/#portals".to_string(),
@@ -38,19 +27,96 @@ fn native_crown_panes() -> Vec<CrownPane> {
             title: "Upload".to_string(),
             role: "file ingress".to_string(),
             summary: "Safe file admission into HOMESERVER storage with policy and receipt readbacks.".to_string(),
-            order: 30,
+            order: 20,
             admin_only: false,
             install_mode: InstallMode::FirstPartyNative,
             route: "/#upload".to_string(),
             state_route: "/api/panes/upload".to_string(),
         },
         CrownPane {
+            id: "stats".to_string(),
+            title: "Stats".to_string(),
+            role: "machine telemetry".to_string(),
+            summary: "System load, service health, storage posture, and later SSE live readback.".to_string(),
+            order: 30,
+            admin_only: false,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#stats".to_string(),
+            state_route: "/api/stats".to_string(),
+        },
+        CrownPane {
+            id: "backblaze".to_string(),
+            title: "backBlaze".to_string(),
+            role: "backup service tab".to_string(),
+            summary: "Original HOMESERVER backBlaze tab placeholder until the pane body is ported.".to_string(),
+            order: 40,
+            admin_only: false,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#backblaze".to_string(),
+            state_route: "/api/panes/backblaze".to_string(),
+        },
+        CrownPane {
+            id: "wake-on-lan".to_string(),
+            title: "Wake on LAN".to_string(),
+            role: "network wake tab".to_string(),
+            summary: "Original HOMESERVER Wake on LAN tab placeholder until the pane body is ported.".to_string(),
+            order: 50,
+            admin_only: false,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#wake-on-lan".to_string(),
+            state_route: "/api/panes/wake-on-lan".to_string(),
+        },
+        CrownPane {
+            id: "test".to_string(),
+            title: "Test".to_string(),
+            role: "original test tab".to_string(),
+            summary: "Original HOMESERVER Test tab placeholder until the pane body is ported.".to_string(),
+            order: 60,
+            admin_only: false,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#test".to_string(),
+            state_route: "/api/panes/test".to_string(),
+        },
+        CrownPane {
+            id: "chia-mining".to_string(),
+            title: "Chia Mining".to_string(),
+            role: "hidden original tab".to_string(),
+            summary: "Original hidden HOMESERVER Chia Mining tab placeholder until the pane body is ported.".to_string(),
+            order: 70,
+            admin_only: false,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#chia-mining".to_string(),
+            state_route: "/api/panes/chia-mining".to_string(),
+        },
+        CrownPane {
+            id: "dhcp".to_string(),
+            title: "DHCP".to_string(),
+            role: "hidden original tab".to_string(),
+            summary: "Original hidden HOMESERVER DHCP tab placeholder until the pane body is ported.".to_string(),
+            order: 80,
+            admin_only: false,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#dhcp".to_string(),
+            state_route: "/api/panes/dhcp".to_string(),
+        },
+        CrownPane {
+            id: "youtube".to_string(),
+            title: "YouTube".to_string(),
+            role: "hidden original tab".to_string(),
+            summary: "Original hidden HOMESERVER YouTube tab placeholder until the pane body is ported.".to_string(),
+            order: 90,
+            admin_only: false,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#youtube".to_string(),
+            state_route: "/api/panes/youtube".to_string(),
+        },
+        CrownPane {
             id: "testtab".to_string(),
             title: "TestTab".to_string(),
             role: "stock UX laboratory".to_string(),
             summary: "Native stock component showcase and theme truth surface built from composable UX primitives.".to_string(),
-            order: 40,
-            admin_only: false,
+            order: 100,
+            admin_only: true,
             install_mode: InstallMode::FirstPartyNative,
             route: "/#testtab".to_string(),
             state_route: "/api/panes/testtab".to_string(),
@@ -96,7 +162,7 @@ fn registry_readback() -> RegistryReadback {
     RegistryReadback {
         schema: "coronatio.registry.v1".to_string(),
         source_contract: "homeserver.json tabs.{config,visibility,data,starred}".to_string(),
-        starred_tab: "upload".to_string(),
+        starred_tab: "stats".to_string(),
         default_route_tab: initial_tab(true, None, false),
         force_tab_bar_visibility: false,
         visible_tabs_user: visible_tab_ids(&native_tab_contracts, false),
@@ -109,16 +175,22 @@ fn registry_readback() -> RegistryReadback {
 fn native_tab_contracts() -> Vec<CoronatioTabContract> {
     native_crown_panes()
         .into_iter()
-        .map(|pane| CoronatioTabContract {
-            id: pane.id.clone(),
-            display_name: pane.title.clone(),
-            order: pane.order,
-            enabled: true,
-            admin_only: pane.admin_only,
-            visibility: TabVisibility::default(),
-            install_mode: pane.install_mode,
-            route: pane.route,
-            state_route: pane.state_route,
+        .map(|pane| {
+            let mut visibility = TabVisibility::default();
+            if matches!(pane.id.as_str(), "chia-mining" | "dhcp" | "youtube") {
+                visibility.tab = false;
+            }
+            CoronatioTabContract {
+                id: pane.id.clone(),
+                display_name: pane.title.clone(),
+                order: pane.order,
+                enabled: true,
+                admin_only: pane.admin_only,
+                visibility,
+                install_mode: pane.install_mode,
+                route: pane.route,
+                state_route: pane.state_route,
+            }
         })
         .collect()
 }
@@ -185,7 +257,7 @@ fn initial_tab(connection_ok: bool, forced_tab: Option<&str>, is_admin: bool) ->
             return normalized;
         }
     }
-    let starred = normalize_tab_id("upload");
+    let starred = normalize_tab_id("stats");
     let starred_candidates = eligible_starred_tab_ids(&contracts);
     if starred_candidates.iter().any(|tab| tab == &starred) {
         starred

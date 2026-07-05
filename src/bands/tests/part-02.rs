@@ -177,7 +177,7 @@
             .await
             .unwrap();
         let list: TabList = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(list.native_panes.len(), 5);
+        assert_eq!(list.native_panes.len(), PRIMARY_TABS.len());
         assert_eq!(list.tabs.len(), 1);
         assert_eq!(list.tabs[0].id, "service-card");
         assert_eq!(list.tabs[0].install_mode, InstallMode::DynamicCartridge);
@@ -364,7 +364,7 @@
             "--theme-card-radius",
             "--theme-font-mono",
             "--primary: var(--theme-primary)",
-            "--theme-primary: #323840",
+            "--theme-primary: #A0AEC0",
             "--primaryHover",
             "--hiddenTabBackground",
             "aliasMap",
@@ -469,7 +469,7 @@
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("coronatio.favorite-manifest.response.v1"));
-        assert!(body.contains("\"starredTab\":\"portals\""));
+        assert!(body.contains("\"starredTab\":\"stats\""));
         assert!(body.contains("homeserver.json"));
         assert!(body.contains("tabs.{config,visibility,starred}"));
         assert!(!body.contains("static/favorites"));
@@ -480,13 +480,13 @@
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("coronatio.starred-tab.response.v1"));
-        assert!(body.contains("\"starred_tab\":\"portals\""));
+        assert!(body.contains("\"starred_tab\":\"stats\""));
         let response = app.oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let shell = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(shell.contains("const tabState = Object.assign({ starredTab: 'upload'"));
+        assert!(shell.contains("const tabState = Object.assign({ starredTab: 'stats'"));
         assert!(shell.contains("fetch('/api/favorites')"));
         assert!(shell.contains("fetch('/api/set_starred_tab'"));
-        assert!(shell.contains("Upload tab is starred"));
+        assert!(shell.contains("Stats tab is starred"));
     }
 

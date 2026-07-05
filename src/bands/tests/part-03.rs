@@ -18,12 +18,12 @@
             .unwrap();
         let registry: RegistryReadback = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(registry.schema, "coronatio.registry.v1");
-        assert_eq!(registry.starred_tab, "upload");
-        assert_eq!(registry.default_route_tab, "upload");
-        assert_eq!(registry.visible_tabs_user, ["stats", "portals", "upload", "testtab"]);
+        assert_eq!(registry.starred_tab, "stats");
+        assert_eq!(registry.default_route_tab, "stats");
+        assert_eq!(registry.visible_tabs_user, ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"]);
         assert_eq!(
             registry.visible_tabs_admin,
-            ["admin", "stats", "portals", "upload", "testtab"]
+            ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube", "testtab"]
         );
         assert!(registry
             .validation_rules
@@ -51,7 +51,7 @@
             .unwrap();
         let startup: StartupReadback = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(startup.schema, "coronatio.startup.v1");
-        assert_eq!(startup.initial_tab, "upload");
+        assert_eq!(startup.initial_tab, "stats");
         assert_eq!(initial_tab(false, None, false), "fallback");
         assert_eq!(initial_tab(true, Some("@stats"), false), "stats");
         assert!(startup.default_route_law.contains("forced tab wins"));
@@ -379,7 +379,7 @@
         assert!(shell.contains(r#"data-admin-mode="false""#));
         assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));
         assert!(shell.contains(r#"querySelectorAll('[data-admin-only]:not([data-admin-only="false"])')"#));
-        assert!(shell.contains("const headerState = { theme: savedPreferredTheme || savedHeaderState.theme || 'dark', isAdmin: false };"));
+        assert!(shell.contains("const headerState = { theme: savedPreferredTheme || savedHeaderState.theme || 'light', isAdmin: false };"));
         assert!(shell.contains("localStorage.setItem(headerStateKey, JSON.stringify({ theme: headerState.theme }))"));
         assert!(!shell.contains("Object.assign({ theme: savedPreferredTheme || savedHeaderState.theme || 'dark', isAdmin: false }, savedHeaderState"));
         assert!(!shell.contains("localStorage.setItem(headerStateKey, JSON.stringify(headerState))"));
