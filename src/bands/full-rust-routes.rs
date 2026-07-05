@@ -93,8 +93,8 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/status/vpn/enable", post(homeserver_rust_mutation_route))
         .route("/api/status/vpn/disable", post(homeserver_rust_mutation_route))
         .route("/api/status/vpn/check-enabled", get(homeserver_rust_read_route))
-        .route("/api/files/browse", get(homeserver_rust_read_route))
-        .route("/api/files/browse-hierarchical", get(homeserver_rust_read_route))
+        .route("/api/files/browse", get(upload_browse_hierarchical_route))
+        .route("/api/files/browse-hierarchical", get(upload_browse_hierarchical_route))
         .route("/api/files/upload", post(upload_file_route))
         .route("/api/files/download", get(homeserver_rust_read_route))
         .route("/api/upload/force-permissions", post(homeserver_rust_mutation_route))
@@ -306,6 +306,9 @@ async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
         })),
     ).into_response()
 }
+
+
+include!("full-rust-routes/upload.rs");
 
 async fn upload_history_route() -> impl IntoResponse {
     Json(serde_json::json!({

@@ -104,6 +104,46 @@
     }
 
     #[test]
+    fn portals_grid_and_card_face_match_quarry_without_chips() {
+        let html = render_crown_shell();
+        assert!(html.contains(".portal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; align-items: stretch; width: 100%; }"));
+        assert!(html.contains(".portal-icon { width: 120px; height: 120px; object-fit: contain; border-radius: 8px;"));
+        assert!(html.contains(".portal-name { margin: .25rem 0 0; padding: 0; font-size: 1.2rem; font-weight: 500;"));
+        assert!(html.contains(".portal-description { margin: 0; color: var(--text); opacity: .8; font-size: .9rem; line-height: 1.4;"));
+        assert!(html.contains(r#"<img src="/api/portals/images/${encodeURIComponent(portal.name)}.png"#));
+        assert!(html.contains("<h2 class=\"portal-name\">${escapeHtml(portal.name)}</h2>"));
+        assert!(html.contains("<p class=\"portal-description\">${escapeHtml(portal.description || '')}</p>"));
+        let card = &html[html.find("function renderPortalCard").unwrap()..html.find("async function handlePortalServiceAction").unwrap()];
+        for forbidden in ["portal-service-row", "portal-chip", ":${escapeHtml(portal.port)}", "factory</span>", "custom</span>"] {
+            assert!(!card.contains(forbidden), "portal face still carries non-quarry chip/detail: {forbidden}");
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_browse_hierarchical_returns_real_directory_json() {
+        let root = test_tab_root("upload-browse-root");
+        let media = root.join("media");
+        let films = media.join("films");
+        std::fs::create_dir_all(&films).unwrap();
+        std::fs::create_dir_all(root.join("empty")).unwrap();
+        std::env::set_var("CORONATIO_UPLOAD_ROOT", &root);
+        let response = app(AppState { tab_root: Arc::new(test_tab_root("upload-browse-app")) })
+            .oneshot(Request::builder().uri("/api/files/browse-hierarchical?path=/mnt/nas&expand=true").body(Body::empty()).unwrap())
+            .await.unwrap();
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["schema"], "coronatio.upload.browse_hierarchical.v1");
+        assert_eq!(body["path"], root.display().to_string());
+        let entries = body["entries"].as_array().unwrap();
+        assert_eq!(entries[0]["name"], "empty");
+        assert_eq!(entries[1]["name"], "media");
+        assert_eq!(entries[1]["hasChildren"], true);
+        assert_eq!(entries[1]["path"], format!("{}/media", root.display()));
+    }
+
+    #[test]
     fn upload_viewport_ports_react_tablet_dom_grammar() {
         let html = render_crown_shell();
         assert!(html.contains(r#"class="upload-tablet" data-upload-viewport data-react-quarry="UploadTablet" data-identity-standard="one-to-one""#));
@@ -188,6 +228,9 @@
             "uploadState.selectedFiles",
             "uploadState.currentPath",
             "renderUploadProgress",
+            "setUploadDirectoryError",
+            "if (data.ok === false) { setUploadDirectoryError(data.error || '⚠️ NAS Storage Unavailable'); return; }",
+            "finally { if (loading) loading.hidden = true; }",
             "/api/files/browse-hierarchical?path=",
             "/api/upload/blacklist/update",
             "/api/upload/history/clear",
@@ -198,3 +241,24 @@
         }
     }
 
+
+    #[test]
+    fn css_sizing_ports_quarry_verbatim_values_for_port_005_and_retrofit() {
+        let html = render_crown_shell();
+        for required in [
+            "padding: 0 1rem;",
+            "height: calc(var(--theme-header-height) - 8px);",
+            "padding: 0 20px;",
+            "min-height: 48px;",
+            "width: 120px; height: 120px;",
+            "grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;",
+            "height: 180px; margin: 0;",
+            "min-width: 200px; padding: 8px 12px; border: 1px solid var(--border);",
+            "max-height: 70vh; width: 100%;",
+            "padding: 4px 8px; cursor: pointer; border-radius: 4px;",
+        ] {
+            assert!(html.contains(required), "missing verbatim quarry CSS value {required}");
+        }
+        let directory_rule = html.split(".directory-entry { ").nth(1).unwrap().split(" }").next().unwrap();
+        assert!(!directory_rule.contains("min-height"), "directory rows must not invent non-quarry row height: {directory_rule}");
+    }
