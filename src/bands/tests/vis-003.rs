@@ -106,13 +106,20 @@
     }
 
     #[test]
-    fn vis_003_e1_no_element_opacity_dim_and_e2_canonical_stat_key_wall() {
+    fn vis_003_e1_dimmed_hidden_css_and_e2_canonical_stat_key_wall() {
+        let shell_css = std::fs::read_to_string("src/bands/shell/ux/shell/base-and-chrome.css").unwrap();
         let stats_css = std::fs::read_to_string("src/bands/shell/ux/packs/stats.css").unwrap();
         let portals_css = std::fs::read_to_string("src/bands/shell/ux/packs/portals.css").unwrap();
-        for (name, css) in [("stats", &stats_css), ("portals", &portals_css)] {
-            for line in css.lines().filter(|line| line.contains("data-visible=\"false\"")) {
-                assert!(!line.contains("opacity"), "{name} hidden element rule still dims by opacity: {line}");
-            }
+        let hidden_tab_dim = r#"[data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; opacity: .7; }"#;
+        let hidden_stat_dim = r#"[data-admin-mode="true"] [data-stat-element-id][data-visible="false"]"#;
+        let hidden_portal_dim = r#"[data-admin-mode="true"] [data-portal-element][data-visible="false"] { display: block; opacity: .7; }"#;
+        assert!(shell_css.contains(hidden_tab_dim), "missing hidden tab dim selector: {hidden_tab_dim}");
+        assert!(stats_css.contains(hidden_stat_dim), "missing hidden stat element dim selector: {hidden_stat_dim}");
+        assert!(stats_css.contains("opacity: .7;"), "missing hidden stat element dim value");
+        assert!(portals_css.contains(hidden_portal_dim), "missing hidden portal element dim selector: {hidden_portal_dim}");
+        let retired_dim = format!(".{}", 48);
+        for (name, css) in [("shell", &shell_css), ("stats", &stats_css), ("portals", &portals_css)] {
+            assert!(!css.contains(&retired_dim), "{name} retained retired dim value {retired_dim}");
         }
         let shell = render_crown_shell_for_session(Session::Admin);
         assert!(shell.contains(r#"data-stat-element-id="network-chart""#));

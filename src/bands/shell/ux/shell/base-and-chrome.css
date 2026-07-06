@@ -272,7 +272,7 @@
     .tab:hover { background-color: var(--background-alt-hover); color: var(--text); transform: translateY(1px); }
     .tab.active, .tab[aria-selected="true"] { background: var(--primary); color: var(--text); border-color: var(--primary); border-top: 2px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,.1); }
     [data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }
-    [data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; }
+    [data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; opacity: .7; }
     .tab-visibility-column, .tab-star-column { display: grid; place-items: center; min-width: 24px; }
     .visibility-toggle, .star-button {
       display: grid;
@@ -350,7 +350,7 @@
     .ux-tab-star, .ux-tab-eye { display: inline-grid; place-items: center; min-width: 1.2em; color: var(--accent); font-weight: var(--theme-font-weight-bold); }
     .ux-tab-eye { color: var(--text-secondary); }
     .ux-tab-star.muted, .ux-tab-eye.muted { opacity: .52; color: var(--text-secondary); }
-    .ux-tab-faded, .ux-tab[data-hidden-tab="true"] { opacity: .48; background: var(--hiddenTabBackground); color: var(--hiddenTabText); border-style: dashed; }
+    .ux-tab-faded, .ux-tab[data-hidden-tab="true"] { opacity: .7; background: var(--hiddenTabBackground); color: var(--hiddenTabText); border-style: dashed; }
     .ux-button { min-height: var(--theme-control-height); padding: var(--theme-control-padding-y) var(--theme-control-padding-x); border: var(--theme-border-width) solid var(--theme-component-card-outline); border-radius: var(--theme-radius-md); background: var(--theme-component-button-container); color: var(--theme-component-button-on-container); font-weight: var(--theme-font-weight-bold); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--theme-spacing-xs); box-shadow: var(--theme-elevation-1); position: relative; overflow: hidden; }
     .ux-button:hover { background: var(--theme-component-button-hover-container); border-color: var(--theme-outline); transform: translateY(-1px); box-shadow: var(--theme-elevation-2); }
     .ux-button:active { transform: translateY(0); box-shadow: var(--theme-elevation-1); }
@@ -381,7 +381,7 @@
     .ux-select { appearance: none; -webkit-appearance: none; min-height: var(--theme-control-height); padding-right: calc(var(--theme-control-padding-x) + 34px); border-radius: var(--theme-radius-pill); cursor: pointer; font-weight: var(--theme-font-weight-medium); background: linear-gradient(180deg, color-mix(in srgb, var(--theme-surface-2) 78%, var(--theme-highlight-subtle)), var(--theme-surface-1)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), var(--theme-elevation-1); }
     .ux-select:hover { border-color: var(--theme-outline); background: linear-gradient(180deg, color-mix(in srgb, var(--theme-surface-3) 82%, var(--theme-highlight-subtle)), var(--theme-surface-2)); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), var(--theme-elevation-2); transform: translateY(-1px); }
     .ux-select:active { transform: translateY(0); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), var(--theme-elevation-1); }
-    .ux-select:disabled { opacity: .48; cursor: not-allowed; transform: none; box-shadow: none; }
+    .ux-select:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
     .ux-field:hover, .ux-textbox:hover { border-color: var(--theme-outline); background: var(--theme-surface-1); }
     .ux-field:focus, .ux-select:focus, .ux-textbox:focus { outline: none; box-shadow: var(--theme-highlight-ring); border-color: var(--theme-focus-color); }
     .ux-toggle, .ux-checkbox { display: inline-flex; align-items: center; gap: var(--theme-spacing-sm); min-height: 32px; padding: var(--theme-spacing-xs) var(--theme-spacing-sm); border-radius: var(--theme-radius-pill); cursor: pointer; color: var(--text); }

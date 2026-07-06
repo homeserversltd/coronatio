@@ -725,7 +725,7 @@
 /* UXPORT-004 verbatim sizing receipts preserved for existing walls: width: 120px; height: 120px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; */
 /* UXPORT-004 VIS-deferred current admin-mode behavior retained while declarations move into portals pack. */
 [data-admin-mode="false"] [data-portal-element][data-visible="false"] { display: none !important; }
-[data-admin-mode="true"] [data-portal-element][data-visible="false"] { display: block; }
+[data-admin-mode="true"] [data-portal-element][data-visible="false"] { display: block; opacity: .7; }
 
 /* UXPORT-004 loading/empty/error shells use og portal-card vocabulary without generic card helper. */
 .portal-loading, .portal-empty, .portal-error { align-items: center; text-align: center; justify-content: center; }
