@@ -63,6 +63,7 @@
     #[tokio::test(flavor = "current_thread")]
     async fn vis_002_visibility_write_persists_config_and_returns_new_plan_fragment() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _pulse_guard = pulse_test_lock().lock().await;
         let temp = test_tab_root("vis-002-visibility");
         let config = temp.join("homeserver.json");
         vis_002_fixture_config(&config);
@@ -84,6 +85,7 @@
     #[tokio::test(flavor = "current_thread")]
     async fn vis_002_star_write_uses_iris_invariant_and_returns_fragment() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _pulse_guard = pulse_test_lock().lock().await;
         let temp = test_tab_root("vis-002-star");
         let config = temp.join("homeserver.json");
         vis_002_fixture_config(&config);

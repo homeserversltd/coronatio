@@ -195,6 +195,7 @@ async fn set_starred_tab_route(headers: axum::http::HeaderMap, Json(request): Js
     if let Err(error) = persist_iris_facts(&next).await {
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": error}))).into_response();
     }
+    pulse::poke(pulse::PokeTopic::TabsChanged);
     tab_bar_html_response(session_from_headers(&headers))
 }
 
@@ -226,6 +227,7 @@ async fn tab_visibility_route(headers: axum::http::HeaderMap, Json(request): Jso
     if let Err(error) = persist_iris_facts(&next).await {
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": error}))).into_response();
     }
+    pulse::poke(pulse::PokeTopic::TabsChanged);
     tab_bar_html_response(Session::Admin)
 }
 
