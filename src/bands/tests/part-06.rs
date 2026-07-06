@@ -173,3 +173,91 @@
         assert!(portals.contains("aria-disabled=\"true\""));
     }
 
+
+
+    #[test]
+    fn uxport_005_admin_source_library_and_drain_walls() {
+        let html = render_crown_shell();
+        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
+        for citation in [
+            "src/tablets/admin/index.tsx",
+            "components/SystemControls.tsx",
+            "components/KeyManager.tsx",
+            "components/DiskManager.tsx",
+            "SystemControls.css",
+            "KeyManager.css",
+            "DiskManager.css",
+        ] {
+            assert!(html.contains(citation) || map.contains(citation), "missing admin og citation {citation}");
+        }
+        assert!(html.contains("UXPORT-005 LIBRARY band: og src/tablets/admin admin domain pack"));
+        for receipt in [
+            "pane-root=ABSORB",
+            "admin-index-inline-fold=ABSORB",
+            "system-controls=ABSORB",
+            "service-toggle=ABSORB",
+            "key-manager-root-layout=ABSORB",
+            "security-status=ABSORB",
+            "key-action-buttons=ABSORB",
+            "disk-manager-root-layout=ABSORB",
+            "disk-item-state-family=ABSORB",
+            "disk-metadata-badges=ABSORB",
+            "disk-action-buttons=ABSORB",
+            "admin-modals=CONTINUATION",
+            "modal-basic-buttons=CONTINUATION",
+        ] {
+            assert!(html.contains(receipt) || map.contains(receipt), "missing admin declaration-diff receipt {receipt}");
+        }
+        let holding_pen = std::fs::read_to_string("src/bands/shell/ux/shell/document-2-css.css").unwrap();
+        for drained in [".admin-tablet", ".system-controls", ".system-controls-btn", ".ssh-control", ".samba-control", ".key-manager", ".security-status", ".disk-manager", ".disk-item", ".disk-actions"] {
+            assert!(!holding_pen.contains(drained), "admin system/key/disk selector remained in document-2 holding pen: {drained}");
+            assert!(html.contains(drained), "drained admin selector not served from admin pack: {drained}");
+        }
+        assert!(!html.contains("admin-visual-port"), "Rust-only admin visual helper remained after admin pack absorption");
+        assert!(SHELL_UX_CHILDREN.contains(&"packs/admin.css"));
+    }
+
+    #[test]
+    fn uxport_005_admin_markup_restores_first_three_og_structures_and_defers_modals_vis() {
+        let html = render_crown_shell();
+        let admin_start = html.find("class=\"admin-tablet\"").unwrap();
+        let admin_end = html.find("id=\"pane-stats\"").unwrap();
+        let admin = &html[admin_start..admin_end];
+        for required in [
+            "class=\"admin-tablet\"",
+            "class=\"mb-6\" style=\"margin-bottom: 0.5rem\"",
+            "class=\"system-controls-container\"",
+            "class=\"system-controls\"",
+            "class=\"system-controls-btn\"",
+            "class=\"ssh-controls\"",
+            "class=\"ssh-status\"",
+            "class=\"ssh-toggle\"",
+            "class=\"toggle-switch\"",
+            "class=\"toggle-slider\"",
+            "class=\"toggle-label\"",
+            "class=\"samba-status\"",
+            "class=\"samba-toggle\"",
+            "class=\"key-manager-content\"",
+            "class=\"key-manager-left\"",
+            "class=\"key-manager-right\"",
+            "class=\"security-status\"",
+            "class=\"status-icon secure\"",
+            "class=\"action-button create-button\"",
+            "class=\"action-button update-button\"",
+            "class=\"action-button admin-password-button\"",
+            "class=\"disk-manager-container\"",
+            "class=\"disk-column\"",
+            "class=\"disk-list\"",
+            "disk-item",
+            "disk-space-usage",
+        ] {
+            assert!(admin.contains(required), "admin markup missing og class stack {required}");
+        }
+        let before_modals = &admin[..admin.find("class=\"admin-modal-shelf\"").unwrap()];
+        assert!(!before_modals.contains("class=\"system-controls-btn admin-quarry-button\""));
+        assert!(!before_modals.contains("class=\"action-button create-button admin-quarry-button\""));
+        assert!(!before_modals.contains("class=\"action-button update-button admin-quarry-button\""));
+        assert!(!before_modals.contains("class=\"action-button admin-password-button admin-quarry-button\""));
+        assert!(admin.contains("class=\"admin-modal-shelf\""), "modal shelf remains as continuation boundary");
+        assert!(std::fs::read_to_string("docs/great-porting-map.md").unwrap().contains("modal rows remain continuation"));
+    }

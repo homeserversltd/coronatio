@@ -63,7 +63,7 @@
         assert!(!shell.contains("Drive Actions"));
         assert!(!shell.contains("Format Drive"));
         assert!(!shell.contains("Assign as primary NAS"));
-        assert!(shell.contains(r#"data-admin-visual-port="one-to-one-best-effort""#));
+        assert!(!shell.contains("admin-visual-port"));
         assert!(shell.contains("system-controls-btn"));
         assert!(shell.contains("key-manager-content"));
         assert!(shell.contains("disk-manager-container"));
