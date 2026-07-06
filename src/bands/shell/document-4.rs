@@ -518,24 +518,48 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       if (action === 'status') showPortalServiceStatus(results);
     }
 
+    function bindPortalFragmentControls(grid) {
+      grid.querySelectorAll('[data-portal-card]').forEach(card => {
+        const open = () => { const url = card.dataset.portalUrl; if (url && url !== '#') window.open(url, '_blank', 'noopener,noreferrer'); };
+        card.addEventListener('click', open);
+        card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+      });
+      grid.querySelectorAll('[data-service-action]').forEach(button => button.addEventListener('click', handlePortalServiceAction));
+    }
+    async function refreshElementFragment(tabId) {
+      const token = localStorage.getItem('coronatioAdminToken');
+      const headers = token ? { 'X-Admin-Token': token } : {};
+      const route = tabId === 'portals' ? '/api/portals/elements' : '/api/stats/elements';
+      const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
+      if (!target) return;
+      const response = await fetch(route, { headers, cache: 'no-store' });
+      if (!response.ok) return;
+      target.innerHTML = await response.text();
+      if (tabId === 'portals') bindPortalFragmentControls(target);
+      if (tabId === 'stats') hydrateStats();
+      setAdminMode(headerState.isAdmin);
+    }
+    async function toggleElementVisibility(tabId, elementId, visible) {
+      const token = localStorage.getItem('coronatioAdminToken');
+      const response = await fetch('/api/tabs/elements', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
+        body: JSON.stringify({ tabId, elementId, visibility: visible })
+      });
+      const html = await response.text();
+      if (!response.ok) return;
+      const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
+      if (!target) return;
+      target.innerHTML = html;
+      if (tabId === 'portals') bindPortalFragmentControls(target);
+      if (tabId === 'stats') hydrateStats();
+      setAdminMode(headerState.isAdmin);
+    }
     async function hydratePortals() {
       const grid = document.querySelector('[data-portals-grid]');
       if (!grid) return;
-      try {
-        const data = await fetch(grid.dataset.portalsSource || '/api/portals').then(r => r.json());
-        const portals = data.portals || [];
-        const factoryNames = data.factoryPortals || [];
-        grid.innerHTML = (portals.length ? portals.map(portal => renderPortalCard(portal, factoryNames)).join('') : '<article class="portal-card portal-empty"><h2>No portals configured</h2><p>homeserver.json has no portal entries.</p></article>') + renderAddPortalCard();
-        grid.querySelectorAll('[data-portal-card]').forEach(card => {
-          const open = () => { const url = card.dataset.portalUrl; if (url && url !== '#') window.open(url, '_blank', 'noopener,noreferrer'); };
-          card.addEventListener('click', open);
-          card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
-        });
-        grid.querySelectorAll('[data-service-action]').forEach(button => button.addEventListener('click', handlePortalServiceAction));
-        setAdminMode(headerState.isAdmin);
-      } catch (error) {
-        grid.innerHTML = '<article class="portal-card error portal-error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>' + renderAddPortalCard();
-      }
+      try { await refreshElementFragment('portals'); }
+      catch (error) { grid.innerHTML = '<article class="portal-card error portal-error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>' + renderAddPortalCard(); }
     }
 
     async function hydrateFavoriteManifest() {
@@ -574,6 +598,10 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     document.body.addEventListener('click', event => {
       const scopedTab = event.target.closest('[data-tab-id]');
       if (scopedTab) return switchScopedTabs(scopedTab);
+      const portalEye = event.target.closest('[data-portal-visibility-toggle]');
+      if (portalEye) { event.preventDefault(); event.stopPropagation(); toggleElementVisibility('portals', portalEye.dataset.portalVisibilityToggle, portalEye.dataset.visible !== 'true'); return; }
+      const statEye = event.target.closest('[data-stat-visibility-toggle]');
+      if (statEye) { event.preventDefault(); event.stopPropagation(); toggleElementVisibility('stats', statEye.dataset.statVisibilityToggle, statEye.dataset.visible !== 'true'); return; }
       const addPortal = event.target.closest('[data-add-portal-open]');
       if (addPortal) { openPortalModal('[data-add-portal-modal]'); return; }
       const portalModalClose = event.target.closest('[data-portal-modal-close]');

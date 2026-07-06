@@ -229,6 +229,7 @@ async fn tab_visibility_route(headers: axum::http::HeaderMap, Json(request): Jso
     tab_bar_html_response(Session::Admin)
 }
 
+
 #[derive(Debug, Clone, Deserialize)]
 struct TabBarFragmentQuery {
     active: Option<String>,
