@@ -16,4 +16,5 @@ mod tests {
     include!("tests/vis-003.rs");
     include!("tests/pulse-walls.rs");
     include!("tests/stats-projection-walls.rs");
+    include!("tests/internet-status-projection-walls.rs");
 }

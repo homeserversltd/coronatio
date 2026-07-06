@@ -349,39 +349,42 @@ async fn upload_pin_required_route() -> impl IntoResponse {
     }))
 }
 
-async fn internet_status_route() -> impl IntoResponse {
-    internet_status_response()
+async fn internet_status_route(headers: axum::http::HeaderMap) -> Response {
+    let raw = internet_status_snapshot();
+    match session_from_headers(&headers) {
+        Session::Admin => Json(project_internet_status_admin(&raw)).into_response(),
+        Session::Guest => Json(project_internet_status_guest(&raw)).into_response(),
+    }
 }
 
-fn internet_status_response() -> Response {
-    let connected = ["1.1.1.1:53", "8.8.8.8:53", "208.67.222.222:53"]
+fn internet_status_snapshot() -> InternetStatusSnapshot {
+    const INTERNET_STATUS_PROBE_HOSTS: [&str; 3] = ["1.1.1.1", "8.8.8.8", "208.67.222.222"];
+    const INTERNET_STATUS_TIMEOUT_SECONDS: u64 = 3;
+    let connected = INTERNET_STATUS_PROBE_HOSTS
         .iter()
+        .map(|host| format!("{host}:53"))
         .any(|authority| {
             authority
                 .parse::<SocketAddr>()
                 .ok()
-                .and_then(|addr| TcpStream::connect_timeout(&addr, Duration::from_secs(3)).ok())
+                .and_then(|addr| TcpStream::connect_timeout(&addr, Duration::from_secs(INTERNET_STATUS_TIMEOUT_SECONDS)).ok())
                 .is_some()
         });
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs_f64())
         .unwrap_or(0.0);
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "schema": "coronatio.internet.status.v1",
-            "ok": true,
-            "success": true,
-            "status": if connected { "connected" } else { "disconnected" },
-            "timestamp": timestamp,
-            "authority": "Coronatio Rust route port of Flask InternetStatusMonitor.check_connectivity",
-            "hosts": ["1.1.1.1", "8.8.8.8", "208.67.222.222"],
-            "timeoutSeconds": 3,
-            "firstMissingSignal": "none"
-        })),
-    )
-        .into_response()
+    InternetStatusSnapshot {
+        schema: "coronatio.internet.status.v1".to_string(),
+        ok: true,
+        success: true,
+        status: if connected { "connected" } else { "disconnected" }.to_string(),
+        timestamp,
+        authority: "Coronatio Rust route port of Flask InternetStatusMonitor.check_connectivity".to_string(),
+        hosts: INTERNET_STATUS_PROBE_HOSTS.iter().map(|host| (*host).to_string()).collect(),
+        timeout_seconds: INTERNET_STATUS_TIMEOUT_SECONDS,
+        first_missing_signal: "none".to_string(),
+    }
 }
 
 
