@@ -185,42 +185,49 @@ fn native_tab_contracts() -> Vec<CoronatioTabContract> {
 }
 
 fn visible_tab_ids(tabs: &[CoronatioTabContract], is_admin: bool) -> Vec<String> {
-    let mut visible = tabs
-        .iter()
-        .filter(|tab| tab.enabled && tab_accessible_in_mode(tab, is_admin))
-        .collect::<Vec<_>>();
-    visible.sort_by(|left, right| left.order.cmp(&right.order).then(left.id.cmp(&right.id)));
-    visible.into_iter().map(|tab| tab.id.clone()).collect()
+    let facts = iris::from_coronatio_contracts(tabs, "stats");
+    iris::plan(&facts, registry_session(is_admin))
+        .tabs
+        .into_iter()
+        .filter(|grant| grant.tab_id != "fallback")
+        .map(|grant| grant.tab_id)
+        .collect()
 }
 
 fn tab_accessible_in_mode(tab: &CoronatioTabContract, is_admin: bool) -> bool {
-    if is_admin {
-        !tab.id.eq("fallback")
-    } else {
-        tab.visibility.tab && !tab.admin_only
-    }
+    let facts = iris::from_coronatio_contracts(&[tab.clone()], "stats");
+    iris::plan(&facts, registry_session(is_admin))
+        .tabs
+        .iter()
+        .any(|grant| grant.tab_id == tab.id)
 }
 
 fn selectable_tab_ids(tabs: &[CoronatioTabContract], is_admin: bool) -> Vec<String> {
-    let mut visible = tabs
-        .iter()
-        .filter(|tab| {
-            tab.enabled && tab.visibility.tab && (!tab.admin_only || is_admin) && !tab.id.eq("fallback")
-        })
-        .collect::<Vec<_>>();
-    visible.sort_by(|left, right| left.order.cmp(&right.order).then(left.id.cmp(&right.id)));
-    visible.into_iter().map(|tab| tab.id.clone()).collect()
+    let facts = iris::from_coronatio_contracts(tabs, "stats");
+    iris::plan(&facts, registry_session(is_admin))
+        .tabs
+        .into_iter()
+        .filter(|grant| grant.tab_id != "fallback" && grant.state == RenderState::Visible)
+        .map(|grant| grant.tab_id)
+        .collect()
 }
 
 fn eligible_starred_tab_ids(tabs: &[CoronatioTabContract]) -> Vec<String> {
-    let mut visible = tabs
-        .iter()
-        .filter(|tab| {
-            tab.enabled && tab.visibility.tab && !tab.admin_only && !tab.id.eq("fallback")
-        })
-        .collect::<Vec<_>>();
-    visible.sort_by(|left, right| left.order.cmp(&right.order).then(left.id.cmp(&right.id)));
-    visible.into_iter().map(|tab| tab.id.clone()).collect()
+    let facts = iris::from_coronatio_contracts(tabs, "stats");
+    iris::plan(&facts, Session::Admin)
+        .tabs
+        .into_iter()
+        .filter(|grant| grant.star_eligible)
+        .map(|grant| grant.tab_id)
+        .collect()
+}
+
+fn registry_session(is_admin: bool) -> Session {
+    if is_admin {
+        Session::Admin
+    } else {
+        Session::Guest
+    }
 }
 
 fn registry_validation_rules() -> Vec<ValidationRule> {
