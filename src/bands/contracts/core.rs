@@ -11,6 +11,70 @@ struct BoundaryReadback {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+struct InternetStatusSnapshot {
+    schema: String,
+    ok: bool,
+    success: bool,
+    status: String,
+    timestamp: f64,
+    authority: String,
+    hosts: Vec<String>,
+    timeout_seconds: u64,
+    first_missing_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct InternetStatusGuestProjection {
+    schema: String,
+    ok: bool,
+    success: bool,
+    status: String,
+    timestamp: f64,
+    first_missing_signal: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct InternetStatusAdminProjection {
+    schema: String,
+    ok: bool,
+    success: bool,
+    status: String,
+    timestamp: f64,
+    authority: String,
+    hosts: Vec<String>,
+    timeout_seconds: u64,
+    first_missing_signal: String,
+}
+
+fn project_internet_status_guest(raw: &InternetStatusSnapshot) -> InternetStatusGuestProjection {
+    InternetStatusGuestProjection {
+        schema: raw.schema.clone(),
+        ok: raw.ok,
+        success: raw.success,
+        status: raw.status.clone(),
+        timestamp: raw.timestamp,
+        first_missing_signal: raw.first_missing_signal.clone(),
+    }
+}
+
+fn project_internet_status_admin(raw: &InternetStatusSnapshot) -> InternetStatusAdminProjection {
+    InternetStatusAdminProjection {
+        schema: raw.schema.clone(),
+        ok: raw.ok,
+        success: raw.success,
+        status: raw.status.clone(),
+        timestamp: raw.timestamp,
+        authority: raw.authority.clone(),
+        hosts: raw.hosts.clone(),
+        timeout_seconds: raw.timeout_seconds,
+        first_missing_signal: raw.first_missing_signal.clone(),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 struct StatsSnapshot {
     schema: String,
     pane_id: String,
