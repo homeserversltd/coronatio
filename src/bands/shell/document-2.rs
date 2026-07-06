@@ -50,17 +50,18 @@ fn shell_document_2() -> &'static str {
     <section class="content">
       <section class="pane" id="pane-admin" data-pane-panel="admin" data-view-panel="admin" role="tabpanel" aria-label="Admin">
 
-        <div class="admin-tablet admin-visual-port" data-admin-quarry="flask-react-admin" data-admin-quarry-button-total="74" data-admin-only="true" data-admin-viewport="admin" data-admin-visual-port="one-to-one-best-effort">
-          <section class="system-controls-container" data-admin-quarry-group="system-controls" aria-label="System controls">
+        <div class="admin-tablet" data-admin-quarry="flask-react-admin" data-admin-quarry-button-total="74" data-admin-only="true" data-admin-viewport="admin">
+          <section class="mb-6" style="margin-bottom: 0.5rem">
+          <div class="system-controls-container" data-admin-quarry-group="system-controls" aria-label="System controls">
             <span class="admin-quarry-note" data-admin-quarry-count-readback hidden>74 buttons</span>
             <div class="system-controls" data-admin-action-strip="single-row" data-admin-action-strip-count="7">
-              <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="1" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="1" data-admin-action-id="hard-drive-test" hx-post="/admit/admin/action/hard-drive-test" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">▣</span><span>Hard Drive Test</span></button>
-              <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="2" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="2" data-admin-action-id="update" hx-post="/admit/admin/action/update" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">⬇</span><span>Update</span></button>
-              <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="3" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="3" data-admin-action-id="restart" hx-post="/admit/admin/action/restart" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Double Click to Restart: confirm system restart."><span class="admin-action-icon">⟳</span><span>Restart</span></button>
-              <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="4" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="4" data-admin-action-id="shutdown" hx-post="/admit/admin/action/shutdown" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Double Click to Shut Down: confirm system shutdown."><span class="admin-action-icon">⏻</span><span>Shutdown</span></button>
-              <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="5" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="5" data-admin-action-id="restart-website" hx-post="/admit/admin/action/restart-website" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">↻</span><span>Restart Website</span></button>
-              <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="6" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="6" data-admin-action-id="view-logs" hx-get="/admit/admin/action/view-logs" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">▤</span><span>View Logs</span></button>
-              <button type="button" class="system-controls-btn admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="7" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="7" data-admin-action-id="install-certificate" hx-post="/admit/admin/action/install-certificate" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">◆</span><span>Install Certificate</span></button>
+              <button type="button" class="system-controls-btn" data-admin-quarry-button data-admin-quarry-index="1" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="1" data-admin-action-id="hard-drive-test" hx-post="/admit/admin/action/hard-drive-test" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">▣</span><span>Hard Drive Test</span></button>
+              <button type="button" class="system-controls-btn" data-admin-quarry-button data-admin-quarry-index="2" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="2" data-admin-action-id="update" hx-post="/admit/admin/action/update" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">⬇</span><span>Update</span></button>
+              <button type="button" class="system-controls-btn" data-admin-quarry-button data-admin-quarry-index="3" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="3" data-admin-action-id="restart" hx-post="/admit/admin/action/restart" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Double Click to Restart: confirm system restart."><span class="admin-action-icon">⟳</span><span>Restart</span></button>
+              <button type="button" class="system-controls-btn" data-admin-quarry-button data-admin-quarry-index="4" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="4" data-admin-action-id="shutdown" hx-post="/admit/admin/action/shutdown" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Double Click to Shut Down: confirm system shutdown."><span class="admin-action-icon">⏻</span><span>Shutdown</span></button>
+              <button type="button" class="system-controls-btn" data-admin-quarry-button data-admin-quarry-index="5" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="5" data-admin-action-id="restart-website" hx-post="/admit/admin/action/restart-website" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">↻</span><span>Restart Website</span></button>
+              <button type="button" class="system-controls-btn" data-admin-quarry-button data-admin-quarry-index="6" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="6" data-admin-action-id="view-logs" hx-get="/admit/admin/action/view-logs" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">▤</span><span>View Logs</span></button>
+              <button type="button" class="system-controls-btn" data-admin-quarry-button data-admin-quarry-index="7" data-admin-quarry-source="components/SystemControls.tsx" data-admin-quarry-placement="main admin action row" data-admin-quarry-local-index="7" data-admin-action-id="install-certificate" hx-post="/admit/admin/action/install-certificate" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">◆</span><span>Install Certificate</span></button>
             </div>
             <div class="update-status-container" data-admin-action-result data-og-affordance="toast-mapped-to-result-strip" aria-live="polite">Ready</div>
             <span class="admin-quarry-note" hidden>7 buttons · system-controls</span>
@@ -77,9 +78,11 @@ fn shell_document_2() -> &'static str {
                 __ADMIN_SAMBA_SERVICE_CARD__
               </div>
             </div>
+          </div>
           </section>
 
-          <section class="key-manager" data-admin-quarry-group="key-manager">
+          <section class="mb-6" style="margin-bottom: 0.5rem">
+          <div class="key-manager" data-admin-quarry-group="key-manager">
             <h3><span class="admin-action-icon">⚿</span> Key Management</h3>
             <div class="key-manager-content">
               <div class="key-manager-left">
@@ -88,19 +91,22 @@ fn shell_document_2() -> &'static str {
                 </div>
               </div>
               <div class="key-manager-right"><div class="key-actions">
-                <button type="button" class="action-button create-button admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="21" data-admin-quarry-source="components/KeyManager.tsx" data-admin-quarry-placement="key manager card" data-admin-quarry-local-index="2" data-stub-action="true" aria-disabled="true" ><span>+ Create New Key</span></button>
-                <button type="button" class="action-button update-button admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="22" data-admin-quarry-source="components/KeyManager.tsx" data-admin-quarry-placement="key manager card" data-admin-quarry-local-index="3" data-stub-action="true" aria-disabled="true" ><span>⟳ Update Key on Drive</span></button>
-                <button type="button" class="action-button admin-password-button admin-quarry-button" data-admin-quarry-button data-admin-quarry-index="23" data-admin-quarry-source="components/KeyManager.tsx" data-admin-quarry-placement="key manager card" data-admin-quarry-local-index="4" data-stub-action="true" aria-disabled="true" ><span>🔒 Admin Password</span></button>
+                <button type="button" class="action-button create-button" data-admin-quarry-button data-admin-quarry-index="21" data-admin-quarry-source="components/KeyManager.tsx" data-admin-quarry-placement="key manager card" data-admin-quarry-local-index="2" data-stub-action="true" aria-disabled="true" ><span>+ Create New Key</span></button>
+                <button type="button" class="action-button update-button" data-admin-quarry-button data-admin-quarry-index="22" data-admin-quarry-source="components/KeyManager.tsx" data-admin-quarry-placement="key manager card" data-admin-quarry-local-index="3" data-stub-action="true" aria-disabled="true" ><span>⟳ Update Key on Drive</span></button>
+                <button type="button" class="action-button admin-password-button" data-admin-quarry-button data-admin-quarry-index="23" data-admin-quarry-source="components/KeyManager.tsx" data-admin-quarry-placement="key manager card" data-admin-quarry-local-index="4" data-stub-action="true" aria-disabled="true" ><span>🔒 Admin Password</span></button>
               </div></div>
             </div>
             <span class="admin-quarry-note" hidden>3 buttons · key-manager</span>
+          </div>
           </section>
 
-          <section class="disk-manager" data-admin-quarry-group="disk-manager">
+          <section class="mb-6" style="margin-bottom: 0.5rem">
+          <div class="disk-manager" data-admin-quarry-group="disk-manager">
             <div class="disk-manager-container">
               <div class="disk-column"><h4>Available Devices</h4><div class="disk-list" data-admin-devices-readback="/api/services/data">__ADMIN_AVAILABLE_DEVICES__</div></div>
               <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list" data-admin-mounts-readback="/api/services/data">__ADMIN_MOUNT_DESTINATIONS__</div></div>
             </div>
+          </div>
           </section>
 
           <section class="admin-modal-shelf" aria-label="Admin modal controls">

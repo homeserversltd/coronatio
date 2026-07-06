@@ -31,6 +31,7 @@ const SHELL_UX_CHILDREN: &[&str] = &[
     "packs/upload.css",
     "packs/stats.css",
     "packs/portals.css",
+    "packs/admin.css",
     "shell/document-2-css.css",
 ];
 const SHELL_UX_CONTENTS: &[&str] = &[
@@ -60,6 +61,7 @@ const SHELL_UX_CONTENTS: &[&str] = &[
     include_str!("ux/packs/upload.css"),
     include_str!("ux/packs/stats.css"),
     include_str!("ux/packs/portals.css"),
+    include_str!("ux/packs/admin.css"),
     include_str!("ux/shell/document-2-css.css"),
 ];
 
