@@ -218,6 +218,7 @@
         .oneshot(
             Request::builder()
                 .uri("/api/stats")
+                .header("X-Admin-Token", authorize_test_admin_token())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -227,8 +228,9 @@
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
-        let snapshot: StatsSnapshot = serde_json::from_slice(&bytes).unwrap();
+        let snapshot: SystemStatsAdminProjection = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(snapshot.schema, "coronatio.stats.snapshot.v1");
+        assert_eq!(snapshot.topic, "system.stats");
         assert_eq!(snapshot.pane_id, "stats");
         assert_eq!(snapshot.product, "Coronatio");
         assert_eq!(snapshot.transport.snapshot_route, "/api/stats");
@@ -397,7 +399,8 @@
             "function meaningfulInterface(iface)",
             "name === 'docker0'",
             "name.startsWith('br-')",
-            "if (name === 'tailscale0') return 'Tailscale VPN';",
+            "if (name.startsWith('wl')) return 'Wi-Fi';",
+            "if (name.startsWith('en')) return 'Ethernet';",
             "if (mount === '/mnt/nas') return 'nas';",
             "if (mount === '/mnt/nasbackup') return 'nasbackup';",
             "if ((device.device || '').includes('sda6')) return 'sda6';",

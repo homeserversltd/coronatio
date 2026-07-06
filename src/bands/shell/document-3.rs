@@ -480,6 +480,9 @@ fn shell_document_3() -> &'static str {
         const active = currentActiveTabId();
         refreshTabBar(active).then(selected => { if (selected) showPane(selected); }).catch(() => {});
       });
+      pulseStream.addEventListener('stats.tick', () => {
+        refreshElementFragment('stats').catch(() => {});
+      });
       pulseStream.addEventListener('pulse.expired', reconnectPulseStream);
       pulseStream.addEventListener('error', () => {
         if (pulseStream && pulseStream.readyState === EventSource.CLOSED) reconnectPulseStream();
