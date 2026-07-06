@@ -42,17 +42,21 @@ fn shell_document_3() -> &'static str {
         adminButton.textContent = headerState.isAdmin ? 'Exit Admin Mode' : 'Enter Admin Mode';
       }
       if (appRoot) appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
-      if (headerState.isAdmin) localStorage.setItem('coronatioAdminToken', 'coronatio-session-token');
-      else localStorage.removeItem('coronatioAdminToken');
+      if (!headerState.isAdmin) {
+        const token = localStorage.getItem('coronatioAdminToken');
+        if (token) fetch('/api/logout', { method: 'POST', headers: { 'X-Admin-Token': token } }).catch(() => {});
+        localStorage.removeItem('coronatioAdminToken');
+      }
       if (tabBar) tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
       document.querySelectorAll('[data-admin-only]:not([data-admin-only="false"])').forEach(el => {
         el.hidden = !headerState.isAdmin;
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
       if (changePinButton) changePinButton.hidden = !headerState.isAdmin;
-      applyTabBarVisibility();
-      if (wasAdmin && !headerState.isAdmin) reconcileActiveTabAfterAdminExit(previousActive);
-      else if (headerState.isAdmin && previousActive === fallbackTab) showPane(firstVisibleTab());
+      refreshTabBar(previousActive).then(selectedTab => {
+        applyTabBarVisibility();
+        if (selectedTab) showPane(selectedTab);
+      });
     }
     function openPinModal(mode) {
       modalMode = mode;
@@ -368,7 +372,8 @@ fn shell_document_3() -> &'static str {
           const response = await fetch('/api/validatePin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
           const result = await response.json().catch(() => ({}));
           if (!response.ok || !result.valid) { modalMessage.textContent = 'Invalid PIN'; return; }
-          localStorage.setItem('coronatioAdminToken', result.token || 'coronatio-session-token');
+          if (!result.token) { modalMessage.textContent = 'PIN check unavailable'; return; }
+          localStorage.setItem('coronatioAdminToken', result.token);
         } catch (_) { modalMessage.textContent = 'PIN check unavailable'; return; }
       }
       setAdminMode(true);
@@ -421,19 +426,18 @@ fn shell_document_3() -> &'static str {
         }
       });
     }
-    function applyVisibilityState() {
-      tabs.forEach(tab => {
-        const hidden = tabState.hiddenTabs.includes(tab.dataset.pane);
-        tab.dataset.visibility = hidden ? 'hidden' : 'visible';
-        const button = tab.querySelector('[data-tab-visibility-toggle]');
-        if (button) {
-          button.dataset.visible = String(!hidden);
-          button.title = (hidden ? 'Show ' : 'Hide ') + tab.querySelector('.tab-name').textContent + ' tab';
-          button.setAttribute('aria-label', button.title);
-          button.querySelector('.eye-icon').textContent = hidden ? '🙈' : '👁';
-        }
-      });
+    async function refreshTabBar(activeTabId = currentActiveTabId()) {
+      if (!tabBar) return;
+      const token = localStorage.getItem('coronatioAdminToken');
+      const headers = token ? { 'X-Admin-Token': token } : {};
+      const activeParam = activeTabId ? '?active=' + encodeURIComponent(activeTabId) : '';
+      const response = await fetch('/api/tab-bar' + activeParam, { headers });
+      if (!response.ok) return null;
+      tabBar.innerHTML = await response.text();
+      tabs = [...document.querySelectorAll('[data-pane]')];
+      bindTabControls();
       applyTabBarVisibility();
+      return currentActiveTabId();
     }
     function showPane(id) {
       const selected = lawfulPaneCandidate(id);
@@ -446,34 +450,37 @@ fn shell_document_3() -> &'static str {
       applyTabBarVisibility();
       if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
     }
-    tabs.forEach(tab => {
-      tab.addEventListener('click', event => {
-        if (event.target.closest('button')) return;
-        event.preventDefault();
-        if (tab.dataset.visibility !== 'hidden') showPane(tab.dataset.pane);
+    function bindTabControls() {
+      tabs.forEach(tab => {
+        tab.addEventListener('click', event => {
+          if (event.target.closest('button')) return;
+          event.preventDefault();
+          if (tab.dataset.visibility !== 'hidden') showPane(tab.dataset.pane);
+        });
+        tab.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showPane(tab.dataset.pane); } });
       });
-      tab.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showPane(tab.dataset.pane); } });
-    });
-    document.querySelectorAll('[data-tab-star]').forEach(button => button.addEventListener('click', async event => {
-      event.stopPropagation();
-      if (!canStarTab(button.dataset.tabStar)) return;
-      setStarredTab(button.dataset.tabStar);
-      try {
-        await fetch('/api/set_starred_tab', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tabName: button.dataset.tabStar }) });
-      } catch (_) {}
-    }));
-    document.querySelectorAll('[data-tab-visibility-toggle]').forEach(button => button.addEventListener('click', event => {
-      event.stopPropagation();
-      const id = button.dataset.tabVisibilityToggle;
-      const hidden = tabState.hiddenTabs.includes(id);
-      tabState.hiddenTabs = hidden ? tabState.hiddenTabs.filter(tab => tab !== id) : [...new Set([...tabState.hiddenTabs, id])];
-      saveTabState(tabState);
-      applyVisibilityState();
-      if (!hidden && tabState.starredTab === id) setStarredTab(firstVisibleTab());
-      const active = tabs.find(tab => tab.getAttribute('aria-selected') === 'true');
-      if (!active || active.dataset.visibility === 'hidden') showPane(firstVisibleTab());
-    }));
-    applyVisibilityState();
+      document.querySelectorAll('[data-tab-star]').forEach(button => button.addEventListener('click', async event => {
+        event.stopPropagation();
+        if (!canStarTab(button.dataset.tabStar)) return;
+        try {
+          const response = await fetch('/api/set_starred_tab', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tabName: button.dataset.tabStar }) });
+          if (response.ok && tabBar) { tabBar.innerHTML = await response.text(); tabs = [...document.querySelectorAll('[data-pane]')]; bindTabControls(); }
+        } catch (_) {}
+      }));
+      document.querySelectorAll('[data-tab-visibility-toggle]').forEach(button => button.addEventListener('click', async event => {
+        event.stopPropagation();
+        const id = button.dataset.tabVisibilityToggle;
+        const visible = button.dataset.visible !== 'true';
+        const token = localStorage.getItem('coronatioAdminToken');
+        try {
+          const response = await fetch('/api/tabs/visibility', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) }, body: JSON.stringify({ tab: id, visible }) });
+          if (response.ok && tabBar) { tabBar.innerHTML = await response.text(); tabs = [...document.querySelectorAll('[data-pane]')]; bindTabControls(); }
+        } catch (_) {}
+        const active = tabs.find(tab => tab.getAttribute('aria-selected') === 'true');
+        if (!active || active.dataset.visibility === 'hidden') showPane(firstVisibleTab());
+      }));
+    }
+    bindTabControls();
     setStarredTab(tabState.starredTab);
     async function fetchInto(route, target, method = 'GET') {
       const el = document.getElementById(target);"####

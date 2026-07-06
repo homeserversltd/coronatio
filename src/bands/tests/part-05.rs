@@ -666,12 +666,17 @@
     #[test]
     fn hx_001_tabs_are_hypermedia_activation_controls() {
         let shell = render_crown_shell();
-        for pane in ["portals", "stats", "upload", "admin"] {
+        for pane in ["portals", "stats", "upload"] {
             assert!(shell.contains(&format!(r#"hx-get="/admit/{pane}""#)));
             assert!(shell.contains(&format!(r#"hx-target="[data-view-panel='{pane}']""#)));
             assert!(shell.contains("hx-swap=\"innerHTML\""));
         }
-        assert!(shell.contains(r#"data-tab-id="stats" data-visibility="visible" hx-get="/admit/stats" hx-target="[data-view-panel='stats']" hx-swap="innerHTML" hx-trigger="load, click""#));
+        let nav_start = shell.find("<nav class=\"tab-bar\"").expect("tab bar starts");
+        let nav_end = shell[nav_start..].find("</nav>").map(|offset| nav_start + offset).expect("tab bar ends");
+        let nav = &shell[nav_start..nav_end];
+        assert_eq!(nav.matches(r#"aria-selected="true""#).count(), 1);
+        assert_eq!(nav.matches(r#"class="tab active""#).count(), 1);
+        assert!(nav.contains(r#"hx-swap="innerHTML" hx-trigger="load, click""#));
     }
 
 
@@ -689,7 +694,7 @@
                 Request::builder()
                     .method("POST")
                     .uri("/admit/admin/toggle/ssh-password-authentication")
-                    .header("X-Admin-Token", "coronatio-session-token")
+                    .header("X-Admin-Token", authorize_test_admin_token())
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -740,7 +745,7 @@
                     Request::builder()
                         .method(method)
                         .uri(format!("/admit/admin/action/{action}"))
-                        .header("X-Admin-Token", "coronatio-session-token")
+                        .header("X-Admin-Token", authorize_test_admin_token())
                         .body(Body::empty())
                         .unwrap(),
                 )

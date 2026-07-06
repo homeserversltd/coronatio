@@ -97,7 +97,11 @@ fn remove_inline_chrome_script(shell: String) -> String {
 }
 
 fn render_crown_shell() -> String {
-    let nav = render_flask_react_tabbar_quarry();
+    render_crown_shell_for_session(Session::Guest)
+}
+
+fn render_crown_shell_for_session(session: Session) -> String {
+    let nav = render_plan_tabbar(session);
     let shell = [
         shell_document_1().to_string(),
         shell_ux_css(),

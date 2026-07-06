@@ -156,7 +156,7 @@
         assert!(body.contains("data-source-material=\"homeserver-main-site\""));
         assert!(body.contains("class=\"tab-bar\""));
         assert!(body.contains("role=\"tablist\""));
-        assert!(body.contains("data-pane=\"admin\""));
+        assert!(!body.contains("data-pane=\"admin\""));
         assert!(body.contains("data-pane=\"stats\""));
         assert!(body.contains("data-pane=\"portals\""));
         assert!(body.contains("data-pane=\"upload\""));
@@ -174,7 +174,6 @@
         assert!(!body.contains("Coronatio crown shell"));
         assert!(!body.contains("class=\"crown-card\""));
         assert!(!body.contains("Arcadia"));
-        assert!(body.contains("YouTube"));
     }
 
     #[test]
@@ -182,8 +181,11 @@
         let shell = render_crown_shell();
         for pane in PRIMARY_TABS {
             assert!(shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
+        }
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
         }
+        assert!(!shell.contains("data-tab-id=\"admin\""));
         assert!(shell.contains("data-stats-viewport"));
         assert!(shell.contains(r#"class="stats-tablet""#));
         assert!(shell.contains(r#"data-stat-element-id="disk-usage""#));
@@ -227,16 +229,9 @@
                 "{pane} keeps normal star/default control"
             );
         }
-        let admin_marker = r#"data-tab-id="admin""#;
-        let admin_start = shell.find(admin_marker).expect("admin tab marker present");
-        let admin_tag_start = shell[..admin_start].rfind(r#"<div class="tab"#).expect("admin tab opening tag");
-        let admin_tag_end = shell[admin_start..].find('>').map(|offset| admin_start + offset).expect("admin tab opening closes");
-        let admin_opening_tag = &shell[admin_tag_start..admin_tag_end];
-        assert!(admin_opening_tag.contains(r#"role="tab""#));
-        assert!(admin_opening_tag.contains(r#"data-admin-only="true""#), "Admin tab must be admin-session-only while retaining tab member markup");
-        assert!(admin_opening_tag.contains("hidden"), "Admin tab must start hidden in regular mode");
+        assert!(!shell.contains(r#"data-tab-id="admin""#), "guest projection omits admin tab markup entirely");
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
-            assert!(shell.contains(&format!(r#"data-admin-only="true" data-tab-visibility-toggle="{}""#, pane)), "{pane} eye control is admin enhancement");
+            assert!(!shell.contains(&format!(r#"data-tab-visibility-toggle="{}""#, pane)), "guest projection omits admin eye controls");
         }
         assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));
         assert!(shell.contains(r#"querySelectorAll('[data-admin-only]:not([data-admin-only="false"])')"#));
@@ -250,16 +245,20 @@
             "function lawfulPaneCandidate(id)",
             "function reconcileActiveTabAfterAdminExit(previousActive)",
             "function applyTabBarVisibility()",
-            "if (wasAdmin && !headerState.isAdmin) reconcileActiveTabAfterAdminExit(previousActive)",
+            "refreshTabBar(previousActive).then(selectedTab =>",
+            "if (selectedTab) showPane(selectedTab)",
+            "?active=' + encodeURIComponent(activeTabId)",
             "if (!canStarTab(button.dataset.tabStar)) return;",
-            r#"[data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }"#,
-            r#"[data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; }"#,
-            r#".tab[data-visibility="hidden"] { opacity: .48; }"#,
+            "fetch('/api/tab-bar' + activeParam",
+            "fetch('/api/tabs/visibility'",
         ] {
             assert!(shell.contains(marker), "missing tab ladder marker: {marker}");
         }
         assert!(shell.contains("eligibleRegularTabs().length <= 2"));
-        assert!(shell.contains("tab.dataset.adminOnly === 'true') return headerState.isAdmin ? id : firstVisibleTab()"));
+        assert!(!shell.contains("if (wasAdmin && !headerState.isAdmin) reconcileActiveTabAfterAdminExit(previousActive)"));
+        assert!(!shell.contains("else if (headerState.isAdmin && previousActive === fallbackTab) showPane(firstVisibleTab())"));
+        assert!(!shell.contains("const response = await fetch('/api/tab-bar', { headers })"));
+        assert!(!shell.contains(r#".tab[data-visibility="hidden"] { opacity: .48; }"#));
         assert!(shell.contains("tab.dataset.visibility === 'hidden') return firstVisibleTab()"));
     }
 
@@ -282,26 +281,27 @@
 
     #[test]
     fn crown_tabbar_recreates_flask_react_star_eye_and_hide_controls() {
-        let shell = render_crown_shell();
+        let shell = render_crown_shell_for_session(Session::Admin);
         assert!(shell.contains("class=\"tab-bar\""));
-        assert!(shell.contains("data-admin-mode=\"true\""));
         for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"] {
-            assert!(shell.contains("class=\"tab active\""));
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
             assert!(shell.contains(&format!("data-pane=\"{}\"", pane)));
         }
-        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"] {
             assert!(shell.contains(&format!("data-tab-visibility-toggle=\"{}\"", pane)));
+        }
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!("data-tab-star=\"{}\"", pane)));
         }
         assert!(shell.contains("class=\"visibility-toggle\""));
         assert!(shell.contains("class=\"star-button fas fa-star\""));
-        assert!(shell.contains("class=\"star-button far fa-star\""));
+        assert!(shell.contains("class=\"star-button"));
         assert!(shell.contains("data-visibility=\"visible\""));
-        assert!(shell.contains("hiddenTabs"));
+        assert!(shell.contains("data-visibility=\"hidden\""));
+        assert!(!shell.contains("hiddenTabs"));
         assert!(shell.contains("firstVisibleTab()"));
         assert!(shell.contains("setStarredTab"));
-        assert!(shell.contains("applyVisibilityState"));
+        assert!(shell.contains("refreshTabBar"));
         assert!(shell.contains("🙈"));
         let nav_start = shell.find("<nav class=\"tab-bar\"").expect("tab bar starts");
         let nav_end = shell[nav_start..].find("</nav>").map(|offset| nav_start + offset).expect("tab bar ends");

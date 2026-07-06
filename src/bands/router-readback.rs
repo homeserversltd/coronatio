@@ -316,17 +316,81 @@ fn extract_pane_inner_html(shell: &str, tab_id: &str) -> Option<String> {
     None
 }
 
+#[derive(Default)]
+struct LockoutState {
+    failed_attempts: u32,
+    locked_until_ms: u128,
+}
+
+#[derive(Default)]
+struct SessionMembrane {
+    tokens: HashSet<String>,
+    lockouts: BTreeMap<String, LockoutState>,
+}
+
+static SESSION_MEMBRANE: OnceLock<Mutex<SessionMembrane>> = OnceLock::new();
+
+fn session_membrane() -> &'static Mutex<SessionMembrane> {
+    SESSION_MEMBRANE.get_or_init(|| Mutex::new(SessionMembrane::default()))
+}
+
+fn now_ms() -> u128 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()
+}
+
+fn lockout_ms(attempt: u32) -> u128 {
+    let exponent = attempt.saturating_sub(1).min(8);
+    (1000u128.saturating_mul(1u128 << exponent)).min(5 * 60 * 1000)
+}
+
+fn mint_admin_token() -> String {
+    let uuid = uuid::Uuid::new_v4();
+    let mut random = [0u8; 32];
+    if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
+        let _ = file.read_exact(&mut random);
+    }
+    let random_hex = random.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    format!("coronatio-admin-session-{uuid}-{random_hex}")
+}
+
+fn token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get("x-admin-token")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn admin_token_authorized(token: &str) -> bool {
+    session_membrane()
+        .lock()
+        .map(|store| store.tokens.contains(token))
+        .unwrap_or(false)
+}
+
+
+#[cfg(test)]
+fn authorize_test_admin_token() -> String {
+    let token = mint_admin_token();
+    session_membrane().lock().unwrap().tokens.insert(token.clone());
+    token
+}
+
+fn session_from_headers(headers: &axum::http::HeaderMap) -> Session {
+    token_from_headers(headers)
+        .filter(|token| admin_token_authorized(token))
+        .map(|_| Session::Admin)
+        .unwrap_or(Session::Guest)
+}
+
 async fn homeserver_validate_pin_route(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
     let supplied = body
         .get("pin")
         .or_else(|| body.get("password"))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("");
+        .map(|value| value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string().trim_matches('"').to_string()))
+        .unwrap_or_default();
     let configured = configured_admin_pin();
-    let valid = configured
-        .as_ref()
-        .map(|(_, pin)| pin == supplied)
-        .unwrap_or(false);
     let source = configured
         .as_ref()
         .map(|(path, _)| format!("{} global.admin.pin", path.display()))
@@ -337,29 +401,76 @@ async fn homeserver_validate_pin_route(Json(body): Json<serde_json::Value>) -> i
                 .collect::<Vec<_>>()
                 .join(" | ")
         });
-    (
-        if valid { StatusCode::OK } else { StatusCode::UNAUTHORIZED },
-        Json(serde_json::json!({
+    let now = now_ms();
+    let valid = configured.as_ref().map(|(_, pin)| pin == &supplied).unwrap_or(false);
+    if !valid {
+        let store = session_membrane().lock().unwrap();
+        if let Some(lockout) = store.lockouts.get(&source) {
+            if lockout.locked_until_ms > now {
+                let remaining_ms = lockout.locked_until_ms - now;
+                return (StatusCode::TOO_MANY_REQUESTS, Json(serde_json::json!({
+                "schema": "coronatio.homeserver.auth.pin.v1",
+                "success": false,
+                "verified": false,
+                "valid": false,
+                "locked": true,
+                "remainingMs": remaining_ms,
+                "remainingSeconds": ((remaining_ms + 999) / 1000),
+                "source": source,
+                "firstMissingSignal": "pin-lockout-active"
+                }))).into_response();
+            }
+        }
+    }
+    if valid {
+        let token = mint_admin_token();
+        let mut store = session_membrane().lock().unwrap();
+        store.lockouts.remove(&source);
+        store.tokens.insert(token.clone());
+        return (StatusCode::OK, Json(serde_json::json!({
             "schema": "coronatio.homeserver.auth.pin.v1",
-            "success": valid,
-            "verified": valid,
-            "valid": valid,
-            "token": if valid { "coronatio-session-token" } else { "" },
+            "success": true,
+            "verified": true,
+            "valid": true,
+            "token": token,
             "expiresIn": 1800,
             "source": source,
-            "firstMissingSignal": if configured.is_some() { "none" } else { "homeserver-config-pin-missing" }
-        })),
-    )
+            "firstMissingSignal": "none"
+        }))).into_response();
+    }
+    let mut store = session_membrane().lock().unwrap();
+    let lockout = store.lockouts.entry(source.clone()).or_default();
+    lockout.failed_attempts = lockout.failed_attempts.saturating_add(1);
+    let delay = lockout_ms(lockout.failed_attempts);
+    lockout.locked_until_ms = now.saturating_add(delay);
+    (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+        "schema": "coronatio.homeserver.auth.pin.v1",
+        "success": false,
+        "verified": false,
+        "valid": false,
+        "locked": true,
+        "remainingMs": delay,
+        "remainingSeconds": ((delay + 999) / 1000),
+        "attempts": lockout.failed_attempts,
+        "source": source,
+        "firstMissingSignal": if configured.is_some() { "pin-mismatch" } else { "homeserver-config-pin-missing" }
+    }))).into_response()
 }
 
-async fn homeserver_logout_route() -> impl IntoResponse {
+async fn homeserver_logout_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    if let Some(token) = token_from_headers(&headers) {
+        if let Ok(mut store) = session_membrane().lock() {
+            store.tokens.remove(&token);
+        }
+    }
     Json(serde_json::json!({
         "schema": "coronatio.homeserver.auth.logout.v1",
         "success": true,
         "ok": true,
-        "message": "session cleared by client"
+        "message": "session cleared by server"
     }))
 }
+
 
 async fn homeserver_admin_ping_route() -> impl IntoResponse {
     Json(serde_json::json!({
@@ -391,13 +502,16 @@ fn configured_admin_pin() -> Option<(PathBuf, String)> {
             Ok(value) => value,
             Err(_) => continue,
         };
-        if let Some(pin) = value
+        if let Some(pin_value) = value
             .get("global")
             .and_then(|global| global.get("admin"))
             .and_then(|admin| admin.get("pin"))
-            .and_then(serde_json::Value::as_str)
         {
-            return Some((path, pin.to_string()));
+            let pin = pin_value
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| pin_value.to_string().trim_matches('"').to_string());
+            return Some((path, pin));
         }
     }
     None

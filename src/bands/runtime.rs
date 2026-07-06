@@ -64,6 +64,7 @@ fn app(state: AppState) -> Router {
         .route("/api/favorites", get(favorites_route))
         .route("/api/get_starred_tab", get(get_starred_tab_route))
         .route("/api/set_starred_tab", post(set_starred_tab_route))
+        .route("/api/tab-bar", get(tab_bar_fragment_route))
         .route("/api/boundary", get(boundary_route))
         .route("/api/installer", get(installer_route))
         .route("/api/stats/events", get(stats_events_route))

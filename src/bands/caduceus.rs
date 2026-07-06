@@ -277,11 +277,7 @@ struct AdminMutationResult {
 }
 
 fn admin_headers_authorized(headers: &axum::http::HeaderMap) -> bool {
-    headers
-        .get("x-admin-token")
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value == "coronatio-session-token")
-        .unwrap_or(false)
+    session_from_headers(headers) == Session::Admin
 }
 
 fn admin_membrane_refusal_fragment(surface: &str) -> String {

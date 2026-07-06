@@ -639,58 +639,83 @@ fn storage_posture_summary(storage: &[StatsDrive]) -> String {
 }
 
 
-fn render_flask_react_tabbar_quarry() -> String {
-    let starred_tab = registry_readback().starred_tab;
-    native_crown_panes()
+
+fn render_plan_tabbar(session: Session) -> String {
+    render_plan_tabbar_with_active(session, None)
+}
+
+fn render_plan_tabbar_with_active(session: Session, active: Option<&str>) -> String {
+    let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
+    let plan = iris::plan(&facts, session);
+    let active_tab = active
+        .map(normalize_tab_id)
+        .filter(|tab| !tab.is_empty())
+        .map(|tab| iris::landing_after_session_change(&plan, &plan, &tab))
+        .unwrap_or_else(|| iris::initial_tab(&plan));
+    let names = tab_display_names_from_facts(&facts);
+    plan.tabs
         .into_iter()
-        .map(|pane| {
-            let hidden_by_default = matches!(pane.id.as_str(), "chia-mining" | "dhcp" | "youtube");
-            let is_starred = pane.id == starred_tab;
-            let active = pane.id == starred_tab;
-            let visibility = if hidden_by_default { "hidden" } else { "visible" };
-            let visibility_button = if pane.admin_only {
-                r##"<div class="tab-visibility-column" aria-hidden="true"></div>"##.to_string()
-            } else {
-                format!(
-                    r##"<div class="tab-visibility-column"><button type="button" class="visibility-toggle" data-admin-only="true" data-tab-visibility-toggle="{id}" data-visible="{visible}" aria-label="{verb} {title} tab" title="{verb} {title} tab"><span class="eye-icon" aria-hidden="true">{eye}</span></button></div>"##,
-                    id = pane.id,
-                    title = pane.title,
-                    visible = !hidden_by_default,
-                    verb = if hidden_by_default { "Show" } else { "Hide" },
-                    eye = if hidden_by_default { "🙈" } else { "👁" },
-                )
-            };
-            let star_button = if pane.admin_only || hidden_by_default {
-                r##"<div class="tab-star-column" aria-hidden="true"></div>"##.to_string()
-            } else {
-                format!(
-                    r##"<div class="tab-star-column"><button type="button" class="star-button {star_class} fa-star" data-tab-star="{id}" aria-pressed="{pressed}" aria-label="{label}" title="{label}"><span aria-hidden="true">★</span></button></div>"##,
-                    id = pane.id,
-                    star_class = if is_starred { "fas" } else { "far" },
-                    pressed = is_starred,
-                    label = if is_starred {
-                        format!("{} tab is starred", pane.title)
-                    } else {
-                        format!("Star {} tab", pane.title)
-                    }
-                )
-            };
-            let admin_only_attr = if pane.admin_only { r##" data-admin-only="true" hidden"## } else { "" };
-            let hx_trigger = if is_starred { "load, click" } else { "click" };
-            format!(
-                r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}" hx-get="/admit/{id}" hx-target="[data-view-panel='{id}']" hx-swap="innerHTML" hx-trigger="{hx_trigger}"{admin_only_attr}>{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
-                id = pane.id,
-                title = pane.title,
-                admin_only_attr = admin_only_attr,
-                active_class = if active { "active" } else { "" },
-                selected = active,
-                visibility = visibility,
-                hx_trigger = hx_trigger,
-                visibility_button = visibility_button,
-                star_button = star_button
-            )
-        })
-        .chain(std::iter::once(r#"<button type="button" class="tab add-tab-button" data-admin-only="true" data-add-tab-button title="Add tab" aria-label="Add tab"><span class="tab-name">+</span></button>"#.to_string()))
+        .filter(|grant| grant.tab_id != "fallback")
+        .map(|grant| render_plan_tab_grant(&grant, &names, &active_tab))
+        .chain((session == Session::Admin).then(|| r#"<button type="button" class="tab add-tab-button" data-admin-only="true" data-add-tab-button title="Add tab" aria-label="Add tab"><span class="tab-name">+</span></button>"#.to_string()))
         .collect::<Vec<_>>()
         .join("")
+}
+
+fn load_iris_facts_sync() -> Option<IrisFacts> {
+    let raw = std::fs::read_to_string(homeserver_json_path()).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    Some(iris_facts_from_homeserver_value(&value))
+}
+
+fn tab_display_names_from_facts(facts: &IrisFacts) -> BTreeMap<String, String> {
+    let mut names = native_crown_panes()
+        .into_iter()
+        .map(|pane| (pane.id, pane.title))
+        .collect::<BTreeMap<_, _>>();
+    if let Ok(raw) = std::fs::read_to_string(homeserver_json_path()) {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if let Some(tabs) = value.get("tabs").and_then(serde_json::Value::as_object) {
+                for fact in &facts.tabs {
+                    if let Some(name) = tabs
+                        .get(&fact.id)
+                        .and_then(|tab| tab.get("config"))
+                        .and_then(|config| config.get("displayName"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        names.insert(fact.id.clone(), name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    names
+}
+
+fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, active_tab: &str) -> String {
+    let id = &grant.tab_id;
+    let title = names.get(id).cloned().unwrap_or_else(|| id.to_string());
+    let visibility = match grant.state { RenderState::DimmedHidden => "hidden", _ => "visible" };
+    let visible_bool = grant.state != RenderState::DimmedHidden;
+    let eye = if visible_bool { "👁" } else { "🙈" };
+    let verb = if visible_bool { "Hide" } else { "Show" };
+    let visibility_button = if grant.eye {
+        format!(r##"<div class="tab-visibility-column"><button type="button" class="visibility-toggle" data-admin-only="true" data-tab-visibility-toggle="{id}" data-visible="{visible_bool}" aria-label="{verb} {title} tab" title="{verb} {title} tab"><span class="eye-icon" aria-hidden="true">{eye}</span></button></div>"##)
+    } else {
+        r##"<div class="tab-visibility-column" aria-hidden="true"></div>"##.to_string()
+    };
+    let star_button = if grant.star_eligible {
+        let star_class = if grant.star { "fas" } else { "far" };
+        let label = if grant.star { format!("{} tab is starred", title) } else { format!("Star {} tab", title) };
+        format!(r##"<div class="tab-star-column"><button type="button" class="star-button {star_class} fa-star" data-tab-star="{id}" aria-pressed="{pressed}" aria-label="{label}" title="{label}"><span aria-hidden="true">★</span></button></div>"##, pressed = grant.star)
+    } else {
+        r##"<div class="tab-star-column" aria-hidden="true"></div>"##.to_string()
+    };
+    let active = grant.tab_id == active_tab;
+    let active_class = if active { "active" } else { "" };
+    format!(
+        r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}" hx-get="/admit/{id}" hx-target="[data-view-panel='{id}']" hx-swap="innerHTML" hx-trigger="{hx_trigger}">{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
+        selected = active,
+        hx_trigger = if active { "load, click" } else { "click" },
+    )
 }
