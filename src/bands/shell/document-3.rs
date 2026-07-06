@@ -382,6 +382,9 @@ fn shell_document_3() -> &'static str {
       modalMessage.textContent = modalMode === 'change' ? 'PIN changed successfully' : '';
       if (modalMode === 'enter') closePinModal();
     });
+    let pulseStream = null;
+    let pulseRenewTimer = null;
+    let pulseStreamId = null;
     loadThemeCatalog();
     hydrateInternetIndicator();
     setInterval(hydrateInternetIndicator, 1000);
@@ -442,9 +445,6 @@ fn shell_document_3() -> &'static str {
       applyTabBarVisibility();
       return currentActiveTabId();
     }
-    let pulseStream = null;
-    let pulseRenewTimer = null;
-    let pulseStreamId = null;
     function clearPulseRenewal() {
       if (pulseRenewTimer) window.clearTimeout(pulseRenewTimer);
       pulseRenewTimer = null;
