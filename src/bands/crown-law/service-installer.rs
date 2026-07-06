@@ -291,7 +291,7 @@ fn stats_snapshot() -> StatsSnapshot {
             event_route: "/api/stats/events".to_string(),
             renew_route: "/api/stats/events/renew".to_string(),
             stream_status: "available".to_string(),
-            stream_reason: "stats SSE event frame and renewal route are registered; the viewport can read snapshot and event authority".to_string(),
+            stream_reason: "persistent SSE pulse stream and renewal route are registered; pokes carry no stats payload".to_string(),
         },
         resources: resources.clone(),
         storage: storage.clone(),

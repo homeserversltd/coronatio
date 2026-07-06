@@ -122,7 +122,7 @@ The first scaffold proves:
 - `/api/fallback` exposes the safe fallback pane, activation reasons, recovery sequence, and receipt fields;
 - `/api/session` and `/api/admin/session` expose admin session law: PIN validation, 30-minute token lease, keepalive/renewal, admin-enhanced field filtering, and Caduceus privileged mutation membrane;
 - `/api/topics` replaces Socket.IO subscribe/unsubscribe law with SSE EventSource plus POST renew topic admission;
-- `/api/monitor/pulse`, `/api/stats/events`, and `/api/stats/events/renew` prove the first `stats.system` monitor pulse contract end-to-end;
+- `/api/monitor/pulse`, `/api/stats/events`, and `/api/stats/events/renew` prove the persistent data-free pulse stream, stream-id renewal, and `tabs.changed` poke contract end-to-end;
 - `/api/boundary` and the fallback router expose Flask route and SPA boundary law: `/api/*` JSON 404, non-API shell fallback, and cartridge static serving;
 - `/api/installer` exposes the old premium installer as contract-only law: manifest fields, copy/append operation schema, validation phases, install phases, rollback/uninstall/reinstall/batch policy, lane mapping, and the missing Caduceus actuator signal;
 - `/api/stats` exposes the first honest Stats snapshot readback and names the SSE lease routes;

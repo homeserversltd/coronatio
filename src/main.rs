@@ -24,6 +24,7 @@ include!("bands/contracts.rs");
 include!("bands/runtime.rs");
 include!("bands/routes.rs");
 include!("bands/caduceus.rs");
+include!("bands/pulse.rs");
 include!("bands/router-readback.rs");
 include!("bands/full-rust-routes.rs");
 include!("bands/iris.rs");

@@ -480,13 +480,13 @@ fn topic_catalog_readback() -> TopicCatalogReadback {
         schema: "coronatio.topic-catalog.v1".to_string(),
         transport: "SSE EventSource plus POST renew; Socket.IO subscribe/unsubscribe is quarry only".to_string(),
         stream_policy: "open a pane stream only while the pane is active and document is visible; core topics stay independent of active pane".to_string(),
-        renew_policy: "client renews before lease expiry; expired streams produce an expired event and close in the live implementation".to_string(),
+        renew_policy: "client renews a stream id before the 30s lease expires; expired streams emit pulse.expired and close".to_string(),
         core_topics: core_topic_contracts(),
         admin_topics: admin_topic_contracts(),
         tab_topics: vec![
             TabTopicContract {
                 pane_id: "stats".to_string(),
-                topics: vec!["stats.system".to_string()],
+                topics: vec!["tabs.changed".to_string()],
                 event_route: "/api/stats/events".to_string(),
                 renew_route: "/api/stats/events/renew".to_string(),
                 lifecycle: "active pane + visible document".to_string(),
