@@ -36,6 +36,7 @@
     #[tokio::test(flavor = "current_thread")]
     async fn vis_003_element_write_is_admin_gated_persists_and_returns_element_fragment() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _pulse_guard = pulse_test_lock().lock().await;
         let temp = test_tab_root("vis-003-write");
         let config = temp.join("homeserver.json");
         vis_003_fixture_config(&config);

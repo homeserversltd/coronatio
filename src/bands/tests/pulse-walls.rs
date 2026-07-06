@@ -144,3 +144,115 @@
 
         assert!(!pulse::lease_exists_for_test(&stream_id), "dropped stream orphaned its pulse lease entry");
     }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pulse_002_wall_visibility_write_pokes_guest_and_admin_streams() {
+        let _env_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _guard = pulse_test_lock().lock().await;
+        use futures_util::StreamExt;
+        let temp = test_tab_root("pulse-002-route-poke");
+        let config = temp.join("homeserver.json");
+        vis_002_fixture_config(&config);
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-002-route-poke-app")) });
+        let token = authorize_test_admin_token();
+        let (_guest_id, mut guest) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
+        let (_admin_id, mut admin) = pulse::subscribe_stream(Session::Admin, Duration::from_secs(1));
+        assert_eq!(guest.next().await.unwrap().event, "pulse.open");
+        assert_eq!(admin.next().await.unwrap().event, "pulse.open");
+
+        let response = router
+            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"youtube","visible":true}"#)).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let guest_frame = tokio::time::timeout(Duration::from_millis(200), guest.next()).await.unwrap().unwrap();
+        let admin_frame = tokio::time::timeout(Duration::from_millis(200), admin.next()).await.unwrap().unwrap();
+        assert_eq!(guest_frame.event, "tabs.changed");
+        assert_eq!(admin_frame.event, "tabs.changed");
+        assert_eq!(guest_frame.data, "{}");
+        assert_eq!(admin_frame.data, "{}");
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pulse_002_wall_rejected_visibility_write_pokes_nothing() {
+        let _env_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _guard = pulse_test_lock().lock().await;
+        use futures_util::StreamExt;
+        let temp = test_tab_root("pulse-002-rejected-no-poke");
+        let config = temp.join("homeserver.json");
+        vis_002_fixture_config(&config);
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-002-rejected-no-poke-app")) });
+        let (_stream_id, mut stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
+        assert_eq!(stream.next().await.unwrap().event, "pulse.open");
+
+        let response = router
+            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("content-type", "application/json").body(Body::from(r#"{"tab":"youtube","visible":true}"#)).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let frame = tokio::time::timeout(Duration::from_millis(100), stream.next()).await;
+        assert!(frame.is_err(), "unauthorized visibility write emitted a poke");
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pulse_002_wall_guest_pull_after_admin_poke_stays_session_projected() {
+        let _env_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _guard = pulse_test_lock().lock().await;
+        use futures_util::StreamExt;
+        let temp = test_tab_root("pulse-002-guest-purity");
+        let config = temp.join("homeserver.json");
+        std::fs::write(&config, serde_json::json!({
+            "global": { "admin": { "pin": "1234" }, "theme": { "name": "light" } },
+            "tabs": {
+                "starred": "stats",
+                "admin": { "config": { "displayName": "ADMIN_ONLY_TAB_MARKER", "isEnabled": true, "adminOnly": true }, "visibility": { "tab": true, "elements": {} } },
+                "stats": { "config": { "displayName": "Stats", "isEnabled": true, "adminOnly": false }, "visibility": { "tab": true, "elements": {} } },
+                "portals": { "config": { "displayName": "Portals", "isEnabled": true, "adminOnly": false }, "visibility": { "tab": true, "elements": { "ADMIN_HIDDEN_ELEMENT_MARKER": false } } },
+                "youtube": { "config": { "displayName": "YouTube Coherent", "isEnabled": true, "adminOnly": false }, "visibility": { "tab": false, "elements": {} } }
+            }
+        }).to_string()).unwrap();
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-002-guest-purity-app")) });
+        let token = authorize_test_admin_token();
+        let (_stream_id, mut guest_stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
+        assert_eq!(guest_stream.next().await.unwrap().event, "pulse.open");
+
+        let response = router
+            .clone()
+            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"youtube","visible":true}"#)).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let poke = tokio::time::timeout(Duration::from_millis(200), guest_stream.next()).await.unwrap().unwrap();
+        assert_eq!(poke.event, "tabs.changed");
+        assert_eq!(poke.data, "{}");
+
+        let guest = router.oneshot(Request::builder().uri("/api/tab-bar?active=youtube").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(guest.status(), StatusCode::OK);
+        let fragment = String::from_utf8(axum::body::to_bytes(guest.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(fragment.contains(r#"data-tab-id="youtube""#), "{fragment}");
+        assert!(fragment.contains(r#"aria-selected="true" data-pane="youtube""#), "{fragment}");
+        for forbidden in ["ADMIN_ONLY_TAB_MARKER", "ADMIN_HIDDEN_ELEMENT_MARKER", "data-admin-only=\"true\"", "data-visibility=\"hidden\""] {
+            assert!(!fragment.contains(forbidden), "guest tab-bar leaked {forbidden}: {fragment}");
+        }
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+    }
+
+    #[test]
+    fn pulse_002_wall_shell_rider_is_data_free_eventsource_pull_only() {
+        let chrome = crown_chrome_js();
+        assert!(chrome.contains("new EventSource('/api/stats/events')"));
+        assert!(chrome.contains("pulseStream.addEventListener('pulse.open'"));
+        assert!(chrome.contains("pulseStream.addEventListener('tabs.changed'"));
+        assert!(chrome.contains("pulseStream.addEventListener('pulse.expired'"));
+        assert!(chrome.contains("fetch(renewRoute, { method: 'POST', cache: 'no-store' })"));
+        assert!(chrome.contains("}, 15000)"), "renewal cadence must stay comfortably before the 20s readback contract");
+        assert!(chrome.contains("refreshTabBar(active)"));
+        assert!(!chrome.contains("event.data.visibility"));
+        assert!(!chrome.contains("event.data.tabId"));
+    }

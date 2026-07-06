@@ -28,6 +28,7 @@ async fn element_visibility_route(headers: axum::http::HeaderMap, Json(request):
     if let Err(error) = persist_iris_facts(&next).await {
         return (StatusCode::INTERNAL_SERVER_ERROR, Html(format!(r#"<div data-element-visibility-refusal="persist-failed">{}</div>"#, html_escape(&error)))).into_response();
     }
+    pulse::poke(pulse::PokeTopic::TabsChanged);
     element_fragment_response(Session::Admin, &tab)
 }
 

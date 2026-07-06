@@ -388,6 +388,7 @@ fn shell_document_3() -> &'static str {
     refreshPowerIndicator();
     setInterval(refreshPowerIndicator, 5000);
     setAdminMode(headerState.isAdmin);
+    connectPulseStream();
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function visibleTabs() { return headerState.isAdmin ? tabs.filter(tab => tab.dataset.pane !== fallbackTab) : eligibleRegularTabs(); }
     function firstVisibleTab() { return eligibleRegularTabs()[0]?.dataset.pane || fallbackTab; }
@@ -440,6 +441,49 @@ fn shell_document_3() -> &'static str {
       bindTabControls();
       applyTabBarVisibility();
       return currentActiveTabId();
+    }
+    let pulseStream = null;
+    let pulseRenewTimer = null;
+    let pulseStreamId = null;
+    function clearPulseRenewal() {
+      if (pulseRenewTimer) window.clearTimeout(pulseRenewTimer);
+      pulseRenewTimer = null;
+    }
+    function schedulePulseRenewal(renewRoute) {
+      clearPulseRenewal();
+      if (!renewRoute) return;
+      pulseRenewTimer = window.setTimeout(async () => {
+        try { await fetch(renewRoute, { method: 'POST', cache: 'no-store' }); }
+        catch (_) {}
+        if (pulseStream && pulseStream.readyState !== EventSource.CLOSED) schedulePulseRenewal(renewRoute);
+      }, 15000);
+    }
+    function reconnectPulseStream() {
+      clearPulseRenewal();
+      if (pulseStream) pulseStream.close();
+      pulseStream = null;
+      pulseStreamId = null;
+      window.setTimeout(connectPulseStream, 0);
+    }
+    function connectPulseStream() {
+      if (!window.EventSource) return;
+      clearPulseRenewal();
+      if (pulseStream) pulseStream.close();
+      pulseStream = new EventSource('/api/stats/events');
+      pulseStream.addEventListener('pulse.open', event => {
+        let data = {};
+        try { data = JSON.parse(event.data || '{}'); } catch (_) {}
+        pulseStreamId = data.streamId || event.lastEventId || null;
+        schedulePulseRenewal(data.renewRoute || (pulseStreamId ? '/api/stats/events/renew?streamId=' + encodeURIComponent(pulseStreamId) : null));
+      });
+      pulseStream.addEventListener('tabs.changed', () => {
+        const active = currentActiveTabId();
+        refreshTabBar(active).then(selected => { if (selected) showPane(selected); }).catch(() => {});
+      });
+      pulseStream.addEventListener('pulse.expired', reconnectPulseStream);
+      pulseStream.addEventListener('error', () => {
+        if (pulseStream && pulseStream.readyState === EventSource.CLOSED) reconnectPulseStream();
+      });
     }
     function showPane(id) {
       const selected = lawfulPaneCandidate(id);
