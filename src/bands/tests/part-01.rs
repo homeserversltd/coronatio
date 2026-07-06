@@ -258,7 +258,8 @@
         assert!(!shell.contains("if (wasAdmin && !headerState.isAdmin) reconcileActiveTabAfterAdminExit(previousActive)"));
         assert!(!shell.contains("else if (headerState.isAdmin && previousActive === fallbackTab) showPane(firstVisibleTab())"));
         assert!(!shell.contains("const response = await fetch('/api/tab-bar', { headers })"));
-        assert!(!shell.contains(r#".tab[data-visibility="hidden"] { opacity: .48; }"#));
+        let retired_dim = format!(".{}", 48);
+        assert!(!shell.contains(&retired_dim));
         assert!(shell.contains("tab.dataset.visibility === 'hidden') return firstVisibleTab()"));
     }
 

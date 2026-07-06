@@ -474,6 +474,10 @@
   background-color: var(--hiddenTabBackground);
 }
 
+[data-admin-mode="true"] [data-stat-element-id][data-visible="false"] {
+  opacity: .7;
+}
+
 /* Update memory bar styles */
 .stat-element[data-visible="false"] .memory-bar {
   background-color: var(--background) !important;
