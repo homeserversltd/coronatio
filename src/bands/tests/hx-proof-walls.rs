@@ -62,6 +62,33 @@
         assert!(xhr_count <= 1, "{source_name} has non-upload XHR candidates: {xhr_count}");
     }
 
+    #[test]
+    fn flood_001_wall_fragment_refresh_does_not_reenter_admin_network_refresh() {
+        let chrome = crown_chrome_js();
+        assert!(chrome.contains("function applyAdminDomState()"), "admin DOM projection must be separated from network refresh");
+        assert!(chrome.contains("refreshElementFragment('stats');"), "session change still refreshes stats fragment once");
+        assert!(chrome.contains("refreshElementFragment('portals');"), "session change still refreshes portals fragment once");
+        for function_name in ["refreshElementFragment", "toggleElementVisibility"] {
+            let start = chrome.find(&format!("async function {function_name}")).expect(function_name);
+            let tail = &chrome[start..];
+            let end = tail.find("\n    async function ").or_else(|| tail.find("\n    function ")).unwrap_or(tail.len());
+            let body = &tail[..end];
+            assert!(body.contains("applyAdminDomState();"), "{function_name} should reapply DOM-only admin visibility after swaps");
+            assert!(!body.contains("setAdminMode(headerState.isAdmin)"), "{function_name} must not re-enter session/tab/fragment refresh graph");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn flood_001_wall_tab_bar_fragment_is_acyclic_no_load_trigger() {
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("flood-001-tab-bar-fragment")) });
+        let response = router.oneshot(Request::builder().uri("/api/tab-bar?active=stats").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(fragment.contains("hx-get=\"/admit/stats\""), "fragment must preserve click-driven pane admission: {fragment}");
+        assert!(!fragment.contains("hx-trigger=\"load"), "served /api/tab-bar fragment must not reseat HTMX load triggers: {fragment}");
+        assert!(render_crown_shell().contains("hx-trigger=\"load, click\""), "first full-page render keeps the lawful initial active-pane load");
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn hx_005_wall_staleness_admit_refetches_and_fragments_are_no_store() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-005-staleness")) });

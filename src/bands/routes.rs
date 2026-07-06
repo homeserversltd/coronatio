@@ -253,7 +253,7 @@ fn tab_bar_html_response(session: Session) -> Response {
 }
 
 fn tab_bar_html_response_with_active(session: Session, active: Option<&str>) -> Response {
-    let body = render_plan_tabbar_with_active(session, active);
+    let body = render_plan_tabbar_fragment_with_active(session, active);
     let mut response = (StatusCode::OK, Html(body)).into_response();
     response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
