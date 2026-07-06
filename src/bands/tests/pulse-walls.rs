@@ -33,6 +33,33 @@
     }
 
     #[tokio::test]
+    async fn pulse_wall_stats_ticker_pokes_subscribed_stream_once_per_process_cadence() {
+        let _guard = pulse_test_lock().lock().await;
+        use futures_util::StreamExt;
+        pulse::set_stats_ticker_enabled_for_test(true);
+        let temp = test_tab_root("pulse-003b-stats-ticker");
+        let state = AppState { tab_root: Arc::new(temp) };
+        let _first_router = app(state.clone());
+        let _second_router = app(state);
+        let (_stream_id, mut stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(3));
+        assert_eq!(stream.next().await.unwrap().event, "pulse.open");
+
+        let frame = tokio::time::timeout(
+            Duration::from_millis((pulse::STATS_INTERVAL_SECONDS * 1000) + 300),
+            stream.next(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(frame.event, "stats.tick");
+        assert_eq!(frame.data, "{}");
+
+        let doubled = tokio::time::timeout(Duration::from_millis(150), stream.next()).await;
+        assert!(doubled.is_err(), "second app construction doubled the stats.tick cadence");
+        pulse::set_stats_ticker_enabled_for_test(false);
+    }
+
+    #[tokio::test]
     async fn pulse_wall_admin_topic_lanes_are_selected_at_subscription_construction() {
         let _guard = pulse_test_lock().lock().await;
         use futures_util::StreamExt;

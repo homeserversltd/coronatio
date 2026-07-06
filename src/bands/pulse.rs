@@ -2,12 +2,16 @@ mod pulse {
     use super::*;
     use axum::response::sse::{Event, KeepAlive, Sse};
     use futures_util::{stream, StreamExt};
-    use std::{collections::HashMap, convert::Infallible, time::Instant};
+    use std::{collections::HashMap, convert::Infallible, sync::atomic::{AtomicBool, Ordering}, time::Instant};
     use tokio::sync::broadcast;
-    use tokio::time::{sleep_until, Instant as TokioInstant};
+    use tokio::time::{interval, sleep_until, Instant as TokioInstant};
 
+    pub(crate) const STATS_INTERVAL_SECONDS: u64 = 1;
     const PULSE_LEASE_SECONDS: u64 = 30;
     const PULSE_KEEP_ALIVE_SECONDS: u64 = 10;
+    static STATS_TICKER_STARTED: AtomicBool = AtomicBool::new(false);
+    #[cfg(test)]
+    static STATS_TICKER_TEST_ENABLED: AtomicBool = AtomicBool::new(false);
 
     #[allow(dead_code)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +62,44 @@ mod pulse {
             let _ = bus.admin_tx.send(topic);
         } else {
             let _ = bus.public_tx.send(topic);
+        }
+    }
+
+    pub(crate) fn ensure_stats_ticker_started() {
+        #[cfg(test)]
+        if !STATS_TICKER_TEST_ENABLED.load(Ordering::SeqCst) {
+            return;
+        }
+        if STATS_TICKER_STARTED
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            STATS_TICKER_STARTED.store(false, Ordering::SeqCst);
+            return;
+        };
+        handle.spawn(async {
+            let mut ticker = interval(Duration::from_secs(STATS_INTERVAL_SECONDS));
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                #[cfg(test)]
+                if !STATS_TICKER_TEST_ENABLED.load(Ordering::SeqCst) {
+                    STATS_TICKER_STARTED.store(false, Ordering::SeqCst);
+                    break;
+                }
+                poke(PokeTopic::StatsTick);
+            }
+        });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_stats_ticker_enabled_for_test(enabled: bool) {
+        STATS_TICKER_TEST_ENABLED.store(enabled, Ordering::SeqCst);
+        if !enabled {
+            STATS_TICKER_STARTED.store(false, Ordering::SeqCst);
         }
     }
 
