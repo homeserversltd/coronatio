@@ -468,27 +468,25 @@ struct MonitorPulseReadback {
     snapshot_route: String,
     event_route: String,
     renew_route: String,
-    first_event: StatsEventPayload,
+    stream_contract: PulseStreamContract,
     proof_policy: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct StatsEventPayload {
+struct PulseStreamContract {
     schema: String,
-    topic: String,
-    event_id: String,
-    event: String,
+    first_event: String,
+    poke_data: String,
     lease_seconds: u64,
-    payload_state: String,
-    first_missing_signal: String,
+    identity: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct LeaseRenewalReadback {
     schema: String,
-    topic: String,
+    stream_id: String,
     route: String,
     lease_seconds: u64,
     status: String,

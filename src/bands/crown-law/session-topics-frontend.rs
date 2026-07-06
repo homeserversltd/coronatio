@@ -111,13 +111,13 @@ fn topic_contract(
 
 fn stats_topic_contract() -> TopicContract {
     topic_contract(
-        "stats.system",
+        "tabs.changed",
         "tab:stats",
-        1,
+        30,
         false,
-        vec!["processes", "users", "networkConnections"],
-        "system_stats payload: load, cpu, memory, disk, network, process/user/admin fields",
-        "always pulse realtime system stats; admin fields filtered unless session has admin capability",
+        vec![],
+        "data-free poke; clients pull session-projected tab/element/star state after receipt",
+        "unconditional poke; predicate law deferred to the PULSE-003 data plane",
     )
 }
 
@@ -128,25 +128,23 @@ fn monitor_pulse_readback() -> MonitorPulseReadback {
         snapshot_route: "/api/stats".to_string(),
         event_route: "/api/stats/events".to_string(),
         renew_route: "/api/stats/events/renew".to_string(),
-        first_event: stats_event_payload(),
+        stream_contract: pulse_stream_contract(),
         proof_policy: vec![
-            "initial subscriber receives first state".to_string(),
-            "meaningful-change predicate decides later pulses".to_string(),
-            "admin fields are filtered for non-admin sessions".to_string(),
-            "SSE heartbeat/expiry replaces Socket.IO subscription diffing".to_string(),
+            "initial subscriber receives stream identity and lease metadata only".to_string(),
+            "pokes are data-free invalidations; no config/product data travels over pulse".to_string(),
+            "admin-only lanes are selected at stream construction from session capability".to_string(),
+            "SSE keepalive/renew/expiry replaces Socket.IO subscription diffing".to_string(),
         ],
     }
 }
 
-fn stats_event_payload() -> StatsEventPayload {
-    StatsEventPayload {
-        schema: "coronatio.stats.event.v1".to_string(),
-        topic: "stats.system".to_string(),
-        event_id: "stats-system-bootstrap-1".to_string(),
-        event: "snapshot".to_string(),
+fn pulse_stream_contract() -> PulseStreamContract {
+    PulseStreamContract {
+        schema: "coronatio.pulse.stream.v1".to_string(),
+        first_event: "pulse.open".to_string(),
+        poke_data: "{}".to_string(),
         lease_seconds: 30,
-        payload_state: "snapshot-available".to_string(),
-        first_missing_signal: stats_snapshot().telemetry.first_missing_signal,
+        identity: "stream id appears only in the first frame and renew query".to_string(),
     }
 }
 

@@ -22,33 +22,6 @@ async fn installer_route() -> impl IntoResponse {
     Json(installer_readback())
 }
 
-async fn stats_events_route() -> impl IntoResponse {
-    let event = stats_event_payload();
-    let payload = serde_json::to_string(&event).expect("serialize stats event");
-    let body = format!(
-        "event: stats.system\nid: {}\ndata: {}\n\n",
-        event.event_id, payload
-    );
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/event-stream")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .header("x-coronatio-schema", "coronatio.stats.events.v1")
-        .body(body)
-        .expect("build stats event response")
-}
-
-async fn stats_events_renew_route() -> impl IntoResponse {
-    Json(LeaseRenewalReadback {
-        schema: "coronatio.stats.events.renewal.v1".to_string(),
-        topic: "stats.system".to_string(),
-        route: "/api/stats/events/renew".to_string(),
-        lease_seconds: 30,
-        status: "renewed-contract".to_string(),
-        next_renewal_before_seconds: 20,
-    })
-}
-
 async fn route_boundary_fallback(method: Method, uri: Uri) -> impl IntoResponse {
     let normalized = uri.path().to_string();
     if normalized.starts_with("/api/") {

@@ -1,5 +1,5 @@
     #[tokio::test]
-    async fn stats_sse_and_monitor_pulse_prove_first_topic() {
+    async fn pulse_monitor_readback_names_living_stream_contract() {
         let temp = test_tab_root("stats-sse");
         let router = app(AppState {
             tab_root: Arc::new(temp),
@@ -20,54 +20,12 @@
             .unwrap();
         let pulse: MonitorPulseReadback = serde_json::from_slice(&pulse_bytes).unwrap();
         assert_eq!(pulse.schema, "coronatio.monitor-pulse.v1");
-        assert_eq!(pulse.topic.id, "stats.system");
-        assert_eq!(pulse.first_event.schema, "coronatio.stats.event.v1");
+        assert_eq!(pulse.topic.id, "tabs.changed");
+        assert_eq!(pulse.stream_contract.schema, "coronatio.pulse.stream.v1");
+        assert_eq!(pulse.stream_contract.first_event, "pulse.open");
+        assert_eq!(pulse.stream_contract.poke_data, "{}");
         assert_eq!(pulse.event_route, "/api/stats/events");
-
-        let event_response = router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/stats/events")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(event_response.status(), StatusCode::OK);
-        assert_eq!(
-            event_response.headers().get(header::CONTENT_TYPE).unwrap(),
-            "text/event-stream"
-        );
-        let event_body = String::from_utf8(
-            axum::body::to_bytes(event_response.into_body(), usize::MAX)
-                .await
-                .unwrap()
-                .to_vec(),
-        )
-        .unwrap();
-        assert!(event_body.contains("event: stats.system"));
-        assert!(event_body.contains("coronatio.stats.event.v1"));
-
-        let renew_response = router
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/stats/events/renew")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(renew_response.status(), StatusCode::OK);
-        let renew: LeaseRenewalReadback = serde_json::from_slice(
-            &axum::body::to_bytes(renew_response.into_body(), usize::MAX)
-                .await
-                .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(renew.schema, "coronatio.stats.events.renewal.v1");
-        assert_eq!(renew.topic, "stats.system");
+        assert!(pulse.proof_policy.iter().any(|law| law.contains("data-free invalidations")));
     }
 
     #[tokio::test]

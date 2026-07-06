@@ -14,4 +14,5 @@ mod tests {
     include!("tests/iris-walls.rs");
     include!("tests/vis-002.rs");
     include!("tests/vis-003.rs");
+    include!("tests/pulse-walls.rs");
 }
