@@ -122,6 +122,10 @@ These are not current port targets. They are included so eventual ports land dir
 | dhcp | `/fulcrum/attachments/homeserver/initialization/flask/inject/premium/dhcp/frontend/index.tsx`, `PortalCard.css`, `components/DhcpCard.tsx`, `components/ReservationSlider.tsx` | local `dhcp-tablet`, `dhcp-info-banner`, `dhcp-button-row`, `anonymize-toggle-*`, `dhcp-list-*`, `mac-input`, `ip-input`, `add-reservation-button`; slider/card components | RESTORE shared toggle/slider/input/checkbox primitives where exact; ABSORB DHCP list/banner/card pack. |
 | youtube | `/fulcrum/attachments/homeserver/initialization/flask/inject/premium/youtube/frontend/index.tsx`, `PortalCard.css`, `components/{DownloadForm,SubscriptionList,ScheduleConfig,DownloadSettings,LogsView}.tsx` | local `youtube-tablet`, `youtube-tabs`, `tab-button active`, `youtube-content`, `youtube-section(s)`, plus form/list/log component classes | RESTORE tab group/buttons/inputs/text boxes to shared UI; ABSORB YouTube section/log/subscription domain packs. |
 
+## VIS deferred audit pointer
+
+- VIS-000 opens IRIS in `docs/iris-transition-table.md`: the citation-true og eye transition table and architecture preamble for the deferred visibility-toggle/eye/star/admin-mode behavior rows.
+
 ## Proposed tranche order
 
 1. Upload breadcrumbs + progress proof slice. Risk: low-to-medium. It has clear existing shared primitives (`Breadcrumbs`, `FileInput`, `ProgressBar`) and current Rust already emits many og upload classes. This establishes RESTORE and ABSORB method on a contained pane without broad admin modal overlap.
