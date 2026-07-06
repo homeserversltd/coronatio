@@ -271,7 +271,6 @@
     }
     .tab:hover { background-color: var(--background-alt-hover); color: var(--text); transform: translateY(1px); }
     .tab.active, .tab[aria-selected="true"] { background: var(--primary); color: var(--text); border-color: var(--primary); border-top: 2px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,.1); }
-    .tab[data-visibility="hidden"] { opacity: .48; }
     [data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }
     [data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; }
     .tab-visibility-column, .tab-star-column { display: grid; place-items: center; min-width: 24px; }

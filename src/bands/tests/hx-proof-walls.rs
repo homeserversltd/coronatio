@@ -31,6 +31,9 @@
             ("/api/themes", "PIN/session chrome theme bootstrap"),
             ("/api/validatePin", "PIN/session chrome"),
             ("/api/set_starred_tab", "PIN/session chrome favorite mutation"),
+            ("/api/tabs/visibility", "PIN/session chrome visibility mutation"),
+            ("/api/tab-bar", "PIN/session chrome tab-bar projection"),
+            ("/api/logout", "PIN/session chrome logout invalidation"),
             ("/api/upload/history", "upload chrome modal read"),
             ("/api/upload/blacklist/list", "upload chrome modal read"),
             ("/api/upload/force-permissions", "upload chrome owned admin control"),
@@ -154,7 +157,7 @@
         std::env::set_var("CORONATIO_SSHD_CONFIG_FIXTURE", &sshd);
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-005-mutation-app")) });
-        let response = router.clone().oneshot(Request::builder().method("POST").uri("/admit/admin/toggle/ssh-password-authentication").header("X-Admin-Token", "coronatio-session-token").body(Body::empty()).unwrap()).await.unwrap();
+        let response = router.clone().oneshot(Request::builder().method("POST").uri("/admit/admin/toggle/ssh-password-authentication").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("data-real-state=\"Disabled\""), "{body}");

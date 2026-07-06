@@ -245,7 +245,7 @@ fn shell_document_2() -> &'static str {
   <script>
     const appRoot = document.querySelector('[data-product="Coronatio"]');
     const tabBar = document.querySelector('[role="tablist"]');
-    const tabs = [...document.querySelectorAll('[data-pane]')];
+    let tabs = [...document.querySelectorAll('[data-pane]')];
     const panes = [...document.querySelectorAll('[data-pane-panel]')];
     const htmxOrgan = window.htmx;
     if (htmxOrgan && htmxOrgan.config) {
@@ -293,7 +293,7 @@ fn shell_document_2() -> &'static str {
       catch (_) { return {}; }
     };
     const saveTabState = state => localStorage.setItem(storageKey, JSON.stringify(state));
-    const tabState = Object.assign({ starredTab: 'stats', hiddenTabs: ['chia-mining', 'dhcp', 'youtube'] }, loadTabState());
+    const tabState = Object.assign({ starredTab: 'stats' }, loadTabState());
     const headerStateKey = 'coronatio.flask-react-header.v1';
     const preferredThemeKey = 'preferred-theme';
     const themeDataKey = 'themeData';

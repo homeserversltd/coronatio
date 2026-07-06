@@ -1,7 +1,7 @@
-async fn crown_shell_route() -> impl IntoResponse {
+async fn crown_shell_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
     (
         [(header::CONTENT_SECURITY_POLICY, CROWN_CONTENT_SECURITY_POLICY)],
-        Html(render_crown_shell()),
+        Html(render_crown_shell_for_session(session_from_headers(&headers))),
     )
 }
 
@@ -166,51 +166,97 @@ async fn get_starred_tab_route() -> impl IntoResponse {
     }
 }
 
-async fn set_starred_tab_route(Json(request): Json<SetStarredTabRequest>) -> impl IntoResponse {
-    let requested = request.tab_name.or(request.tab).unwrap_or_default();
-    let requested = normalize_tab_id(&requested);
-    match load_favorite_manifest().await {
-        Ok((source, mut manifest)) => {
-            if request.is_starred == Some(false) {
-                return Json(serde_json::json!({
-                    "schema": "coronatio.starred-tab.mutation.v1",
-                    "success": false,
-                    "error": "one-to-one port preserves one active favorite; choose another visible non-admin tab instead of clearing all favorites",
-                    "starred_tab": manifest.starred_tab,
-                    "source": source,
-                })).into_response();
-            }
-            let allowed = manifest.tabs.iter().any(|tab| tab.id == requested && tab.visible && !tab.admin_only);
-            if !allowed {
-                return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                    "schema": "coronatio.starred-tab.mutation.v1",
-                    "success": false,
-                    "error": "favorite target must be visible, enabled, and non-admin",
-                    "requested": requested,
-                    "starred_tab": manifest.starred_tab,
-                    "source": source,
-                }))).into_response();
-            }
-            manifest.starred_tab = requested.clone();
-            for tab in manifest.tabs.iter_mut() { tab.starred = tab.id == requested; }
-            let write_result = save_favorite_manifest(&manifest).await;
-            Json(serde_json::json!({
-                "schema": "coronatio.starred-tab.mutation.v1",
-                "success": write_result.is_ok(),
-                "starred_tab": requested,
-                "source": source,
-                "write_error": write_result.err(),
-            })).into_response()
-        }
-        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
+async fn set_starred_tab_route(headers: axum::http::HeaderMap, Json(request): Json<SetStarredTabRequest>) -> impl IntoResponse {
+    let requested = normalize_tab_id(&request.tab_name.or(request.tab).unwrap_or_default());
+    let (source, facts) = match load_iris_facts().await {
+        Ok(value) => value,
+        Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": error}))).into_response(),
+    };
+    if request.is_starred == Some(false) {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
             "schema": "coronatio.starred-tab.mutation.v1",
             "success": false,
-            "error": error,
-        }))).into_response(),
+            "error": "one-to-one port preserves one active favorite; choose another visible non-admin tab instead of clearing all favorites",
+            "starred_tab": facts.starred,
+            "source": source,
+        }))).into_response();
     }
+    let next = match iris::apply_star(&facts, &requested) {
+        Ok(next) => next,
+        Err(error) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "schema": "coronatio.starred-tab.mutation.v1",
+            "success": false,
+            "error": format!("{:?}", error),
+            "requested": requested,
+            "starred_tab": facts.starred,
+            "source": source,
+        }))).into_response(),
+    };
+    if let Err(error) = persist_iris_facts(&next).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": error}))).into_response();
+    }
+    tab_bar_html_response(session_from_headers(&headers))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TabVisibilityRequest {
+    tab: Option<String>,
+    tab_id: Option<String>,
+    id: Option<String>,
+    visible: Option<bool>,
+    visibility: Option<bool>,
+}
+
+async fn tab_visibility_route(headers: axum::http::HeaderMap, Json(request): Json<TabVisibilityRequest>) -> impl IntoResponse {
+    if session_from_headers(&headers) != Session::Admin {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+            "schema": "coronatio.tabs.visibility.refusal.v1",
+            "success": false,
+            "error": "admin-session-required",
+        }))).into_response();
+    }
+    let tab = normalize_tab_id(&request.tab.or(request.tab_id).or(request.id).unwrap_or_default());
+    let visible = request.visible.or(request.visibility).unwrap_or(true);
+    let (_source, facts) = match load_iris_facts().await {
+        Ok(value) => value,
+        Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": error}))).into_response(),
+    };
+    let next = iris::apply_tab_visibility(&facts, &tab, visible);
+    if let Err(error) = persist_iris_facts(&next).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": error}))).into_response();
+    }
+    tab_bar_html_response(Session::Admin)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TabBarFragmentQuery {
+    active: Option<String>,
+}
+
+async fn tab_bar_fragment_route(
+    headers: axum::http::HeaderMap,
+    Query(query): Query<TabBarFragmentQuery>,
+) -> impl IntoResponse {
+    tab_bar_html_response_with_active(session_from_headers(&headers), query.active.as_deref())
+}
+
+fn tab_bar_html_response(session: Session) -> Response {
+    tab_bar_html_response_with_active(session, None)
+}
+
+fn tab_bar_html_response_with_active(session: Session, active: Option<&str>) -> Response {
+    let body = render_plan_tabbar_with_active(session, active);
+    let mut response = (StatusCode::OK, Html(body)).into_response();
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
+    response
 }
 
 fn homeserver_json_path() -> PathBuf {
+    if let Ok(path) = env::var("CORONATIO_HOMESERVER_JSON") {
+        return PathBuf::from(path);
+    }
     for candidate in [
         INSTALLED_HOMESERVER_JSON,
         LEGACY_HOMESERVER_JSON,
@@ -303,10 +349,6 @@ async fn load_favorite_manifest() -> Result<(String, FavoriteManifest), String> 
     Ok((source, manifest))
 }
 
-async fn save_favorite_manifest(_manifest: &FavoriteManifest) -> Result<(), String> {
-    Err("homeserver.json is the single config authority; starred-tab mutation must enter the Caduceus homeserver.json transaction membrane".to_string())
-}
-
 fn validate_favorite_manifest(manifest: &FavoriteManifest) -> Result<(), String> {
     if manifest.schema != "coronatio.favorite-manifest.v1" { return Err(format!("unexpected favorite manifest schema {}", manifest.schema)); }
     let mut starred_count = 0;
@@ -318,6 +360,67 @@ fn validate_favorite_manifest(manifest: &FavoriteManifest) -> Result<(), String>
     }
     if starred_count != 1 { return Err(format!("favorite manifest must carry exactly one starred tab, found {}", starred_count)); }
     if !starred_valid { return Err(format!("starred tab {} is absent, hidden, or admin-only", manifest.starred_tab)); }
+    Ok(())
+}
+
+static HOMESERVER_CONFIG_WRITER: OnceLock<Mutex<()>> = OnceLock::new();
+
+async fn load_iris_facts() -> Result<(String, IrisFacts), String> {
+    let (source, value) = load_homeserver_json().await?;
+    Ok((source, iris_facts_from_homeserver_value(&value)))
+}
+
+fn iris_facts_from_homeserver_value(value: &serde_json::Value) -> IrisFacts {
+    let tabs_obj = value.get("tabs").and_then(serde_json::Value::as_object);
+    let starred = tabs_obj
+        .and_then(|tabs| tabs.get("starred"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("stats")
+        .to_string();
+    let mut tabs = native_tab_contracts();
+    if let Some(tabs_obj) = tabs_obj {
+        for tab in tabs.iter_mut() {
+            let Some(raw) = tabs_obj.get(&tab.id) else { continue; };
+            if let Some(config) = raw.get("config").and_then(serde_json::Value::as_object) {
+                if let Some(name) = config.get("displayName").and_then(serde_json::Value::as_str) { tab.display_name = name.to_string(); }
+                if let Some(enabled) = config.get("isEnabled").and_then(serde_json::Value::as_bool) { tab.enabled = enabled; }
+                if let Some(admin_only) = config.get("adminOnly").and_then(serde_json::Value::as_bool) { tab.admin_only = admin_only; }
+            }
+            if let Some(visibility) = raw.get("visibility").and_then(serde_json::Value::as_object) {
+                if let Some(visible) = visibility.get("tab").and_then(serde_json::Value::as_bool) { tab.visibility.tab = visible; }
+                if let Some(elements) = visibility.get("elements").and_then(serde_json::Value::as_object) {
+                    tab.visibility.elements = elements.iter().filter_map(|(id, v)| v.as_bool().map(|b| (id.clone(), b))).collect();
+                }
+            }
+        }
+    }
+    iris::from_coronatio_contracts(&tabs, &starred)
+}
+
+async fn persist_iris_facts(facts: &IrisFacts) -> Result<(), String> {
+    let path = homeserver_json_path();
+    let lock = HOMESERVER_CONFIG_WRITER.get_or_init(|| Mutex::new(()));
+    let _guard = lock.lock().map_err(|_| "homeserver config writer poisoned".to_string())?;
+    let raw = std::fs::read_to_string(&path).map_err(|error| format!("homeserver.json unreadable at {}: {}", path.display(), error))?;
+    let mut value: serde_json::Value = serde_json::from_str(&raw).map_err(|error| format!("homeserver.json invalid at {}: {}", path.display(), error))?;
+    let tabs = value.get_mut("tabs").and_then(serde_json::Value::as_object_mut).ok_or_else(|| "homeserver.json missing tabs object".to_string())?;
+    tabs.insert("starred".to_string(), serde_json::Value::String(facts.starred.clone()));
+    for fact in &facts.tabs {
+        if fact.id == "fallback" { continue; }
+        let entry = tabs.entry(fact.id.clone()).or_insert_with(|| serde_json::json!({"config": {}, "visibility": {}}));
+        let obj = entry.as_object_mut().ok_or_else(|| format!("tab {} is not an object", fact.id))?;
+        let visibility = obj.entry("visibility".to_string()).or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| format!("tab {} visibility is not an object", fact.id))?;
+        if let Some(tab_visible) = fact.visibility_tab { visibility.insert("tab".to_string(), serde_json::Value::Bool(tab_visible)); }
+        let elements = visibility.entry("elements".to_string()).or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| format!("tab {} elements is not an object", fact.id))?;
+        elements.clear();
+        for element in &fact.elements {
+            if let Some(value) = element.visibility { elements.insert(element.id.clone(), serde_json::Value::Bool(value)); }
+        }
+    }
+    let tmp = path.with_extension(format!("json.tmp.{}", std::process::id()));
+    let body = serde_json::to_string_pretty(&value).map_err(|error| error.to_string())? + "\n";
+    std::fs::write(&tmp, body).map_err(|error| format!("write temp {}: {}", tmp.display(), error))?;
+    std::fs::rename(&tmp, &path).map_err(|error| format!("rename temp {} to {}: {}", tmp.display(), path.display(), error))?;
     Ok(())
 }
 

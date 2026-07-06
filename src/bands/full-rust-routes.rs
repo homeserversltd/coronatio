@@ -1,6 +1,6 @@
 fn full_rust_route_table() -> Router<AppState> {
     Router::new()
-        .route("/api/tabs/visibility", post(homeserver_rust_mutation_route))
+        .route("/api/tabs/visibility", post(tab_visibility_route))
         .route("/api/tabs/elements", put(homeserver_rust_mutation_route))
         .route("/api/pre-unlock", post(homeserver_rust_mutation_route))
         .route("/api/vault/status", get(homeserver_rust_read_route))

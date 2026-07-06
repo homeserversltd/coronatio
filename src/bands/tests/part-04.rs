@@ -419,6 +419,7 @@
 
     #[tokio::test]
     async fn validate_pin_reads_homeserver_json_override_before_etc() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let temp = test_tab_root("pin-json-override");
         let config_path = temp.join("homeserver.json");
         std::fs::write(&config_path, r#"{
