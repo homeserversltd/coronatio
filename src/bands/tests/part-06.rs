@@ -40,3 +40,65 @@
         }
     }
 
+    #[test]
+    fn uxport_003_stats_source_library_and_holding_pen_walls() {
+        let html = render_crown_shell();
+        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
+        for citation in [
+            "src/tablets/stats/index.tsx",
+            "components/{MemoryRadialBar,ProcessUsageList,DiskUsageChart,DiskIoChart,NetworkSpeedChart,KeaLeasesTable,StatChart,CpuStatChart}.tsx",
+            "stats.css",
+            "src/styles/common/ui/{_progress-bar,_table,_checkbox,_visibility-toggle,_editable-field}.css",
+        ] {
+            assert!(html.contains(citation) || map.contains(citation), "missing stats og citation {citation}");
+        }
+        assert!(html.contains("UXPORT-003 LIBRARY band: og src/tablets/stats stats domain pack"));
+        for receipt in [
+            "stat-card=ABSORB",
+            "chart-hosts=ABSORB",
+            "load-averages=ABSORB",
+            "memory-bars=FAITHFUL-after-diff",
+            "process-bars=FAITHFUL-after-diff",
+            "disk-usage-bars=FAITHFUL-after-diff",
+            "network-interfaces-table=FAITHFUL-after-diff",
+            "kea-leases-table=FAITHFUL-after-diff",
+            "disk-io-checkboxes=ABSORB",
+            "visibility-toggle=DEFERRED",
+        ] {
+            assert!(html.contains(receipt) || map.contains(receipt), "missing stats declaration-diff receipt {receipt}");
+        }
+        let holding_pen = std::fs::read_to_string("src/bands/shell/ux/shell/document-2-css.css").unwrap();
+        for drained in [".stats-tablet", ".stat-element", ".memory-bar", ".network-interfaces-table", ".kea-leases-table", ".process-bar", ".disk-usage-bar", ".device-controls", ".load-averages", ".coronatio-chart-canvas"] {
+            assert!(!holding_pen.contains(drained), "stats selector remained in holding pen: {drained}");
+            assert!(html.contains(drained), "drained stats selector not served from stats pack: {drained}");
+        }
+    }
+
+    #[test]
+    fn uxport_003_stats_markup_preserves_og_classes_and_defers_tabbar() {
+        let html = render_crown_shell();
+        let stats_start = html.find(r#"class="stats-tablet" data-stats-viewport"#).unwrap();
+        let stats_end = html.find(r#"id="pane-portals""#).unwrap();
+        let stats = &html[stats_start..stats_end];
+        for required in [
+            r#"class="stat-element""#,
+            r#"class="stat-header""#,
+            r#"class="stat-title""#,
+            r#"class="stat-content""#,
+            r#"class="memory-bar""#,
+            r#"class="memory-bar-fill""#,
+            r#"class="network-interfaces-table""#,
+            r#"class="kea-leases-table""#,
+            r#"class="disk-usage-stats""#,
+            r#"class="process-usage-list""#,
+            r#"class="device-controls""#,
+            r#"class="coronatio-chart-canvas""#,
+        ] {
+            assert!(stats.contains(required), "stats markup missing og class stack {required}");
+        }
+        for forbidden in ["ui-progress-bar__", "ui-table", "ui-checkbox__", "ui-visibility-toggle"] {
+            assert!(!stats.contains(forbidden), "stats body renamed og class into shared ui vocabulary: {forbidden}");
+        }
+        assert!(std::fs::read_to_string("src/bands/crown-law/stats-tabbar.rs").unwrap().contains("star-button"), "tabbar file read only; eye/star campaign deferred");
+    }
+
