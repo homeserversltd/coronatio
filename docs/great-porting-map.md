@@ -59,17 +59,17 @@ OG citations: `src/tablets/portals/index.tsx`, `components/PortalCard.tsx`, `com
 
 | element | og class / source | current class | classification | action |
 | --- | --- | --- | --- | --- |
-| Pane root | `portals-tablet` from `portals/index.tsx` and `PortalCard.css` | generated portal fragment inside shell; no stable pane root in inspected route | ABSORB | Promote `portals-tablet` domain root and require later route/pane root to speak it. |
-| Grid | `portals-grid` from `portals/index.tsx` | no full grid class found in current emitted fragment | ABSORB | Absorb grid declarations from tab-local CSS; restore grid root in markup tranche. |
-| Portal card | `portal-card ${service.status}` from `PortalCard.tsx`; declarations in `PortalCard.css` | `card portal-card ${status}` | ABSORB | Promote `portal-card` as a portals domain card. Current `card` helper must give way to the absorbed class unless exact og class stack includes a library card variant. |
-| Portal card status | `portal-card.up/down/partial/unknown` | `portal-card ${status}` | ABSORB | Absorb byte-identical status border selectors. |
-| Portal card header/icon/name/description/meta | `portal-card-header`, `portal-icon`, `portal-name`, `portal-description`, `portal-meta` | same classes | ABSORB | Promote card interior pack; current names become faithful after library owns declarations. |
-| Admin controls shell | `admin-controls`, `admin-controls-row`, `script-management-notice`, `script-notice-text` | `portal-admin-controls`, `admin-controls-row` | ABSORB | Absorb original `admin-controls` pack; replace Rust-only `portal-admin-controls` if it is not declaration-identical. |
-| Admin service buttons | buttons inside `.admin-controls button` from `PortalCard.css` | unclassified buttons in generated row | ABSORB | Promote portal admin-button domain selectors or recompose to `ui-button` only if browser proof shows the shared button declaration is identical. |
-| Visibility toggle | `visibility-toggle`, `fas fa-eye/-slash` in `portals/index.tsx` | `visibility-toggle` | RESTORE | Old code uses a shared visibility affordance class family already present in `styles/common/ui/_visibility-toggle.css`; recompose to `ui-visibility-toggle*` unless the pane-local selector proves unique. |
-| Add portal card | `portal-card add-portal-card`, `add-portal-content`, `add-portal-icon`, `add-portal-title`, `add-portal-description` | no complete add-card found in current fragment | ABSORB | Absorb add-portal card pack and restore caboose card on that primitive. |
-| Add portal modal | `portal-modal-overlay`, `portal-modal-content`, `add-portal-modal`, `modal-header`, `close-button`, `portal-form`, `form-group`, `form-actions`, `cancel-button`, `submit-button` | generic modal classes elsewhere; not full portal modal | ABSORB | Promote portal modal/form pack; form controls may internally RESTORE to `ui-input`, `ui-select`, and `ui-button` where declarations match shared UI primitives. |
-| Service status modal | `service-status-modal`, `service-status-content`, `copy-button` | no full service modal found in portals route; generic status modal substrate in shell | ABSORB | Absorb service-status modal pack and restore copy control; browser drill must prove modal size/scroll/pre text. |
+| Pane root | `portals-tablet` from `portals/index.tsx` and `PortalCard.css` | `portals-tablet` restored in `document-2.rs` | ABSORB | UXPORT-004: `packs/portals.css` owns the domain root; markup now speaks the og pane root. |
+| Grid | `portals-grid` from `portals/index.tsx` | `portals-grid` restored; old `portal-grid` helper drained | ABSORB | UXPORT-004: tab-local grid declaration copied into `packs/portals.css`; helper class retired from the portals pane. |
+| Portal card | `portal-card ${service.status}` from `PortalCard.tsx`; declarations in `PortalCard.css` | `portal-card ${status}`; generic `card` removed from portal card stack | ABSORB | UXPORT-004: `portal-card=ABSORB`; status card uses og class stack and domain pack. |
+| Portal card status | `portal-card.up/down/partial/unknown` | `portal-card ${status}` | ABSORB | UXPORT-004: status border selectors copied from `PortalCard.css` into `packs/portals.css`. |
+| Portal card header/icon/name/description/meta | `portal-card-header`, `portal-icon`, `portal-name`, `portal-description`, `portal-meta` | same classes, with `portal-meta` wrapper restored around admin controls | ABSORB | UXPORT-004: card interior declarations absorbed; emitted classes match og. |
+| Admin controls shell | `admin-controls`, `admin-controls-row`, `script-management-notice`, `script-notice-text` | `admin-controls`, `admin-controls-row`; `portal-admin-controls` retired | ABSORB | UXPORT-004: og admin-controls pack absorbed; script notice CSS present for later data cases; no VIS behavior changes. |
+| Admin service buttons | buttons inside `.admin-controls button` from `PortalCard.css` | buttons inside `.admin-controls button` | ABSORB | UXPORT-004: button declarations remain the og domain selectors; no `ui-button` rename because og did not render shared Button here. |
+| Visibility toggle | `visibility-toggle`, `fas fa-eye/-slash` in `portals/index.tsx` | `visibility-toggle` current state-machine markup retained | DEFERRED-to-VIS | Explicitly deferred: eye/star/admin-mode visibility recomposition stays for the VIS campaign; UXPORT-004 does not mutate toggle behavior or class stack. |
+| Add portal card | `portal-card add-portal-card`, `add-portal-content`, `add-portal-icon`, `add-portal-title`, `add-portal-description` | restored caboose card, admin-gated by existing chrome | ABSORB | UXPORT-004: add-card pack absorbed and markup restored. |
+| Add portal modal | `portal-modal-overlay`, `portal-modal-content`, `add-portal-modal`, `modal-header`, `close-button`, `portal-form`, `form-group`, `form-actions`, `cancel-button`, `submit-button` | restored hidden shell with delegated open/close; create endpoint labeled not-wired | ABSORB | UXPORT-004: og source rendered native inputs/select/buttons, not shared UI components, so modal/form declarations were absorbed and controls carry `aria-disabled` + `data-portal-create-not-wired`. |
+| Service status modal | `service-status-modal`, `service-status-content`, `copy-button` | restored hidden shell; status action writes JSON into the og pre and copy button uses delegated chrome | ABSORB | UXPORT-004: service-status modal declarations absorbed; browser drill still proves size/scroll/pre text. |
 
 ## Upload pane
 
@@ -126,7 +126,7 @@ These are not current port targets. They are included so eventual ports land dir
 
 1. Upload breadcrumbs + progress proof slice. Risk: low-to-medium. It has clear existing shared primitives (`Breadcrumbs`, `FileInput`, `ProgressBar`) and current Rust already emits many og upload classes. This establishes RESTORE and ABSORB method on a contained pane without broad admin modal overlap.
 2. Stats bars/tables/checks slice. Risk: medium. `styles/common/ui/_progress-bar.css`, `_table.css`, and `_checkbox.css` already carry legacy aliases and explicit stats-tab style comments. Browser drill is required for chart geometry and responsive table behavior.
-3. Portals card/add/modal slice. Risk: medium. Card and modal declarations are tab-local and visually distinctive; the card grid has limited overlap with admin/upload.
+3. Portals card/add/modal slice. UXPORT-004 published: `packs/portals.css` born, portal pane/card/grid/add/modal/service-status look-alikes absorbed, VIS state-machine recomposition deferred.
 4. Admin controls/key/disk slice. Risk: high. It has the largest modal/action surface and service/disk state matrix. Split into SystemControls, KeyManager, DiskManager, then admin modals if needed.
 5. Power fragment. Risk: unknown. Current Rust has power classes, but this audit did not find a React power pane source; treat as quarry-gap until a source/runtime citation is recovered.
 6. Placeholder panes by Adding-a-crown-pane ladder: backblaze first only if it is the active business target; otherwise wake-on-lan is the smallest premium proof, DHCP has medium form/list complexity, miner has broader card/modal complexity, and youtube has multi-tab/config/log complexity.
@@ -164,6 +164,16 @@ Each implementation tranche must carry:
 - Checkbox feel: disk I/O controls keep native og checkbox inputs and label spacing; no `ui-checkbox*` wrapper appeared.
 - Chart canvas/tooltips: current Chart.js hosts keep 180px canvas sizing; compare tooltip/grid behavior against old source/runtime at the same viewport/theme/data.
 - Holding pen: `ux/shell/document-2-css.css` has zero stats selectors after drain; `ux/packs/stats.css` carries `holding-pen drain` and declaration-diff receipt comments.
+
+## UXPORT-004 operator browser-drill checklist
+
+- Card grid geometry: `portals-tablet > portals-grid` uses auto-fill 300px columns, 20px gap, full width, and the add-card remains the caboose.
+- Status border colors: `portal-card.up/down/partial/unknown` resolve to `--statusUp`, `--statusDown`, `--statusPartial`, and `--statusUnknown` at same theme/session state.
+- Card face: `portal-card-header`, 120px `portal-icon`, centered `portal-name`, clipped `portal-description`, and `portal-meta` match og; no generic `card` helper governs portal geometry.
+- Add-card affordance: `portal-card add-portal-card` hover/focus, plus-circle, title, and description match og.
+- Modal stacking/size: `portal-modal-overlay > portal-modal-content > add-portal-modal` and `service-status-modal` occupy the og overlay/max-width/max-height/scroll behavior.
+- Admin-controls row: `admin-controls > admin-controls-row` buttons keep og grid and hover; `portal-admin-controls` is absent.
+- Deferred VIS: visibility toggle/eye/admin-mode behavior remains current and is not acceptance for this tranche.
 
 ## Quarry gaps found
 

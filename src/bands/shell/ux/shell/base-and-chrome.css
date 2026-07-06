@@ -296,23 +296,6 @@
     .pane { display: none; width: 100%; max-width: none; margin: 0; }
     .pane.active { display: block; }
     .pane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: var(--theme-grid-gap); align-items: start; }
-    .portal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; align-items: stretch; width: 100%; }
-    .portal-card[data-portal-card] { min-width: 240px; min-height: 220px; align-items: center; text-align: center; cursor: pointer; background: var(--background); border-radius: 12px; padding: 1.25rem; gap: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,.05); }
-    .portal-card[data-portal-card]:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); }
-    .portal-card-header { display: flex; flex-direction: column; align-items: center; gap: .4rem; position: relative; }
-    .portal-icon { width: 120px; height: 120px; object-fit: contain; border-radius: 8px; transition: transform .2s ease; }
-    .portal-card:hover .portal-icon { transform: scale(1.05); }
-    .portal-card[data-portal-card]::before { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom right, rgba(255,255,255,.1) 0%, rgba(0,0,0,.05) 100%); border-radius: inherit; z-index: -1; transition: all .3s ease; }
-    .portal-name { margin: .25rem 0 0; padding: 0; font-size: 1.2rem; font-weight: 500; color: var(--text); text-align: center; }
-    .portal-description { margin: 0; color: var(--text); opacity: .8; font-size: .9rem; line-height: 1.4; min-height: 2em; text-align: center; display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; }
-    [data-admin-mode="false"] [data-portal-element][data-visible="false"] { display: none !important; }
-    [data-admin-mode="true"] [data-portal-element][data-visible="false"] { display: block; }
-    [data-portal-element][data-visible="false"] .portal-card { opacity: .62; border-style: dashed; }
-    .portal-admin-controls { width: 100%; display: flex; flex-direction: column; gap: .3rem; }
-    .admin-controls-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: .25rem; width: 100%; }
-    .admin-controls-row button { min-height: 32px; padding: .35rem .45rem; font-size: .82rem; }
-
-
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -321,7 +304,6 @@
       box-shadow: var(--shadow);
       min-height: var(--theme-card-min-height);
     }
-    .portal-card { min-height: 180px; display: flex; flex-direction: column; justify-content: space-between; gap: .9rem; }
     .card h2, .card h3 { margin: 0 0 .65rem; font-size: 1rem; color: var(--text); }
     .card p { margin: .25rem 0; color: var(--text-secondary); font-size: .92rem; }
     .metric { font-size: 1.65rem; font-weight: 750; color: var(--accent); line-height: 1.1; }

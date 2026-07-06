@@ -102,3 +102,74 @@
         assert!(std::fs::read_to_string("src/bands/crown-law/stats-tabbar.rs").unwrap().contains("star-button"), "tabbar file read only; eye/star campaign deferred");
     }
 
+    #[test]
+    fn uxport_004_portals_source_library_and_drain_walls() {
+        let html = render_crown_shell();
+        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
+        for citation in [
+            "src/tablets/portals/index.tsx",
+            "components/{PortalCard,AddPortalCard,AddPortalModal,ServiceStatusModal}.tsx",
+            "PortalCard.css",
+        ] {
+            assert!(html.contains(citation) || map.contains(citation), "missing portals og citation {citation}");
+        }
+        assert!(html.contains("UXPORT-004 LIBRARY band: og src/tablets/portals portals domain pack"));
+        for receipt in [
+            "pane-root=ABSORB",
+            "grid=ABSORB",
+            "portal-card=ABSORB",
+            "card-interior=ABSORB",
+            "admin-controls=ABSORB",
+            "add-portal-card=ABSORB",
+            "portal-modal-form=ABSORB",
+            "service-status-modal=ABSORB",
+            "visibility-toggle=DEFERRED-to-VIS",
+        ] {
+            assert!(html.contains(receipt) || map.contains(receipt), "missing portals declaration-diff receipt {receipt}");
+        }
+        let holding_pen = std::fs::read_to_string("src/bands/shell/ux/shell/document-2-css.css").unwrap();
+        let shell_base = std::fs::read_to_string("src/bands/shell/ux/shell/base-and-chrome.css").unwrap();
+        for drained in [".portals-tablet", ".portals-grid", ".portal-grid", ".portal-card", ".portal-admin-controls", ".add-portal-card", ".portal-modal-overlay", ".service-status-modal"] {
+            assert!(!holding_pen.contains(drained), "portal selector remained in holding pen: {drained}");
+            assert!(!shell_base.contains(drained), "portal selector remained in shell base: {drained}");
+            if drained != ".portal-grid" && drained != ".portal-admin-controls" {
+                assert!(html.contains(drained), "drained portal selector not served from portals pack: {drained}");
+            }
+        }
+        assert!(SHELL_UX_CHILDREN.contains(&"packs/portals.css"));
+    }
+
+    #[test]
+    fn uxport_004_portals_markup_restores_og_structure_and_defers_vis() {
+        let html = render_crown_shell();
+        let portals_start = html.find("class=\"portals-tablet\" data-portals-viewport").unwrap();
+        let portals_end = html.find("id=\"pane-upload\"").unwrap();
+        let portals = &html[portals_start..portals_end];
+        for required in [
+            "class=\"portals-tablet\"",
+            "class=\"portals-grid\"",
+            "class=\"portal-card add-portal-card\"",
+            "class=\"add-portal-content\"",
+            "class=\"add-portal-icon\"",
+            "class=\"add-portal-title\"",
+            "class=\"add-portal-description\"",
+            "class=\"portal-modal-overlay\"",
+            "class=\"portal-modal-content\"",
+            "class=\"add-portal-modal\"",
+            "class=\"portal-form\"",
+            "class=\"service-status-modal\"",
+            "class=\"service-status-content\"",
+            "class=\"copy-button\"",
+        ] {
+            let haystack = if required.contains("add-portal") { html.as_str() } else { portals };
+            assert!(haystack.contains(required), "portals markup missing og class stack {required}");
+        }
+        let script = &html[html.find("function renderPortalCard").unwrap()..html.find("async function hydrateFavoriteManifest").unwrap()];
+        assert!(script.contains("<div class=\"admin-controls\""));
+        assert!(!script.contains("portal-admin-controls"));
+        assert!(!script.contains("<article class=\"card portal-card"));
+        assert!(script.contains("class=\"visibility-toggle\""), "VIS state-machine markup remains present for later campaign");
+        assert!(portals.contains("data-portal-create-not-wired=\"true\""));
+        assert!(portals.contains("aria-disabled=\"true\""));
+    }
+

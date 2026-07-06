@@ -457,25 +457,38 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     function renderPortalCard(portal, factoryNames) {
       const destination = portalDestination(portal);
       const serviceData = encodeURIComponent(JSON.stringify(portal.services || []));
-      const adminControls = portal.type === 'link' ? '' : `<div class="portal-admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="${serviceData}">
-        <div class="admin-controls-row"><button data-service-action="start">Start</button><button data-service-action="stop">Stop</button><button data-service-action="restart">Restart</button></div>
-        <div class="admin-controls-row"><button data-service-action="enable">Enable</button><button data-service-action="disable">Disable</button><button data-service-action="status">Status</button></div>
+      const adminControls = portal.type === 'link' ? '' : `<div class="admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="${serviceData}">
+        <div class="admin-controls-row"><button data-service-action="start" title="Start service">Start</button><button data-service-action="stop" title="Stop service">Stop</button><button data-service-action="restart" title="Restart service">Restart</button></div>
+        <div class="admin-controls-row"><button data-service-action="enable" title="Enable service at boot">Enable</button><button data-service-action="disable" title="Disable service at boot">Disable</button><button data-service-action="status" title="Check service status">Status</button></div>
       </div>`;
       const isVisible = portal.visible !== false;
       const visibilityToggle = `<button type="button" class="visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle data-visible="${isVisible}" aria-label="${isVisible ? 'Hide' : 'Show'} ${escapeHtml(portal.name)}">${isVisible ? '👁' : '🙈'}</button>`;
       return `<div class="portal-element" data-portal-element data-visible="${isVisible}" style="position:relative">
         ${visibilityToggle}
-        <article class="card portal-card ${escapeHtml(portal.status || 'unknown')}" data-portal-card data-portal-name="${escapeHtml(portal.name)}" data-portal-url="${escapeHtml(destination)}" role="link" tabindex="0">
+        <article class="portal-card ${escapeHtml(portal.status || 'unknown')}" data-portal-card data-portal-name="${escapeHtml(portal.name)}" data-portal-url="${escapeHtml(destination)}" role="link" tabindex="0">
           <div class="portal-card-header">
             <img src="/api/portals/images/${encodeURIComponent(portal.name)}.png" alt="${escapeHtml(portal.name)} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">
             <h2 class="portal-name">${escapeHtml(portal.name)}</h2>
             <p class="portal-description">${escapeHtml(portal.description || '')}</p>
           </div>
-          ${adminControls}
+          <div class="portal-meta">${adminControls}</div>
         </article>
       </div>`;
     }
 
+    function renderAddPortalCard() {
+      return `<div class="portal-card add-portal-card" data-admin-only data-admin-viewport="portals" data-add-portal-open role="button" tabindex="0" aria-label="Add new portal">
+        <div class="add-portal-content"><div class="add-portal-icon"><i class="fas fa-plus"></i></div><h3 class="add-portal-title">Add Portal</h3><p class="add-portal-description">Create a new portal for your services</p></div>
+      </div>`;
+    }
+    function openPortalModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
+    function closePortalModals() { document.querySelectorAll('[data-add-portal-modal], [data-service-status-modal]').forEach(modal => { modal.hidden = true; }); }
+    function showPortalServiceStatus(results) {
+      const modal = document.querySelector('[data-service-status-modal]');
+      const content = modal?.querySelector('[data-service-status-content]');
+      if (content) content.textContent = JSON.stringify(results, null, 2);
+      if (modal) modal.hidden = false;
+    }
     async function handlePortalServiceAction(event) {
       event.preventDefault();
       event.stopPropagation();
@@ -485,7 +498,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       let services = [];
       try { services = JSON.parse(decodeURIComponent(controls?.dataset.portalServices || '%5B%5D')); } catch (_) { services = []; }
       if (!services.length) {
-        if (readout) readout.textContent = 'No services specified for this portal.';
+        showPortalServiceStatus([{ action, error: 'No services specified for this portal.' }]);
         return;
       }
       const results = [];
@@ -502,6 +515,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
           results.push({ service, action, error: String(error) });
         }
       }
+      if (action === 'status') showPortalServiceStatus(results);
     }
 
     async function hydratePortals() {
@@ -511,7 +525,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         const data = await fetch(grid.dataset.portalsSource || '/api/portals').then(r => r.json());
         const portals = data.portals || [];
         const factoryNames = data.factoryPortals || [];
-        grid.innerHTML = portals.length ? portals.map(portal => renderPortalCard(portal, factoryNames)).join('') : '<article class="card portal-card"><h2>No portals configured</h2><p>homeserver.json has no portal entries.</p></article>';
+        grid.innerHTML = (portals.length ? portals.map(portal => renderPortalCard(portal, factoryNames)).join('') : '<article class="portal-card portal-empty"><h2>No portals configured</h2><p>homeserver.json has no portal entries.</p></article>') + renderAddPortalCard();
         grid.querySelectorAll('[data-portal-card]').forEach(card => {
           const open = () => { const url = card.dataset.portalUrl; if (url && url !== '#') window.open(url, '_blank', 'noopener,noreferrer'); };
           card.addEventListener('click', open);
@@ -520,7 +534,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         grid.querySelectorAll('[data-service-action]').forEach(button => button.addEventListener('click', handlePortalServiceAction));
         setAdminMode(headerState.isAdmin);
       } catch (error) {
-        grid.innerHTML = '<article class="card portal-card error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>';
+        grid.innerHTML = '<article class="portal-card error portal-error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>' + renderAddPortalCard();
       }
     }
 
@@ -560,6 +574,14 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     document.body.addEventListener('click', event => {
       const scopedTab = event.target.closest('[data-tab-id]');
       if (scopedTab) return switchScopedTabs(scopedTab);
+      const addPortal = event.target.closest('[data-add-portal-open]');
+      if (addPortal) { openPortalModal('[data-add-portal-modal]'); return; }
+      const portalModalClose = event.target.closest('[data-portal-modal-close]');
+      if (portalModalClose) { closePortalModals(); return; }
+      const portalBackdrop = event.target.closest('[data-add-portal-modal], [data-service-status-modal]');
+      if (portalBackdrop && event.target === portalBackdrop) { closePortalModals(); return; }
+      const copyStatus = event.target.closest('[data-service-status-copy]');
+      if (copyStatus) { navigator.clipboard?.writeText(document.querySelector('[data-service-status-content]')?.textContent || ''); return; }
       const fileButton = event.target.closest('[data-upload-file-button]');
       if (fileButton) { uploadFileInput?.click(); return; }
       const health = event.target.closest('[data-test-health-check]');
@@ -579,6 +601,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       const backdrop = event.target.closest('[data-ux-modal-demo-backdrop]');
       if (backdrop && event.target === backdrop) return closeUxModalDemo();
     });
+    document.querySelector('[data-portal-add-form]')?.addEventListener('submit', event => { event.preventDefault(); });
     document.body.addEventListener('input', event => {
       const slider = event.target.closest('[data-ui-slider]');
       if (slider) { const out = slider.closest('.showcase-item')?.querySelector('[data-slider-value]'); if (out) out.textContent = slider.value; return; }

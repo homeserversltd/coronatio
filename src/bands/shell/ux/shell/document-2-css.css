@@ -27,5 +27,5 @@
       .header-left, .header-center, .header-right { justify-content: center; }
       .theme-button, .change-admin-pin-button, .admin-button { flex: 1 1 auto; min-width: 0; }
       .tab-bar, .content { padding-left: 12px; padding-right: 12px; }
-      .portal-grid, .pane-grid { grid-template-columns: 1fr; }
+      .pane-grid { grid-template-columns: 1fr; }
     }
