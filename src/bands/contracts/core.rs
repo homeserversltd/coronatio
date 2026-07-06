@@ -28,6 +28,168 @@ struct StatsSnapshot {
     next_routes: StatsNextRoutes,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct SystemStatsGuestProjection {
+    schema: String,
+    topic: String,
+    resources: StatsGuestResources,
+    storage: Vec<StatsGuestDrive>,
+    network: StatsGuestNetwork,
+    telemetry: StatsGuestTelemetry,
+    kea_leases: StatsGuestKeaLeases,
+    next_routes: StatsNextRoutes,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct StatsGuestResources {
+    load: StatsLoad,
+    memory: StatsMemory,
+    swap: StatsMemory,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsGuestDrive {
+    product_label: String,
+    total_bytes: Option<u64>,
+    used_bytes: Option<u64>,
+    free_bytes: Option<u64>,
+    usage_percent: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsGuestNetwork {
+    received_bytes: u64,
+    sent_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct StatsGuestTelemetry {
+    load1: Option<f64>,
+    cpu_temperature_celsius: Option<f64>,
+    storage_posture: Option<String>,
+    currentness: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsGuestKeaLeases {
+    status: String,
+    entries: Vec<StatsGuestKeaLease>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsGuestKeaLease {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct SystemStatsAdminProjection {
+    schema: String,
+    topic: String,
+    pane_id: String,
+    product: String,
+    doctrine: StatsViewportDoctrine,
+    transport: StatsTransport,
+    resources: StatsResources,
+    storage: Vec<StatsDrive>,
+    network: StatsNetwork,
+    io: StatsIo,
+    leases: Vec<StatsKeaLease>,
+    processes: Vec<StatsProcess>,
+    services: Vec<StatsService>,
+    telemetry: StatsTelemetry,
+    next_routes: StatsNextRoutes,
+}
+
+fn project_system_stats_guest(raw: &StatsSnapshot) -> SystemStatsGuestProjection {
+    SystemStatsGuestProjection {
+        schema: raw.schema.clone(),
+        topic: "system.stats".to_string(),
+        resources: StatsGuestResources {
+            load: raw.resources.load.clone(),
+            memory: raw.resources.memory.clone(),
+            swap: raw.resources.swap.clone(),
+        },
+        storage: raw
+            .storage
+            .iter()
+            .map(|drive| StatsGuestDrive {
+                product_label: product_storage_label(drive),
+                total_bytes: drive.total_bytes,
+                used_bytes: drive.used_bytes,
+                free_bytes: drive.free_bytes,
+                usage_percent: drive.usage_percent,
+            })
+            .collect(),
+        network: StatsGuestNetwork {
+            received_bytes: raw.network.interfaces.iter().map(|interface| interface.rx_bytes).sum(),
+            sent_bytes: raw.network.interfaces.iter().map(|interface| interface.tx_bytes).sum(),
+        },
+        telemetry: StatsGuestTelemetry {
+            load1: raw.telemetry.load1,
+            cpu_temperature_celsius: raw.telemetry.cpu_temperature_celsius,
+            storage_posture: raw.telemetry.storage_posture.clone(),
+            currentness: "current".to_string(),
+        },
+        kea_leases: StatsGuestKeaLeases { status: "unavailable".to_string(), entries: Vec::new() },
+        next_routes: StatsNextRoutes {
+            snapshot: raw.next_routes.snapshot.clone(),
+            events: raw.next_routes.events.clone(),
+            renew: raw.next_routes.renew.clone(),
+        },
+    }
+}
+
+fn project_system_stats_admin(raw: &StatsSnapshot) -> SystemStatsAdminProjection {
+    SystemStatsAdminProjection {
+        schema: raw.schema.clone(),
+        topic: "system.stats".to_string(),
+        pane_id: raw.pane_id.clone(),
+        product: raw.product.clone(),
+        doctrine: StatsViewportDoctrine {
+            quarry_sources: raw.doctrine.quarry_sources.clone(),
+            preserved_sections: raw.doctrine.preserved_sections.clone(),
+            refresh_seconds: raw.doctrine.refresh_seconds,
+            authority: raw.doctrine.authority.clone(),
+        },
+        transport: StatsTransport {
+            snapshot_route: raw.transport.snapshot_route.clone(),
+            event_route: raw.transport.event_route.clone(),
+            renew_route: raw.transport.renew_route.clone(),
+            stream_status: raw.transport.stream_status.clone(),
+            stream_reason: raw.transport.stream_reason.clone(),
+        },
+        resources: raw.resources.clone(),
+        storage: raw.storage.clone(),
+        network: raw.network.clone(),
+        io: raw.io.clone(),
+        leases: raw.leases.clone(),
+        processes: raw.processes.clone(),
+        services: raw.services.clone(),
+        telemetry: raw.telemetry.clone(),
+        next_routes: StatsNextRoutes {
+            snapshot: raw.next_routes.snapshot.clone(),
+            events: raw.next_routes.events.clone(),
+            renew: raw.next_routes.renew.clone(),
+        },
+    }
+}
+
+fn product_storage_label(drive: &StatsDrive) -> String {
+    match drive.mount.as_str() {
+        "/" => "System Storage".to_string(),
+        "/home" => "Home Storage".to_string(),
+        "/vault" => "Vault Storage".to_string(),
+        "/mnt/nas" => "Network Storage".to_string(),
+        _ => "Storage".to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct StatsTransport {
