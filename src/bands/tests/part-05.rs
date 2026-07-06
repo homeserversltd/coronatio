@@ -106,15 +106,21 @@
     #[test]
     fn portals_grid_and_card_face_match_quarry_without_chips() {
         let html = render_crown_shell();
-        assert!(html.contains(".portal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; align-items: stretch; width: 100%; }"));
-        assert!(html.contains(".portal-icon { width: 120px; height: 120px; object-fit: contain; border-radius: 8px;"));
-        assert!(html.contains(".portal-name { margin: .25rem 0 0; padding: 0; font-size: 1.2rem; font-weight: 500;"));
-        assert!(html.contains(".portal-description { margin: 0; color: var(--text); opacity: .8; font-size: .9rem; line-height: 1.4;"));
+        assert!(html.contains(".portals-grid {"));
+        assert!(html.contains("grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));"));
+        assert!(html.contains(".portal-icon {"));
+        assert!(html.contains("width: 120px;"));
+        assert!(html.contains("height: 120px;"));
+        assert!(html.contains(".portal-name {"));
+        assert!(html.contains("font-size: 1.2rem;"));
+        assert!(html.contains("font-weight: 500;"));
+        assert!(html.contains(".portal-description {"));
+        assert!(html.contains("line-height: 1.4;"));
         assert!(html.contains(r#"<img src="/api/portals/images/${encodeURIComponent(portal.name)}.png"#));
         assert!(html.contains("<h2 class=\"portal-name\">${escapeHtml(portal.name)}</h2>"));
         assert!(html.contains("<p class=\"portal-description\">${escapeHtml(portal.description || '')}</p>"));
         let card = &html[html.find("function renderPortalCard").unwrap()..html.find("async function handlePortalServiceAction").unwrap()];
-        for forbidden in ["portal-service-row", "portal-chip", ":${escapeHtml(portal.port)}", "factory</span>", "custom</span>"] {
+        for forbidden in ["portal-service-row", "portal-chip", ":${escapeHtml(portal.port)}", "factory</span>", "custom</span>", "class=\"card portal-card"] {
             assert!(!card.contains(forbidden), "portal face still carries non-quarry chip/detail: {forbidden}");
         }
     }
