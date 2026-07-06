@@ -25,6 +25,7 @@ async fn main() {
 }
 
 fn app(state: AppState) -> Router {
+    pulse::ensure_stats_ticker_started();
     Router::new()
         .route("/", get(crown_shell_route))
         .route("/health", get(health_route))
