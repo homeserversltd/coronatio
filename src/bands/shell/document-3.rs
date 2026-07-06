@@ -32,27 +32,30 @@ fn shell_document_3() -> &'static str {
       }
       document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === headerState.theme)));
     }
-    function setAdminMode(value) {
-      const wasAdmin = headerState.isAdmin;
-      const previousActive = currentActiveTabId();
-      headerState.isAdmin = Boolean(value);
-      saveHeaderState();
+    function applyAdminDomState() {
       if (adminButton) {
         adminButton.dataset.adminState = headerState.isAdmin ? 'logged-in' : 'logged-out';
         adminButton.textContent = headerState.isAdmin ? 'Exit Admin Mode' : 'Enter Admin Mode';
       }
       if (appRoot) appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
-      if (!headerState.isAdmin) {
-        const token = localStorage.getItem('coronatioAdminToken');
-        if (token) fetch('/api/logout', { method: 'POST', headers: { 'X-Admin-Token': token } }).catch(() => {});
-        localStorage.removeItem('coronatioAdminToken');
-      }
       if (tabBar) tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false';
       document.querySelectorAll('[data-admin-only]:not([data-admin-only="false"])').forEach(el => {
         el.hidden = !headerState.isAdmin;
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
       if (changePinButton) changePinButton.hidden = !headerState.isAdmin;
+    }
+    function setAdminMode(value) {
+      const wasAdmin = headerState.isAdmin;
+      const previousActive = currentActiveTabId();
+      headerState.isAdmin = Boolean(value);
+      saveHeaderState();
+      if (!headerState.isAdmin) {
+        const token = localStorage.getItem('coronatioAdminToken');
+        if (token) fetch('/api/logout', { method: 'POST', headers: { 'X-Admin-Token': token } }).catch(() => {});
+        localStorage.removeItem('coronatioAdminToken');
+      }
+      applyAdminDomState();
       refreshTabBar(previousActive).then(selectedTab => {
         applyTabBarVisibility();
         refreshElementFragment('stats');

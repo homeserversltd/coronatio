@@ -537,7 +537,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       target.innerHTML = await response.text();
       if (tabId === 'portals') bindPortalFragmentControls(target);
       if (tabId === 'stats') hydrateStats();
-      setAdminMode(headerState.isAdmin);
+      applyAdminDomState();
     }
     async function toggleElementVisibility(tabId, elementId, visible) {
       const token = localStorage.getItem('coronatioAdminToken');
@@ -553,7 +553,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       target.innerHTML = html;
       if (tabId === 'portals') bindPortalFragmentControls(target);
       if (tabId === 'stats') hydrateStats();
-      setAdminMode(headerState.isAdmin);
+      applyAdminDomState();
     }
     async function hydratePortals() {
       const grid = document.querySelector('[data-portals-grid]');
