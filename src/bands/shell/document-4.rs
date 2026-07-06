@@ -226,6 +226,14 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     function seedSeries(value, count = 24) {
       return Array.from({ length: count }, (_, index) => Math.max(0, Number(value || 0) * (0.92 + (index % 6) * 0.025)));
     }
+    function statsNetworkTotals(data) {
+      const network = data.network || {};
+      if (network.receivedBytes !== undefined || network.sentBytes !== undefined) return { rx: Number(network.receivedBytes || 0), tx: Number(network.sentBytes || 0) };
+      return {
+        rx: (network.interfaces || []).reduce((sum, iface) => sum + Number(iface.rxBytes || 0), 0),
+        tx: (network.interfaces || []).reduce((sum, iface) => sum + Number(iface.txBytes || 0), 0)
+      };
+    }
     function seedStatsHistory(label, data) {
       if (statsChartState.seeded) return;
       const cpu = loadToPercent(data.resources?.load?.one);
@@ -245,8 +253,9 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     function pushChartPoint(label, data) {
       seedStatsHistory(label, data);
       const now = Date.now();
-      const totalRx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.rxBytes || 0), 0);
-      const totalTx = (data.network?.interfaces || []).reduce((sum, iface) => sum + Number(iface.txBytes || 0), 0);
+      const totals = statsNetworkTotals(data);
+      const totalRx = totals.rx;
+      const totalTx = totals.tx;
       const seconds = statsChartState.lastStamp ? Math.max(1, (now - statsChartState.lastStamp) / 1000) : 1;
       const downloadRate = statsChartState.lastRx === null ? 0 : Math.max(0, (totalRx - statsChartState.lastRx) / seconds);
       const uploadRate = statsChartState.lastTx === null ? 0 : Math.max(0, (totalTx - statsChartState.lastTx) / seconds);
@@ -376,7 +385,14 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       const ctx = document.getElementById('networkChart');
       if (ctx && window.Chart) createNetworkChart(ctx, statsChartState.labels, statsChartState.download, statsChartState.upload);
       const tbody = document.querySelector('[data-network-interfaces]');
-      if (tbody) tbody.innerHTML = (data.network?.interfaces || []).filter(meaningfulInterface).map(iface => `<tr><td><span class="interface-name">${interfaceLabel(iface.name)}</span><span class="interface-label"> (${iface.name})</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr><td colspan="3">Loading network data...</td></tr>';
+      if (!tbody) return;
+      const interfaces = data.network?.interfaces;
+      if (Array.isArray(interfaces)) {
+        tbody.innerHTML = interfaces.filter(meaningfulInterface).map(iface => `<tr><td><span class="interface-name">${interfaceLabel(iface.name)}</span><span class="interface-label"> (${iface.name})</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr><td colspan="3">Loading network data...</td></tr>';
+      } else {
+        const totals = statsNetworkTotals(data);
+        tbody.innerHTML = `<tr><td><span class="interface-name">Network</span></td><td class="data-cell">${fmtBytes(totals.rx)}</td><td class="data-cell">${fmtBytes(totals.tx)}</td></tr>`;
+      }
     }
     function renderDiskIo(data) {
       const controls = document.querySelector('[data-device-controls]');
@@ -417,11 +433,19 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     function renderDiskUsage(data) {
       const target = document.querySelector('[data-disk-usage-stats]');
       if (!target) return;
-      target.innerHTML = (data.storage || []).map(drive => `<div class="disk-usage-item"><div class="disk-usage-header"><div class="disk-device">${drive.name} (${Number(drive.usagePercent || 0).toFixed(1)}%)</div><div class="disk-mountpoint">Mount: ${drive.mount}</div></div><div class="disk-usage-bar"><div class="disk-usage-fill" style="width:${drive.usagePercent || 0}%"></div></div><div class="disk-usage-details"><div>Used: ${fmtBytes(drive.usedBytes)}</div><div>Free: ${fmtBytes(drive.freeBytes)}</div><div>Total: ${fmtBytes(drive.totalBytes)}</div></div></div>`).join('') || '<div class="disk-usage-loading"><p>Loading disk usage data...</p></div>';
+      target.innerHTML = (data.storage || []).map(drive => {
+        const label = drive.productLabel || drive.name || 'Storage';
+        const mountLine = drive.mount ? `<div class="disk-mountpoint">Mount: ${drive.mount}</div>` : '';
+        return `<div class="disk-usage-item"><div class="disk-usage-header"><div class="disk-device">${label} (${Number(drive.usagePercent || 0).toFixed(1)}%)</div>${mountLine}</div><div class="disk-usage-bar"><div class="disk-usage-fill" style="width:${drive.usagePercent || 0}%"></div></div><div class="disk-usage-details"><div>Used: ${fmtBytes(drive.usedBytes)}</div><div>Free: ${fmtBytes(drive.freeBytes)}</div><div>Total: ${fmtBytes(drive.totalBytes)}</div></div></div>`;
+      }).join('') || '<div class="disk-usage-loading"><p>Loading disk usage data...</p></div>';
     }
     function renderKeaLeases(data) {
       const tbody = document.querySelector('[data-kea-leases]');
       if (!tbody) return;
+      if (data.keaLeases && !data.leases) {
+        tbody.innerHTML = '<tr><td colspan="4">No Kea leases available.</td></tr>';
+        return;
+      }
       const leases = data.leases || [];
       tbody.innerHTML = leases.length ? leases.map(lease => `<tr><td class="device-note-cell" data-label="Note:"><span class="note-text">${lease.note || ''}</span><button class="edit-note-button" data-admin-only="true" title="Edit device note">✎</button></td><td data-label="Hostname:">${lease.hostname || 'N/A'}</td><td data-label="IP:">${lease.ip}</td><td data-label="MAC:" title="${lease.mac}">${lease.mac}</td></tr>`).join('') : '<tr><td colspan="4">No Kea leases found.</td></tr>';
     }
@@ -433,7 +457,10 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     }
     async function hydrateStats() {
       try {
-        const data = await fetch('/api/stats').then(r => r.json());
+        const token = localStorage.getItem('coronatioAdminToken');
+        const headers = token ? { 'X-Admin-Token': token } : {};
+        // Allowlisted chart data lane: fetch('/api/stats') with session headers and no-store cache.
+        const data = await fetch('/api/stats', { headers, cache: 'no-store' }).then(r => r.json());
         const label = formatChartTime();
         pushChartPoint(label, data);
         renderCpuChart(data);

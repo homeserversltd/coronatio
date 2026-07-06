@@ -189,3 +189,54 @@
             assert!(!census.iter().any(|field| field == denied || field.starts_with(&format!("{denied}."))), "guest type can represent denied field {denied}: {census:?}");
         }
     }
+
+    #[tokio::test]
+    async fn pulse_003d_wall_stats_route_projects_by_session_headers() {
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-003d-stats-route")) });
+        let guest = router
+            .clone()
+            .oneshot(Request::builder().uri("/api/stats").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(guest.status(), StatusCode::OK);
+        let guest_body = String::from_utf8(axum::body::to_bytes(guest.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        for denied in ["\"processes\"", "\"leases\"", "\"interfaces\"", "\"connections\"", "\"io\"", "\"mount\"", "\"device\"", "\"mac\"", "firstMissingSignal"] {
+            assert!(!guest_body.contains(denied), "guest /api/stats leaked {denied}: {guest_body}");
+        }
+        assert!(guest_body.contains("\"topic\":\"system.stats\""), "{guest_body}");
+        assert!(guest_body.contains("\"keaLeases\""), "{guest_body}");
+        assert!(guest_body.contains("\"currentness\""), "{guest_body}");
+
+        let token = authorize_test_admin_token();
+        let admin = router
+            .oneshot(Request::builder().uri("/api/stats").header("X-Admin-Token", token).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(admin.status(), StatusCode::OK);
+        let admin_body = String::from_utf8(axum::body::to_bytes(admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        for expected in ["\"processes\"", "\"leases\"", "\"interfaces\"", "\"io\"", "\"mount\"", "\"source\""] {
+            assert!(admin_body.contains(expected), "admin /api/stats omitted {expected}: {admin_body}");
+        }
+    }
+
+    #[test]
+    fn pulse_003de_wall_shell_rider_and_stats_hydration_are_projection_safe() {
+        let chrome = crown_chrome_js();
+        assert!(chrome.contains("pulseStream.addEventListener('stats.tick'"));
+        assert!(chrome.contains("refreshElementFragment('stats').catch(() => {})"));
+        assert!(chrome.contains("fetch('/api/stats', { headers, cache: 'no-store' })"));
+        let init_connect = chrome.find("\n    connectPulseStream();").expect("pulse rider init call must remain explicit");
+        for declaration in [
+            "\n    let pulseStream = null;",
+            "\n    let pulseRenewTimer = null;",
+            "\n    let pulseStreamId = null;",
+        ] {
+            let declaration_offset = chrome.find(declaration).unwrap_or_else(|| panic!("missing pulse rider state declaration: {declaration}"));
+            assert!(declaration_offset < init_connect, "pulse rider declaration must precede connectPulseStream(): {declaration}");
+        }
+        assert!(chrome.contains("function statsNetworkTotals(data)"));
+        assert!(chrome.contains("network.receivedBytes"));
+        assert!(chrome.contains("drive.productLabel || drive.name || 'Storage'"));
+        assert!(chrome.contains("data.keaLeases && !data.leases"));
+    }
+

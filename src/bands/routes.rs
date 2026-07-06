@@ -84,8 +84,12 @@ async fn panes_route() -> impl IntoResponse {
     }))
 }
 
-async fn stats_route() -> impl IntoResponse {
-    Json(stats_snapshot())
+async fn stats_route(headers: axum::http::HeaderMap) -> Response {
+    let raw = stats_snapshot();
+    match session_from_headers(&headers) {
+        Session::Admin => Json(project_system_stats_admin(&raw)).into_response(),
+        Session::Guest => Json(project_system_stats_guest(&raw)).into_response(),
+    }
 }
 
 async fn registry_route() -> impl IntoResponse {
