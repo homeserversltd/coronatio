@@ -79,6 +79,17 @@
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn flood_001_wall_tab_bar_fragment_is_acyclic_no_load_trigger() {
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("flood-001-tab-bar-fragment")) });
+        let response = router.oneshot(Request::builder().uri("/api/tab-bar?active=stats").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(fragment.contains("hx-get=\"/admit/stats\""), "fragment must preserve click-driven pane admission: {fragment}");
+        assert!(!fragment.contains("hx-trigger=\"load"), "served /api/tab-bar fragment must not reseat HTMX load triggers: {fragment}");
+        assert!(render_crown_shell().contains("hx-trigger=\"load, click\""), "first full-page render keeps the lawful initial active-pane load");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn hx_005_wall_staleness_admit_refetches_and_fragments_are_no_store() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-005-staleness")) });
         let mut stats_admit_requests = 0;

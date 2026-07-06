@@ -645,6 +645,14 @@ fn render_plan_tabbar(session: Session) -> String {
 }
 
 fn render_plan_tabbar_with_active(session: Session, active: Option<&str>) -> String {
+    render_plan_tabbar_projection(session, active, true)
+}
+
+fn render_plan_tabbar_fragment_with_active(session: Session, active: Option<&str>) -> String {
+    render_plan_tabbar_projection(session, active, false)
+}
+
+fn render_plan_tabbar_projection(session: Session, active: Option<&str>, active_load_trigger: bool) -> String {
     let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
     let plan = iris::plan(&facts, session);
     let active_tab = active
@@ -656,7 +664,7 @@ fn render_plan_tabbar_with_active(session: Session, active: Option<&str>) -> Str
     plan.tabs
         .into_iter()
         .filter(|grant| grant.tab_id != "fallback")
-        .map(|grant| render_plan_tab_grant(&grant, &names, &active_tab))
+        .map(|grant| render_plan_tab_grant(&grant, &names, &active_tab, active_load_trigger))
         .chain((session == Session::Admin).then(|| r#"<button type="button" class="tab add-tab-button" data-admin-only="true" data-add-tab-button title="Add tab" aria-label="Add tab"><span class="tab-name">+</span></button>"#.to_string()))
         .collect::<Vec<_>>()
         .join("")
@@ -692,7 +700,7 @@ fn tab_display_names_from_facts(facts: &IrisFacts) -> BTreeMap<String, String> {
     names
 }
 
-fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, active_tab: &str) -> String {
+fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, active_tab: &str, active_load_trigger: bool) -> String {
     let id = &grant.tab_id;
     let title = names.get(id).cloned().unwrap_or_else(|| id.to_string());
     let visibility = match grant.state { RenderState::DimmedHidden => "hidden", _ => "visible" };
@@ -716,6 +724,6 @@ fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, act
     format!(
         r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}" hx-get="/admit/{id}" hx-target="[data-view-panel='{id}']" hx-swap="innerHTML" hx-trigger="{hx_trigger}">{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
         selected = active,
-        hx_trigger = if active { "load, click" } else { "click" },
+        hx_trigger = if active && active_load_trigger { "load, click" } else { "click" },
     )
 }
