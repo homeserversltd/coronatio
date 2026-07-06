@@ -1,7 +1,10 @@
 fn full_rust_route_table() -> Router<AppState> {
     Router::new()
         .route("/api/tabs/visibility", post(tab_visibility_route))
-        .route("/api/tabs/elements", put(homeserver_rust_mutation_route))
+        .route("/api/tabs/elements", put(element_visibility_route))
+        .route("/api/tabs/elements/:tab_id", get(element_fragment_route))
+        .route("/api/stats/elements", get(stats_elements_fragment_route))
+        .route("/api/portals/elements", get(portals_elements_fragment_route))
         .route("/api/pre-unlock", post(homeserver_rust_mutation_route))
         .route("/api/vault/status", get(homeserver_rust_read_route))
         .route("/api/vault/unlock", post(homeserver_rust_mutation_route))
@@ -509,8 +512,11 @@ fn homeserver_route_family(path: &str) -> &'static str {
 #[cfg(test)]
 fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static str])] {
     &[
-                ("/api/tabs/visibility", &["post"]),
+        ("/api/tabs/visibility", &["post"]),
         ("/api/tabs/elements", &["put"]),
+        ("/api/tabs/elements/:tab_id", &["get"]),
+        ("/api/stats/elements", &["get"]),
+        ("/api/portals/elements", &["get"]),
         ("/api/pre-unlock", &["post"]),
         ("/api/vault/status", &["get"]),
         ("/api/vault/unlock", &["post"]),

@@ -55,6 +55,8 @@ fn shell_document_3() -> &'static str {
       if (changePinButton) changePinButton.hidden = !headerState.isAdmin;
       refreshTabBar(previousActive).then(selectedTab => {
         applyTabBarVisibility();
+        refreshElementFragment('stats');
+        refreshElementFragment('portals');
         if (selectedTab) showPane(selectedTab);
       });
     }

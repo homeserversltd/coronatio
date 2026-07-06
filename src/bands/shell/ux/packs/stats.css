@@ -455,21 +455,16 @@
 /* Add visibility-based override */
 .stat-element[data-visible="false"] .recharts-cartesian-grid line {
   stroke: var(--background) !important;
-  stroke-opacity: 0.2;
 }
 
 /* Add hidden state coloring */
 .stat-element[data-visible="false"] .stat-title {
-  color: var(--secondary);
-  opacity: 0.7;
-}
+  color: var(--secondary); }
 
 /* Existing hidden title rule */
 .stat-element[data-visible="false"] .stat-title,
 .stat-element[data-visible="false"] .stat-info {
-  color: var(--secondary);
-  opacity: 0.7;
-}
+  color: var(--secondary); }
 /* Container styling based on visibility */
 .stat-element[data-visible="true"] {
   background-color: var(--background);
@@ -484,18 +479,14 @@
   background-color: var(--background) !important;
 }
 
-.stat-element[data-visible="false"] .memory-bar-fill {
-  opacity: 0.3;
-}
+.stat-element[data-visible="false"] .memory-bar-fill { }
 
 /* Update process usage bar styles */
 .stat-element[data-visible="false"] .process-bar {
   background-color: var(--background) !important;
 }
 
-.stat-element[data-visible="false"] .process-bar-fill {
-  opacity: 0.3;
-}
+.stat-element[data-visible="false"] .process-bar-fill { }
 
 .stat-element[data-visible="false"] .process-text-container {
   color: var(--secondary);
@@ -509,9 +500,7 @@
 
 .stat-element[data-visible="false"] .kea-leases-table th,
 .stat-element[data-visible="false"] .kea-leases-table td {
-  border-color: var(--background);
-  opacity: 0.3;
-}
+  border-color: var(--background); }
 
 /* Phone-specific adjustments */
 @media (max-width: 768px) {
@@ -799,9 +788,7 @@
   background-color: var(--background) !important;
 }
 
-.stat-element[data-visible="false"] .disk-usage-fill {
-  opacity: 0.3;
-}
+.stat-element[data-visible="false"] .disk-usage-fill { }
 
 /* Mobile adjustments */
 @media (max-width: 768px) {
@@ -889,7 +876,7 @@
     .process-text-container { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; z-index: 1; }
     .process-name { color: var(--text); font-size: .85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .process-usage { color: var(--text); font-size: .85rem; font-weight: 500; margin-left: 8px; }
-    .stat-element[data-visible="false"] .stat-title, .stat-element[data-visible="false"] .stat-info { color: var(--secondary); opacity: .7; }
+    .stat-element[data-visible="false"] .stat-title, .stat-element[data-visible="false"] .stat-info { color: var(--secondary); }
     .cpu-chart, .network-speed-chart, .stat-chart { height: 180px; min-height: 180px; overflow: visible; }
     .disk-io-chart .chart-container { min-height: 180px; }
     .recharts-wrapper { height: 180px; min-height: 180px; overflow: visible; }

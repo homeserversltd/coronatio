@@ -126,34 +126,7 @@ fn shell_document_2() -> &'static str {
       </section>
       <section class="pane active" id="pane-stats" data-pane-panel="stats" data-view-panel="stats" role="tabpanel" aria-label="Stats">
         <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
-          <div class="stat-element" data-stat-element-id="cpu-chart" data-visible="true">
-            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="cpu-chart" data-visible="true" aria-label="Hide CPU Usage & Load">👁</button><h3 class="stat-title">CPU Usage &amp; Load</h3></div>
-            <div class="stat-content"><div class="cpu-stats-container"><div class="cpu-chart" data-chartjs-chart="cpu" data-chart-authority="serverbox-original-homeserver-stats"><div class="chart-container" id="cpu-chart-container"><canvas id="cpuChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-chart-left-axis="percent-suffix" data-chart-right-axis="celsius-suffix"></canvas></div></div><div class="load-averages"><div class="load-average-values"><div class="load-average-item"><span class="load-label">1 min:</span><span class="load-value" id="load-1min">—</span></div><div class="load-average-item"><span class="load-label">5 min:</span><span class="load-value" id="load-5min">—</span></div><div class="load-average-item"><span class="load-label">15 min:</span><span class="load-value" id="load-15min">—</span></div></div></div></div></div>
-          </div>
-          <div class="stat-element" data-stat-element-id="network" data-visible="true">
-            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="network" data-visible="true" aria-label="Hide Network Traffic (WAN)">👁</button><h3 class="stat-title">Network Traffic (WAN)</h3></div>
-            <div class="stat-content"><div class="network-stats-container"><div class="network-speed-chart" data-chartjs-chart="network" data-chart-authority="serverbox-original-homeserver-stats"><div class="chart-container" id="network-chart-container"><canvas id="networkChart" class="coronatio-chart-canvas" data-full-width-canvas="true" data-chart-left-axis="byte-rate-suffix" data-chart-right-axis="byte-rate-suffix" data-synchronized-axes="true"></canvas></div></div><div class="network-interfaces"><table class="network-interfaces-table"><thead><tr><th>Interface</th><th>Total Received</th><th>Total Sent</th></tr></thead><tbody data-network-interfaces></tbody></table></div></div></div>
-          </div>
-          <div class="stat-element" data-stat-element-id="io-section" data-visible="true">
-            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="io-section" data-visible="true" aria-label="Hide Disk I/O">👁</button><h3 class="stat-title">Disk I/O</h3></div>
-            <div class="stat-content"><div class="disk-io-chart"><div class="device-controls" id="io-drive-selector" data-device-controls data-original-control="drive-checkbox"></div><div class="chart-container" id="disk-io-chart-container"><canvas id="io-chart" class="coronatio-chart-canvas" data-full-width-canvas="true"></canvas></div><div class="io-chart-legend" id="io-chart-legend"></div></div></div>
-          </div>
-          <div class="stat-element" data-stat-element-id="memory" data-visible="true">
-            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="memory" data-visible="true" aria-label="Hide Memory Usage">👁</button><h3 class="stat-title">Memory Usage</h3></div>
-            <div class="stat-content"><div class="memory-stats"><div class="memory-current"><div class="memory-label">RAM</div><div class="memory-bar"><div class="memory-bar-fill" id="memory-bar-fill"><span class="memory-text" id="memory-percent">—</span></div></div><div class="memory-details"><div id="memory-used">Used: —</div><div id="memory-available">Available: —</div><div id="memory-total">Total: —</div></div></div><div class="memory-current"><div class="memory-label">Swap</div><div class="memory-bar"><div class="memory-bar-fill memory-bar-fill-swap" id="swap-bar-fill"><span class="memory-text" id="swap-percent">—</span></div></div><div class="memory-details"><div id="swap-used">Used: —</div><div id="swap-free">Free: —</div><div id="swap-total">Total: —</div></div></div></div></div>
-          </div>
-          <div class="stat-element" data-stat-element-id="disk-usage" data-visible="true">
-            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="disk-usage" data-visible="true" aria-label="Hide Disk Usage">👁</button><h3 class="stat-title">Disk Usage</h3></div>
-            <div class="stat-content"><div class="disk-usage-stats" data-disk-usage-stats></div></div>
-          </div>
-          <div class="stat-element" data-stat-element-id="kea-leases" data-visible="true">
-            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="kea-leases" data-visible="true" aria-label="Hide DHCP Leases">👁</button><h3 class="stat-title">DHCP Leases</h3></div>
-            <div class="stat-content"><div class="kea-leases-table"><table><thead><tr><th>Device Note</th><th>Hostname</th><th>IP Address</th><th>MAC Address</th></tr></thead><tbody data-kea-leases><tr><td colspan="4">Loading Kea leases...</td></tr></tbody></table></div></div>
-          </div>
-          <div class="stat-element" data-stat-element-id="process-usage" data-visible="true">
-            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="process-usage" data-visible="true" aria-label="Hide CPU Usage by Process">👁</button><h3 class="stat-title">CPU Usage by Process</h3></div>
-            <div class="stat-content"><div class="process-usage-list" data-process-usage-list><p>Loading process usage...</p></div></div>
-          </div>
+          __STATS_ELEMENTS_FRAGMENT__
         </div>
       </section>
       <section class="pane" id="pane-portals" data-pane-panel="portals" data-view-panel="portals" role="tabpanel" aria-label="Portals">

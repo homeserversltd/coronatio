@@ -13,4 +13,5 @@ mod tests {
     include!("tests/hx-proof-walls.rs");
     include!("tests/iris-walls.rs");
     include!("tests/vis-002.rs");
+    include!("tests/vis-003.rs");
 }
