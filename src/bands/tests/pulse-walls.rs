@@ -283,3 +283,21 @@
         assert!(!chrome.contains("event.data.visibility"));
         assert!(!chrome.contains("event.data.tabId"));
     }
+
+    #[test]
+    fn pulse_002_wall_shell_rider_state_precedes_init_time_connect_call() {
+        let chrome = crown_chrome_js();
+        let init_connect = chrome.find("\n    connectPulseStream();").expect("pulse rider init call must remain explicit");
+        for declaration in [
+            "\n    let pulseStream = null;",
+            "\n    let pulseRenewTimer = null;",
+            "\n    let pulseStreamId = null;",
+        ] {
+            let declaration_offset = chrome.find(declaration).unwrap_or_else(|| panic!("missing pulse rider state declaration: {declaration}"));
+            assert!(
+                declaration_offset < init_connect,
+                "pulse rider state declaration must precede the init-time connectPulseStream() call to avoid let/const temporal-dead-zone crashes: {declaration}"
+            );
+        }
+        assert!(chrome.find("function connectPulseStream()").expect("pulse rider function must exist") > init_connect);
+    }
