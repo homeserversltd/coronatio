@@ -101,6 +101,12 @@ mod pulse {
         stream_id: String,
     }
 
+    impl Drop for PulseSubscription {
+        fn drop(&mut self) {
+            self.leases.lock().unwrap().remove(&self.stream_id);
+        }
+    }
+
     pub(crate) async fn stats_events_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
         let session = session_from_headers(&headers);
         let (_stream_id, frames) = subscribe_stream(session, Duration::from_secs(PULSE_LEASE_SECONDS));
@@ -178,22 +184,20 @@ mod pulse {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn lease_exists_for_test(stream_id: &str) -> bool {
+        bus().leases.lock().unwrap().contains_key(stream_id)
+    }
+
     async fn next_frame(subscription: &mut PulseSubscription, lease_duration: Duration) -> PulseWireFrame {
         if let Some(frame) = open_frame(subscription, lease_duration) {
             return frame;
         }
         loop {
-            let deadline = subscription
-                .leases
-                .lock()
-                .unwrap()
-                .get(&subscription.stream_id)
-                .copied()
-                .unwrap_or_else(Instant::now);
-            let now = Instant::now();
-            if now >= deadline {
-                return expired_frame(&subscription.stream_id);
+            if let Some(frame) = expired_frame_if_current_deadline_elapsed(subscription) {
+                return frame;
             }
+            let deadline = current_deadline(subscription);
             let sleep = sleep_until(TokioInstant::from_std(deadline));
             tokio::pin!(sleep);
             if subscription.session == Session::Admin {
@@ -205,17 +209,39 @@ mod pulse {
                     topic = admin_rx.recv() => {
                         if let Ok(topic) = topic { return poke_frame(topic); }
                     }
-                    _ = &mut sleep => return expired_frame(&subscription.stream_id),
+                    _ = &mut sleep => {
+                        if let Some(frame) = expired_frame_if_current_deadline_elapsed(subscription) {
+                            return frame;
+                        }
+                    }
                 }
             } else {
                 tokio::select! {
                     topic = subscription.public_rx.recv() => {
                         if let Ok(topic) = topic { return poke_frame(topic); }
                     }
-                    _ = &mut sleep => return expired_frame(&subscription.stream_id),
+                    _ = &mut sleep => {
+                        if let Some(frame) = expired_frame_if_current_deadline_elapsed(subscription) {
+                            return frame;
+                        }
+                    }
                 }
             }
         }
+    }
+
+    fn current_deadline(subscription: &PulseSubscription) -> Instant {
+        subscription
+            .leases
+            .lock()
+            .unwrap()
+            .get(&subscription.stream_id)
+            .copied()
+            .unwrap_or_else(Instant::now)
+    }
+
+    fn expired_frame_if_current_deadline_elapsed(subscription: &PulseSubscription) -> Option<PulseWireFrame> {
+        (Instant::now() >= current_deadline(subscription)).then(|| expired_frame(&subscription.stream_id))
     }
 
     fn open_frame(subscription: &mut PulseSubscription, _lease_duration: Duration) -> Option<PulseWireFrame> {

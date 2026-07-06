@@ -108,3 +108,39 @@
             .unwrap();
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
     }
+
+    #[tokio::test]
+    async fn pulse_wall_renewal_during_parked_wait_extends_quiet_stream() {
+        let _guard = pulse_test_lock().lock().await;
+        use futures_util::StreamExt;
+
+        let (stream_id, mut stream) = pulse::subscribe_stream(Session::Guest, Duration::from_millis(80));
+        assert_eq!(stream.next().await.unwrap().event, "pulse.open");
+
+        let renewal_id = stream_id.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            assert!(pulse::renew_stream(&renewal_id, Duration::from_millis(170)));
+        });
+
+        let early = tokio::time::timeout(Duration::from_millis(130), stream.next()).await;
+        assert!(early.is_err(), "quiet stream expired at the original lease boundary while parked in next_frame");
+
+        let expired = tokio::time::timeout(Duration::from_millis(180), stream.next()).await.unwrap().unwrap();
+        assert_eq!(expired.event, "pulse.expired");
+        assert_eq!(expired.id.as_deref(), Some(stream_id.as_str()));
+    }
+
+    #[tokio::test]
+    async fn pulse_wall_dropped_subscription_removes_lease_entry_without_expiry() {
+        let _guard = pulse_test_lock().lock().await;
+        use futures_util::StreamExt;
+
+        let (stream_id, mut stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(5));
+        assert_eq!(stream.next().await.unwrap().event, "pulse.open");
+        assert!(pulse::lease_exists_for_test(&stream_id));
+
+        drop(stream);
+
+        assert!(!pulse::lease_exists_for_test(&stream_id), "dropped stream orphaned its pulse lease entry");
+    }
