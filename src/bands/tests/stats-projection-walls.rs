@@ -219,9 +219,39 @@
         }
     }
 
+    #[tokio::test]
+    async fn pulse_003de_wall_initial_shell_stats_lane_is_session_projected() {
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-003de-initial-shell-stats")) });
+        let guest = router
+            .clone()
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(guest.status(), StatusCode::OK);
+        let guest_body = String::from_utf8(axum::body::to_bytes(guest.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        for denied in ["DENY-", "tailscale0", "wan0"] {
+            assert!(!guest_body.contains(denied), "guest full-page / leaked denied stats lane marker {denied}: {guest_body}");
+        }
+        assert!(guest_body.contains(r#"data-stat-element-id="network-chart""#), "guest shell keeps projected aggregate network element: {guest_body}");
+
+        let token = authorize_test_admin_token();
+        let admin = router
+            .oneshot(Request::builder().uri("/").header("X-Admin-Token", token).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(admin.status(), StatusCode::OK);
+        let admin_body = String::from_utf8(axum::body::to_bytes(admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        for expected in ["data-stat-element-id=\"process-list\"", "data-stat-element-id=\"kea-leases\"", "data-stat-element-id=\"io-section\""] {
+            assert!(admin_body.contains(expected), "admin full-page / omitted lawful admin stats element {expected}: {admin_body}");
+        }
+    }
+
     #[test]
     fn pulse_003de_wall_shell_rider_and_stats_hydration_are_projection_safe() {
         let chrome = crown_chrome_js();
+        for denied in ["tailscale0", "wan0"] {
+            assert!(!chrome.contains(denied), "externalized crown chrome carried raw interface marker {denied}: {chrome}");
+        }
         assert!(chrome.contains("pulseStream.addEventListener('stats.tick'"));
         assert!(chrome.contains("refreshElementFragment('stats').catch(() => {})"));
         assert!(chrome.contains("fetch('/api/stats', { headers, cache: 'no-store' })"));

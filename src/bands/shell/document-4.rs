@@ -370,9 +370,9 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       document.getElementById('load-15min').textContent = metricPercent(loadToPercent(data.resources?.load?.fifteen));
     }
     function interfaceLabel(name) {
-      if (name === 'wan0') return 'WAN';
       if (name === 'lan0') return 'LAN';
-      if (name === 'tailscale0') return 'Tailscale VPN';
+      if (name.startsWith('wl')) return 'Wi-Fi';
+      if (name.startsWith('en')) return 'Ethernet';
       if (name.startsWith('veth')) return 'Service';
       return name;
     }
