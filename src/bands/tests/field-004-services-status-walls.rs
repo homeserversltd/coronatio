@@ -106,7 +106,7 @@
     #[tokio::test]
     async fn field_004_route_membrane_wall_service_reads_project_or_remain_generic_by_session() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-004-services-reads")) });
-        let generic = router.clone().oneshot(Request::builder().uri("/api/status/services").body(Body::empty()).unwrap()).await.unwrap();
+        let generic = router.clone().oneshot(Request::builder().uri("/api/status/services").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(generic.status(), StatusCode::OK);
         let generic_body = String::from_utf8(axum::body::to_bytes(generic.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(generic_body.contains("coronatio.homeserver.route.read.v1"), "{generic_body}");

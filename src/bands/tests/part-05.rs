@@ -6,7 +6,6 @@
             "/api/themes",
             "/api/uptime",
             "/api/portals",
-            "/api/upload/history",
             "/api/admin/updates/modules/example/status",
         ] {
             let response = app.clone().oneshot(Request::builder().uri(route).body(Body::empty()).unwrap()).await.unwrap();
@@ -14,14 +13,15 @@
             let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
             let body = String::from_utf8(bytes.to_vec()).unwrap();
             assert!(
-                body.contains("coronatio.homeserver.route.read.v1")
+                body.contains("coronatio.homeserver.route.read.guest.v1")
                     || body.contains("coronatio.uptime.v1")
-                    || body.contains("coronatio.upload.history.v1")
                     || body.contains("coronatio.theme-catalog.response.v1")
                     || body.contains("coronatio.portals.config.v1"),
                 "{body}"
             );
-            assert!(body.contains(route) || route == "/api/upload/history" || route == "/api/themes", "{body}");
+            if !body.contains("coronatio.homeserver.route.read.guest.v1") {
+                assert!(body.contains(route) || route == "/api/themes", "{body}");
+            }
             if route == "/api/uptime" { assert!(body.contains("uptimeSeconds") && body.contains("uptime"), "{body}"); }
         }
     }

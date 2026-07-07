@@ -55,6 +55,10 @@
             ("PUT", "/api/portals/:portal_name"),
             ("DELETE", "/api/portals/:portal_name"),
             ("POST", "/api/status/internet/speedtest"),
+            ("POST", "/api/upload/force-permissions"),
+            ("POST", "/api/upload/history/clear"),
+            ("PUT", "/api/upload/blacklist/update"),
+            ("POST", "/api/upload/pin-required-status"),
             ("POST", "/api/youtube/download"),
             ("POST", "/api/youtube/download/info"),
             ("POST", "/api/youtube/subscriptions"),
@@ -146,11 +150,7 @@
     fn field_005_named_exclusion_mutations() -> Vec<(&'static str, &'static str)> {
         vec![
             ("POST", "/api/files/upload"),
-            ("POST", "/api/upload/force-permissions"),
-            ("POST", "/api/upload/history/clear"),
             ("POST", "/api/upload/default-directory"),
-            ("PUT", "/api/upload/blacklist/update"),
-            ("POST", "/api/upload/pin-required-status"),
         ]
     }
 
@@ -197,9 +197,9 @@
         let previous = field_005_previously_gated_mutations();
         let exclusions = field_005_named_exclusion_mutations();
         assert_eq!(all.len(), 141, "new mutation route entered full-rust-routes.rs and must be classified");
-        assert_eq!(gated.len(), 116, "FIELD-005 gated route count changed");
+        assert_eq!(gated.len(), 120, "FIELD-005 plus FIELD-005b gated route count changed");
         assert_eq!(previous.len(), 19, "previously-gated route count changed");
-        assert_eq!(exclusions.len(), 6, "upload/files exclusion count changed");
+        assert_eq!(exclusions.len(), 2, "upload/files exclusion count changed");
 
         let mut bucketed = std::collections::BTreeMap::new();
         for (bucket, routes) in [("gated-this-slice", gated.clone()), ("previously-gated", previous.clone()), ("named-exclusion", exclusions.clone())] {

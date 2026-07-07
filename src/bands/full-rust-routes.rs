@@ -100,13 +100,13 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/files/browse-hierarchical", get(upload_browse_hierarchical_route))
         .route("/api/files/upload", post(upload_file_route))
         .route("/api/files/download", get(homeserver_rust_read_route))
-        .route("/api/upload/force-permissions", post(homeserver_rust_mutation_route))
-        .route("/api/upload/history", get(upload_history_route))
-        .route("/api/upload/history/clear", post(homeserver_rust_mutation_route))
+        .route("/api/upload/force-permissions", post(admin_class_generic_mutation_route))
+        .route("/api/upload/history", get(upload_history_admin_route))
+        .route("/api/upload/history/clear", post(admin_class_generic_mutation_route))
         .route("/api/upload/default-directory", get(upload_default_directory_route).post(homeserver_rust_mutation_route))
-        .route("/api/upload/blacklist/list", get(upload_blacklist_route))
-        .route("/api/upload/blacklist/update", put(homeserver_rust_mutation_route))
-        .route("/api/upload/pin-required-status", get(upload_pin_required_route).post(homeserver_rust_mutation_route))
+        .route("/api/upload/blacklist/list", get(upload_blacklist_admin_route))
+        .route("/api/upload/blacklist/update", put(admin_class_generic_mutation_route))
+        .route("/api/upload/pin-required-status", get(upload_pin_required_route).post(admin_class_generic_mutation_route))
         .route("/api/portals", get(portals_config_route).post(admin_class_generic_mutation_route))
         .route("/api/portals/:portal_name", put(admin_class_generic_mutation_route).delete(admin_class_generic_mutation_route))
         .route("/api/portals/factory", get(portals_factory_route))
@@ -313,6 +313,15 @@ async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
 
 include!("full-rust-routes/upload.rs");
 
+fn upload_admin_read_refusal_response(path: &str) -> Response {
+    (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"schema": "coronatio.upload.admin.read.refusal.v1", "success": false, "accepted": false, "family": "file-ingress", "error": "admin-session-required", "firstMissingSignal": "admin-session-required", "path": path}))).into_response()
+}
+
+async fn upload_history_admin_route(headers: axum::http::HeaderMap) -> Response {
+    if session_from_headers(&headers) != Session::Admin { return upload_admin_read_refusal_response("/api/upload/history"); }
+    upload_history_route().await.into_response()
+}
+
 async fn upload_history_route() -> impl IntoResponse {
     Json(serde_json::json!({
         "schema": "coronatio.upload.history.v1",
@@ -331,6 +340,10 @@ async fn upload_default_directory_route() -> impl IntoResponse {
     }))
 }
 
+async fn upload_blacklist_admin_route(headers: axum::http::HeaderMap) -> Response {
+    if session_from_headers(&headers) != Session::Admin { return upload_admin_read_refusal_response("/api/upload/blacklist/list"); }
+    upload_blacklist_route().await.into_response()
+}
 async fn upload_blacklist_route() -> impl IntoResponse {
     Json(serde_json::json!({
         "schema": "coronatio.upload.blacklist.v1",
@@ -425,7 +438,7 @@ fn format_duration(mut seconds: u64) -> String {
     }
 }
 
-async fn homeserver_rust_read_route(method: Method, uri: Uri) -> impl IntoResponse { homeserver_read_response(method.as_str(), uri.path()) }
+async fn homeserver_rust_read_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_read_response(&headers, method.as_str(), uri.path()) }
 
 async fn homeserver_rust_mutation_route(method: Method, uri: Uri) -> impl IntoResponse { homeserver_mutation_response(method.as_str(), uri.path()) }
 
@@ -476,28 +489,7 @@ fn admin_class_generic_refusal_family(path: &str) -> &'static str {
     else { homeserver_route_family(path) }
 }
 
-fn homeserver_read_response(method: &str, path: &str) -> Response {
-    if path == "/api/status/power/usage" || path == "/status/power/usage" {
-        return power_usage_response(method, path);
-    }
-
-    let family = homeserver_route_family(path);
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "schema": "coronatio.homeserver.route.read.v1",
-            "ok": true,
-            "success": true,
-            "method": method,
-            "path": path,
-            "family": family,
-            "status": "rust-route",
-            "authority": "Coronatio Rust route",
-            "firstMissingSignal": "none"
-        })),
-    )
-        .into_response()
-}
+include!("full-rust-routes/read.rs");
 
 include!("full-rust-routes/power.rs");
 
