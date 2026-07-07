@@ -58,7 +58,8 @@
     async fn field_003_route_membrane_wall_generic_reads_return_only_route_membrane_shape() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-003-generic-reads")) });
         for route in field_003_in_scope_read_routes() {
-            let response = router.clone().oneshot(Request::builder().uri(route).body(Body::empty()).unwrap()).await.unwrap();
+            let token = authorize_test_admin_token();
+            let response = router.clone().oneshot(Request::builder().uri(route).header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK, "{route}");
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
             assert!(body.contains("\"schema\":\"coronatio.homeserver.route.read.v1\""), "{route}: {body}");
