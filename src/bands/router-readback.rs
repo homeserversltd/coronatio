@@ -6,8 +6,12 @@ async fn monitor_pulse_route() -> impl IntoResponse {
     Json(monitor_pulse_readback())
 }
 
-async fn service_data_route() -> impl IntoResponse {
-    Json(service_data_readback())
+async fn service_data_route(headers: axum::http::HeaderMap) -> Response {
+    let raw = service_data_readback();
+    match session_from_headers(&headers) {
+        Session::Admin => Json(project_service_data_admin(&raw)).into_response(),
+        Session::Guest => Json(project_service_data_guest(&raw)).into_response(),
+    }
 }
 
 async fn frontend_storage_route() -> impl IntoResponse {

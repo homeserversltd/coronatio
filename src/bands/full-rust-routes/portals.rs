@@ -157,7 +157,10 @@ fn extract_portals(value: &serde_json::Value) -> Vec<PortalEntry> {
 }
 
 
-async fn portal_service_control_route(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
+async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(payload): Json<serde_json::Value>) -> Response {
+    if session_from_headers(&headers) != Session::Admin {
+        return services_mutation_refusal_response("POST", "/api/service/control");
+    }
     let service = match payload.get("service").and_then(serde_json::Value::as_str).map(str::trim) {
         Some(service) if is_safe_service_name(service) => service.to_string(),
         _ => {
@@ -233,6 +236,22 @@ async fn portal_service_control_route(Json(payload): Json<serde_json::Value>) ->
         })),
     )
         .into_response()
+}
+
+fn services_mutation_refusal_response(method: &str, path: &str) -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(serde_json::json!({
+            "schema": "coronatio.services.mutation.refusal.v1",
+            "success": false,
+            "accepted": false,
+            "method": method,
+            "path": path,
+            "family": "portal-service",
+            "error": "admin-session-required",
+            "firstMissingSignal": "admin-session-required"
+        })),
+    ).into_response()
 }
 
 fn portal_service_action_allowed(action: &str) -> bool {

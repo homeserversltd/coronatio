@@ -214,6 +214,7 @@
         .oneshot(
             Request::builder()
                 .uri("/api/services/data")
+                .header("X-Admin-Token", authorize_test_admin_token())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -473,11 +474,13 @@
     #[tokio::test]
     async fn portals_service_control_validates_and_enters_caduceus_staff_intent() {
         let temp = test_tab_root("portal-service-control");
+        let token = authorize_test_admin_token();
         let response = app(AppState { tab_root: Arc::new(temp) })
             .oneshot(
                 Request::builder()
                     .method("POST")
                     .uri("/api/service/control")
+                    .header("X-Admin-Token", token)
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"service":"jellyfin","action":"restart"}"#))
                     .unwrap(),
@@ -498,6 +501,7 @@
     #[tokio::test]
     async fn portals_service_control_rejects_shell_injection_and_unknown_actions() {
         let temp = test_tab_root("portal-service-control-invalid");
+        let token = authorize_test_admin_token();
         for body in [
             r#"{"service":"jellyfin;rm -rf /","action":"restart"}"#,
             r#"{"service":"jellyfin","action":"reformat"}"#,
@@ -507,6 +511,7 @@
                     Request::builder()
                         .method("POST")
                         .uri("/api/service/control")
+                        .header("X-Admin-Token", token.as_str())
                         .header("content-type", "application/json")
                         .body(Body::from(body))
                         .unwrap(),
