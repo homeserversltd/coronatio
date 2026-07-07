@@ -80,13 +80,13 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/status", get(internet_status_route))
         .route("/api/uptime", get(uptime_route))
         .route("/api/status/tailscale", get(homeserver_rust_read_route))
-        .route("/api/status/tailscale/connect", post(homeserver_rust_mutation_route))
-        .route("/api/status/tailscale/authkey", post(homeserver_rust_mutation_route))
-        .route("/api/status/tailscale/disconnect", post(homeserver_rust_mutation_route))
-        .route("/api/status/tailscale/enable", post(homeserver_rust_mutation_route))
-        .route("/api/status/tailscale/disable", post(homeserver_rust_mutation_route))
-        .route("/api/status/tailscale/config", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
-        .route("/api/status/tailscale/update-tailnet", post(homeserver_rust_mutation_route))
+        .route("/api/status/tailscale/connect", post(network_identity_mutation_route))
+        .route("/api/status/tailscale/authkey", post(network_identity_mutation_route))
+        .route("/api/status/tailscale/disconnect", post(network_identity_mutation_route))
+        .route("/api/status/tailscale/enable", post(network_identity_mutation_route))
+        .route("/api/status/tailscale/disable", post(network_identity_mutation_route))
+        .route("/api/status/tailscale/config", get(homeserver_rust_read_route).post(network_identity_mutation_route))
+        .route("/api/status/tailscale/update-tailnet", post(network_identity_mutation_route))
         .route("/api/status/vpn/pia", get(homeserver_rust_read_route))
         .route("/api/status/vpn/transmission", get(homeserver_rust_read_route))
         .route("/api/status/vpn/updatekey/pia", post(homeserver_rust_mutation_route))
@@ -116,20 +116,20 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/status/power/usage", get(homeserver_rust_read_route))
         .route("/api/status/power/usage", get(homeserver_rust_read_route))
         .route("/api/kea-leases", get(homeserver_rust_read_route))
-        .route("/api/network/notes", get(homeserver_rust_read_route).put(homeserver_rust_mutation_route))
+        .route("/api/network/notes", get(homeserver_rust_read_route).put(network_identity_mutation_route))
         .route("/api/version", get(homeserver_rust_read_route))
-        .route("/api/wakeonlan/targets", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
-        .route("/api/wakeonlan/wake", post(homeserver_rust_mutation_route))
-        .route("/api/wakeonlan/targets/:name", delete(homeserver_rust_mutation_route))
+        .route("/api/wakeonlan/targets", get(homeserver_rust_read_route).post(network_identity_mutation_route))
+        .route("/api/wakeonlan/wake", post(network_identity_mutation_route))
+        .route("/api/wakeonlan/targets/:name", delete(network_identity_mutation_route))
         .route("/api/wakeonlan/status", get(homeserver_rust_read_route))
         .route("/api/dhcp/status", get(homeserver_rust_read_route))
         .route("/api/dhcp/leases", get(homeserver_rust_read_route))
-        .route("/api/dhcp/reservations", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
-        .route("/api/dhcp/reservations/:reservation_id", put(homeserver_rust_mutation_route).delete(homeserver_rust_mutation_route))
-        .route("/api/dhcp/config", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
+        .route("/api/dhcp/reservations", get(homeserver_rust_read_route).post(network_identity_mutation_route))
+        .route("/api/dhcp/reservations/:reservation_id", put(network_identity_mutation_route).delete(network_identity_mutation_route))
+        .route("/api/dhcp/config", get(homeserver_rust_read_route).post(network_identity_mutation_route))
         .route("/api/dhcp/health", get(homeserver_rust_read_route))
         .route("/api/dhcp/statistics", get(homeserver_rust_read_route))
-        .route("/api/dhcp/pool-boundary", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
+        .route("/api/dhcp/pool-boundary", get(homeserver_rust_read_route).post(network_identity_mutation_route))
         .route("/api/youtube/download", post(homeserver_rust_mutation_route))
         .route("/api/youtube/download/info", post(homeserver_rust_mutation_route))
         .route("/api/youtube/subscriptions", get(homeserver_rust_read_route).post(homeserver_rust_mutation_route))
@@ -433,6 +433,29 @@ async fn homeserver_rust_mutation_route(method: Method, uri: Uri) -> impl IntoRe
     homeserver_mutation_response(method.as_str(), uri.path())
 }
 
+async fn network_identity_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> Response {
+    if session_from_headers(&headers) != Session::Admin {
+        return network_identity_mutation_refusal_response(method.as_str(), uri.path());
+    }
+    homeserver_mutation_response(method.as_str(), uri.path())
+}
+
+fn network_identity_mutation_refusal_response(method: &str, path: &str) -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(serde_json::json!({
+            "schema": "coronatio.network-identity.mutation.refusal.v1",
+            "success": false,
+            "accepted": false,
+            "method": method,
+            "path": path,
+            "family": homeserver_route_family(path),
+            "error": "admin-session-required",
+            "firstMissingSignal": "admin-session-required"
+        })),
+    ).into_response()
+}
+
 fn homeserver_read_response(method: &str, path: &str) -> Response {
     if path == "/api/status/power/usage" || path == "/status/power/usage" {
         return power_usage_response(method, path);
@@ -497,7 +520,7 @@ fn homeserver_route_family(path: &str) -> &'static str {
         "admin-storage"
     } else if path.contains("/updates") || path.contains("/system/update") || path.contains("/backup") {
         "update-and-backup"
-    } else if path.contains("tailscale") || path.contains("vpn") || path.contains("network") || path.contains("dhcp") || path.contains("wakeonlan") {
+    } else if path.contains("tailscale") || path.contains("vpn") || path.contains("network") || path.contains("dhcp") || path.contains("kea") || path.contains("wakeonlan") {
         "network-control"
     } else if path.contains("upload") || path.contains("files") || path.contains("nasLinker") {
         "file-ingress"
