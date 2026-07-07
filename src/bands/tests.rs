@@ -18,4 +18,5 @@ mod tests {
     include!("tests/stats-projection-walls.rs");
     include!("tests/internet-status-projection-walls.rs");
     include!("tests/field-003-network-identity-walls.rs");
+    include!("tests/field-004-services-status-walls.rs");
 }
