@@ -24,7 +24,6 @@ struct ServiceDataAdminProjection {
     service_card_schema: ServiceCardSchema,
     monitor_topics: Vec<MonitorTopicLaw>,
     broadcast_law: BroadcastLaw,
-    admin_field_law: Vec<AdminFieldFilter>,
     admin_runtime: AdminRuntimeReadback,
     first_missing_live_signal: String,
 }
@@ -73,7 +72,6 @@ fn project_service_data_admin(raw: &ServiceDataReadback) -> ServiceDataAdminProj
         service_card_schema: raw.service_card_schema.clone(),
         monitor_topics: raw.monitor_topics.clone(),
         broadcast_law: raw.broadcast_law.clone(),
-        admin_field_law: raw.admin_field_law.clone(),
         admin_runtime: raw.admin_runtime.clone(),
         first_missing_live_signal: raw.first_missing_live_signal.clone(),
     }

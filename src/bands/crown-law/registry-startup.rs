@@ -422,7 +422,6 @@ fn admin_session_readback() -> AdminSessionReadback {
             "logout invalidates the token".to_string(),
             "PIN fallback compatibility is retired behind Caduceus before privileged mutation".to_string(),
         ],
-        admin_enhanced_filtering: admin_field_filters(),
         caduceus_membrane: CaduceusMembrane {
             schema: "coronatio.caduceus.membrane.v1".to_string(),
             privileged_mutations: vec![
@@ -436,43 +435,6 @@ fn admin_session_readback() -> AdminSessionReadback {
             first_missing_signal: "live Caduceus admin token minting endpoint not wired".to_string(),
         },
     }
-}
-
-fn admin_field_filters() -> Vec<AdminFieldFilter> {
-    vec![
-        AdminFieldFilter {
-            topic: "internet_status".to_string(),
-            admin_fields: vec!["publicIp", "ipDetails", "dnsServers"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
-        },
-        AdminFieldFilter {
-            topic: "vpn_status".to_string(),
-            admin_fields: vec!["connectionDetails", "credentials"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
-        },
-        AdminFieldFilter {
-            topic: "system_stats".to_string(),
-            admin_fields: vec!["processes", "users", "networkConnections"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
-        },
-        AdminFieldFilter {
-            topic: "tailscale_status".to_string(),
-            admin_fields: vec!["ip", "tailnet", "isEnabled", "loginUrl"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
-        },
-        AdminFieldFilter {
-            topic: "services_status".to_string(),
-            admin_fields: vec!["isEnabled"].into_iter().map(String::from).collect(),
-        },
-    ]
 }
 
 fn topic_catalog_readback() -> TopicCatalogReadback {

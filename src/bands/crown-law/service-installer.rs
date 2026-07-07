@@ -36,7 +36,6 @@ fn service_data_readback() -> ServiceDataReadback {
             change_detection: "topic-specific comparison rules decide broadcast eligibility; realtime power/system always pulse, services compare set/status/enabled, sync compares status/job/progress/keepalive".to_string(),
             ui_state_law: "monitor data becomes current service cards, indicator chips, and pane snapshots; unavailable collectors surface firstMissingSignal instead of fake green".to_string(),
         },
-        admin_field_law: admin_field_filters(),
         admin_runtime: admin_runtime_readback(),
         first_missing_live_signal: "service collectors and monitor broadcasters are not wired; Coronatio reads admin disk and service display facts directly from the local host while mutation remains behind Caduceus".to_string(),
     }
