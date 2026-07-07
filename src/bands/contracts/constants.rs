@@ -405,15 +405,7 @@ struct AdminSessionReadback {
     logout_route: String,
     token_header: String,
     token_policy: Vec<String>,
-    admin_enhanced_filtering: Vec<AdminFieldFilter>,
     caduceus_membrane: CaduceusMembrane,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-struct AdminFieldFilter {
-    topic: String,
-    admin_fields: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

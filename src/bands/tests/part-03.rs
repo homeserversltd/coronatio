@@ -432,11 +432,27 @@
         assert_eq!(session.schema, "coronatio.admin.session.v1");
         assert_eq!(session.session_timeout_seconds, 1800);
         assert_eq!(session.token_header, "X-Admin-Token");
-        assert!(session
-            .admin_enhanced_filtering
-            .iter()
-            .any(|filter| filter.topic == "system_stats"
-                && filter.admin_fields.contains(&"processes".to_string())));
+        let session_value = serde_json::to_value(&session).unwrap();
+        let mut fields = json_field_census(&session_value);
+        fields.sort();
+        assert_eq!(
+            fields,
+            vec![
+                "caduceusMembrane",
+                "caduceusMembrane.caduceusRole",
+                "caduceusMembrane.coronatioRole",
+                "caduceusMembrane.firstMissingSignal",
+                "caduceusMembrane.privilegedMutations",
+                "caduceusMembrane.schema",
+                "keepaliveRoute",
+                "logoutRoute",
+                "pinValidation",
+                "schema",
+                "sessionTimeoutSeconds",
+                "tokenHeader",
+                "tokenPolicy",
+            ]
+        );
         assert_eq!(
             session.caduceus_membrane.schema,
             "coronatio.caduceus.membrane.v1"

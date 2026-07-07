@@ -39,7 +39,6 @@
                 change_detection: "DENY-change".to_string(),
                 ui_state_law: "DENY-ui".to_string(),
             },
-            admin_field_law: vec![AdminFieldFilter { topic: "services_status".to_string(), admin_fields: vec!["isEnabled".to_string()] }],
             admin_runtime: AdminRuntimeReadback {
                 devices: Vec::new(),
                 mount_destinations: Vec::new(),
@@ -82,7 +81,6 @@
             "adminRuntime",
             "serviceCardSchema",
             "monitorTopics",
-            "adminFieldLaw",
             "ssh.service",
             "smbd.service",
         ] {
@@ -97,7 +95,7 @@
     fn field_004_guest_type_purity_wall_cannot_represent_service_identifiers_or_enablement() {
         let value = serde_json::to_value(project_service_data_guest(&maximal_service_data_fixture())).unwrap();
         let census = json_field_census(&value);
-        for denied in ["name", "systemdName", "port", "statusDetails", "isScriptManaged", "needsReboot", "isEnabled", "adminRuntime", "serviceCardSchema", "monitorTopics"] {
+        for denied in ["name", "systemdName", "port", "statusDetails", "isScriptManaged", "needsReboot", "isEnabled", "adminRuntime", "serviceCardSchema", "monitorTopics", "adminFieldLaw"] {
             assert!(!census.iter().any(|field| field == denied), "guest service projection can represent denied field {denied}: {census:?}");
         }
         assert_eq!(census, vec!["firstMissingSignal", "needsAttentionCount", "ok", "route", "runningCount", "schema", "serviceCount", "status", "stoppedCount", "success", "unavailableCount"]);
@@ -129,6 +127,7 @@
         for expected in ["coronatio.service-data.contract.v1", "serviceCardSchema", "systemdName", "isEnabled", "isScriptManaged", "needsReboot", "adminRuntime", "ssh-service", "samba-file-sharing"] {
             assert!(admin_body.contains(expected), "admin /api/services/data omitted {expected}: {admin_body}");
         }
+        assert!(!admin_body.contains("adminFieldLaw"), "admin /api/services/data still advertises denylist law: {admin_body}");
     }
 
     #[tokio::test]

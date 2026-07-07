@@ -619,7 +619,6 @@ struct ServiceDataReadback {
     service_card_schema: ServiceCardSchema,
     monitor_topics: Vec<MonitorTopicLaw>,
     broadcast_law: BroadcastLaw,
-    admin_field_law: Vec<AdminFieldFilter>,
     admin_runtime: AdminRuntimeReadback,
     first_missing_live_signal: String,
 }
