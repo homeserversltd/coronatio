@@ -29,8 +29,9 @@
     #[tokio::test]
     async fn full_rust_mutation_routes_enter_caduceus_membrane() {
         let temp = test_tab_root("full-rust-mutation-routes");
+        let token = authorize_test_admin_token();
         let response = app(AppState { tab_root: Arc::new(temp) })
-            .oneshot(Request::builder().method("POST").uri("/api/admin/system/restart").body(Body::empty()).unwrap())
+            .oneshot(Request::builder().method("POST").uri("/api/admin/system/restart").header("X-Admin-Token", token).body(Body::empty()).unwrap())
             .await.unwrap();
         assert_ne!(response.status(), StatusCode::NOT_FOUND);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();

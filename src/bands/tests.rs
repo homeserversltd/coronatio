@@ -19,4 +19,5 @@ mod tests {
     include!("tests/internet-status-projection-walls.rs");
     include!("tests/field-003-network-identity-walls.rs");
     include!("tests/field-004-services-status-walls.rs");
+    include!("tests/field-005-admin-class-generic-mutation-walls.rs");
 }
