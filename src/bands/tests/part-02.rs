@@ -95,6 +95,7 @@
         assert!(body.contains("coronatio.theme-catalog.response.v1"));
         assert!(body.contains("homeserver.json"));
         assert!(body.contains("global.theme.name"));
+        assert!(body.contains("firmware catalog"));
         assert!(!body.contains("static/themes/theme.json"));
         assert!(!body.contains("CORONATIO_THEME_JSON"));
         assert!(body.contains("radioactive"));
@@ -468,9 +469,9 @@
             "--theme-font-mono",
             "--primary: var(--theme-primary)",
             "--theme-primary: #A0AEC0",
-            "--primaryHover",
-            "--hiddenTabBackground",
-            "aliasMap",
+            "--secondary: var(--theme-secondary)",
+            "--primaryHover: var(--theme-primaryHover)",
+            "--status-up: var(--theme-statusUp)",
             "--theme-gradient-accent",
             "--theme-highlight-strong",
             "--theme-role-primary",
@@ -496,6 +497,39 @@
         assert!(index.contains("observeMatureThemeSystems"));
         assert!(index.contains("declareJsonTokenGrammar"));
         assert!(index.contains("proveUxLibraryExpansion"));
+    }
+
+    #[test]
+    fn theme_catalog_is_one_embedded_firmware_source_and_shell_materials_are_live() {
+        let routes = std::fs::read_to_string("src/bands/routes.rs").unwrap();
+        let catalog = std::fs::read_to_string("src/bands/theme/catalog.json").unwrap();
+        let chrome = std::fs::read_to_string("src/bands/shell/ux/shell/base-and-chrome.css").unwrap();
+        assert!(routes.contains("include_str!(\"theme/catalog.json\")"));
+        assert!(routes.contains("serde_json::from_str(FIRMWARE_THEME_CATALOG)"));
+        assert!(catalog.contains("coronatio.theme-catalog.v1"));
+        assert!(catalog.contains("gradient-primary"));
+        assert!(catalog.contains("elevation-3"));
+        assert!(catalog.contains("flag-gradients"));
+        assert!(!std::path::Path::new("static/themes/theme.json").exists());
+        assert!(!routes.contains("insert_mature_theme_tokens"));
+        assert!(!routes.contains("insert_legacy_alias_tokens"));
+        assert!(!routes.contains("static/themes/theme.json"));
+        assert!(!routes.contains("CORONATIO_THEME_JSON"));
+        assert!(!std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap().contains("aliasMap"));
+        for selector_binding in [
+            ".top-bar {",
+            "background: var(--theme-gradient-primary)",
+            ".tab-bar {",
+            "background: var(--theme-gradient-surface)",
+            ".card {",
+            "box-shadow: var(--theme-elevation-1)",
+            ".modal {",
+            "box-shadow: var(--theme-elevation-3)",
+            ".header-control, .admin-button, .theme-button, .change-admin-pin-button",
+            "background: var(--theme-gradient-accent)",
+        ] {
+            assert!(chrome.contains(selector_binding), "missing live Theme Net material binding: {selector_binding}");
+        }
     }
 
     #[test]

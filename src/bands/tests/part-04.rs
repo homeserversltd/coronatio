@@ -475,7 +475,7 @@
     fn portals_viewport_hydrates_cards_from_api_not_static_scaffold() {
         let shell = render_crown_shell();
         assert!(shell.contains("data-portals-grid"));
-        assert!(shell.contains("data-portals-source=\"/api/portals\""));
+        assert!(shell.contains("data-portals-source=\"/api/portals/elements\""));
         assert!(shell.contains("function hydratePortals()"));
         assert!(shell.contains("renderPortalCard(portal, factoryNames)"));
         assert!(shell.contains("/api/portals/images/${encodeURIComponent(portal.name)}.png"));

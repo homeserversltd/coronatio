@@ -299,11 +299,9 @@ fn shell_document_2() -> &'static str {
     let modalMode = 'enter';
     function themeToCss(theme) {
       if (!theme) return '';
-      const aliasMap = { background: '--background', text: '--text', primary: '--primary', primaryHover: '--primaryHover', secondary: '--secondary', accent: '--accent', error: '--error', success: '--success', warning: '--warning', border: '--border', statusUp: '--status-up', statusDown: '--status-down', statusPartial: '--status-partial', statusUnknown: '--status-unknown', hiddenTabBackground: '--hiddenTabBackground', hiddenTabText: '--hiddenTabText' };
       const lines = [];
       Object.entries(theme).forEach(([key, value]) => {
         lines.push('  --theme-' + key + ': ' + value + ';');
-        if (aliasMap[key]) lines.push('  ' + aliasMap[key] + ': ' + value + ';');
       });
       return ':root {\n' + lines.join('\n') + '\n}';
     }
