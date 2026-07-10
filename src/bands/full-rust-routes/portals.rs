@@ -17,6 +17,31 @@ async fn portals_config_route() -> impl IntoResponse {
     }
 }
 
+async fn portals_currentness_route() -> impl IntoResponse {
+    match read_portals_config() {
+        Ok(response) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "schema": "coronatio.portals.currentness.v1",
+                "success": true,
+                "portals": collect_portals_currentness(&response.portals),
+                "firstMissingSignal": "none"
+            })),
+        )
+            .into_response(),
+        Err(signal) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "schema": "coronatio.portals.currentness.v1",
+                "success": false,
+                "portals": {},
+                "firstMissingSignal": signal
+            })),
+        )
+            .into_response(),
+    }
+}
+
 async fn portals_factory_route() -> impl IntoResponse {
     let (source, factory_portals, first_missing_signal) = read_factory_portal_names();
     (
