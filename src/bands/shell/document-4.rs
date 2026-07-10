@@ -92,7 +92,7 @@ fn shell_document_4() -> &'static str {
       if (target instanceof Element && (target.matches('[data-upload-tree]') || target.closest('[data-upload-tree]'))) syncUploadTreeSelection();
       if (target instanceof Element && (target.matches('[data-portals-grid]') || target.closest('[data-portals-grid]'))) {
         const grid = target.matches('[data-portals-grid]') ? target : target.closest('[data-portals-grid]');
-        if (grid) bindPortalFragmentControls(grid);
+        if (grid) { bindPortalFragmentControls(grid); refreshPortalCurrentness(); }
         applyAdminDomState();
       }
     });
@@ -561,6 +561,18 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       });
       grid.querySelectorAll('[data-service-action]').forEach(button => button.addEventListener('click', handlePortalServiceAction));
     }
+    async function refreshPortalCurrentness() {
+      const grid = document.querySelector('[data-portals-grid]');
+      if (!grid || grid.offsetParent === null) return;
+      try {
+        const data = await fetch('/api/portals/currentness', { cache: 'no-store' }).then(response => response.ok ? response.json() : null);
+        if (!data?.portals) return;
+        grid.querySelectorAll('[data-portal-card]').forEach(card => {
+          card.classList.remove('up', 'down', 'partial', 'unknown');
+          card.classList.add(data.portals[card.dataset.portalName] || 'unknown');
+        });
+      } catch (_) {}
+    }
     async function refreshElementFragment(tabId) {
       const token = localStorage.getItem('coronatioAdminToken');
       const headers = token ? { 'X-Admin-Token': token } : {};
@@ -570,7 +582,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       const response = await fetch(route, { headers, cache: 'no-store' });
       if (!response.ok) return;
       target.innerHTML = await response.text();
-      if (tabId === 'portals') bindPortalFragmentControls(target);
+      if (tabId === 'portals') { bindPortalFragmentControls(target); refreshPortalCurrentness(); }
       if (tabId === 'stats') hydrateStats();
       applyAdminDomState();
     }
@@ -586,7 +598,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
       if (!target) return;
       target.innerHTML = html;
-      if (tabId === 'portals') bindPortalFragmentControls(target);
+      if (tabId === 'portals') { bindPortalFragmentControls(target); refreshPortalCurrentness(); }
       if (tabId === 'stats') hydrateStats();
       applyAdminDomState();
     }
@@ -751,6 +763,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     hydratePortals();
     setInterval(tickUptime, 1000);
     setInterval(hydrateStats, 5000);
+    setInterval(refreshPortalCurrentness, 5000);
   </script>
 </body>
 </html>"####

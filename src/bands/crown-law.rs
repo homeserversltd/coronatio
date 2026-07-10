@@ -3,4 +3,5 @@ include!("crown-law/registry-startup.rs");
 include!("crown-law/session-topics-frontend.rs");
 include!("crown-law/service-installer.rs");
 include!("crown-law/stats-tabbar.rs");
+include!("crown-law/portal-currentness.rs");
 include!("crown-law/element-fragments.rs");

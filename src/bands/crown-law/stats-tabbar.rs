@@ -286,6 +286,15 @@ fn systemd_service_state(id: &str, label: &str, units: &[&str]) -> AdminServiceS
 }
 
 fn systemctl_is_active(unit: &str) -> Option<String> {
+    if let Ok(path) = std::env::var("CORONATIO_SYSTEMCTL_FIXTURE") {
+        let fixture = std::fs::read_to_string(path).ok()?;
+        let states = serde_json::from_str::<BTreeMap<String, String>>(&fixture).ok()?;
+        return states
+            .get(unit)
+            .or_else(|| unit.strip_suffix(".service").and_then(|service| states.get(service)))
+            .cloned()
+            .filter(|state| !state.is_empty() && state != "unknown");
+    }
     let output = Command::new("systemctl").args(["is-active", unit]).output().ok()?;
     let state = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if state.is_empty() || state == "unknown" {

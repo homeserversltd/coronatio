@@ -235,7 +235,7 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
     let name = html_escape(element_id);
     let description = html_escape(&portal.description);
     let destination = html_escape(if destination_raw.trim().is_empty() { &portal.local_url } else { &destination_raw });
-    let status = html_escape(portal.status.as_deref().unwrap_or("unknown"));
+    let status = derive_portal_currentness(portal);
     let services = html_escape(&serde_json::to_string(&portal.services).unwrap_or_else(|_| "[]".to_string()));
     let admin_controls = if session == Session::Admin && portal.r#type != "link" {
         format!(r#"<div class="admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="{}"><div class="admin-controls-row"><button data-service-action="start" title="Start service">Start</button><button data-service-action="stop" title="Stop service">Stop</button><button data-service-action="restart" title="Restart service">Restart</button></div><div class="admin-controls-row"><button data-service-action="enable" title="Enable service at boot">Enable</button><button data-service-action="disable" title="Disable service at boot">Disable</button><button data-service-action="status" title="Check service status">Status</button></div></div>"#, services)
@@ -248,7 +248,7 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
     } else {
         format!(r#"<h2 class="portal-name">{}</h2>"#, name)
     };
-    Some(format!(r#"<div class="portal-element" data-portal-element data-visible="{}" style="position:relative">{}<article class="portal-card {}" data-portal-card data-portal-name="{}" data-portal-url="{}" role="link" tabindex="0"><div class="portal-card-header"><img src="/api/portals/images/{}.png" alt="{} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">{}<p class="portal-description">{}</p></div><div class="portal-meta">{}</div></article></div>"#, visible, toggle, status, name, destination, name, name, portal_name, description, admin_controls))
+    Some(format!(r#"<div class="portal-element" data-portal-element data-visible="{}" style="position:relative">{}<article class="portal-card {}" data-portal-card data-portal-name="{}" data-portal-url="{}" data-portal-services="{}" role="link" tabindex="0"><div class="portal-card-header"><img src="/api/portals/images/{}.png" alt="{} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">{}<p class="portal-description">{}</p></div><div class="portal-meta">{}</div></article></div>"#, visible, toggle, status, name, destination, services, name, name, portal_name, description, admin_controls))
 }
 
 fn render_add_portal_card_fragment() -> String {
