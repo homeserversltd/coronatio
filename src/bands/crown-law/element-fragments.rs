@@ -243,7 +243,12 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
     let toggle = if session == Session::Admin {
         format!(r#"<button type="button" class="visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle="{}" data-visible="{}" aria-label="{} {}">{}</button>"#, name, visible, verb, name, eye)
     } else { String::new() };
-    Some(format!(r#"<div class="portal-element" data-portal-element data-visible="{}" style="position:relative">{}<article class="portal-card {}" data-portal-card data-portal-name="{}" data-portal-url="{}" role="link" tabindex="0"><div class="portal-card-header"><img src="/api/portals/images/{}.png" alt="{} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';"><h2 class="portal-name">{}</h2><p class="portal-description">{}</p></div><div class="portal-meta">{}</div></article></div>"#, visible, toggle, status, name, destination, name, name, name, description, admin_controls))
+    let portal_name = if session == Session::Admin {
+        String::new()
+    } else {
+        format!(r#"<h2 class="portal-name">{}</h2>"#, name)
+    };
+    Some(format!(r#"<div class="portal-element" data-portal-element data-visible="{}" style="position:relative">{}<article class="portal-card {}" data-portal-card data-portal-name="{}" data-portal-url="{}" role="link" tabindex="0"><div class="portal-card-header"><img src="/api/portals/images/{}.png" alt="{} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">{}<p class="portal-description">{}</p></div><div class="portal-meta">{}</div></article></div>"#, visible, toggle, status, name, destination, name, name, portal_name, description, admin_controls))
 }
 
 fn render_add_portal_card_fragment() -> String {

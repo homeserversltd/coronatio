@@ -497,12 +497,13 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       </div>`;
       const isVisible = portal.visible !== false;
       const visibilityToggle = `<button type="button" class="visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle data-visible="${isVisible}" aria-label="${isVisible ? 'Hide' : 'Show'} ${escapeHtml(portal.name)}">${isVisible ? '👁' : '🙈'}</button>`;
+      const portalName = headerState.isAdmin ? '' : `<h2 class="portal-name">${escapeHtml(portal.name)}</h2>`;
       return `<div class="portal-element" data-portal-element data-visible="${isVisible}" style="position:relative">
         ${visibilityToggle}
         <article class="portal-card ${escapeHtml(portal.status || 'unknown')}" data-portal-card data-portal-name="${escapeHtml(portal.name)}" data-portal-url="${escapeHtml(destination)}" role="link" tabindex="0">
           <div class="portal-card-header">
             <img src="/api/portals/images/${encodeURIComponent(portal.name)}.png" alt="${escapeHtml(portal.name)} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">
-            <h2 class="portal-name">${escapeHtml(portal.name)}</h2>
+            ${portalName}
             <p class="portal-description">${escapeHtml(portal.description || '')}</p>
           </div>
           <div class="portal-meta">${adminControls}</div>
