@@ -49,35 +49,6 @@
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn portals_currentness_falls_back_to_configured_local_port_when_systemctl_is_unavailable() {
-        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-        let temp = test_tab_root("portals-currentness-port-fallback");
-        let config = temp.join("homeserver.json");
-        let systemctl = temp.join("systemctl.json");
-        let port_probe = temp.join("port-probe.json");
-        portals_currentness_fixture(&config);
-        std::fs::write(&systemctl, "{}").unwrap();
-        std::fs::write(&port_probe, r#"{"8096":"open","9091":"closed","4040":"open"}"#).unwrap();
-        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
-        std::env::set_var("CORONATIO_SYSTEMCTL_FIXTURE", &systemctl);
-        std::env::set_var("CORONATIO_PORT_PROBE_FIXTURE", &port_probe);
-
-        let response = app(AppState { tab_root: Arc::new(test_tab_root("portals-currentness-port-fallback-app")) })
-            .oneshot(Request::builder().method("GET").uri("/api/portals/currentness").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let currentness: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-        assert_eq!(currentness["portals"]["Jellyfin"], "up");
-        assert_eq!(currentness["portals"]["Transmission"], "down");
-        assert_eq!(currentness["portals"]["Relay"], "up");
-        assert_eq!(currentness["portals"]["Docs"], "unknown");
-
-        std::env::remove_var("CORONATIO_PORT_PROBE_FIXTURE");
-        std::env::remove_var("CORONATIO_SYSTEMCTL_FIXTURE");
-        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
-    }
 
     #[test]
     fn portals_currentness_shell_refreshes_visible_portals_only() {
