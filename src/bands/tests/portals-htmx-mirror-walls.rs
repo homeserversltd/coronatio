@@ -50,3 +50,13 @@
         assert!(document4.contains("window.htmx") || document4.contains("htmx.trigger"), "hydratePortals prefers HTMX trigger");
         assert!(document4.contains("return portal.localURL || '#'") || document4.contains("localURL || '#'"), "client fallback local-first");
     }
+
+    #[test]
+    fn portals_cards_keep_the_quiet_base_border_for_every_status() {
+        let css = std::fs::read_to_string("src/bands/shell/ux/packs/portals.css").unwrap();
+        assert!(css.contains("border: 1px solid var(--border);"), "portal cards need the Theme Net base border");
+        assert!(
+            !css.contains("border-color: var(--status"),
+            "service status must not recolor the full portal-card perimeter"
+        );
+    }

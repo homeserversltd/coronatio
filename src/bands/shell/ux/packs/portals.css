@@ -162,11 +162,7 @@
 
 }
 
-/* Existing status styles preserved */
-.portal-card.up { border-color: var(--statusUp); }
-.portal-card.down { border-color: var(--statusDown); }
-.portal-card.partial { border-color: var(--statusPartial); }
-.portal-card.unknown { border-color: var(--statusUnknown); }
+/* Status classes remain available to the portal fragment; cards retain the quiet base perimeter. */
 
 .service-status-modal pre {
   background: var(--background-alt);
