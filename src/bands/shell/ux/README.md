@@ -15,3 +15,5 @@ The shell UX library now obeys infinite-infinite file hierarchy law: ordered chi
 3. Crown shell/base chrome: place non-pane, non-library shell substrate under `shell/<concern>.css`, then add that path to `index.json`.
 
 Markup vocabulary law for adding a pane lives in `src/bands/README.md` under `Adding a crown pane`.
+
+For tab and cartridge authors, read [TAB-AUTHOR.md](TAB-AUTHOR.md). It is the shallow Theme Net author face; `author-face.json` is its machine-readable allowlist.
