@@ -214,6 +214,10 @@
   padding: 20px;
 }
 
+.portal-modal-overlay[hidden] {
+  display: none;
+}
+
 .portal-modal-content {
   padding: 0 0.5rem;
   background: var(--background);
