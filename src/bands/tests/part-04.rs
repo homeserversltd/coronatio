@@ -96,7 +96,7 @@
     }
 
     #[tokio::test]
-    async fn installer_route_encodes_premium_installer_law_without_live_mutation() {
+    async fn installer_route_encodes_legacy_quarry_law_without_live_mutation() {
         let temp = test_tab_root("installer-law");
         let response = app(AppState {
             tab_root: Arc::new(temp),
@@ -149,7 +149,7 @@
             .iter()
             .any(
                 |mapping| mapping.install_mode == InstallMode::FirstPartyNative
-                    && mapping.rejected_shape.contains("premium package")
+                    && mapping.rejected_shape.contains("legacy installer package")
             ));
     }
 
@@ -411,6 +411,7 @@
 
     #[tokio::test]
     async fn portal_image_route_serves_original_portal_icons() {
+        let _env_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let temp = test_tab_root("portal-images");
         let images = temp.join("images");
         std::fs::create_dir_all(&images).unwrap();
@@ -432,6 +433,7 @@
 
     #[tokio::test]
     async fn portal_image_default_fallback_001() {
+        let _env_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let temp = test_tab_root("portal-image-default-fallback");
         let default_bytes = b"default-png-bytes";
         std::fs::write(temp.join("default.png"), default_bytes).unwrap();

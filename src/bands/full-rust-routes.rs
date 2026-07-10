@@ -64,18 +64,6 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/admin/diskman/update-key", post(admin_class_generic_mutation_route))
         .route("/api/admin/diskman/key-status", post(admin_class_generic_mutation_route))
         .route("/api/admin/diskman/vault-device", get(homeserver_rust_read_route))
-        .route("/api/admin/premium/validate-and-clone", post(admin_class_generic_mutation_route))
-        .route("/api/admin/premium/install/:tab_name", post(admin_class_generic_mutation_route))
-        .route("/api/admin/premium/uninstall/:tab_name", delete(admin_class_generic_mutation_route))
-        .route("/api/admin/premium/reinstall/:tab_name", post(admin_class_generic_mutation_route))
-        .route("/api/admin/premium/reinstall-multiple", post(admin_class_generic_mutation_route))
-        .route("/api/admin/premium/delete/:tab_name", delete(admin_class_generic_mutation_route))
-        .route("/api/admin/premium/status", get(homeserver_rust_read_route))
-        .route("/api/admin/premium/install-all", post(admin_class_generic_mutation_route))
-        .route("/api/admin/premium/uninstall-all", post(admin_class_generic_mutation_route))
-        .route("/api/admin/premium/logs", get(homeserver_rust_read_route))
-        .route("/api/admin/premium/auto-update/:tab_name", get(homeserver_rust_read_route).post(admin_class_generic_mutation_route))
-        .route("/api/admin/premium/auto-update-status", get(homeserver_rust_read_route))
         .route("/api/status/services", get(homeserver_rust_read_route))
         .route("/api/status", get(internet_status_route))
         .route("/api/uptime", get(uptime_route))
@@ -131,15 +119,6 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/dhcp/health", get(homeserver_rust_read_route))
         .route("/api/dhcp/statistics", get(homeserver_rust_read_route))
         .route("/api/dhcp/pool-boundary", get(homeserver_rust_read_route).post(network_identity_mutation_route))
-        .route("/api/youtube/download", post(admin_class_generic_mutation_route))
-        .route("/api/youtube/download/info", post(admin_class_generic_mutation_route))
-        .route("/api/youtube/subscriptions", get(homeserver_rust_read_route).post(admin_class_generic_mutation_route))
-        .route("/api/youtube/subscriptions/:channel_id", delete(admin_class_generic_mutation_route))
-        .route("/api/youtube/subscriptions/:channel_id/fetch", post(admin_class_generic_mutation_route))
-        .route("/api/youtube/settings", get(homeserver_rust_read_route).post(admin_class_generic_mutation_route))
-        .route("/api/youtube/schedule", get(homeserver_rust_read_route).post(admin_class_generic_mutation_route))
-        .route("/api/youtube/logs", get(homeserver_rust_read_route))
-        .route("/api/youtube/update-ytdlp", post(admin_class_generic_mutation_route))
         .route("/api/nasLinker/browse", get(homeserver_rust_read_route))
         .route("/api/nasLinker/deploy", post(admin_class_generic_mutation_route))
         .route("/api/nasLinker/delete", delete(admin_class_generic_mutation_route))
@@ -480,8 +459,7 @@ fn network_identity_mutation_refusal_response(method: &str, path: &str) -> Respo
 }
 
 fn admin_class_generic_refusal_family(path: &str) -> &'static str {
-    if path.contains("/youtube") { "youtube" }
-    else if path.contains("/backblazeTab") { "backblazeTab" }
+    if path.contains("/backblazeTab") { "backblazeTab" }
     else if path.contains("/backup") { "backup" }
     else if path.contains("/miner") { "miner" }
     else if path.contains("/nasLinker") { "nasLinker" }
@@ -539,8 +517,8 @@ fn homeserver_route_family(path: &str) -> &'static str {
         "file-ingress"
     } else if path.contains("portals") || path.contains("service/control") {
         "portal-service"
-    } else if path.contains("premium") || path.contains("youtube") || path.contains("backblazeTab") || path.contains("miner") {
-        "premium-module"
+    } else if path.contains("backblazeTab") || path.contains("miner") {
+        "crown-pane"
     } else if path.contains("tabs") || path.contains("setstarredtab") {
         "tab-registry"
     } else {
@@ -616,18 +594,6 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/admin/diskman/update-key", &["post"]),
         ("/api/admin/diskman/key-status", &["post"]),
         ("/api/admin/diskman/vault-device", &["get"]),
-        ("/api/admin/premium/validate-and-clone", &["post"]),
-        ("/api/admin/premium/install/:tab_name", &["post"]),
-        ("/api/admin/premium/uninstall/:tab_name", &["delete"]),
-        ("/api/admin/premium/reinstall/:tab_name", &["post"]),
-        ("/api/admin/premium/reinstall-multiple", &["post"]),
-        ("/api/admin/premium/delete/:tab_name", &["delete"]),
-        ("/api/admin/premium/status", &["get"]),
-        ("/api/admin/premium/install-all", &["post"]),
-        ("/api/admin/premium/uninstall-all", &["post"]),
-        ("/api/admin/premium/logs", &["get"]),
-        ("/api/admin/premium/auto-update/:tab_name", &["get", "post"]),
-        ("/api/admin/premium/auto-update-status", &["get"]),
         ("/api/status/services", &["get"]),
         ("/api/status", &["get"]),
         ("/api/uptime", &["get"]),
@@ -682,15 +648,6 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/dhcp/health", &["get"]),
         ("/api/dhcp/statistics", &["get"]),
         ("/api/dhcp/pool-boundary", &["get", "post"]),
-        ("/api/youtube/download", &["post"]),
-        ("/api/youtube/download/info", &["post"]),
-        ("/api/youtube/subscriptions", &["get", "post"]),
-        ("/api/youtube/subscriptions/:channel_id", &["delete"]),
-        ("/api/youtube/subscriptions/:channel_id/fetch", &["post"]),
-        ("/api/youtube/settings", &["get", "post"]),
-        ("/api/youtube/schedule", &["get", "post"]),
-        ("/api/youtube/logs", &["get"]),
-        ("/api/youtube/update-ytdlp", &["post"]),
         ("/api/nasLinker/browse", &["get"]),
         ("/api/nasLinker/deploy", &["post"]),
         ("/api/nasLinker/delete", &["delete"]),

@@ -99,17 +99,7 @@ fn native_crown_panes() -> Vec<CrownPane> {
             route: "/#dhcp".to_string(),
             state_route: "/api/panes/dhcp".to_string(),
         },
-        CrownPane {
-            id: "youtube".to_string(),
-            title: "YouTube".to_string(),
-            role: "hidden original tab".to_string(),
-            summary: "Original hidden HOMESERVER YouTube tab placeholder until the pane body is ported.".to_string(),
-            order: 90,
-            admin_only: false,
-            install_mode: InstallMode::FirstPartyNative,
-            route: "/#youtube".to_string(),
-            state_route: "/api/panes/youtube".to_string(),
-        },
+
     ]
 }
 
@@ -166,7 +156,7 @@ fn native_tab_contracts() -> Vec<CoronatioTabContract> {
         .into_iter()
         .map(|pane| {
             let mut visibility = TabVisibility::default();
-            if matches!(pane.id.as_str(), "chia-mining" | "dhcp" | "youtube") {
+            if matches!(pane.id.as_str(), "chia-mining" | "dhcp") {
                 visibility.tab = false;
             }
             CoronatioTabContract {
@@ -270,7 +260,7 @@ fn registry_transaction_readback() -> RegistryTransactionReadback {
         schema: "coronatio.registry.transaction.v1".to_string(),
         status: "contract-only".to_string(),
         route: "/api/registry/transaction".to_string(),
-        source_contract: "premium/utils/config_manager.py apply_config_patch, deep_merge, deep_merge_tabs, validate_config_with_factory_fallback, restore_backup, revert_config_patch".to_string(),
+        source_contract: "legacy-installer/utils/config_manager.py apply_config_patch, deep_merge, deep_merge_tabs, validate_config_with_factory_fallback, restore_backup, revert_config_patch".to_string(),
         transaction_sequence: registry_transaction_phases(),
         deep_merge_law: DeepMergeLaw {
             object_merge: "when target and patch values are objects, merge recursively".to_string(),
@@ -427,7 +417,7 @@ fn admin_session_readback() -> AdminSessionReadback {
             privileged_mutations: vec![
                 "pin change".to_string(),
                 "service restart".to_string(),
-                "premium/source installation".to_string(),
+                "legacy-installer/source installation".to_string(),
                 "disk/vault/key operations".to_string(),
             ],
             coronatio_role: "session readback, capability request shaping, and non-secret UI state".to_string(),

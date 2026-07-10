@@ -2,7 +2,7 @@
 
 Coronatio is the Rust appliance host for the next HOMESERVER control surface.
 
-Arcadia remains the HomeConsole/game appliance. Coronatio is the crown for the broader HOMESERVER frontend/backend replacement: the place where the old Flask/React premium-tab law becomes a typed Rust appliance substrate.
+Arcadia remains the HomeConsole/game appliance. Coronatio is the crown for the broader HOMESERVER frontend/backend replacement: the place where the old Flask/React legacy installer tab law becomes a typed Rust appliance substrate.
 
 ## North Star
 
@@ -17,7 +17,7 @@ A port is not a reinterpretation, redesign, summary, scaffold, or inspired-by re
 Identical means indistinguishable to the user under the same viewport, theme, session/admin state, configuration, and data state. Implementation substrate may change from Flask/React/Python to Rust/Caduceus/Harmonia; the experienced surface may not drift. Tests that only prove word presence, contract existence, or approximate semantics are not acceptance for port work. Every port tranche must cite or inspect the original source/living quarry, name the old behavior, reproduce it in Rust, and prove the same user-visible behavior once.
 
 
-The old premium-tab system is quarry, not trash. It contains hard-won behavior law:
+The old legacy installer tab system is quarry, not trash. It contains hard-won behavior law:
 
 - folders can introduce new tabs;
 - a tab carries UI, backend routes, config, dependencies, permissions, and install/remove lifecycle;
@@ -56,7 +56,7 @@ This scaffold provides the first host surface:
 - `GET /api/topics` — topic catalog replacing Socket.IO subscription law with SSE EventSource plus POST renew admission.
 - `GET /api/monitor/pulse` — monitor payload/pulse contract for the first `stats.system` topic: cadence, changed predicate, admin fields, snapshot, SSE, renew, and first event proof.
 - `GET /api/boundary` — Flask route and SPA boundary replacement: `/api/*` JSON 404, non-API shell fallback, cartridge static serving.
-- `GET /api/installer` — premium installer law readback: root/component manifest schemas, copy/append operation fields, validation phases, install phases, rollback/uninstall/reinstall/batch law, lane mapping, and the first missing Caduceus live-mutation signal.
+- `GET /api/installer` — legacy-quarry installer law readback: root/component manifest schemas, copy/append operation fields, validation phases, historical lifecycle, lane mapping, and the first missing Caduceus live-mutation signal.
 - `GET /api/stats/events` — first Stats SSE event stream contract.
 - `POST /api/stats/events/renew` — first Stats SSE lease renewal contract.
 - `GET /api/stats` — honest first-party Stats snapshot readback with SSE route posture.
@@ -114,7 +114,7 @@ Coronatio does not need one installation strategy. It needs a lawful membrane fo
 
 2. `source-injection-recompile`
    - folder is injected into the source tree and Coronatio is rebuilt;
-   - preserves the old premium-tab ability to recompile the whole host when that is the right answer;
+   - preserves the old legacy installer tab ability to recompile the whole host when that is the right answer;
    - best for trusted first-party/native tabs that need compile-time integration.
 
 3. `first-party-native`
@@ -160,9 +160,9 @@ Live collectors and privileged actions remain behind later Caduceus/Coronatio ac
 
 Live config writes, `factoryFallback.sh`, `chown`, `chmod`, and temp-file promotion remain outside this tranche until Caduceus owns the actuator and receipt ledger.
 
-## Premium installer contract
+## Legacy-quarry installer contract
 
-`/api/installer` is a contract/readback route only. It extracts the old premium installer’s manifest and lifecycle law without executing third-party premium code or mutating the host. The readback names:
+`/api/installer` is a contract/readback route only. It extracts the old quarry installer manifest and lifecycle law without executing code or mutating the host. The readback names:
 
 - root package fields: `name`, `version`, `config.repository`, `git_managed`, and `files`;
 - component operation fields: `source`, `target`, `type`, `identifier`, `marker`, and `description`;
@@ -212,7 +212,7 @@ This scaffold is accepted when:
 - Tests prove `/api/topics` replaces Socket.IO subscription law with SSE + lease renew topic contracts.
 - Tests prove `/api/monitor/pulse`, `/api/stats/events`, and `/api/stats/events/renew` expose the first `stats.system` monitor pulse end-to-end.
 - Tests prove `/api/*` misses return JSON 404 while non-API unknown paths return the shell.
-- Tests prove `/api/installer` exposes premium installer law as typed contract-only readback and does not claim live mutation.
+- Tests prove `/api/installer` exposes legacy-quarry installer law as typed contract-only readback and does not claim live mutation.
 - Tests prove `/api/stats` returns an honest snapshot with unavailable telemetry and SSE routes.
 - Tests prove dynamic cartridge manifests load without host recompile and final manifest validation rejects unsafe/native cartridge shapes.
 - Paligenesis carries the North Star contract and open decisions.

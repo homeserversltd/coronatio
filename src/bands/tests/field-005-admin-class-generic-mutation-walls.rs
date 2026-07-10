@@ -38,15 +38,6 @@
             ("POST", "/api/admin/diskman/create-key"),
             ("POST", "/api/admin/diskman/update-key"),
             ("POST", "/api/admin/diskman/key-status"),
-            ("POST", "/api/admin/premium/validate-and-clone"),
-            ("POST", "/api/admin/premium/install/:tab_name"),
-            ("DELETE", "/api/admin/premium/uninstall/:tab_name"),
-            ("POST", "/api/admin/premium/reinstall/:tab_name"),
-            ("POST", "/api/admin/premium/reinstall-multiple"),
-            ("DELETE", "/api/admin/premium/delete/:tab_name"),
-            ("POST", "/api/admin/premium/install-all"),
-            ("POST", "/api/admin/premium/uninstall-all"),
-            ("POST", "/api/admin/premium/auto-update/:tab_name"),
             ("POST", "/api/status/vpn/updatekey/pia"),
             ("POST", "/api/status/vpn/updatekey/transmission"),
             ("POST", "/api/status/vpn/enable"),
@@ -59,14 +50,6 @@
             ("POST", "/api/upload/history/clear"),
             ("PUT", "/api/upload/blacklist/update"),
             ("POST", "/api/upload/pin-required-status"),
-            ("POST", "/api/youtube/download"),
-            ("POST", "/api/youtube/download/info"),
-            ("POST", "/api/youtube/subscriptions"),
-            ("DELETE", "/api/youtube/subscriptions/:channel_id"),
-            ("POST", "/api/youtube/subscriptions/:channel_id/fetch"),
-            ("POST", "/api/youtube/settings"),
-            ("POST", "/api/youtube/schedule"),
-            ("POST", "/api/youtube/update-ytdlp"),
             ("POST", "/api/nasLinker/deploy"),
             ("DELETE", "/api/nasLinker/delete"),
             ("POST", "/api/nasLinker/rename"),
@@ -196,8 +179,8 @@
         let gated = field_005_gated_this_slice_mutations();
         let previous = field_005_previously_gated_mutations();
         let exclusions = field_005_named_exclusion_mutations();
-        assert_eq!(all.len(), 141, "new mutation route entered full-rust-routes.rs and must be classified");
-        assert_eq!(gated.len(), 120, "FIELD-005 plus FIELD-005b gated route count changed");
+        assert_eq!(all.len(), 124, "new mutation route entered full-rust-routes.rs and must be classified");
+        assert_eq!(gated.len(), 103, "FIELD-005 plus FIELD-005b gated route count changed");
         assert_eq!(previous.len(), 19, "previously-gated route count changed");
         assert_eq!(exclusions.len(), 2, "upload/files exclusion count changed");
 
@@ -235,7 +218,6 @@
     async fn field_005_refusal_walls_admin_class_families_refuse_guest_before_caduceus() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005-family-refusals")) });
         for (family, method, route) in [
-            ("youtube", "POST", "/api/youtube/download"),
             ("backup", "POST", "/api/backup/backup/run"),
             ("backblazeTab", "POST", "/api/backblazeTab/database/backup"),
             ("miner", "POST", "/api/miner/config"),
@@ -271,7 +253,7 @@
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005-admin-crosses-gate")) });
         let token = authorize_test_admin_token();
-        let response = router.oneshot(Request::builder().method("POST").uri("/api/youtube/download").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
+        let response = router.oneshot(Request::builder().method("POST").uri("/api/backup/backup/run").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("coronatio.homeserver.route.mutation.v1"), "{body}");

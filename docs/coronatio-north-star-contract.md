@@ -4,7 +4,7 @@
 
 Coronatio is the HOMESERVER crown: a Rust-owned appliance host for infinite services and infinite tabs.
 
-It replaces the old Flask/React HOMESERVER control surface by extracting the premium-tab state-machine law and rebuilding it as typed contracts, explicit lanes, receipts, and appliance readbacks. The lawful primary tabs are `admin`, `stats`, `portals`, and `upload`; platform-owned third-party brands are cartridge content only, never crown primary navigation.
+It replaces the old Flask/React HOMESERVER control surface by extracting the legacy installer tab state-machine law and rebuilding it as typed contracts, explicit lanes, receipts, and appliance readbacks. The lawful primary tabs are `admin`, `stats`, `portals`, and `upload`; platform-owned third-party brands are cartridge content only, never crown primary navigation.
 
 ## One-to-one port doctrine
 
@@ -27,7 +27,7 @@ Original first load is governed by the Flask tab registry and favorite system: `
 
 ## Preserved goods from HOMESERVER quarry
 
-The old premium-tab system proved these goods are required:
+The old legacy installer tab system proved these goods are required:
 
 - a folder can become a visible tab;
 - tab installation can merge config;
@@ -78,7 +78,7 @@ The scaffolding SHALL make these decisions visible before they harden:
 2. UI payload: prebuilt static JS/WASM island versus server-rendered generic pane.
 3. Backend boundary: localhost HTTP first, Unix socket later if service hardening demands it.
 4. Install authority: direct installer command versus Fulcrum/Harmonia mediated installation.
-5. Rebuild lane: when a premium tab is allowed to inject source and force a full Coronatio recompile.
+5. Rebuild lane: when a legacy installer tab is allowed to inject source and force a full Coronatio recompile.
 6. Receipt ledger: per-tab receipts under the tab root versus central Coronatio ledger.
 7. Sandboxing: systemd service first; WASI only when pure plugin code wants stronger sandboxing.
 8. Promotion path: dynamic cartridge to first-party native when a tab becomes crown law.
@@ -95,9 +95,9 @@ The old portals, services monitor, and broadcast manager are behavior quarry, no
 
 The old `ConfigManager` registry writer is behavior quarry, not runtime authority. Coronatio currently exposes it as `/api/registry/transaction`, a typed readback/state-machine contract. The route records object-recursive deep merge, scalar/array replacement, `tabs.starred` preservation, factory fallback validation, temp-candidate write/promote, `www-data:www-data`/`664` permission restoration, backup restore, patch-key revert, and mismatch preservation. It does not write live config, execute `factoryFallback.sh`, move temp files, or change ownership/mode. Those live mutations require a later Caduceus actuator with non-secret receipts.
 
-## Premium installer tranche law
+## Legacy-quarry installer tranche law
 
-The old Flask premium installer is behavior quarry, not runtime authority. Coronatio currently exposes it as `/api/installer`, a typed readback/state-machine contract. The route records the package schema (`name`, `version`, `config.repository`, `git_managed`, `files`), component operation schema (`source`, `target`, `type`, `identifier`, `marker`, `description`), validation order, install order, rollback order, uninstall/reinstall/batch law, and lane mapping. It does not copy files, append blueprints, install dependencies, patch config, rebuild frontend assets, or restart services. Those live mutations require a later Caduceus actuator with non-secret receipts.
+The old Flask quarry installer is behavior quarry, not runtime authority. Coronatio currently exposes it as `/api/installer`, a typed readback/state-machine contract. The route records the package schema (`name`, `version`, `config.repository`, `git_managed`, `files`), component operation schema (`source`, `target`, `type`, `identifier`, `marker`, `description`), validation order, historical lifecycle, and lane mapping. It does not copy files, append blueprints, install dependencies, patch config, rebuild frontend assets, or restart services. Those live mutations require a later Caduceus actuator with non-secret receipts.
 
 
 ## Theme system tranche law
@@ -124,7 +124,7 @@ The first scaffold proves:
 - `/api/topics` replaces Socket.IO subscribe/unsubscribe law with SSE EventSource plus POST renew topic admission;
 - `/api/monitor/pulse`, `/api/stats/events`, and `/api/stats/events/renew` prove the persistent data-free pulse stream, stream-id renewal, and `tabs.changed` poke contract end-to-end;
 - `/api/boundary` and the fallback router expose Flask route and SPA boundary law: `/api/*` JSON 404, non-API shell fallback, and cartridge static serving;
-- `/api/installer` exposes the old premium installer as contract-only law: manifest fields, copy/append operation schema, validation phases, install phases, rollback/uninstall/reinstall/batch policy, lane mapping, and the missing Caduceus actuator signal;
+- `/api/installer` exposes the old quarry installer as contract-only law: manifest fields, copy/append operation schema, validation phases, historical lifecycle, lane mapping, and the missing Caduceus actuator signal;
 - `/api/stats` exposes the first honest Stats snapshot readback and names the SSE lease routes;
 - `/api/tabs` loads installed tab manifests dynamically while preserving native pane readback;
 - unsafe tab ids are rejected;
