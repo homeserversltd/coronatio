@@ -100,29 +100,48 @@ async fn portal_image_route(Path(filename): Path<String>) -> impl IntoResponse {
     if filename.contains('/') || filename.contains("..") || filename.is_empty() {
         return StatusCode::BAD_REQUEST.into_response();
     }
+
+    let served_filename = match read_portal_image(&filename) {
+        Ok(Some(bytes)) => return portal_image_response(&filename, bytes),
+        Ok(None) if filename == "default.png" => return StatusCode::NOT_FOUND.into_response(),
+        Ok(None) => "default.png",
+        Err(()) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    match read_portal_image(served_filename) {
+        Ok(Some(bytes)) => portal_image_response(served_filename, bytes),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(()) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+fn read_portal_image(filename: &str) -> Result<Option<Vec<u8>>, ()> {
     for root in portal_image_roots() {
-        let path = root.join(&filename);
+        let path = root.join(filename);
         if path.is_file() {
-            match std::fs::read(&path) {
-                Ok(bytes) => {
-                    let content_type = if filename.ends_with(".png") { "image/png" } else { "application/octet-stream" };
-                    return (StatusCode::OK, [(header::CONTENT_TYPE, content_type)], bytes).into_response();
-                }
-                Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-            }
+            return std::fs::read(path).map(Some).map_err(|_| ());
         }
     }
-    StatusCode::NOT_FOUND.into_response()
+    Ok(None)
+}
+
+fn portal_image_response(filename: &str, bytes: Vec<u8>) -> Response {
+    let content_type = if filename.ends_with(".png") {
+        "image/png"
+    } else {
+        "application/octet-stream"
+    };
+    (StatusCode::OK, [(header::CONTENT_TYPE, content_type)], bytes).into_response()
 }
 
 fn portal_image_roots() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
     if let Ok(path) = env::var("CORONATIO_PORTAL_IMAGE_ROOT") {
-        roots.push(PathBuf::from(path));
+        return vec![PathBuf::from(path)];
     }
-    roots.push(PathBuf::from("/var/www/homeserver/src/tablets/portals/images"));
-    roots.push(PathBuf::from("/fulcrum/attachments/homeserver/initialization/flask/inject/src/tablets/portals/images"));
-    roots
+    vec![
+        PathBuf::from("/var/www/homeserver/src/tablets/portals/images"),
+        PathBuf::from("/fulcrum/attachments/homeserver/initialization/flask/inject/src/tablets/portals/images"),
+    ]
 }
 
 fn extract_portals(value: &serde_json::Value) -> Vec<PortalEntry> {

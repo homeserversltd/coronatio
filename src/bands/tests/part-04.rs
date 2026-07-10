@@ -430,6 +430,47 @@
         std::env::remove_var("CORONATIO_PORTAL_IMAGE_ROOT");
     }
 
+    #[tokio::test]
+    async fn portal_image_default_fallback_001() {
+        let temp = test_tab_root("portal-image-default-fallback");
+        let default_bytes = b"default-png-bytes";
+        std::fs::write(temp.join("default.png"), default_bytes).unwrap();
+        std::fs::write(temp.join("ExistingPortal.png"), b"existing-png-bytes").unwrap();
+        std::env::set_var("CORONATIO_PORTAL_IMAGE_ROOT", &temp);
+
+        let missing_response = app(AppState { tab_root: Arc::new(temp.clone()) })
+            .oneshot(Request::builder().uri("/api/portals/images/MissingPortal.png").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(missing_response.status(), StatusCode::OK);
+        assert_eq!(
+            missing_response.headers().get(axum::http::header::CONTENT_TYPE).unwrap(),
+            "image/png"
+        );
+        assert_eq!(
+            &axum::body::to_bytes(missing_response.into_body(), usize::MAX).await.unwrap()[..],
+            default_bytes
+        );
+
+        let existing_response = app(AppState { tab_root: Arc::new(temp.clone()) })
+            .oneshot(Request::builder().uri("/api/portals/images/ExistingPortal.png").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(existing_response.status(), StatusCode::OK);
+        assert_eq!(
+            &axum::body::to_bytes(existing_response.into_body(), usize::MAX).await.unwrap()[..],
+            b"existing-png-bytes"
+        );
+
+        std::fs::remove_file(temp.join("default.png")).unwrap();
+        let absent_default_response = app(AppState { tab_root: Arc::new(temp.clone()) })
+            .oneshot(Request::builder().uri("/api/portals/images/default.png").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(absent_default_response.status(), StatusCode::NOT_FOUND);
+        std::env::remove_var("CORONATIO_PORTAL_IMAGE_ROOT");
+    }
+
     #[test]
     fn portals_viewport_hydrates_cards_from_api_not_static_scaffold() {
         let shell = render_crown_shell();
