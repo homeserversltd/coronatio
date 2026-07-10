@@ -52,11 +52,19 @@
     }
 
     #[test]
-    fn portals_cards_keep_the_quiet_base_border_for_every_status() {
+    fn portals_cards_keep_og_status_border_accents() {
         let css = std::fs::read_to_string("src/bands/shell/ux/packs/portals.css").unwrap();
         assert!(css.contains("border: 1px solid var(--border);"), "portal cards need the Theme Net base border");
+        for status_rule in [
+            ".portal-card.up { border-color: var(--statusUp); }",
+            ".portal-card.down { border-color: var(--statusDown); }",
+            ".portal-card.partial { border-color: var(--statusPartial); }",
+            ".portal-card.unknown { border-color: var(--statusUnknown); }",
+        ] {
+            assert!(css.contains(status_rule), "missing og status border rule: {status_rule}");
+        }
         assert!(
-            !css.contains("border-color: var(--status"),
-            "service status must not recolor the full portal-card perimeter"
+            css.contains(r#"[data-admin-mode="true"] .portal-icon"#),
+            "admin-mode portal icon sizing must bind to data-admin-mode"
         );
     }

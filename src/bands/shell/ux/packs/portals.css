@@ -1,6 +1,6 @@
 /* UXPORT-004 LIBRARY band: og src/tablets/portals portals domain pack.
    Og sources: src/tablets/portals/index.tsx; components/{PortalCard,AddPortalCard,AddPortalModal,ServiceStatusModal}.tsx; PortalCard.css.
-   Declaration-diff receipts: pane-root=ABSORB(tab-local PortalCard.css .portals-tablet); grid=ABSORB(tab-local .portals-grid; current .portal-grid helper differed/name drift); portal-card=ABSORB(tab-local .portal-card and status borders; generic .card removed from portal card stack); card-interior=ABSORB(portal-card-header/icon/name/description/meta); admin-controls=ABSORB(og .admin-controls replaces Rust-only .portal-admin-controls); add-portal-card=ABSORB(og caboose card); portal-modal-form=ABSORB(og modal/form selectors; AddPortalModal rendered native input/select/button, not shared ui-input/ui-select/ui-button); service-status-modal=ABSORB(og ServiceStatusModal shell/pre/copy-button); visibility-toggle=DEFERRED-to-VIS(current eye/visibility state machine left untouched).
+   Declaration-diff receipts: pane-root=ABSORB(tab-local PortalCard.css .portals-tablet); grid=ABSORB(tab-local .portals-grid; current .portal-grid helper differed/name drift); portal-card=ABSORB(tab-local .portal-card and og status border accents; generic .card removed from portal card stack); admin-mode=REBIND(data-admin-mode on .app replaces dead .admin-mode class selectors); card-interior=ABSORB(portal-card-header/icon/name/description/meta); admin-controls=ABSORB(og .admin-controls replaces Rust-only .portal-admin-controls); add-portal-card=ABSORB(og caboose card); portal-modal-form=ABSORB(og modal/form selectors; AddPortalModal rendered native input/select/button, not shared ui-input/ui-select/ui-button); service-status-modal=ABSORB(og ServiceStatusModal shell/pre/copy-button); visibility-toggle=DEFERRED-to-VIS(current eye/visibility state machine left untouched).
    Holding-pen drain: portals selectors moved out of shell/base-and-chrome.css and ux/shell/document-2-css.css; shell/document-2-css.css keeps only non-portals mobile substrate.
    Og inline-style fold: PortalElement root style position:relative represented by .portal-element position:relative; visibility toggle inline top/right/z-index intentionally deferred with VIS; current toggle markup/classes stay untouched. */
 
@@ -93,8 +93,8 @@
   width: 100%;
 }
 
-/* Admin mode button layout */
-.admin-mode .admin-controls {
+/* Admin mode button layout — Coronatio uses data-admin-mode on .app, not .admin-mode class */
+[data-admin-mode="true"] .admin-controls {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -102,13 +102,16 @@
   min-height: auto;
 }
 
-.admin-controls button {
+.portals-tablet .admin-controls button {
   flex: 1;
   border: none;
   border-radius: 6px;
   background: var(--primary);
   color: white;
   font-size: 0.85rem;
+  font-weight: 500;
+  padding: 4px 6px;
+  min-height: 30px;
   transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
@@ -162,7 +165,11 @@
 
 }
 
-/* Status classes remain available to the portal fragment; cards retain the quiet base perimeter. */
+/* Existing status styles preserved (og PortalCard.css) */
+.portal-card.up { border-color: var(--statusUp); }
+.portal-card.down { border-color: var(--statusDown); }
+.portal-card.partial { border-color: var(--statusPartial); }
+.portal-card.unknown { border-color: var(--statusUnknown); }
 
 .service-status-modal pre {
   background: var(--background-alt);
@@ -434,12 +441,12 @@
 }
 
 /* Adjust spacing when in admin mode */
-.admin-mode .portal-card-header {
+[data-admin-mode="true"] .portal-card-header {
   margin-bottom: 0.25rem;
   flex: 0 0 auto;
 }
 
-.admin-mode .portal-description {
+[data-admin-mode="true"] .portal-description {
   margin-top: 0;
 }
 
@@ -526,9 +533,29 @@
 }
 
 /* In admin mode, enforce consistent portal icon size */
-.admin-mode .portal-icon {
+[data-admin-mode="true"] .portal-icon {
   width: 70px;
   height: 70px;
+}
+
+/* Og PortalElement visibility toggle placement (inline style fold from index.tsx) */
+.portal-element > .visibility-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+/* Add-portal icon: CSS plus glyph when fas markup has no vendor sheet */
+.add-portal-icon i {
+  display: none;
+}
+
+.add-portal-icon::after {
+  content: '+';
+  font-size: 2rem;
+  font-weight: 300;
+  line-height: 1;
 }
 
 /* Service Status Modal Overrides */
