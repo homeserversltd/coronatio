@@ -545,6 +545,12 @@
         let routes = std::fs::read_to_string("src/bands/routes.rs").unwrap();
         assert!(contracts.contains("INSTALLED_HOMESERVER_JSON"));
         assert!(contracts.contains("LEGACY_HOMESERVER_JSON"));
+        assert!(contracts.contains("FLASK_HOMESERVER_JSON"));
+        assert!(contracts.contains("FACTORY_HOMESERVER_JSON"));
+        assert!(contracts.contains("/etc/homeserver/config.json"));
+        assert!(contracts.contains("/etc/homeserver.json"));
+        assert!(contracts.contains("/var/www/homeserver/src/config/homeserver.json"));
+        assert!(contracts.contains("/etc/homeserver.factory"));
         assert!(routes.contains("fn homeserver_json_path()"));
         assert!(routes.contains("homeserver.json tabs.{config,visibility,starred}"));
         assert!(routes.contains("global.theme.name"));

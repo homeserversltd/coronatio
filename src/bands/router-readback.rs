@@ -465,7 +465,10 @@ fn homeserver_pin_config_candidates() -> Vec<PathBuf> {
     if let Ok(path) = env::var("CORONATIO_HOMESERVER_JSON") {
         paths.push(PathBuf::from(path));
     }
+    paths.push(PathBuf::from("/etc/homeserver/config.json"));
     paths.push(PathBuf::from("/etc/homeserver.json"));
+    paths.push(PathBuf::from("/var/www/homeserver/src/config/homeserver.json"));
+    paths.push(PathBuf::from("/etc/homeserver.factory"));
     paths
 }
 
