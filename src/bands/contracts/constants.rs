@@ -1,6 +1,8 @@
 const DEFAULT_TAB_ROOT: &str = "/var/lib/coronatio/tabs";
-const INSTALLED_HOMESERVER_JSON: &str = "/etc/homeserver.json";
-const LEGACY_HOMESERVER_JSON: &str = "/var/www/homeserver/src/config/homeserver.json";
+const INSTALLED_HOMESERVER_JSON: &str = "/etc/homeserver/config.json";
+const LEGACY_HOMESERVER_JSON: &str = "/etc/homeserver.json";
+const FLASK_HOMESERVER_JSON: &str = "/var/www/homeserver/src/config/homeserver.json";
+const FACTORY_HOMESERVER_JSON: &str = "/etc/homeserver.factory";
 const QUARRY_HOMESERVER_JSON: &str = "../homeserver/initialization/flask/inject/src/config/homeserver.json";
 const LOCAL_QUARRY_HOMESERVER_JSON: &str = "/fulcrum/attachments/homeserver/initialization/flask/inject/src/config/homeserver.json";
 const INSTALLED_STATIC_ROOT: &str = "/opt/coronatio/source/static";

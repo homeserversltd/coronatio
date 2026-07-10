@@ -267,6 +267,8 @@ fn homeserver_json_path() -> PathBuf {
     for candidate in [
         INSTALLED_HOMESERVER_JSON,
         LEGACY_HOMESERVER_JSON,
+        FLASK_HOMESERVER_JSON,
+        FACTORY_HOMESERVER_JSON,
         QUARRY_HOMESERVER_JSON,
         LOCAL_QUARRY_HOMESERVER_JSON,
     ] {
