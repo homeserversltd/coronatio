@@ -13,7 +13,7 @@
             ("hard-drive-test-modal", 6),
             ("log-viewer-modal", 6),
             ("password-input-modal", 3),
-            ("premium-tab-modal", 16),
+            ("legacy-installer-modal", 16),
             ("root-ca-modal", 5),
             ("sync-schedule-modal", 2),
             ("system-action-modal", 1),

@@ -82,7 +82,6 @@
             "/api/admin/updates/modules/:module_name/status",
             "/api/wakeonlan/targets",
             "/api/dhcp/reservations/:reservation_id",
-            "/api/youtube/download",
             "/api/backup/status",
             "/api/miner/stats",
         ] {

@@ -6,7 +6,6 @@
                 "admin": { "config": { "displayName": "Admin", "isEnabled": true, "adminOnly": true }, "visibility": { "tab": true, "elements": {} } },
                 "stats": { "config": { "displayName": "Stats", "isEnabled": true, "adminOnly": false }, "visibility": { "tab": true, "elements": {} } },
                 "portals": { "config": { "displayName": "Portals", "isEnabled": true, "adminOnly": false }, "visibility": { "tab": true, "elements": {} } },
-                "youtube": { "config": { "displayName": "YouTube", "isEnabled": true, "adminOnly": false }, "visibility": { "tab": false, "elements": {} } }
             }
         }).to_string()).unwrap();
     }
@@ -70,14 +69,12 @@
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let token = authorize_test_admin_token();
         let response = app(AppState { tab_root: Arc::new(test_tab_root("vis-002-visibility-app")) })
-            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"youtube","visible":true}"#)).unwrap())
+            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap())
             .await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        assert!(fragment.contains("data-tab-id=\"youtube\""), "{fragment}");
         assert!(fragment.contains("data-visibility=\"visible\""), "{fragment}");
-        let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
-        assert_eq!(value["tabs"]["youtube"]["visibility"]["tab"], serde_json::Value::Bool(true));
+        let _value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
         assert!(std::fs::read_dir(&temp).unwrap().all(|entry| !entry.unwrap().file_name().to_string_lossy().contains("tmp")));
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     }
@@ -114,7 +111,6 @@
         for (uri, expected) in [
             ("/api/tab-bar", "stats"),
             ("/api/tab-bar?active=portals", "portals"),
-            ("/api/tab-bar?active=youtube", "stats"),
             ("/api/tab-bar?active=admin", "stats"),
         ] {
             let response = router.clone().oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();

@@ -85,7 +85,7 @@ fn boundary_readback() -> BoundaryReadback {
         static_shell_policy: "non-API unknown GET paths return the Coronatio shell for client-side routing".to_string(),
         cartridge_static_policy: "/tabs/<tab-id>/... is served from the configured tab root through safe tab ids and manifest validation".to_string(),
         cors_source: "homeserver.json global.cors.allowed_origins becomes Coronatio config law in the later config tranche".to_string(),
-        premium_blueprint_replacement: "dynamic Flask blueprint injection is replaced by dynamic-cartridge, source-injection-recompile, or first-party-native lanes".to_string(),
+        flask_quarry_blueprint_replacement: "dynamic Flask blueprint injection is replaced by dynamic-cartridge, source-injection-recompile, or first-party-native lanes".to_string(),
     }
 }
 
@@ -95,24 +95,24 @@ fn installer_readback() -> InstallerReadback {
         status: "contract-only".to_string(),
         route: "/api/installer".to_string(),
         authority: "Coronatio exposes typed installer law readbacks; live host mutation remains behind a later Caduceus actuator membrane".to_string(),
-        root_manifest_schema: PremiumRootManifestSchema {
+        root_manifest_schema: LegacyInstallerRootManifestSchema {
             required_fields: vec!["name", "version", "config", "files"].into_iter().map(String::from).collect(),
             config_fields: vec!["repository.url", "repository.branch", "git_managed"].into_iter().map(String::from).collect(),
             file_sections: vec!["backend", "frontend", "permissions", "system", "config", "readme", "license"].into_iter().map(String::from).collect(),
-            sample_source: "premium/youtube/index.json".to_string(),
+            sample_source: "legacy-tabs/quarry/index.json".to_string(),
         },
-        component_manifest_schema: PremiumComponentManifestSchema {
+        component_manifest_schema: LegacyInstallerComponentManifestSchema {
             loci: vec!["frontend/index.json", "backend/index.json"].into_iter().map(String::from).collect(),
             fields: vec!["name", "version", "files[]", "source", "target", "type", "identifier", "marker", "description"].into_iter().map(String::from).collect(),
             operation_types: vec!["copy", "append", "symlink"].into_iter().map(String::from).collect(),
-            blueprint_marker: "PREMIUM TAB BLUEPRINTS".to_string(),
+            blueprint_marker: "LEGACY INSTALLER BLUEPRINTS".to_string(),
         },
-        file_operation_schema: PremiumFileOperationSchema {
+        file_operation_schema: LegacyInstallerFileOperationSchema {
             source_field: "source path relative to package root".to_string(),
             target_field: "absolute old-host target or Coronatio lane target declared by later actuator".to_string(),
             operation_type_field: "type defaults to copy; append uses marker/identifier".to_string(),
             identifier_field: "tab/package identifier for injected blocks and rollback".to_string(),
-            marker_field: "append insertion marker such as PREMIUM TAB BLUEPRINTS".to_string(),
+            marker_field: "append insertion marker such as LEGACY INSTALLER BLUEPRINTS".to_string(),
             description_field: "human receipt text for operation intent".to_string(),
             supported_operations: vec!["copy", "append", "symlink"].into_iter().map(String::from).collect(),
         },
@@ -130,7 +130,7 @@ fn installer_validation_phases() -> Vec<InstallerPhase> {
         installer_phase(1, "current-config-validation", "validate_config_with_factory_fallback before package work", "read current Coronatio registry/config and reject invalid baseline before staging mutation", "read-only Coronatio contract now; Caduceus later"),
         installer_phase(2, "package-manifest-validation", "validate_package_manifest over root/component manifests", "require root package schema and frontend/backend operation schema before admission", "read-only Coronatio contract now; Caduceus later"),
         installer_phase(3, "name-collision", "check_name_collision unless reinstall/batch post-build restoration skips installed check", "reject duplicate visible tab/package identity unless reinstall authority is explicit", "read-only Coronatio contract now; Caduceus later"),
-        installer_phase(4, "version-conflict", "SemanticVersionChecker.validate_premium_tab_dependencies", "surface version conflicts as typed blockers before file/package mutation", "read-only Coronatio contract now; Caduceus later"),
+        installer_phase(4, "version-conflict", "SemanticVersionChecker.validate_legacy_installer_tab_dependencies", "surface version conflicts as typed blockers before file/package mutation", "read-only Coronatio contract now; Caduceus later"),
         installer_phase(5, "dependency-validation", "backend requirements, frontend package patch, and system dependencies are detected before install", "classify dependency families without installing them in Coronatio", "read-only Coronatio contract now; Caduceus later"),
     ]
 }
@@ -231,7 +231,7 @@ fn installer_lifecycle_law() -> Vec<InstallerLifecycleLaw> {
         InstallerLifecycleLaw {
             action: "restore-patches".to_string(),
             sequence: vec![
-                "list installed premium tabs",
+                "list recorded quarry tab patches",
                 "find homeserver.patch.json",
                 "sort by tab name",
                 "apply each patch deterministically",
@@ -250,7 +250,7 @@ fn installer_lane_mapping() -> Vec<InstallerLaneMapping> {
     vec![
         InstallerLaneMapping { install_mode: InstallMode::DynamicCartridge, accepted_package: "manifest + static assets + optional localhost service boundary".to_string(), post_install_requirement: "reload registry and serve /tabs/<tab-id>/... without Coronatio recompile".to_string(), rejected_shape: "Flask blueprint injection as live runtime authority".to_string() },
         InstallerLaneMapping { install_mode: InstallMode::SourceInjectionRecompile, accepted_package: "trusted frontend/backend source operations requiring host rebuild".to_string(), post_install_requirement: "copy source in a governed lane, run Rust/source proof, publish/admit source, then restart through Caduceus when requested".to_string(), rejected_shape: "unreviewed source mutation in canonical checkout".to_string() },
-        InstallerLaneMapping { install_mode: InstallMode::FirstPartyNative, accepted_package: "none for user packages; only Coronatio source may define this lane".to_string(), post_install_requirement: "Cibation-admitted Rust source and tests".to_string(), rejected_shape: "premium package claiming first-party-native".to_string() },
+        InstallerLaneMapping { install_mode: InstallMode::FirstPartyNative, accepted_package: "none for user packages; only Coronatio source may define this lane".to_string(), post_install_requirement: "Cibation-admitted Rust source and tests".to_string(), rejected_shape: "legacy installer package claiming first-party-native".to_string() },
     ]
 }
 

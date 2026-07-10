@@ -32,10 +32,10 @@
     #[test]
     fn field_006_category_wall_fact_routes_are_census_classified() {
         assert_eq!(field_005b_typed_projection_get_routes().len(), 5, "read-census typed-projection bucket moved");
-        assert_eq!(field_005b_generic_projected_get_routes().len(), 103, "read-census generic bucket moved");
+        assert_eq!(field_005b_generic_projected_get_routes().len(), 95, "read-census generic bucket moved");
         assert_eq!(field_005b_real_body_exception_get_routes().len(), 10, "read-census real-body bucket moved");
         assert_eq!(field_005b_og_admin_gated_get_routes().len(), 2, "read-census og-admin bucket moved");
-        assert_eq!(field_005_gated_this_slice_mutations().len(), 120, "mutation-census gated bucket moved");
+        assert_eq!(field_005_gated_this_slice_mutations().len(), 103, "mutation-census gated bucket moved");
         assert_eq!(field_005_previously_gated_mutations().len(), 19, "mutation-census previous bucket moved");
         assert_eq!(field_005_named_exclusion_mutations().len(), 2, "mutation-census exclusion bucket moved");
         let audit = std::fs::read_to_string("docs/field-projection-audit.md").unwrap();

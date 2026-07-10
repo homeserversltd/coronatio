@@ -6,7 +6,7 @@ struct BoundaryReadback {
     static_shell_policy: String,
     cartridge_static_policy: String,
     cors_source: String,
-    premium_blueprint_replacement: String,
+    flask_quarry_blueprint_replacement: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -404,9 +404,9 @@ struct InstallerReadback {
     status: String,
     route: String,
     authority: String,
-    root_manifest_schema: PremiumRootManifestSchema,
-    component_manifest_schema: PremiumComponentManifestSchema,
-    file_operation_schema: PremiumFileOperationSchema,
+    root_manifest_schema: LegacyInstallerRootManifestSchema,
+    component_manifest_schema: LegacyInstallerComponentManifestSchema,
+    file_operation_schema: LegacyInstallerFileOperationSchema,
     validation_phases: Vec<InstallerPhase>,
     install_phases: Vec<InstallerPhase>,
     rollback_law: RollbackLaw,
@@ -417,7 +417,7 @@ struct InstallerReadback {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct PremiumRootManifestSchema {
+struct LegacyInstallerRootManifestSchema {
     required_fields: Vec<String>,
     config_fields: Vec<String>,
     file_sections: Vec<String>,
@@ -426,7 +426,7 @@ struct PremiumRootManifestSchema {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct PremiumComponentManifestSchema {
+struct LegacyInstallerComponentManifestSchema {
     loci: Vec<String>,
     fields: Vec<String>,
     operation_types: Vec<String>,
@@ -435,7 +435,7 @@ struct PremiumComponentManifestSchema {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct PremiumFileOperationSchema {
+struct LegacyInstallerFileOperationSchema {
     source_field: String,
     target_field: String,
     operation_type_field: String,

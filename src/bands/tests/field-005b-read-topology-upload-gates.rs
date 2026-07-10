@@ -54,10 +54,6 @@
             "/api/admin/diskman/check-services",
             "/api/admin/diskman/sync-schedule",
             "/api/admin/diskman/vault-device",
-            "/api/admin/premium/status",
-            "/api/admin/premium/logs",
-            "/api/admin/premium/auto-update/:tab_name",
-            "/api/admin/premium/auto-update-status",
             "/api/status/services",
             "/api/status/tailscale",
             "/api/status/tailscale/config",
@@ -79,10 +75,6 @@
             "/api/dhcp/health",
             "/api/dhcp/statistics",
             "/api/dhcp/pool-boundary",
-            "/api/youtube/subscriptions",
-            "/api/youtube/settings",
-            "/api/youtube/schedule",
-            "/api/youtube/logs",
             "/api/nasLinker/browse",
             "/api/nasLinker/scan",
             "/api/nasLinker/status",
@@ -148,9 +140,9 @@
         let generic = field_005b_generic_projected_get_routes();
         let real = field_005b_real_body_exception_get_routes();
         let og = field_005b_og_admin_gated_get_routes();
-        assert_eq!(all.len(), 120, "new GET route entered full-rust-routes.rs and must be FIELD-005b-classified");
+        assert_eq!(all.len(), 112, "new GET route entered full-rust-routes.rs and must be FIELD-005b-classified");
         assert_eq!(typed.len(), 5, "typed-projection bucket changed");
-        assert_eq!(generic.len(), 103, "generic-projected-this-slice bucket changed");
+        assert_eq!(generic.len(), 95, "generic-projected-this-slice bucket changed");
         assert_eq!(real.len(), 10, "real-body-exception bucket changed");
         assert_eq!(og.len(), 2, "og-admin-gated GET bucket changed");
 
@@ -194,7 +186,7 @@
     #[tokio::test]
     async fn field_005b_guest_generic_readback_is_minimal_and_topology_free() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005b-guest-generic")) });
-        for route in ["/api/admin/updates/modules/example/status", "/api/status/tailscale", "/api/youtube/subscriptions"] {
+        for route in ["/api/admin/updates/modules/example/status", "/api/status/tailscale"] {
             let response = router.clone().oneshot(Request::builder().uri(route).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK, "{route}");
             let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
@@ -202,7 +194,7 @@
             let keys = body.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
             assert_eq!(keys, vec!["firstMissingSignal", "ok", "schema", "status", "success"], "guest generic read grew topology fields: {body}");
             let raw = serde_json::to_string(&body).unwrap();
-            for denied in ["method", "path", "family", "authority", "network-control", "premium-module", route, "DENY-topology-marker"] {
+            for denied in ["method", "path", "family", "authority", "network-control", "crown-pane", route, "DENY-topology-marker"] {
                 assert!(!raw.contains(denied), "guest generic read leaked topology marker {denied}: {raw}");
             }
         }

@@ -374,8 +374,8 @@ fn iris_d_row_08_session_change_current_if_granted_wins_before_starred() {
 fn iris_registry_delegation_preserves_tab_accessible_signature() {
     let mut tab = native_tab_contracts()
         .into_iter()
-        .find(|tab| tab.id == "youtube")
-        .expect("youtube tab exists");
+        .find(|tab| tab.id == "dhcp")
+        .expect("dhcp tab exists");
     tab.visibility.tab = false;
     assert!(!tab_accessible_in_mode(&tab, false));
     assert!(tab_accessible_in_mode(&tab, true));

@@ -175,7 +175,7 @@ Reachability finding: og runtime is reachable by curl from this body.
 ```text
 curl -k -I https://home.arpa -> HTTP/2 200, server nginx, date Mon, 06 Jul 2026 04:47:01 GMT
 curl -k -sS https://home.arpa/ -> Vite/React shell with /assets/index-BRoXzIjg.js and /assets/index-Co-PYpJ8.css
-curl -k -sS https://home.arpa/api/tabs -> JSON with starredTab="portals", injected fallback, admin/portals/stats/upload and premium tabs
+curl -k -sS https://home.arpa/api/tabs -> JSON with starredTab="portals", injected fallback, admin/portals/stats/upload and legacy installer tabs
 ```
 
 Observed non-mutating runtime facts:

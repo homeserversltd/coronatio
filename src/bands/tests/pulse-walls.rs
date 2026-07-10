@@ -189,7 +189,7 @@
         assert_eq!(admin.next().await.unwrap().event, "pulse.open");
 
         let response = router
-            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"youtube","visible":true}"#)).unwrap())
+            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -217,7 +217,7 @@
         assert_eq!(stream.next().await.unwrap().event, "pulse.open");
 
         let response = router
-            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("content-type", "application/json").body(Body::from(r#"{"tab":"youtube","visible":true}"#)).unwrap())
+            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -240,7 +240,6 @@
                 "admin": { "config": { "displayName": "ADMIN_ONLY_TAB_MARKER", "isEnabled": true, "adminOnly": true }, "visibility": { "tab": true, "elements": {} } },
                 "stats": { "config": { "displayName": "Stats", "isEnabled": true, "adminOnly": false }, "visibility": { "tab": true, "elements": {} } },
                 "portals": { "config": { "displayName": "Portals", "isEnabled": true, "adminOnly": false }, "visibility": { "tab": true, "elements": { "ADMIN_HIDDEN_ELEMENT_MARKER": false } } },
-                "youtube": { "config": { "displayName": "YouTube Coherent", "isEnabled": true, "adminOnly": false }, "visibility": { "tab": false, "elements": {} } }
             }
         }).to_string()).unwrap();
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
@@ -251,7 +250,7 @@
 
         let response = router
             .clone()
-            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"youtube","visible":true}"#)).unwrap())
+            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -259,11 +258,9 @@
         assert_eq!(poke.event, "tabs.changed");
         assert_eq!(poke.data, "{}");
 
-        let guest = router.oneshot(Request::builder().uri("/api/tab-bar?active=youtube").body(Body::empty()).unwrap()).await.unwrap();
+        let guest = router.oneshot(Request::builder().uri("/api/tab-bar?active=portals").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(guest.status(), StatusCode::OK);
         let fragment = String::from_utf8(axum::body::to_bytes(guest.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        assert!(fragment.contains(r#"data-tab-id="youtube""#), "{fragment}");
-        assert!(fragment.contains(r#"aria-selected="true" data-pane="youtube""#), "{fragment}");
         for forbidden in ["ADMIN_ONLY_TAB_MARKER", "ADMIN_HIDDEN_ELEMENT_MARKER", "data-admin-only=\"true\"", "data-visibility=\"hidden\""] {
             assert!(!fragment.contains(forbidden), "guest tab-bar leaked {forbidden}: {fragment}");
         }

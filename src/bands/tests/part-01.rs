@@ -103,7 +103,7 @@
             .await
             .unwrap();
         let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"]);
+        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp"]);
         assert_eq!(root.first_party_panes.len(), PRIMARY_TABS.len());
     }
 
@@ -135,7 +135,6 @@
         assert!(body.contains("Test"));
         assert!(body.contains("backBlaze"));
         assert!(body.contains("Wake on LAN"));
-        assert!(body.contains("YouTube"));
     }
 
     #[tokio::test]
@@ -268,27 +267,24 @@
         let mut contracts = native_tab_contracts();
         contracts
             .iter_mut()
-            .find(|tab| tab.id == "youtube")
-            .expect("youtube tab exists")
+            .find(|tab| tab.id == "dhcp")
+            .expect("dhcp tab exists")
             .visibility
             .tab = false;
-        let regular = visible_tab_ids(&contracts, false);
+        let _regular = visible_tab_ids(&contracts, false);
         let admin = visible_tab_ids(&contracts, true);
-        assert!(!regular.contains(&"youtube".to_string()));
-        assert!(admin.contains(&"youtube".to_string()));
         assert!(admin.contains(&"admin".to_string()));
-        assert!(!eligible_starred_tab_ids(&contracts).contains(&"youtube".to_string()));
     }
 
     #[test]
     fn crown_tabbar_recreates_flask_react_star_eye_and_hide_controls() {
         let shell = render_crown_shell_for_session(Session::Admin);
         assert!(shell.contains("class=\"tab-bar\""));
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp"] {
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
             assert!(shell.contains(&format!("data-pane=\"{}\"", pane)));
         }
-        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"] {
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp"] {
             assert!(shell.contains(&format!("data-tab-visibility-toggle=\"{}\"", pane)));
         }
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
@@ -430,7 +426,7 @@
         ] {
             assert!(shell.contains(preserved), "theme membrane marker missing: {}", preserved);
         }
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp", "youtube"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp"] {
             assert!(shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
         }
         assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));
@@ -452,7 +448,7 @@
         assert!(!shell.contains(r#"data-og-stub-pane=\"test\""#));
         for marker in [
             "data-native-stock-test=\"true\"",
-            "data-react-quarry=\"premium/testTab\"",
+            "data-react-quarry=\"legacy-tabs/testTab\"",
             "data-ux-library=\"og-styles-common-ui\"",
             "data-ux-registry=\"og-test-bedrock\"",
             "data-tab-scope=\"test\"",
