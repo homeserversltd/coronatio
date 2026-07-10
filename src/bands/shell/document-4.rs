@@ -90,6 +90,11 @@ fn shell_document_4() -> &'static str {
     document.body.addEventListener('htmx:afterSwap', event => {
       const target = event.detail?.target;
       if (target instanceof Element && (target.matches('[data-upload-tree]') || target.closest('[data-upload-tree]'))) syncUploadTreeSelection();
+      if (target instanceof Element && (target.matches('[data-portals-grid]') || target.closest('[data-portals-grid]'))) {
+        const grid = target.matches('[data-portals-grid]') ? target : target.closest('[data-portals-grid]');
+        if (grid) bindPortalFragmentControls(grid);
+        applyAdminDomState();
+      }
     });
     async function uploadOneFile(file) {
       setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending' });
@@ -479,7 +484,9 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     }
     function portalDestination(portal) {
-      return portal.localURL || portal.remoteURL || '#';
+      // Dead client card builder: localURL is product link; stored remoteURL slash-paths are not.
+      // Live face is server fragment /api/portals/elements (HTMX). Keep local-first if this path runs.
+      return portal.localURL || '#';
     }
     function renderPortalCard(portal, factoryNames) {
       const destination = portalDestination(portal);
@@ -585,8 +592,19 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     async function hydratePortals() {
       const grid = document.querySelector('[data-portals-grid]');
       if (!grid) return;
-      try { await refreshElementFragment('portals'); }
-      catch (error) { grid.innerHTML = '<article class="portal-card error portal-error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>' + renderAddPortalCard(); }
+      try {
+        // HTMX is the lawful layer-1 pull of the homeserver.json portal mirror.
+        if (window.htmx && grid.getAttribute('hx-get')) {
+          const token = localStorage.getItem('coronatioAdminToken');
+          if (token) grid.setAttribute('hx-headers', JSON.stringify({ 'X-Admin-Token': token }));
+          window.htmx.trigger(grid, 'portals-refresh');
+          if (!grid.querySelector('[data-portal-card], [data-portal-element]')) await refreshElementFragment('portals');
+        } else {
+          await refreshElementFragment('portals');
+        }
+      } catch (error) {
+        grid.innerHTML = '<article class="portal-card error portal-error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>' + renderAddPortalCard();
+      }
     }
 
     async function hydrateFavoriteManifest() {

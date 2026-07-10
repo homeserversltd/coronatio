@@ -22,4 +22,5 @@ mod tests {
     include!("tests/field-005-admin-class-generic-mutation-walls.rs");
     include!("tests/field-005b-read-topology-upload-gates.rs");
     include!("tests/field-006-denylist-terminal-walls.rs");
+    include!("tests/portals-htmx-mirror-walls.rs");
 }

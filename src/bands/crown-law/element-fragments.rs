@@ -41,17 +41,33 @@ async fn stats_elements_fragment_route(headers: axum::http::HeaderMap) -> impl I
 }
 
 async fn portals_elements_fragment_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    element_fragment_response(session_from_headers(&headers), "portals")
+    let host = request_access_host(&headers);
+    element_fragment_response_with_host(session_from_headers(&headers), "portals", &host)
 }
 
 fn element_refusal_fragment(reason: &str) -> Response {
     (StatusCode::UNAUTHORIZED, Html(format!(r#"<div data-element-visibility-refusal="{}">{}</div>"#, html_escape(reason), html_escape(reason)))).into_response()
 }
 
+fn request_access_host(headers: &axum::http::HeaderMap) -> String {
+    // Quarry PortalCard used window.location.hostname. Crown fragment uses request Host
+    // (or X-Forwarded-Host) as the same access-context signal when reverse-proxied.
+    headers
+        .get("x-forwarded-host")
+        .or_else(|| headers.get(axum::http::header::HOST))
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.split(',').next().unwrap_or(value).trim().to_string())
+        .unwrap_or_default()
+}
+
 fn element_fragment_response(session: Session, tab: &str) -> Response {
+    element_fragment_response_with_host(session, tab, "")
+}
+
+fn element_fragment_response_with_host(session: Session, tab: &str, host: &str) -> Response {
     let body = match tab {
         "stats" => render_stats_elements_fragment(session),
-        "portals" => render_portals_elements_fragment(session),
+        "portals" => render_portals_elements_fragment(session, host),
         _ => String::new(),
     };
     let mut response = (StatusCode::OK, Html(body)).into_response();
@@ -133,13 +149,13 @@ fn render_stat_element_from_grant(session: Session, facts: &IrisFacts, element_i
     Some(html)
 }
 
-fn render_portals_elements_fragment(session: Session) -> String {
+fn render_portals_elements_fragment(session: Session, host: &str) -> String {
     let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
     let plan = iris::plan(&facts, session);
     match read_portals_config() {
         Ok(response) => {
             let mut html = response.portals.into_iter()
-                .filter_map(|portal| render_portal_element_from_grant(session, &facts, &plan, &portal))
+                .filter_map(|portal| render_portal_element_from_grant(session, &facts, &plan, &portal, host))
                 .collect::<Vec<_>>()
                 .join("\n");
             if html.is_empty() {
@@ -156,19 +172,69 @@ fn render_portals_elements_fragment(session: Session) -> String {
     }
 }
 
-fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &RenderPlan, portal: &PortalEntry) -> Option<String> {
+fn portal_access_is_remote(host: &str) -> bool {
+    // One-to-one with homeserver PortalCard.tsx isRemoteAccess().
+    let hostname = host.split(':').next().unwrap_or(host).trim().to_ascii_lowercase();
+    if hostname.is_empty() { return false; }
+    hostname.contains(".ts.net") || (!hostname.contains(".home.arpa") && hostname != "home.arpa" && hostname != "localhost" && hostname != "127.0.0.1")
+}
+
+fn construct_portal_destination(portal: &PortalEntry, host: &str) -> String {
+    // Quarry: remoteURL is phased out; dynamic calculation from localURL/port + access host.
+    // Stored slash-path remoteURL (e.g. https://home.tail…/jellyfin/) is NOT the product link.
+    if !portal_access_is_remote(host) { return portal.local_url.clone(); }
+    let hostname = host.split(':').next().unwrap_or(host).trim();
+    if portal.r#type == "link" {
+        let local = portal.local_url.trim();
+        if local.starts_with("http://") || local.starts_with("https://") {
+            if !local.contains(".home.arpa") && !local.contains(".ts.net") { return local.to_string(); }
+            if hostname.contains(".ts.net") {
+                if let Some(caps) = regex_tailnet(hostname) {
+                    let after = local.split("://").nth(1).unwrap_or(local);
+                    let path = after.find('/').map(|i| &after[i..]).unwrap_or("/");
+                    return format!("https://home.{caps}.ts.net{path}");
+                }
+            }
+        }
+        if hostname.contains(".ts.net") {
+            if let Some(caps) = regex_tailnet(hostname) {
+                let path = local.replacen("https://", "", 1);
+                let path = if let Some(idx) = path.find('/') { &path[idx..] } else { "" };
+                let path = if path.is_empty() { "/" } else { path };
+                return format!("https://home.{caps}.ts.net{path}");
+            }
+        }
+        return portal.local_url.clone();
+    }
+    if hostname.contains(".ts.net") {
+        if let Some(caps) = regex_tailnet(hostname) {
+            if let Some(port) = portal.port { return format!("https://home.{caps}.ts.net:1{port}/"); }
+        }
+    }
+    String::new()
+}
+
+fn regex_tailnet(hostname: &str) -> Option<String> {
+    let parts: Vec<&str> = hostname.split('.').collect();
+    if parts.len() >= 4 && parts[0] == "home" && parts[parts.len()-2] == "ts" && parts[parts.len()-1] == "net" { return Some(parts[1].to_string()); }
+    None
+}
+
+fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &RenderPlan, portal: &PortalEntry, host: &str) -> Option<String> {
     let element_id = portal.name.trim();
     if element_id.is_empty() || portal.local_url.trim().is_empty() { return None; }
     let grant = plan.elements.iter().find(|grant| grant.tab_id == "portals" && grant.element_id == element_id)
         .cloned()
         .unwrap_or_else(|| default_element_grant_from_facts(facts, session, "portals", element_id));
     if grant.state == RenderState::Absent { return None; }
+    let destination_raw = construct_portal_destination(portal, host);
+    if destination_raw.trim().is_empty() && portal_access_is_remote(host) { return None; }
     let visible = grant.state == RenderState::Visible;
     let eye = if visible { "👁" } else { "🙈" };
     let verb = if visible { "Hide" } else { "Show" };
     let name = html_escape(element_id);
     let description = html_escape(&portal.description);
-    let destination = html_escape(portal.remote_url.as_deref().filter(|value| !value.trim().is_empty()).unwrap_or(&portal.local_url));
+    let destination = html_escape(if destination_raw.trim().is_empty() { &portal.local_url } else { &destination_raw });
     let status = html_escape(portal.status.as_deref().unwrap_or("unknown"));
     let services = html_escape(&serde_json::to_string(&portal.services).unwrap_or_else(|_| "[]".to_string()));
     let admin_controls = if session == Session::Admin && portal.r#type != "link" {
