@@ -72,7 +72,7 @@ fn shell_ux_css() -> String {
 }
 
 fn crown_chrome_js() -> String {
-    let raw = [shell_document_2(), shell_document_3(), shell_document_4()]
+    let raw = [shell_document_2(), shell_document_3(), shell_document_4(), shell_document_4_tail()]
         .concat()
         .replace("__DHCP_CLIENT__", shell_dhcp_client());
     extract_between(&raw, "<script>", "</script>").unwrap_or_default()
@@ -112,6 +112,7 @@ fn render_crown_shell_for_session(session: Session) -> String {
         shell_document_2().to_string(),
         shell_document_3().to_string(),
         shell_document_4().to_string(),
+        shell_document_4_tail().to_string(),
     ]
     .concat();
     let shell = shell

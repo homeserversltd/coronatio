@@ -326,35 +326,24 @@ async fn upload_history_admin_route(headers: axum::http::HeaderMap) -> Response 
 }
 
 async fn upload_history_route() -> impl IntoResponse {
-    let log_dir = std::env::var("HOMESERVER_LOG_DIR").unwrap_or_else(|_| "/var/log/homeserver".to_string());
-    let log_path = std::path::Path::new(&log_dir).join("upload.log");
-    let history = std::fs::read_to_string(log_path)
-        .unwrap_or_default()
-        .lines()
-        .filter(|line| {
-            let normalized = line.to_ascii_lowercase();
-            !normalized.contains("[error]")
-                && !normalized.contains("failed to")
-                && !normalized.contains("[system]")
-        })
-        .map(str::to_string)
-        .rev()
-        .collect::<Vec<_>>();
-    Json(serde_json::json!({
-        "schema": "coronatio.upload.history.v1",
-        "ok": true,
-        "history": history,
-        "firstMissingSignal": "none"
-    }))
+    let readback = hyalos_tail_readback(Some("upload"), 100);
+    let history = hyalos_upload_history_from_tail(&readback);
+    let ok = readback.ok;
+    (
+        if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE },
+        Json(serde_json::json!({
+            "schema": "coronatio.upload.history.v1",
+            "ok": ok,
+            "history": history,
+            "authority": "Caduceus Hyalos tail membrane",
+            "caduceus": readback,
+            "firstMissingSignal": if ok { "none" } else { readback.first_missing_signal.as_str() }
+        })),
+    )
 }
 
 fn clear_upload_history_route() -> Response {
-    let log_dir = std::env::var("HOMESERVER_LOG_DIR").unwrap_or_else(|_| "/var/log/homeserver".to_string());
-    let log_path = std::path::Path::new(&log_dir).join("upload.log");
-    match std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(log_path) {
-        Ok(_) => Json(serde_json::json!({"schema": "coronatio.upload.history.clear.v1", "ok": true, "success": true, "firstMissingSignal": "none"})).into_response(),
-        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"schema": "coronatio.upload.history.clear.v1", "ok": false, "success": false, "error": error.to_string(), "firstMissingSignal": "upload-log-truncate-failed"}))).into_response(),
-    }
+    hyalos_channel_clear_refusal_response("coronatio.upload.history.clear.v1", "/api/upload/history/clear")
 }
 
 async fn internet_status_route(headers: axum::http::HeaderMap) -> Response {
@@ -440,6 +429,9 @@ async fn homeserver_rust_mutation_route(method: Method, uri: Uri) -> impl IntoRe
 async fn admin_class_generic_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri, body: Bytes) -> Response {
     if session_from_headers(&headers) != Session::Admin { return admin_class_generic_mutation_refusal_response(method.as_str(), uri.path()); }
     if uri.path() == "/api/upload/history/clear" { return clear_upload_history_route(); }
+    if uri.path() == "/api/admin/logs/homeserver/clear" {
+        return hyalos_channel_clear_refusal_response("coronatio.admin.logs.homeserver.clear.v1", uri.path());
+    }
     let payload = serde_json::from_slice(&body).unwrap_or_else(|_| serde_json::json!({}));
     if uri.path() == "/api/upload/blacklist/update" { return upload_blacklist_update(payload); }
     if uri.path() == "/api/upload/pin-required-status" { return upload_pin_required_update(payload); }

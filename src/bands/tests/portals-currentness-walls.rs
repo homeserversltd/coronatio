@@ -52,7 +52,7 @@
 
     #[test]
     fn portals_currentness_shell_refreshes_visible_portals_only() {
-        let document = include_str!("../shell/document-4.rs");
+        let document = [include_str!("../shell/document-4.rs"), include_str!("../shell/document-4-tail.rs")].join("\n");
         assert!(document.contains("async function refreshPortalCurrentness()"));
         assert!(document.contains("/api/portals/currentness"));
         assert!(document.contains("const statuses = ['up', 'down', 'partial', 'unknown']"));

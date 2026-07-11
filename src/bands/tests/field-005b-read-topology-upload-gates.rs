@@ -247,10 +247,34 @@
 
     #[tokio::test]
     async fn field_005b_admin_upload_history_crosses_og_gate() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let payload = serde_json::json!({
+            "schema": "caduceus.hyalos.tail.v1",
+            "ok": true,
+            "events": [{"kind": "upload", "organ": "file-ingress", "message": "accepted", "ok": true}],
+            "firstMissingSignal": "none"
+        }).to_string();
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 4096];
+                let _ = std::io::Read::read(&mut stream, &mut buf);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+                    payload.len(),
+                    payload
+                );
+                let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
+            }
+        });
+        std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005b-admin-upload-history")) });
         let token = authorize_test_admin_token();
         let response = router.oneshot(Request::builder().uri("/api/upload/history").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("coronatio.upload.history.v1"), "{body}");
+        std::env::remove_var("CADUCEUS_BASE_URL");
+        let _ = server.join();
     }
