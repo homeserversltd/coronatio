@@ -388,10 +388,10 @@
         for viewport in ["admin", "stats", "portals", "upload", "test"] {
             assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing admin viewport {viewport}");
         }
-        for admin_action in ["Hard Drive Test", "Force Update", "Hide CPU Usage & Load", "PIN requirement", "Blacklist"] {
+        for admin_action in ["Hard Drive Test", "Auto Sync", "Hide CPU Usage & Load", "PIN requirement", "Blacklist"] {
             assert!(shell.contains(admin_action), "missing {admin_action}");
         }
-        assert!(shell.contains("74 buttons"));
+        assert!(!shell.contains("data-admin-quarry"));
         assert!(shell.contains("History"));
         let portals_start = shell.find(r#"id="pane-portals""#).unwrap();
         let portals_end = shell[portals_start..].find(r#"id="pane-upload""#).unwrap() + portals_start;
