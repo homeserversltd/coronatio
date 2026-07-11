@@ -52,9 +52,8 @@
     }
 
     #[tokio::test]
-    async fn dhcp_admin_mutation_returns_real_caduceus_execution_receipt() {
-        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
-        use std::io
+    async fn dhcp_admin_mutation_preserves_real_caduceus_execution_receipt() {
+        let readback = CaduceusHttpReadback {
             ok: true,
             status: 202,
             path: "/api/v1/staff/intent".to_string(),
