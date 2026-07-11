@@ -511,6 +511,8 @@
         assert!(shell.contains("data-portal-services"));
         assert!(shell.contains("function handlePortalServiceAction(event)"));
         assert!(shell.contains("fetch('/api/service/control'"));
+        assert!(shell.contains("'X-Admin-Token': token"));
+        assert!(shell.contains("`=== ${result.service || 'service'} ===\\n"));
         assert!(shell.contains("data-admin-only data-admin-viewport=\"portals\""));
     }
 
@@ -530,15 +532,16 @@
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(body.contains("coronatio.portals.service_control.v1"), "{body}");
-        assert!(body.contains("/api/v1/staff/intent"), "{body}");
-        assert!(body.contains("/api/service/control"), "{body}");
-        assert!(body.contains("portal-service"), "{body}");
-        assert!(body.contains("jellyfin.service"), "{body}");
-        assert!(body.contains("caduceus-unreachable"), "{body}");
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body.as_object().unwrap().len(), 4);
+        for key in ["active", "message", "output", "success"] {
+            assert!(body.get(key).is_some(), "missing {key}: {body}");
+        }
+        assert_eq!(body["success"], false);
+        assert_eq!(body["active"], false);
+        assert_eq!(body["output"], "caduceus-unreachable");
     }
 
     #[tokio::test]
