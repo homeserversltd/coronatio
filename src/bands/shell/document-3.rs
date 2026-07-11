@@ -134,7 +134,7 @@ fn shell_document_3() -> &'static str {
       if (kind === 'internet') return `<div class="internet-status-modal" data-modal-kind-body="internet"><div class="status-section"><p class="status-text ${internetState.status}" data-modal-status data-route-read="/api/status">${internetStatusModalText()}</p></div>${indicatorAdminSection(`${internetAdminDetailsHtml()}<div class="speed-test-section"><div class="button-row"><button class="primary-button" data-speed-test-button data-modal-fetch="/api/status/internet/speedtest" data-method="POST" ${internetState.isSpeedTesting || internetState.status === 'loading' ? 'disabled' : ''}>${internetState.isSpeedTesting ? 'Running Speed Test...' : 'Run Speed Test'}</button></div>${internetSpeedTestHtml()}</div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'services') return `<div class="services-status-modal" data-modal-kind-body="services"><div class="loading-section" data-modal-status data-route-read="/api/status/services">Loading service status…</div><ul class="service-status-list" data-route-read="/api/status/services"><li>No status data available</li></ul>${indicatorAdminSection(`<div class="admin-service-grid"><div class="admin-service-description">Description</div><div class="admin-service-name">Service</div><div class="admin-service-right"><span class="admin-service-status">enabled</span></div></div><div class="button-row"><button data-modal-fetch="/api/status/services">Refresh</button><button data-modal-fetch="/api/services/data">Service Data</button></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
       if (kind === 'openvpn') return `<div class="vpn-status-modal" data-modal-kind-body="openvpn"><div class="status-section"><div class="service-statuses"><div class="status-item loading"><span>VPN Status:</span><span class="status-value" data-modal-status data-route-read="/api/status/vpn/pia">Loading VPN…</span></div><div class="status-item loading"><span>Transmission Status:</span><span class="status-value" data-modal-secondary-status data-route-read="/api/status/vpn/transmission">Loading Transmission…</span></div>${headerState.isAdmin ? `<div class="status-item" data-admin-only data-admin-surface="indicator-modal"><span>Systemd Service:</span><span class="status-value">LOADING</span></div>` : ''}</div></div>${indicatorAdminSection(`<div class="credentials-section"><div class="modal-grid"><div class="credential-group"><input placeholder="PIA Username"><input type="password" placeholder="PIA Password"><button data-modal-fetch="/api/status/vpn/updatekey/pia" data-method="POST">Create PIA Key</button></div><div class="credential-group"><input placeholder="Transmission Username"><input type="password" placeholder="Transmission Password"><button data-modal-fetch="/api/status/vpn/updatekey/transmission" data-method="POST">Create Transmission</button></div></div></div><div class="service-controls"><div class="button-row"><button data-modal-fetch="/api/status/vpn/enable" data-method="POST">Enable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/disable" data-method="POST">Disable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/pia/exists">PIA Key Exists</button><button data-modal-fetch="/api/status/vpn/transmission/exists">Transmission Key Exists</button></div></div><div class="restart-notice"><p>Note: Service changes require a restart to take effect.</p></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
-      if (kind === 'power-meter') return `<div class="power-meter-modal" data-modal-kind-body="power-meter"><div class="power-usage-display"><div class="power-value" data-route-read="/api/status/power/usage"><span class="power-value-number" data-modal-status>Loading power…</span><span class="power-value-unit">Watts</span></div></div><div class="power-history-section"><div class="power-averages"><div class="power-average-row"><div class="power-average-label">5s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">30s average:</div><div class="power-average-value">—W</div></div><div class="power-average-row"><div class="power-average-label">60s average:</div><div class="power-average-value">—W</div></div></div></div><pre class="readout action-output" data-modal-output></pre></div>`;
+      if (kind === 'power-meter') return `<div class="power-meter-modal" data-modal-kind-body="power-meter"><div class="power-usage-display"><div class="power-value"><span class="power-value-number">Loading power…</span><span class="power-value-unit">Watts</span></div></div><div class="power-history-section"><div class="power-averages"><div class="power-average-row"><div class="power-average-label">5s average:</div><div class="power-average-value" data-power-average="5">—W</div></div><div class="power-average-row"><div class="power-average-label">30s average:</div><div class="power-average-value" data-power-average="30">—W</div></div><div class="power-average-row"><div class="power-average-label">60s average:</div><div class="power-average-value" data-power-average="60">—W</div></div></div><div class="power-graph-container"><canvas data-power-chart aria-label="Power usage over time"></canvas></div></div></div>`;
       if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p><p>Theme selection comes from homeserver.json global.theme.name through /api/themes.</p></div>`;
       return '';
     }
@@ -189,9 +189,59 @@ fn shell_document_3() -> &'static str {
       return ok ? 'Internet status: ' + status + missing : 'Internet status unavailable';
     }
     const POWER_DISPLAY_FACTOR = 1.6;
+    const powerChartState = { labels: [], watts: [], chart: null };
     function formatPowerWatts(watts) {
       const value = Number(watts);
       return Number.isFinite(value) ? (value * POWER_DISPLAY_FACTOR).toFixed(1) : 'unavailable';
+    }
+    function powerStatusColor(watts) {
+      if (watts < 1) return 'var(--statusUp)';
+      if (watts < 5) return 'var(--statusPartial)';
+      return 'var(--statusDown)';
+    }
+    function pushPowerChartPoint(label, watts) {
+      powerChartState.labels.push(label);
+      powerChartState.watts.push(watts);
+      if (powerChartState.labels.length > 60) {
+        powerChartState.labels.shift();
+        powerChartState.watts.shift();
+      }
+    }
+    function averagePowerSamples(seconds) {
+      const values = powerChartState.watts.slice(-seconds);
+      return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+    }
+    function hydratePowerHistoryUI() {
+      const modal = infoBody.querySelector('[data-modal-kind-body="power-meter"]');
+      if (!modal) return;
+      const latest = powerChartState.watts.at(-1);
+      const latestNode = modal.querySelector('.power-value-number');
+      const color = latest === undefined ? 'var(--statusUnknown)' : powerStatusColor(latest / POWER_DISPLAY_FACTOR);
+      if (latestNode) latestNode.textContent = latest === undefined ? '—' : latest.toFixed(1);
+      const powerValue = modal.querySelector('.power-value');
+      if (powerValue) powerValue.style.color = color;
+      [5, 30, 60].forEach(seconds => {
+        const node = modal.querySelector(`[data-power-average="${seconds}"]`);
+        const average = averagePowerSamples(seconds);
+        if (node) { node.textContent = average === null ? '—W' : average.toFixed(1) + 'W'; node.style.color = color; }
+      });
+    }
+    function renderPowerModal() {
+      hydratePowerHistoryUI();
+      const canvas = infoBody.querySelector('[data-power-chart]');
+      if (!canvas || !window.Chart) return;
+      if (powerChartState.chart) powerChartState.chart.destroy();
+      powerChartState.chart = new Chart(canvas, {
+        type: 'line',
+        data: { labels: powerChartState.labels, datasets: [lineDataset('Power', powerChartState.watts, 'var(--statusPartial)', 'y')] },
+        options: Object.assign(chartCommonOptions(), {
+          plugins: { legend: { display: false }, tooltip: chartTooltip(context => Number(context.parsed.y || 0).toFixed(1) + 'W') },
+          scales: {
+            x: { ticks: chartTicks('var(--hiddenTabText)', value => powerChartState.labels[value] || value), grid: { display: false } },
+            y: { beginAtZero: true, ticks: chartTicks('var(--hiddenTabText)', value => Number(value).toFixed(0) + 'W'), grid: chartGrid() }
+          }
+        })
+      });
     }
     function hydratePowerIndicator(data) {
       const button = document.querySelector('[data-indicator="power-meter"]');
@@ -199,13 +249,18 @@ fn shell_document_3() -> &'static str {
       if (!button || !number) return;
       if (data?.ok && typeof data.current === 'number') {
         const display = formatPowerWatts(data.current);
+        const color = powerStatusColor(data.current);
         number.textContent = display;
         button.classList.remove('ok', 'warn', 'error');
+        button.style.color = color;
+        button.querySelector('.indicator-icon')?.style.setProperty('color', color);
+        button.querySelector('.power-value-small')?.style.setProperty('color', color);
         button.title = 'Power: ' + display + 'W';
         button.setAttribute('aria-label', 'Power Usage ' + display + ' Watts');
       } else {
         number.textContent = '—';
         button.classList.remove('ok', 'warn', 'error');
+        button.style.color = 'var(--statusUnknown)';
         button.title = 'Power readback unavailable';
         button.setAttribute('aria-label', 'Power readback unavailable');
       }
@@ -213,7 +268,12 @@ fn shell_document_3() -> &'static str {
     async function refreshPowerIndicator() {
       try {
         const response = await fetch('/api/status/power/usage', { cache: 'no-store' });
-        hydratePowerIndicator(await response.json());
+        const data = await response.json();
+        hydratePowerIndicator(data);
+        if (response.ok && data?.ok && typeof data.current === 'number') {
+          pushPowerChartPoint(formatChartTime(), Number(formatPowerWatts(data.current)));
+          if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]')) renderPowerModal();
+        }
       } catch (error) {
         hydratePowerIndicator(null);
       }
@@ -342,6 +402,7 @@ fn shell_document_3() -> &'static str {
       infoBackdrop.setAttribute('aria-hidden', 'false');
       wireModalFetches();
       hydrateModalRouteReads(kind);
+      if (kind === 'power-meter') renderPowerModal();
     }
     function closeInfoModal() {
       infoBackdrop.classList.remove('open');
@@ -416,7 +477,7 @@ fn shell_document_3() -> &'static str {
     hydrateInternetIndicator();
     setInterval(hydrateInternetIndicator, 1000);
     refreshPowerIndicator();
-    setInterval(refreshPowerIndicator, 5000);
+    setInterval(refreshPowerIndicator, 1000);
     bootstrapAdminMode();
     connectPulseStream();
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
