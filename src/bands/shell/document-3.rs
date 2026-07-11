@@ -107,34 +107,14 @@ fn shell_document_3() -> &'static str {
     function indicatorAdminSection(inner) {
       return headerState.isAdmin ? `<div data-admin-only data-admin-surface="indicator-modal" data-admin-enhanced="true">${inner}</div>` : '';
     }
+    __INDICATOR_MODAL_REGISTRY__
+    function indicatorModalTemplate(kind) {
+      const render = indicatorModalTemplates[kind];
+      return render ? render() : '';
+    }
     function modalTemplate(kind) {
-      if (kind === 'tailscale') return `<div class="tailscale-status-modal" data-modal-kind-body="tailscale" data-flask-react-quarry="TailscaleIndicator">
-        <div class="status-section"><p class="status-text loading" data-modal-status data-route-read="/api/status/tailscale"><span data-spinner>⟳</span> LOADING...</p>
-          <div class="login-required-section" data-tailscale-login-section hidden>
-            <div class="login-message"><strong>Authentication Required</strong><p>Tailscale service is running but needs authentication. Click the link below to complete login:</p></div>
-            <div class="login-url-container"><a href="#" target="_blank" rel="noopener noreferrer" class="login-url-link" data-tailscale-login-url></a><button class="copy-url-button" data-copy-login-url title="Copy URL to clipboard">Copy URL</button></div>
-            <div class="login-instructions"><p><strong>Instructions:</strong></p><ol><li>Click the authentication link above (opens in new tab)</li><li>Sign in to your Tailscale account</li><li>Authorize this device</li><li>Return here - the status should update automatically</li></ol></div>
-          </div>
-        </div>
-        ${indicatorAdminSection(`<div class="controls-section"><div class="connection-buttons"><button class="primary-button" data-modal-fetch="/api/status/tailscale/connect" data-method="POST" data-operation-label="Connecting...">Connect</button><button class="primary-button" data-modal-fetch="/api/status/tailscale/disconnect" data-method="POST" data-operation-label="Disconnecting...">Disconnect</button></div><div class="service-controls"><button class="primary-button" data-modal-fetch="/api/status/tailscale/enable" data-method="POST" data-operation-label="Enabling...">Enable Service</button><button class="primary-button" data-modal-fetch="/api/status/tailscale/disable" data-method="POST" data-operation-label="Disabling...">Disable Service</button></div></div>
-        <div class="config-section"><div class="current-tailnet"><span class="label">Current Tailnet:</span><span class="value" data-route-read="/api/status/tailscale/config">Loading...</span></div><div class="config-form"><input data-tailnet-input placeholder="Enter Tailnet name"><button class="primary-button" data-modal-fetch="/api/status/tailscale/update-tailnet" data-method="POST" data-operation-label="Updating...">Update Tailnet</button><div class="tooltip-text">Unique name used for DNS entries and TLS certificates.
-          You can find this name on the DNS page of your tailscale dashboard.
-          This change will reboot the website and tailscale service. 
-          Please wait and refresh the page after submitting changes.
-
-          Note: HOMESERVER will automatically regenerate the HTTPS self-signed
-          certificate to reference your new tailnet. If you previously
-          installed the certificate on any device, open the site in a
-          private/incognito window and re-download the certificate before
-          returning to normal browsing. Until the new certificate is
-          installed, browsers may report a certificate name mismatch for both
-          local and remote access.</div></div></div>
-        <div class="authkey-section"><div class="authkey-alternative"><p class="alternative-text"><strong>Alternative:</strong> If the login link isn't working, you can use an auth key instead.</p></div><div class="authkey-form"><input class="authkey-input" data-authkey-input placeholder="Enter your tskey-auth-... or tskey-client-... key"><button class="primary-button" data-modal-fetch="/api/status/tailscale/authkey" data-method="POST" data-operation-label="Authenticating...">Authenticate</button></div><div class="authkey-help"><p>Get your auth key from the Tailscale admin console under Settings → Keys.</p></div></div>`)}<pre class="readout action-output" data-modal-output></pre>
-      </div>`;
-      if (kind === 'internet') return `<div class="internet-status-modal" data-modal-kind-body="internet"><div class="status-section"><p class="status-text ${internetState.status}" data-modal-status data-route-read="/api/status">${internetStatusModalText()}</p></div>${indicatorAdminSection(`${internetAdminDetailsHtml()}<div class="speed-test-section"><div class="button-row"><button class="primary-button" data-speed-test-button data-modal-fetch="/api/status/internet/speedtest" data-method="POST" ${internetState.isSpeedTesting || internetState.status === 'loading' ? 'disabled' : ''}>${internetState.isSpeedTesting ? 'Running Speed Test...' : 'Run Speed Test'}</button></div>${internetSpeedTestHtml()}</div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
-      if (kind === 'services') return `<div class="services-status-modal" data-modal-kind-body="services"><div class="loading-section" data-modal-status data-route-read="/api/status/services">Loading service status…</div><ul class="service-status-list" data-route-read="/api/status/services"><li>No status data available</li></ul>${indicatorAdminSection(`<div class="admin-service-grid"><div class="admin-service-description">Description</div><div class="admin-service-name">Service</div><div class="admin-service-right"><span class="admin-service-status">enabled</span></div></div><div class="button-row"><button data-modal-fetch="/api/status/services">Refresh</button><button data-modal-fetch="/api/services/data">Service Data</button></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
-      if (kind === 'openvpn') return `<div class="vpn-status-modal" data-modal-kind-body="openvpn"><div class="status-section"><div class="service-statuses"><div class="status-item loading"><span>VPN Status:</span><span class="status-value" data-modal-status data-route-read="/api/status/vpn/pia">Loading VPN…</span></div><div class="status-item loading"><span>Transmission Status:</span><span class="status-value" data-modal-secondary-status data-route-read="/api/status/vpn/transmission">Loading Transmission…</span></div>${headerState.isAdmin ? `<div class="status-item" data-admin-only data-admin-surface="indicator-modal"><span>Systemd Service:</span><span class="status-value">LOADING</span></div>` : ''}</div></div>${indicatorAdminSection(`<div class="credentials-section"><div class="modal-grid"><div class="credential-group"><input placeholder="PIA Username"><input type="password" placeholder="PIA Password"><button data-modal-fetch="/api/status/vpn/updatekey/pia" data-method="POST">Create PIA Key</button></div><div class="credential-group"><input placeholder="Transmission Username"><input type="password" placeholder="Transmission Password"><button data-modal-fetch="/api/status/vpn/updatekey/transmission" data-method="POST">Create Transmission</button></div></div></div><div class="service-controls"><div class="button-row"><button data-modal-fetch="/api/status/vpn/enable" data-method="POST">Enable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/disable" data-method="POST">Disable Transmission over PIA VPN</button><button data-modal-fetch="/api/status/vpn/pia/exists">PIA Key Exists</button><button data-modal-fetch="/api/status/vpn/transmission/exists">Transmission Key Exists</button></div></div><div class="restart-notice"><p>Note: Service changes require a restart to take effect.</p></div>`)}<pre class="readout action-output" data-modal-output></pre></div>`;
-      if (kind === 'power-meter') return `<div class="power-meter-modal" data-modal-kind-body="power-meter"><div class="power-usage-display"><div class="power-value"><span class="power-value-number">Loading power…</span><span class="power-value-unit">Watts</span></div></div><div class="power-history-section"><div class="power-averages"><div class="power-average-row"><div class="power-average-label">5s average:</div><div class="power-average-value" data-power-average="5">—W</div></div><div class="power-average-row"><div class="power-average-label">30s average:</div><div class="power-average-value" data-power-average="30">—W</div></div><div class="power-average-row"><div class="power-average-label">60s average:</div><div class="power-average-value" data-power-average="60">—W</div></div></div><div class="power-graph-container"><canvas data-power-chart aria-label="Power usage over time"></canvas></div></div></div>`;
+      const indicator = indicatorModalTemplate(kind);
+      if (indicator) return indicator;
       if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p><p>Theme selection comes from homeserver.json global.theme.name through /api/themes.</p></div>`;
       return '';
     }
@@ -473,12 +453,49 @@ fn shell_document_3() -> &'static str {
     let pulseStream = null;
     let pulseRenewTimer = null;
     let pulseStreamId = null;
+    let coreStream = null;
+    let coreRenewTimer = null;
+    const coreTopicIds = ['internet.status', 'tailscale.status', 'vpn.status', 'services.status', 'power.status'];
+    function applyCoreTopic(topicId, envelope) {
+      const data = envelope?.snapshot || {};
+      if (topicId === 'internet.status') setInternetIndicatorState(data);
+      if (topicId === 'power.status') {
+        hydratePowerIndicator(data);
+        if (data?.ok && typeof data.current === 'number') pushPowerChartPoint(formatChartTime(), Number(formatPowerWatts(data.current)));
+      }
+      const indicatorId = ({ 'tailscale.status': 'tailscale', 'vpn.status': 'openvpn', 'services.status': 'services' })[topicId];
+      const button = indicatorId ? document.querySelector(`[data-indicator="${indicatorId}"]`) : null;
+      if (button) {
+        button.classList.remove('loading', 'ok', 'warn', 'error');
+        button.classList.add(envelope?.status === 'snapshot' && data?.ok !== false ? 'ok' : 'warn');
+      }
+    }
+    function scheduleCoreRenewal(route) {
+      if (coreRenewTimer) window.clearTimeout(coreRenewTimer);
+      if (!route) return;
+      coreRenewTimer = window.setTimeout(async () => {
+        try { await fetch(route, { method: 'POST', cache: 'no-store' }); } catch (_) {}
+        if (coreStream && coreStream.readyState !== EventSource.CLOSED) scheduleCoreRenewal(route);
+      }, 15000);
+    }
+    function connectCoreStream() {
+      if (!window.EventSource || coreStream) return;
+      coreStream = new EventSource('/api/core/events');
+      coreStream.addEventListener('core.open', event => {
+        let data = {};
+        try { data = JSON.parse(event.data || '{}'); } catch (_) {}
+        scheduleCoreRenewal(data.renewRoute);
+      });
+      coreTopicIds.forEach(topicId => coreStream.addEventListener(topicId, event => {
+        try { applyCoreTopic(topicId, JSON.parse(event.data || '{}')); } catch (_) {}
+      }));
+      coreStream.addEventListener('core.expired', () => {
+        coreStream.close(); coreStream = null; window.setTimeout(connectCoreStream, 0);
+      });
+    }
     loadThemeCatalog();
-    hydrateInternetIndicator();
-    setInterval(hydrateInternetIndicator, 1000);
-    refreshPowerIndicator();
-    setInterval(refreshPowerIndicator, 1000);
     bootstrapAdminMode();
+    connectCoreStream();
     connectPulseStream();
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function visibleTabs() { return headerState.isAdmin ? tabs.filter(tab => tab.dataset.pane !== fallbackTab) : eligibleRegularTabs(); }

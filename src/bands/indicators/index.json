@@ -1,0 +1,12 @@
+{
+  "schema": "coronatio.indicators.index.v1",
+  "children": [
+    "registry",
+    "core-events",
+    "tailscale",
+    "internet",
+    "openvpn",
+    "services",
+    "power-meter"
+  ]
+}

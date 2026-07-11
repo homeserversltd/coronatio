@@ -1,0 +1,8 @@
+{
+  "schema": "coronatio.indicators.core-events.v1",
+  "children": [],
+  "routes": [
+    "/api/core/events",
+    "/api/core/events/renew"
+  ]
+}

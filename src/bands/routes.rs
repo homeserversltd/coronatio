@@ -53,6 +53,8 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/set_starred_tab".to_string(),
             "/api/boundary".to_string(),
             "/api/installer".to_string(),
+            "/api/core/events".to_string(),
+            "/api/core/events/renew".to_string(),
             "/api/stats/events".to_string(),
             "/api/stats/events/renew".to_string(),
             "/api/stats".to_string(),

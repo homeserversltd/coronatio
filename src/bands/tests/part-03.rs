@@ -213,9 +213,7 @@
     #[test]
     fn tailscale_indicator_ports_react_modal_control_and_login_grammar() {
         let shell = render_crown_shell();
-        let start = shell.find("if (kind === 'tailscale')").unwrap();
-        let end = shell[start..].find("if (kind === 'internet')").unwrap() + start;
-        let tailscale = &shell[start..end];
+        let tailscale = indicators::render_indicator_modal("tailscale", Session::Guest).unwrap();
         for marker in [
             r#"data-flask-react-quarry="TailscaleIndicator""#,
             "LOADING...",
@@ -253,10 +251,7 @@
 
     #[test]
     fn power_indicator_modal_has_no_invented_admin_refresh_control() {
-        let shell = render_crown_shell();
-        let power_start = shell.find("if (kind === 'power-meter')").unwrap();
-        let power_end = shell[power_start..].find("if (kind === 'theme')").unwrap() + power_start;
-        let power = &shell[power_start..power_end];
+        let power = indicators::render_indicator_modal("power-meter", Session::Guest).unwrap();
         assert!(!power.contains("data-modal-fetch"));
         assert!(!power.contains("Refresh"));
         assert!(!power.contains("data-admin-only"));
@@ -280,8 +275,8 @@
             "data-power-chart",
             "powerChartState.watts.slice(-seconds)",
             "pushPowerChartPoint(formatChartTime(), Number(formatPowerWatts(data.current)))",
-            "fetch('/api/status/power/usage', { cache: 'no-store' })",
-            "setInterval(refreshPowerIndicator, 1000)",
+            "new EventSource('/api/core/events')",
+            "coreTopicIds.forEach",
             "if (watts < 1) return 'var(--statusUp)'",
             "if (watts < 5) return 'var(--statusPartial)'",
             "return 'var(--statusDown)'",
@@ -352,14 +347,12 @@
             "data-speed-test-button",
             "Running Speed Test...",
             "internetState.speedTestResults = { download: parsed.download, upload: parsed.upload, latency: parsed.latency }",
-            "hydrateInternetIndicator()",
-            "setInterval(hydrateInternetIndicator, 1000)",
+            "new EventSource('/api/core/events')",
+            "applyCoreTopic(topicId, envelope)",
         ] {
             assert!(shell.contains(marker), "missing React InternetIndicator port marker: {marker}");
         }
-        let internet_start = shell.find("if (kind === 'internet')").unwrap();
-        let internet_end = shell[internet_start..].find("if (kind === 'services')").unwrap() + internet_start;
-        let internet = &shell[internet_start..internet_end];
+        let internet = indicators::render_indicator_modal("internet", Session::Guest).unwrap();
         assert!(!internet.contains("Location:</strong> —"));
         assert!(!internet.contains("Download: — Mbps"));
     }
