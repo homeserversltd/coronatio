@@ -287,6 +287,27 @@
     }
 
     #[test]
+    fn power_chart_resolves_theme_colors_and_has_stable_canvas_sizing() {
+        let shell = render_crown_shell();
+        for marker in [
+            "function themeCssColor(token, fallback)",
+            "getPropertyValue(token).trim()",
+            "themeCssColor('--border', '#1E293B')",
+            "themeCssColor('--accent', '#90cff3')",
+            "chartTicks('--hiddenTabText'",
+            r#"class="chart-container power-chart-container""#,
+            r#"class="coronatio-chart-canvas""#,
+            "infoBackdrop.classList.contains('open')",
+            "powerChartState.chart) renderPowerModal()",
+            ".power-graph-container .chart-container",
+            ".power-graph-container .coronatio-chart-canvas",
+        ] {
+            assert!(shell.contains(marker), "missing dark-mode power chart marker: {marker}");
+        }
+        assert!(!shell.contains("lineDataset('Power', powerChartState.watts, 'var("));
+    }
+
+    #[test]
     fn power_route_is_rust_rapl_readback_not_generic_route_ack() {
         let source = format!(
             "{}\n{}",

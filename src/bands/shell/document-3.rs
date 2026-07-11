@@ -31,6 +31,7 @@ fn shell_document_3() -> &'static str {
         themeButton.title = 'Current theme: ' + label + '. Click to switch theme.';
       }
       document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === headerState.theme)));
+      if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]') && powerChartState.chart) renderPowerModal();
     }
     function applyAdminDomState() {
       if (adminButton) {
@@ -213,12 +214,12 @@ fn shell_document_3() -> &'static str {
       if (powerChartState.chart) powerChartState.chart.destroy();
       powerChartState.chart = new Chart(canvas, {
         type: 'line',
-        data: { labels: powerChartState.labels, datasets: [lineDataset('Power', powerChartState.watts, 'var(--statusPartial)', 'y')] },
+        data: { labels: powerChartState.labels, datasets: [lineDataset('Power', powerChartState.watts, themeCssColor('--accent', '#90cff3'), 'y')] },
         options: Object.assign(chartCommonOptions(), {
           plugins: { legend: { display: false }, tooltip: chartTooltip(context => Number(context.parsed.y || 0).toFixed(1) + 'W') },
           scales: {
-            x: { ticks: chartTicks('var(--hiddenTabText)', value => powerChartState.labels[value] || value), grid: { display: false } },
-            y: { beginAtZero: true, ticks: chartTicks('var(--hiddenTabText)', value => Number(value).toFixed(0) + 'W'), grid: chartGrid() }
+            x: { ticks: chartTicks('--hiddenTabText', value => powerChartState.labels[value] || value), grid: { display: false } },
+            y: { beginAtZero: true, ticks: chartTicks('--hiddenTabText', value => Number(value).toFixed(0) + 'W'), grid: chartGrid() }
           }
         })
       });
