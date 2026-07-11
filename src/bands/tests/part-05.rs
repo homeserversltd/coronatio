@@ -687,8 +687,6 @@
         assert!(nav.contains(r#"hx-swap="innerHTML" hx-trigger="load, click""#));
     }
 
-
-
     #[tokio::test(flavor = "current_thread")]
     async fn hx_exemplar_admin_toggle_post_rerenders_real_state_card() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
@@ -696,6 +694,7 @@
         let sshd = temp.join("sshd_config");
         std::fs::write(&sshd, "PasswordAuthentication no\n").unwrap();
         std::env::set_var("CORONATIO_SSHD_CONFIG_FIXTURE", &sshd);
+        let _caduceus_guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let response = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-toggle-app")) })
             .oneshot(
@@ -742,7 +741,7 @@
 
     #[tokio::test(flavor = "current_thread")]
     async fn hx_exemplar_admin_action_strip_routes_and_og_affordance_markup() {
-        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let (_guard, _caduceus_guard) = (HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap(), CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap());
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-actions")) });
         for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "view-logs", "install-certificate"] {

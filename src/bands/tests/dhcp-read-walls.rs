@@ -38,6 +38,7 @@
 
     #[tokio::test]
     async fn dhcp_guest_identity_routes_refuse_without_contacting_caduceus() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("dhcp-guest-refusal")) });
         for route in ["/api/dhcp/leases", "/api/dhcp/reservations", "/api/dhcp/config", "/api/dhcp/pool-boundary"] {
@@ -48,4 +49,27 @@
             assert!(body.contains("admin-session-required"), "{route}: {body}");
         }
         std::env::remove_var("CADUCEUS_URL");
+    }
+
+    #[tokio::test]
+    async fn dhcp_admin_mutation_preserves_real_caduceus_execution_receipt() {
+        let readback = CaduceusHttpReadback {
+            ok: true,
+            status: 202,
+            path: "/api/v1/staff/intent".to_string(),
+            body: serde_json::json!({
+                "schema": "caduceus.network.dhcp.intent.v1",
+                "ok": true,
+                "mutationPerformed": true,
+                "execution": "caduceus_staff.network.dhcp",
+                "receipt": {"serviceRestarted": true}
+            }),
+            first_missing_signal: "none".to_string(),
+        };
+        let response = dhcp_mutation_result_response("POST", "/api/dhcp/reservations", readback);
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(body["mutationPerformed"], true);
+        assert_eq!(body["execution"], "caduceus_staff.network.dhcp");
+        assert_eq!(body["receipt"]["serviceRestarted"], true);
     }

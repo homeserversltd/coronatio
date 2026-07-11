@@ -186,6 +186,7 @@
         let sshd = temp.join("sshd_config");
         std::fs::write(&sshd, "PasswordAuthentication no\n").unwrap();
         std::env::set_var("CORONATIO_SSHD_CONFIG_FIXTURE", &sshd);
+        let _caduceus_guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-005-mutation-app")) });
         let response = router.clone().oneshot(Request::builder().method("POST").uri("/admit/admin/toggle/ssh-password-authentication").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap();
