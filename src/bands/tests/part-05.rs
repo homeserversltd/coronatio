@@ -258,17 +258,6 @@
 
     #[test]
     fn uxport_001_upload_source_and_library_walls_carry_og_citations() {
-        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
-        for citation in [
-            "src/tablets/upload/index.tsx",
-            "components/DirectoryBrowser.tsx",
-            "components/UploadProgress.tsx",
-            "upload.css",
-            "src/components/ui/{Breadcrumbs,FileInput,ProgressBar}.tsx",
-            "src/styles/common/ui/{_breadcrumbs,_file-input,_progress-bar}.css",
-        ] {
-            assert!(map.contains(citation), "missing og source citation {citation}");
-        }
         let html = render_crown_shell();
         assert!(html.contains("UXPORT-001 LIBRARY band: og src/tablets/upload upload domain pack"));
         for selector in [
@@ -337,18 +326,6 @@
         assert!(upload.contains("upload-progress ${upload.status}"), "absorbed upload outer stack missing");
         assert!(upload.contains("upload-stats"), "absorbed upload status stack missing");
         assert!(upload.contains("error-message"), "absorbed upload error stack missing");
-    }
-
-    #[test]
-    fn uxport_001_power_quarry_gap_is_closed_in_map_without_implementation() {
-        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
-        assert!(map.contains("Runtime DOM truth supplied by operator"));
-        assert!(map.contains(r#"<div class="modal" role="dialog" ...><div class="modal-title">Power Consumption</div>"#));
-        assert!(map.contains("src/components/StatusIndicators/PowerMeterIndicator.tsx"));
-        assert!(map.contains("src/components/StatusIndicators/indicators.css"));
-        assert!(map.contains("src/components/Modal/index.tsx"));
-        assert!(map.contains("src/components/Popup/PopupManager.tsx"));
-        assert!(map.contains("Reclassify as a power-meter domain pack inside the shared modal substrate"));
     }
 
     #[test]

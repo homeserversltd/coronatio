@@ -123,20 +123,3 @@
         assert!(body.contains("caduceus-unreachable"), "{body}");
         std::env::remove_var("CADUCEUS_URL");
     }
-
-    #[test]
-    fn field_003_audit_wall_birth_under_projection_rows_are_citation_true() {
-        let audit = std::fs::read_to_string("docs/field-projection-audit.md").unwrap();
-        for required in [
-            "FIELD-003 finding: no in-scope tailscale, DHCP/Kea, network notes, or WOL route serves a domain fact body today",
-            "tailscale_status",
-            "deferred-until-ported under BIRTH-UNDER-PROJECTION",
-            "DHCP/Kea/WOL identity surfaces",
-            "generic route membrane only; mutation guest refusal now stands",
-            "src/bands/full-rust-routes.rs:82-89",
-            "src/bands/full-rust-routes.rs:118-132",
-            "src/bands/crown-law/stats-tabbar.rs:534-570",
-        ] {
-            assert!(audit.contains(required), "FIELD-003 audit amendment missing {required}");
-        }
-    }

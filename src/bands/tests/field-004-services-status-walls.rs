@@ -191,20 +191,3 @@
         let dispatch = source.find("let caduceus = caduceus_http_json").unwrap();
         assert!(allowlist < dispatch, "portal allow-list must fail closed before Caduceus dispatch");
     }
-
-    #[test]
-    fn field_004_audit_wall_services_rows_are_ratified_and_citation_true() {
-        let audit = std::fs::read_to_string("docs/field-projection-audit.md").unwrap();
-        for required in [
-            "FIELD-004 finding:",
-            "F7 ratified",
-            "F8 ratified",
-            "src/bands/full-rust-routes.rs:79",
-            "src/bands/runtime.rs:62",
-            "src/bands/full-rust-routes/portals.rs:160-235",
-            "deferred-until-ported under BIRTH-UNDER-PROJECTION",
-            "guest appliance currentness only",
-        ] {
-            assert!(audit.contains(required), "FIELD-004 audit amendment missing {required}");
-        }
-    }

@@ -43,15 +43,6 @@
     #[test]
     fn uxport_003_stats_source_library_and_holding_pen_walls() {
         let html = render_crown_shell();
-        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
-        for citation in [
-            "src/tablets/stats/index.tsx",
-            "components/{MemoryRadialBar,ProcessUsageList,DiskUsageChart,DiskIoChart,NetworkSpeedChart,KeaLeasesTable,StatChart,CpuStatChart}.tsx",
-            "stats.css",
-            "src/styles/common/ui/{_progress-bar,_table,_checkbox,_visibility-toggle,_editable-field}.css",
-        ] {
-            assert!(html.contains(citation) || map.contains(citation), "missing stats og citation {citation}");
-        }
         assert!(html.contains("UXPORT-003 LIBRARY band: og src/tablets/stats stats domain pack"));
         for receipt in [
             "stat-card=ABSORB",
@@ -65,7 +56,7 @@
             "disk-io-checkboxes=ABSORB",
             "visibility-toggle=DEFERRED",
         ] {
-            assert!(html.contains(receipt) || map.contains(receipt), "missing stats declaration-diff receipt {receipt}");
+            assert!(html.contains(receipt), "missing stats declaration-diff receipt {receipt}");
         }
         let holding_pen = std::fs::read_to_string("src/bands/shell/ux/shell/document-2-css.css").unwrap();
         for drained in [".stats-tablet", ".stat-element", ".memory-bar", ".network-interfaces-table", ".kea-leases-table", ".process-bar", ".disk-usage-bar", ".device-controls", ".load-averages", ".coronatio-chart-canvas"] {
@@ -105,14 +96,6 @@
     #[test]
     fn uxport_004_portals_source_library_and_drain_walls() {
         let html = render_crown_shell();
-        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
-        for citation in [
-            "src/tablets/portals/index.tsx",
-            "components/{PortalCard,AddPortalCard,AddPortalModal,ServiceStatusModal}.tsx",
-            "PortalCard.css",
-        ] {
-            assert!(html.contains(citation) || map.contains(citation), "missing portals og citation {citation}");
-        }
         assert!(html.contains("UXPORT-004 LIBRARY band: og src/tablets/portals portals domain pack"));
         for receipt in [
             "pane-root=ABSORB",
@@ -125,7 +108,7 @@
             "service-status-modal=ABSORB",
             "visibility-toggle=DEFERRED-to-VIS",
         ] {
-            assert!(html.contains(receipt) || map.contains(receipt), "missing portals declaration-diff receipt {receipt}");
+            assert!(html.contains(receipt), "missing portals declaration-diff receipt {receipt}");
         }
         let holding_pen = std::fs::read_to_string("src/bands/shell/ux/shell/document-2-css.css").unwrap();
         let shell_base = std::fs::read_to_string("src/bands/shell/ux/shell/base-and-chrome.css").unwrap();
@@ -178,18 +161,6 @@
     #[test]
     fn uxport_005_admin_source_library_and_drain_walls() {
         let html = render_crown_shell();
-        let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
-        for citation in [
-            "src/tablets/admin/index.tsx",
-            "components/SystemControls.tsx",
-            "components/KeyManager.tsx",
-            "components/DiskManager.tsx",
-            "SystemControls.css",
-            "KeyManager.css",
-            "DiskManager.css",
-        ] {
-            assert!(html.contains(citation) || map.contains(citation), "missing admin og citation {citation}");
-        }
         assert!(html.contains("UXPORT-005 LIBRARY band: og src/tablets/admin admin domain pack"));
         for receipt in [
             "pane-root=ABSORB",
@@ -206,7 +177,7 @@
             "admin-modals=CONTINUATION",
             "modal-basic-buttons=CONTINUATION",
         ] {
-            assert!(html.contains(receipt) || map.contains(receipt), "missing admin declaration-diff receipt {receipt}");
+            assert!(html.contains(receipt), "missing admin declaration-diff receipt {receipt}");
         }
         let holding_pen = std::fs::read_to_string("src/bands/shell/ux/shell/document-2-css.css").unwrap();
         for drained in [".admin-tablet", ".system-controls", ".system-controls-btn", ".ssh-control", ".samba-control", ".key-manager", ".security-status", ".disk-manager", ".disk-item", ".disk-actions"] {

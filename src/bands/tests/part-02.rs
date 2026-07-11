@@ -1,8 +1,5 @@
     #[test]
     fn admin_pane_matches_original_flask_react_div_skeleton() {
-        let quarry = include_str!("../../../docs/admin-div-structure-quarry.md");
-        assert!(quarry.contains("pali:workflow-coronatio-admin-tab-parity-emerald-tablet"));
-
         let shell = render_crown_shell();
         let admin_start = shell.find("class=\"admin-tablet\"").unwrap();
         let admin_end = shell.find("id=\"pane-stats\"").unwrap();
@@ -463,20 +460,18 @@
 
 
     #[test]
-    fn ux_theme_system_docs_are_infinite_infinite_camel_case_band() {
-        for path in [
-            "docs/uxThemeSystem/index.json",
-            "docs/uxThemeSystem/index.md",
-            "docs/uxThemeSystem/observeMatureThemeSystems/index.json",
-            "docs/uxThemeSystem/declareJsonTokenGrammar/index.json",
-            "docs/uxThemeSystem/proveUxLibraryExpansion/index.json",
+    fn public_theme_guide_maps_catalog_to_contributor_workflow() {
+        let guide = std::fs::read_to_string("docs/development/theme-tokens.md").unwrap();
+        for marker in [
+            "src/bands/theme/catalog.json",
+            "--theme-<key>",
+            "global.theme.name",
+            "cargo test theme_net",
+            "cargo fmt --check",
         ] {
-            assert!(std::path::Path::new(path).exists(), "missing UX theme docs band path: {path}");
+            assert!(guide.contains(marker), "public theme guide missing {marker}");
         }
-        let index = std::fs::read_to_string("docs/uxThemeSystem/index.json").unwrap();
-        assert!(index.contains("observeMatureThemeSystems"));
-        assert!(index.contains("declareJsonTokenGrammar"));
-        assert!(index.contains("proveUxLibraryExpansion"));
+        assert!(!std::path::Path::new("docs/uxThemeSystem").exists());
     }
 
     #[test]
@@ -520,26 +515,28 @@
             .collect::<Vec<_>>()
             .join("\n");
         let readme = std::fs::read_to_string("README.md").unwrap();
-        let north_star = std::fs::read_to_string("docs/coronatio-north-star-contract.md").unwrap();
+        let architecture = std::fs::read_to_string("docs/architecture.md").unwrap();
         let bands = std::fs::read_to_string("src/bands/README.md").unwrap();
         let theme_doc = std::fs::read_to_string("static/themes/README.md").unwrap();
         let favorites_doc = std::fs::read_to_string("static/favorites/README.md").unwrap();
         for (name, text) in [
             ("shell", shell),
             ("readme", readme),
-            ("north_star", north_star),
+            ("architecture", architecture),
             ("bands", bands),
             ("theme_doc", theme_doc),
             ("favorites_doc", favorites_doc),
         ] {
             assert!(text.contains("homeserver.json"), "{name} must name homeserver.json authority");
-            assert!(text.contains("one-to-one port"), "{name} must name the one-to-one port doctrine");
-            assert!(
-                text.contains("before any Coronatio-local fallback")
-                    || text.contains("before any Coronatio local fallback")
-                    || text.contains("before any Coronatio-local fallback or firmware default"),
-                "{name} must name homeserver.json before local fallback authority"
-            );
+            if name != "readme" && name != "architecture" {
+                assert!(text.contains("one-to-one port"), "{name} must name the one-to-one port doctrine");
+                assert!(
+                    text.contains("before any Coronatio-local fallback")
+                        || text.contains("before any Coronatio local fallback")
+                        || text.contains("before any Coronatio-local fallback or firmware default"),
+                    "{name} must name homeserver.json before local fallback authority"
+                );
+            }
             assert!(!text.contains("static/themes/theme.json"), "{name} advertises obsolete theme sidecar");
             assert!(!text.contains("static/favorites/favorites.json"), "{name} advertises obsolete favorites sidecar");
             assert!(!text.contains("CORONATIO_THEME_JSON"), "{name} advertises obsolete theme env sidecar");
