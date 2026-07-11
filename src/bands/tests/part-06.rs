@@ -19,6 +19,13 @@
         assert!(!css.contains("transition: all"));
         assert!(css.contains("prefers-reduced-motion: reduce"));
         assert!(css.contains("[data-animation-lab] .motion-spinner.is-running"));
+        assert!(css.contains("grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr))"));
+        assert!(css.contains(".animation-specimen { display: grid; align-content: start; gap: .75rem; min-width: 0;"));
+        assert!(css.contains(".motion-stage { display: grid; place-items: center; width: 100%; min-width: 0;"));
+        assert!(css.contains(".motion-modal-stage { position: relative; width: 100%; min-width: 0;"));
+        assert!(css.contains(".motion-dialog { max-width: calc(100% - 1rem);"));
+        assert!(css.contains(".motion-toast { width: min(100%, 18rem); max-width: 100%;"));
+        assert!(!css.contains("#pane-test *::before"));
         assert!(services_css.contains("[data-test-services-grid] .portal-card::before"));
         assert!(services_css.contains("transition-property: border-color"));
         assert!(chrome.contains("document.querySelector('[data-portals-grid]')"));

@@ -16,9 +16,9 @@
 .animation-band { margin-block: 1.25rem; padding: 1rem; border: 1px solid var(--border); border-radius: 10px; }
 .animation-band > header { margin-bottom: 1rem; }
 .animation-band > header h3, .animation-specimen h4 { margin: 0 0 .35rem; }
-.animation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem; }
-.animation-specimen { display: grid; align-content: start; gap: .75rem; min-height: 150px; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--background); }
-.motion-stage { display: grid; place-items: center; min-height: 64px; overflow: hidden; }
+.animation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 1rem; }
+.animation-specimen { display: grid; align-content: start; gap: .75rem; min-width: 0; min-height: 150px; padding: 1rem; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--background); }
+.motion-stage { display: grid; place-items: center; width: 100%; min-width: 0; min-height: 64px; overflow: hidden; }
 .motion-jewel { width: 64px; min-height: 40px; display: grid; place-items: center; border: 1px solid var(--primary); border-radius: 8px; background-color: var(--background-alt); color: var(--text); opacity: 1; transform: none; transition-duration: var(--motion-duration-base); transition-timing-function: var(--motion-ease-standard); }
 .motion-fade .motion-jewel { transition-property: opacity; }
 .motion-fade.is-running .motion-jewel { opacity: .18; }
@@ -41,18 +41,18 @@
 .motion-toggle { width: 48px; height: 26px; padding: 3px; border-radius: 20px; background: var(--border); }
 .motion-toggle span { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--text); transform: translateX(0); transition: transform var(--motion-duration-base) var(--motion-ease-standard); }
 .motion-toggle.is-running span { transform: translateX(22px); }
-.motion-modal-stage { position: relative; min-height: 92px; }
+.motion-modal-stage { position: relative; width: 100%; min-width: 0; min-height: 92px; overflow: hidden; }
 .motion-backdrop { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity var(--motion-duration-base) var(--motion-ease-standard); }
-.motion-dialog { padding: .65rem; border-radius: 8px; background: var(--background); transform: scale(.9); transition: transform var(--motion-duration-base) var(--motion-ease-emphasized); }
+.motion-dialog { max-width: calc(100% - 1rem); padding: .65rem; overflow-wrap: anywhere; border-radius: 8px; background: var(--background); transform: scale(.9); transition: transform var(--motion-duration-base) var(--motion-ease-emphasized); }
 .motion-modal-stage.is-running .motion-backdrop { opacity: 1; }
 .motion-modal-stage.is-running .motion-dialog { transform: scale(1); }
-.motion-toast { opacity: 0; transform: translateY(14px); transition-property: opacity, transform; transition-duration: var(--motion-duration-base); }
+.motion-toast { width: min(100%, 18rem); max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; opacity: 0; transform: translateY(14px); transition-property: opacity, transform; transition-duration: var(--motion-duration-base); }
 .motion-toast.is-running { opacity: 1; transform: translateY(0); }
 .motion-progress { width: 100%; height: 16px; overflow: hidden; border-radius: 8px; background: var(--background-alt); }
 .motion-progress span { display: block; width: 65%; height: 100%; background: repeating-linear-gradient(45deg, var(--primary), var(--primary) 8px, var(--primaryHover) 8px, var(--primaryHover) 16px); }
-[data-animation-lab] .motion-progress.is-running span { animation: indranet-stripes .8s linear infinite !important; }
+#pane-test [data-animation-lab] .motion-progress.is-running span { animation: indranet-stripes .8s linear infinite !important; }
 .motion-spinner { width: 34px; height: 34px; border: 4px solid var(--border); border-top-color: var(--primary); border-radius: 50%; }
-[data-animation-lab] .motion-spinner.is-running { animation: indranet-spin .8s linear infinite !important; }
+#pane-test [data-animation-lab] .motion-spinner.is-running { animation: indranet-spin .8s linear infinite !important; }
 @keyframes indranet-stripes { to { background-position: 23px 0; } }
 @keyframes indranet-spin { to { transform: rotate(360deg); } }
 .motion-lifecycle { display: grid; gap: 1rem; }
@@ -64,5 +64,5 @@
 .motion-reduce-row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1rem; }
 [data-motion-reduce-preview] *, .motion-reduced-preview * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 @media (prefers-reduced-motion: reduce) {
-  #pane-test *, #pane-test *::before, #pane-test *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  [data-animation-lab] [data-motion-reduce-preview] *, [data-animation-lab] .motion-reduced-preview * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }
