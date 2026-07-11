@@ -268,6 +268,7 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
                 "originalQuarry": "Flask portals service_control execute_systemctl_command"
             }
         }),
+        None,
     );
     let body = &caduceus.body;
     let success = body.get("success").and_then(serde_json::Value::as_bool).unwrap_or(caduceus.ok);

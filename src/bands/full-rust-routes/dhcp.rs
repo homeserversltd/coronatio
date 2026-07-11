@@ -26,6 +26,7 @@ fn dhcp_readback(path: &str) -> CaduceusHttpReadback {
             "classification": "network-control",
             "metadata": {}
         }),
+        None,
     )
 }
 
@@ -113,6 +114,7 @@ fn dhcp_mutation_response(method: &str, path: &str, metadata: serde_json::Value)
             "classification": "network-control",
             "metadata": metadata
         }),
+        None,
     );
     dhcp_mutation_result_response(method, path, readback)
 }

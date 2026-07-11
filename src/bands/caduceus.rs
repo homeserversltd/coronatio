@@ -191,7 +191,12 @@ fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
     }
 }
 
-fn caduceus_http_json(method: &str, path: &str, body: serde_json::Value) -> CaduceusHttpReadback {
+fn caduceus_http_json(
+    method: &str,
+    path: &str,
+    body: serde_json::Value,
+    capability: Option<&str>,
+) -> CaduceusHttpReadback {
     let (_base, authority) = caduceus_authority();
     let mut stream = match TcpStream::connect(&authority) {
         Ok(stream) => stream,
@@ -208,8 +213,12 @@ fn caduceus_http_json(method: &str, path: &str, body: serde_json::Value) -> Cadu
     let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
     let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
+    let capability_header = capability
+        .filter(|token| !token.is_empty())
+        .map(|token| format!("x-caduceus-capability: {token}\r\n"))
+        .unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\n{capability_header}Content-Length: {}\r\n\r\n{}",
         body_text.len(), body_text
     );
     if let Err(err) = stream.write_all(request.as_bytes()) {
@@ -373,6 +382,7 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
     match action_id {
         "hard-drive-test" => Some(("Hard Drive Test", "POST", "/api/admin/hard-drive-test/start", true)),
         "update" => Some(("Update", "POST", "/api/admin/updates/apply", true)),
+        "rotate-capability-key" => Some(("Rotate Capability Key", "POST", "/usr/local/sbin/caduceus-keyman-rotate-capability", true)),
         "restart" => Some(("Restart", "POST", "/api/admin/system/restart", true)),
         "shutdown" => Some(("Shutdown", "POST", "/api/admin/system/shutdown", true)),
         "restart-website" => Some(("Restart Website", "POST", "/api/admin/services/hard-reset", true)),
@@ -382,7 +392,49 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
     }
 }
 
+fn mint_caduceus_capability(action: &str, target: &str) -> (String, String) {
+    if let Ok(token) = env::var("CORONATIO_TEST_CAPABILITY_TOKEN") {
+        let token = token.trim().to_string();
+        return if token.is_empty() {
+            (String::new(), "caduceus-capability-empty".to_string())
+        } else {
+            (token, "none".to_string())
+        };
+    }
+    #[cfg(test)]
+    {
+        let _ = (action, target);
+        return ("coronatio-test-capability".to_string(), "none".to_string());
+    }
+    #[cfg(not(test))]
+    match Command::new("/usr/local/sbin/caduceus-keyman-sign-capability")
+        .args(["--action", action, "--target", target])
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if token.is_empty() {
+                (String::new(), "caduceus-capability-empty".to_string())
+            } else {
+                (token, "none".to_string())
+            }
+        }
+        Ok(_) => (String::new(), "caduceus-capability-sign-failed".to_string()),
+        Err(_) => (String::new(), "caduceus-capability-signer-unavailable".to_string()),
+    }
+}
+
 fn admin_staff_intent(method: &str, path: &str, classification: &str) -> CaduceusHttpReadback {
+    let (capability, signal) = mint_caduceus_capability("staff intent", path);
+    if capability.is_empty() {
+        return CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: "/api/v1/staff/intent".to_string(),
+            body: serde_json::json!({"error": signal}),
+            first_missing_signal: signal,
+        };
+    }
     caduceus_http_json(
         "POST",
         "/api/v1/staff/intent",
@@ -391,7 +443,30 @@ fn admin_staff_intent(method: &str, path: &str, classification: &str) -> Caduceu
             "route": path,
             "classification": classification,
         }),
+        Some(&capability),
     )
+}
+
+fn rotate_caduceus_capability_key() -> CaduceusHttpReadback {
+    match Command::new("/usr/local/sbin/caduceus-keyman-rotate-capability").output() {
+        Ok(output) => {
+            let ok = output.status.success();
+            CaduceusHttpReadback {
+                ok,
+                status: if ok { 200 } else { 503 },
+                path: "/usr/local/sbin/caduceus-keyman-rotate-capability".to_string(),
+                body: serde_json::json!({"stdout": String::from_utf8_lossy(&output.stdout).trim(), "stderr": String::from_utf8_lossy(&output.stderr).trim()}),
+                first_missing_signal: if ok { "none" } else { "caduceus-capability-rotation-failed" }.to_string(),
+            }
+        }
+        Err(err) => CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: "/usr/local/sbin/caduceus-keyman-rotate-capability".to_string(),
+            body: serde_json::json!({"error": err.to_string()}),
+            first_missing_signal: "caduceus-capability-rotator-unavailable".to_string(),
+        },
+    }
 }
 
 async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
@@ -419,7 +494,13 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
     let Some((title, method, path, mutation)) = admin_action_target(&action_id) else {
         return admin_html_fragment_response(StatusCode::NOT_FOUND, admin_membrane_refusal_fragment("unknown admin action"));
     };
-    let readback = if mutation { admin_staff_intent(method, path, homeserver_route_family(path)) } else { caduceus_http(method, path) };
+    let readback = if action_id == "rotate-capability-key" {
+        rotate_caduceus_capability_key()
+    } else if mutation {
+        admin_staff_intent(method, path, homeserver_route_family(path))
+    } else {
+        caduceus_http(method, path)
+    };
     let class = if readback.ok { "success" } else { "error" };
     let message = if readback.ok {
         if mutation { "Caduceus accepted the action." } else { "Readback returned through the Caduceus/crown route." }
