@@ -6,6 +6,11 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    Engine,
+};
+use ed25519_dalek::{Signer, SigningKey};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
@@ -15,7 +20,6 @@ use std::{
     path::{Path as FsPath, PathBuf},
     process::Command,
     sync::{Arc, Mutex, OnceLock},
-    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::fs;

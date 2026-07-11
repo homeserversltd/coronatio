@@ -30,12 +30,18 @@ async fn caduceus_status_route() -> impl IntoResponse {
     )
 }
 
-async fn caduceus_update_check_route() -> impl IntoResponse {
-    caduceus_mutation_route("update_check", "/api/v1/update/check")
+async fn caduceus_update_check_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    if !admin_headers_authorized(&headers) {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"ok":false,"firstMissingSignal":"admin-session-required"})));
+    }
+    caduceus_mutation_route("update_check", "/api/v1/update/check", "update check", "local")
 }
 
-async fn caduceus_update_now_route() -> impl IntoResponse {
-    caduceus_dispatch_route("update_now", "/api/v1/update/now")
+async fn caduceus_update_now_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    if !admin_headers_authorized(&headers) {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"ok":false,"firstMissingSignal":"admin-session-required"})));
+    }
+    caduceus_mutation_route("update_now", "/api/v1/update/now", "update now", "local")
 }
 
 async fn caduceus_receipts_latest_route() -> impl IntoResponse {
@@ -55,28 +61,17 @@ async fn caduceus_receipts_latest_route() -> impl IntoResponse {
     )
 }
 
-fn caduceus_dispatch_route(
-    route: &'static str,
-    path: &'static str,
-) -> (StatusCode, Json<serde_json::Value>) {
-    thread::spawn(move || {
-        let _ = caduceus_http("POST", path);
-    });
-    (
-        StatusCode::ACCEPTED,
-        Json(serde_json::json!({
-            "schema": "coronatio.caduceus.dispatch.v1",
-            "ok": true,
-            "route": route,
-            "accepted": true,
-            "path": path,
-            "firstMissingSignal": "none"
-        })),
-    )
-}
-
-fn caduceus_mutation_route(route: &str, path: &str) -> (StatusCode, Json<serde_json::Value>) {
-    let readback = caduceus_http("POST", path);
+fn caduceus_mutation_route(route: &str, path: &str, action: &str, target: &str) -> (StatusCode, Json<serde_json::Value>) {
+    let readback = match mint_caduceus_capability(action, target) {
+        Ok(capability) => caduceus_http_with_capability("POST", path, Some(&capability)),
+        Err(signal) => CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: path.to_string(),
+            body: serde_json::json!({"error": signal}),
+            first_missing_signal: signal,
+        },
+    };
     (
         if readback.ok {
             StatusCode::OK
@@ -91,6 +86,49 @@ fn caduceus_mutation_route(route: &str, path: &str) -> (StatusCode, Json<serde_j
             "firstMissingSignal": readback.first_missing_signal
         })),
     )
+}
+
+fn decode_signing_key(text: &str) -> Option<[u8; 32]> {
+    let text = text.trim();
+    let decoded = if text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        (0..32)
+            .map(|index| u8::from_str_radix(&text[index * 2..index * 2 + 2], 16).ok())
+            .collect::<Option<Vec<_>>>()?
+    } else {
+        STANDARD.decode(text).ok().or_else(|| URL_SAFE_NO_PAD.decode(text).ok())?
+    };
+    decoded.try_into().ok()
+}
+
+fn household_signing_key() -> Result<SigningKey, String> {
+    let material = env::var("CORONATIO_CADUCEUS_SIGNING_KEY").ok().or_else(|| {
+        let path = env::var("CORONATIO_CADUCEUS_SIGNING_KEY_FILE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/etc/caduceus/household-signing.key"));
+        std::fs::read_to_string(path).ok()
+    }).ok_or_else(|| "caduceus-household-signing-key-missing".to_string())?;
+    let seed = decode_signing_key(&material)
+        .ok_or_else(|| "caduceus-household-signing-key-malformed".to_string())?;
+    Ok(SigningKey::from_bytes(&seed))
+}
+
+fn mint_caduceus_capability(action: &str, target: &str) -> Result<String, String> {
+    let exp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "caduceus-capability-clock".to_string())?
+        .as_secs() + 60;
+    let payload = serde_json::to_string(&serde_json::json!({
+        "actor": "coronatio-admin-session",
+        "action": action,
+        "target": target,
+        "exp": exp,
+    })).map_err(|_| "caduceus-capability-payload".to_string())?;
+    let signature = household_signing_key()?.sign(payload.as_bytes());
+    Ok(format!(
+        "{}.{}",
+        URL_SAFE_NO_PAD.encode(payload.as_bytes()),
+        URL_SAFE_NO_PAD.encode(signature.to_bytes())
+    ))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -120,6 +158,10 @@ fn caduceus_authority() -> (String, String) {
 }
 
 fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
+    caduceus_http_with_capability(method, path, None)
+}
+
+fn caduceus_http_with_capability(method: &str, path: &str, capability: Option<&str>) -> CaduceusHttpReadback {
     let (_base, authority) = caduceus_authority();
     let mut stream = match TcpStream::connect(&authority) {
         Ok(stream) => stream,
@@ -135,8 +177,9 @@ fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
     };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
+    let capability_header = capability.map(|value| format!("x-caduceus-capability: {value}\r\n")).unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n{capability_header}Content-Length: 0\r\n\r\n"
     );
     if let Err(err) = stream.write_all(request.as_bytes()) {
         return CaduceusHttpReadback {
@@ -192,6 +235,10 @@ fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
 }
 
 fn caduceus_http_json(method: &str, path: &str, body: serde_json::Value) -> CaduceusHttpReadback {
+    caduceus_http_json_with_capability(method, path, body, None)
+}
+
+fn caduceus_http_json_with_capability(method: &str, path: &str, body: serde_json::Value, capability: Option<&str>) -> CaduceusHttpReadback {
     let (_base, authority) = caduceus_authority();
     let mut stream = match TcpStream::connect(&authority) {
         Ok(stream) => stream,
@@ -208,8 +255,9 @@ fn caduceus_http_json(method: &str, path: &str, body: serde_json::Value) -> Cadu
     let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
     let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
+    let capability_header = capability.map(|value| format!("x-caduceus-capability: {value}\r\n")).unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\n{capability_header}Content-Length: {}\r\n\r\n{}",
         body_text.len(), body_text
     );
     if let Err(err) = stream.write_all(request.as_bytes()) {
@@ -383,7 +431,17 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
 }
 
 fn admin_staff_intent(method: &str, path: &str, classification: &str) -> CaduceusHttpReadback {
-    caduceus_http_json(
+    let capability = match mint_caduceus_capability("staff intent", path) {
+        Ok(capability) => capability,
+        Err(signal) => return CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: path.to_string(),
+            body: serde_json::json!({"error": signal}),
+            first_missing_signal: signal,
+        },
+    };
+    caduceus_http_json_with_capability(
         "POST",
         "/api/v1/staff/intent",
         serde_json::json!({
@@ -391,6 +449,7 @@ fn admin_staff_intent(method: &str, path: &str, classification: &str) -> Caduceu
             "route": path,
             "classification": classification,
         }),
+        Some(&capability),
     )
 }
 
