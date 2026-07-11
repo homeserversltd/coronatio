@@ -1,5 +1,8 @@
     #[test]
     fn admin_pane_matches_original_flask_react_div_skeleton() {
+        let quarry = include_str!("../../../docs/admin-div-structure-quarry.md");
+        assert!(quarry.contains("pali:workflow-coronatio-admin-tab-parity-emerald-tablet"));
+
         let shell = render_crown_shell();
         let admin_start = shell.find("class=\"admin-tablet\"").unwrap();
         let admin_end = shell.find("id=\"pane-stats\"").unwrap();
