@@ -78,17 +78,6 @@ fn native_crown_panes() -> Vec<CrownPane> {
             state_route: "/api/panes/test".to_string(),
         },
         CrownPane {
-            id: "chia-mining".to_string(),
-            title: "Chia Mining".to_string(),
-            role: "hidden original tab".to_string(),
-            summary: "Original hidden HOMESERVER Chia Mining tab placeholder until the pane body is ported.".to_string(),
-            order: 70,
-            admin_only: false,
-            install_mode: InstallMode::FirstPartyNative,
-            route: "/#chia-mining".to_string(),
-            state_route: "/api/panes/chia-mining".to_string(),
-        },
-        CrownPane {
             id: "dhcp".to_string(),
             title: "DHCP".to_string(),
             role: "hidden original tab".to_string(),
@@ -156,7 +145,7 @@ fn native_tab_contracts() -> Vec<CoronatioTabContract> {
         .into_iter()
         .map(|pane| {
             let mut visibility = TabVisibility::default();
-            if matches!(pane.id.as_str(), "chia-mining" | "dhcp") {
+            if pane.id == "dhcp" {
                 visibility.tab = false;
             }
             CoronatioTabContract {

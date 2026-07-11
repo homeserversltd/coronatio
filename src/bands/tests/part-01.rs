@@ -103,7 +103,7 @@
             .await
             .unwrap();
         let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp"]);
+        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"]);
         assert_eq!(root.first_party_panes.len(), PRIMARY_TABS.len());
     }
 
@@ -280,11 +280,11 @@
     fn crown_tabbar_recreates_flask_react_star_eye_and_hide_controls() {
         let shell = render_crown_shell_for_session(Session::Admin);
         assert!(shell.contains("class=\"tab-bar\""));
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"] {
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
             assert!(shell.contains(&format!("data-pane=\"{}\"", pane)));
         }
-        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp"] {
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"] {
             assert!(shell.contains(&format!("data-tab-visibility-toggle=\"{}\"", pane)));
         }
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
@@ -426,7 +426,7 @@
         ] {
             assert!(shell.contains(preserved), "theme membrane marker missing: {}", preserved);
         }
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "chia-mining", "dhcp"] {
+        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"] {
             assert!(shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
         }
         assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));

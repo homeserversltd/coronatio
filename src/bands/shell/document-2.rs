@@ -199,9 +199,6 @@ fn shell_document_2() -> &'static str {
         <article class="card og-stub-pane" data-og-stub-pane="wake-on-lan"><h2>Wake on LAN</h2><p>not yet ported</p></article>
       </section>
       __TEST__
-      <section class="pane" id="pane-chia-mining" data-pane-panel="chia-mining" data-view-panel="chia-mining" role="tabpanel" aria-label="Chia Mining">
-        <article class="card og-stub-pane" data-og-stub-pane="chia-mining"><h2>Chia Mining</h2><p>not yet ported</p></article>
-      </section>
       <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" role="tabpanel" aria-label="DHCP">
         <div class="dhcp-tablet" data-dhcp-tablet>
           <div class="dhcp-info-banner" data-dhcp-info-banner aria-live="polite">
