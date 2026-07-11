@@ -1,81 +1,46 @@
     #[test]
-    fn admin_pane_stubs_original_flask_react_admin_button_inventory() {
+    fn admin_pane_matches_original_flask_react_div_skeleton() {
         let shell = render_crown_shell();
-        assert!(shell.contains(r#"data-admin-quarry="flask-react-admin""#));
-        assert!(shell.contains(r#"data-admin-quarry-button-total="74""#));
-        assert_eq!(shell.matches("data-admin-quarry-button").count(), 75);
-        assert_eq!(shell.matches("data-admin-quarry-index=").count(), 74);
-        for (group, count) in [
-            ("system-controls", 7),
-            ("key-manager", 3),
-            ("admin-password-modal", 2),
-            ("create-key-modal", 2),
-            ("hard-drive-test-modal", 6),
-            ("log-viewer-modal", 6),
-            ("password-input-modal", 3),
-            ("legacy-installer-modal", 16),
-            ("root-ca-modal", 5),
-            ("sync-schedule-modal", 2),
-            ("system-action-modal", 1),
-            ("update-key-modal", 2),
-            ("update-manager-modal", 19),
+        let admin_start = shell.find("class=\"admin-tablet\"").unwrap();
+        let admin_end = shell.find("id=\"pane-stats\"").unwrap();
+        let admin = &shell[admin_start..admin_end];
+
+        for class in [
+            "admin-tablet", "system-controls-container", "system-controls",
+            "system-controls-btn", "system-service-controls", "ssh-controls",
+            "ssh-control", "ssh-status", "ssh-toggle", "samba-control",
+            "samba-status", "samba-toggle", "key-manager", "key-manager-content",
+            "key-manager-left", "security-status", "status-item", "status-details",
+            "action-button info-button", "key-manager-right", "key-actions",
+            "disk-manager", "disk-manager-container", "disk-column", "disk-list",
+            "disk-item", "disk-actions",
         ] {
-            assert!(shell.contains(&format!(r#"data-admin-quarry-group="{}""#, group)));
-            assert!(shell.contains(&format!("{} buttons", count)));
+            assert!(admin.contains(&format!("class=\"{class}")), "missing og admin class: {class}");
         }
+        assert_eq!(admin.matches("class=\"system-controls-btn\"").count(), 7);
+        assert_eq!(admin.matches("class=\"disk-column\"").count(), 2);
+        assert_eq!(admin.matches("class=\"action-button ").count(), 16);
         for label in [
-            "Hard Drive Test",
-            "Restart Website",
-            "Install Certificate",
-            "+ Create New Key",
-            "⟳ Update Key on Drive",
-            "🔒 Admin Password",
-            "Auto Sync Schedule",
-            "Validate &amp; Clone",
-            "Force Update",
+            "Hard Drive Test", "Restart Website", "Install Certificate",
+            "View Full Guide &amp; Critical Warnings", "+ Create New Key",
+            "⟳ Update Key on Drive", "🔒 Admin Password", "Format", "Encrypt",
+            "Assign as primary NAS", "Assign as NAS Backup", "Unassign drive",
+            "Import to NAS", "Setup NAS", "Unlock", "Mount", "Unmount",
+            "Sync Now", "Auto Sync",
         ] {
-            assert!(shell.contains(label), "missing admin quarry button label: {}", label);
+            assert!(admin.contains(label), "missing og admin label: {label}");
         }
-        assert!(shell.contains(r#"data-admin-action-strip="single-row""#));
-        assert!(shell.contains(r#"data-admin-action-strip-count="7""#));
-        assert!(shell.contains("SSH Password Authentication"));
-        assert!(shell.contains(r#"data-service-card="ssh-password-authentication""#));
-        assert!(shell.contains("SSH Service"));
-        assert!(shell.contains(r#"data-service-card="ssh-service""#));
-        assert!(shell.contains("Samba File Sharing"));
-        assert!(shell.contains(r#"data-service-card="samba-file-sharing""#));
-        assert!(shell.contains(r#"data-state-source="/api/services/data""#));
-        assert!(shell.contains("Key Management"));
-        assert!(shell.contains("This is the key to your vault. When you boot your HOMESERVER and visit home.arpa, this is what unlocks your encrypted storage system - just like unlocking your smartphone. Your /vault partition contains the sensitive keys stored on the device. Unlock the vault and everything HOMESERVER specifically stores is accessible. This is the device's master key."));
-        assert!(shell.contains("Available Devices"));
-        assert!(shell.contains("Mount Destinations"));
-        assert!(shell.contains(r#"data-admin-devices-readback="/api/services/data""#));
-        assert!(shell.contains(r#"data-admin-mounts-readback="/api/services/data""#));
-        assert!(shell.contains("disk-item"));
-        assert!(shell.contains("disk-space-usage") || shell.contains("No /dev-backed mounts were observed"));
-        assert!(!shell.contains("1.7T/3.7T (45%) - 2.1T free"));
-        assert!(!shell.contains("Mapper: sdb1_crypt"));
-        assert!(!shell.contains("Device: <span class=\"device-label\">sdb</span>"));
-        assert!(shell.contains("In Use") || shell.contains("NAS destinations idle"));
-        assert!(!shell.contains("<h3>Key Manager</h3>"));
-        assert!(!shell.contains("<h3>Disk Manager</h3>"));
-        assert!(!shell.contains("Available Drives"));
-        assert!(!shell.contains("Drive Actions"));
-        assert!(!shell.contains("Format Drive"));
-        assert!(!shell.contains("Assign as primary NAS"));
-        assert!(!shell.contains("admin-visual-port"));
-        assert!(shell.contains("system-controls-btn"));
-        assert!(shell.contains("key-manager-content"));
-        assert!(shell.contains("disk-manager-container"));
-        assert!(shell.contains("modal-window update-manager-modal"));
-        assert!(shell.contains("view-tabs"));
-        assert!(shell.contains("modules-table"));
-        assert!(shell.contains("data-stub-action=\"true\""));
-        assert!(!shell.contains("WebSocket Subscriptions"));
-        assert!(!shell.contains("debug-subscriptions"));
-        assert!(!shell.contains("components/DebugSubscriptions.tsx"));
-        assert!(!shell.contains("subscription-debug-panel"));
-        assert!(!shell.contains("Front-end stubs mirror the original Flask/React admin-page button inventory from the quarry."));
+        assert!(admin.contains("/mnt/nas"));
+        assert!(admin.contains("/mnt/nas_backup"));
+        assert!(admin.find("class=\"system-controls\"").unwrap()
+            < admin.find("class=\"system-service-controls\"").unwrap());
+        assert!(!admin.contains("admin-modal-shelf"));
+        assert!(!admin.contains("data-admin-quarry"));
+        assert!(!admin.contains("data-stub-action"));
+        assert!(!admin.contains("admin-quarry-note"));
+        assert!(!admin.contains(">Ready</div>"));
+        assert!(!admin.contains("WebSocket Subscriptions"));
+        assert!(!admin.contains("debug-subscriptions"));
     }
 
     #[tokio::test]
