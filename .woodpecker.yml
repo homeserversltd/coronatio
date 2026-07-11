@@ -1,6 +1,7 @@
 when:
   event:
     - push
+    - manual
 
 skip_clone: true
 
@@ -13,6 +14,7 @@ steps:
     when:
       - event: push
         branch: main
+      - event: manual
     environment:
       KETHER_URL:
         from_secret: KETHER_URL
