@@ -2,13 +2,6 @@
         vec![
             "/api/status/tailscale",
             "/api/status/tailscale/config",
-            "/api/dhcp/status",
-            "/api/dhcp/leases",
-            "/api/dhcp/reservations",
-            "/api/dhcp/config",
-            "/api/dhcp/health",
-            "/api/dhcp/statistics",
-            "/api/dhcp/pool-boundary",
             "/api/kea-leases",
             "/api/network/notes",
             "/api/wakeonlan/targets",
@@ -43,7 +36,7 @@
         for route in field_003_in_scope_read_routes() {
             let registration = if route == "/api/status/tailscale/config" {
                 format!(".route(\"{route}\", get(homeserver_rust_read_route).post(network_identity_mutation_route))")
-            } else if matches!(route, "/api/network/notes" | "/api/wakeonlan/targets" | "/api/dhcp/reservations" | "/api/dhcp/config" | "/api/dhcp/pool-boundary") {
+            } else if matches!(route, "/api/network/notes" | "/api/wakeonlan/targets") {
                 format!(".route(\"{route}\", get(homeserver_rust_read_route)")
             } else {
                 format!(".route(\"{route}\", get(homeserver_rust_read_route))")
@@ -90,7 +83,9 @@
                 ".route(\"/api/dhcp/reservations/:reservation_id\", put(network_identity_mutation_route).delete(network_identity_mutation_route))".to_string()
             } else if route.contains("fixture-reservation") {
                 ".route(\"/api/dhcp/reservations/:reservation_id\", put(network_identity_mutation_route).delete(network_identity_mutation_route))".to_string()
-            } else if matches!(route, "/api/status/tailscale/config" | "/api/network/notes" | "/api/wakeonlan/targets" | "/api/dhcp/reservations" | "/api/dhcp/config" | "/api/dhcp/pool-boundary") {
+            } else if matches!(route, "/api/dhcp/reservations" | "/api/dhcp/config" | "/api/dhcp/pool-boundary") {
+                format!(".route(\"{route}\", get(dhcp_read_route).{method_call}(network_identity_mutation_route))")
+            } else if matches!(route, "/api/status/tailscale/config" | "/api/network/notes" | "/api/wakeonlan/targets") {
                 format!(".route(\"{route}\", get(homeserver_rust_read_route).{method_call}(network_identity_mutation_route))")
             } else {
                 format!(".route(\"{route}\", {method_call}(network_identity_mutation_route))")
