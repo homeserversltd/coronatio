@@ -471,7 +471,6 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       const processes = data.processes || [];
       target.innerHTML = processes.length ? processes.map(process => `<div class="process-bar" title="Process: ${process.name}\nMemory: ${fmtBytes(process.memoryBytes)}\nCPU: ${Number(process.cpuPercent || 0).toFixed(1)}%\nInstances: ${process.processCount || 1}"><div class="process-bar-fill" style="width:${Math.max(Number(process.cpuPercent || 0), 1)}%"></div><div class="process-text-container"><span class="process-name">${process.name}</span><span class="process-usage">${Number(process.cpuPercent || 0).toFixed(1)}%</span></div></div>`).join('') : '<div class="process-usage-empty"><p>No process data available</p></div>';
     }
-    let statsHydrationInFlight = false;
     async function hydrateStats() {
       if (statsHydrationInFlight) return; statsHydrationInFlight = true;
       try {

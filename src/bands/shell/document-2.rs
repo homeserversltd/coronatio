@@ -268,6 +268,7 @@ fn shell_document_2() -> &'static str {
     document.body.addEventListener('htmx:timeout', event => presentCartridgeFault('timeout', event));
     document.body.addEventListener('htmx:responseError', event => presentCartridgeFault(faultKindFromResponse(event, 'upstream-error'), event));
     document.body.addEventListener('htmx:sendError', event => presentCartridgeFault('proxy-unreachable', event));
+    let statsHydrationInFlight = false;
     document.body.addEventListener('htmx:afterSwap', event => {
       const panel = panelFromHtmxEvent(event);
       if (!(panel instanceof HTMLElement)) return;

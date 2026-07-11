@@ -80,9 +80,18 @@ fn shell_ux_css() -> String {
 }
 
 fn crown_chrome_js() -> String {
-    let raw = [shell_document_2(), shell_document_3(), shell_document_4(), shell_document_4_tail()]
-        .concat()
-        .replace("__DHCP_CLIENT__", shell_dhcp_client());
+    let raw = [
+        shell_document_2(),
+        shell_document_3(),
+        shell_document_4(),
+        shell_document_4_tail(),
+    ]
+    .concat()
+    .replace(
+        "__INDICATOR_MODAL_REGISTRY__",
+        &render_indicator_modal_registry(Session::Guest),
+    )
+    .replace("__DHCP_CLIENT__", shell_dhcp_client());
     extract_between(&raw, "<script>", "</script>").unwrap_or_default()
 }
 
