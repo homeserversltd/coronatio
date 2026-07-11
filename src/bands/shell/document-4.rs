@@ -683,9 +683,46 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         panel.classList.toggle('active', panel.dataset.tabPanel === selectedName);
       });
     }
+    const motionTimers = new Set();
+    function setMotionPhase(lifecycle, phase) {
+      lifecycle.dataset.motionPhase = phase;
+      const readback = lifecycle.querySelector('[data-motion-phase-readback]');
+      if (readback) readback.textContent = phase;
+    }
+    function stillMotionLab(lab) {
+      motionTimers.forEach(timer => clearTimeout(timer));
+      motionTimers.clear();
+      lab?.querySelectorAll('.is-running').forEach(specimen => specimen.classList.remove('is-running'));
+      lab?.querySelectorAll('[data-motion-lifecycle]').forEach(lifecycle => setMotionPhase(lifecycle, 'REST'));
+      lab?.querySelectorAll('.motion-toggle').forEach(toggle => toggle.setAttribute('aria-checked', 'false'));
+    }
+    function runMotionLifecycle(lifecycle) {
+      stillMotionLab(lifecycle.closest('[data-animation-lab]'));
+      const phases = [['ENTER', 0], ['HOLD', 320], ['EXIT', 960], ['REST', 1280]];
+      phases.forEach(([phase, delay]) => {
+        const timer = setTimeout(() => { setMotionPhase(lifecycle, phase); motionTimers.delete(timer); }, delay);
+        motionTimers.add(timer);
+      });
+    }
+    function playMotion(button) {
+      const lab = button.closest('[data-animation-lab]');
+      if (!lab) return;
+      const lifecycle = button.closest('[data-motion-lifecycle]');
+      if (lifecycle) return runMotionLifecycle(lifecycle);
+      const specimen = button.closest('.animation-specimen');
+      if (!specimen) return;
+      const target = specimen.querySelector('.motion-progress, .motion-spinner, .motion-modal-stage, .motion-toggle, .motion-toast, .motion-card') || specimen;
+      const running = target.classList.toggle('is-running');
+      if (target.matches('.motion-toggle')) target.setAttribute('aria-checked', String(running));
+      button.textContent = running ? 'Stop demo' : (button.dataset.animationPlay === '' && (target.matches('.motion-progress, .motion-spinner')) ? 'Start demo' : 'Play');
+    }
     document.body.addEventListener('click', event => {
       const catalogEye = event.target.closest('[data-ui-visibility-toggle]');
       if (catalogEye) { event.preventDefault(); const visible = catalogEye.dataset.visible !== 'true'; catalogEye.dataset.visible = String(visible); catalogEye.setAttribute('aria-pressed', String(visible)); catalogEye.classList.toggle('ui-visibility-toggle--visible', visible); catalogEye.classList.toggle('ui-visibility-toggle--hidden', !visible); const icon = catalogEye.querySelector('i'); if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash'; const specimen = catalogEye.closest('[data-visibility-specimen]'); if (specimen) { specimen.dataset.visible = String(visible); const label = specimen.querySelector('[data-visibility-state-label]'); if (label) label.textContent = visible ? 'Visible' : 'Dimmed hidden'; } return; }
+      const stillness = event.target.closest('[data-motion-stillness]');
+      if (stillness) { stillMotionLab(stillness.closest('[data-animation-lab]')); return; }
+      const animationPlay = event.target.closest('[data-animation-play]');
+      if (animationPlay) { playMotion(animationPlay); return; }
       const scopedTab = event.target.closest('[data-tab-id]');
       if (scopedTab) return switchScopedTabs(scopedTab);
       const portalEye = event.target.closest('[data-portal-visibility-toggle]');

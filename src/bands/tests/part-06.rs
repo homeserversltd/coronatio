@@ -1,4 +1,34 @@
     #[test]
+    fn indranet_animation_lab_and_flash_cure_walls() {
+        let html = render_crown_shell();
+        let css = std::fs::read_to_string("src/bands/shell/ux/packs/test-animations.css").unwrap();
+        let services_css = std::fs::read_to_string("src/bands/shell/ux/packs/test-services.css").unwrap();
+        let chrome = std::fs::read_to_string("src/bands/shell/document-4.rs").unwrap();
+        for marker in [
+            r#"data-tab-id="animations""#,
+            r#"data-animation-lab"#,
+            r#"data-motion-phase="REST""#,
+            r#"data-motion-reduce-preview"#,
+            "Band A — Motion Atoms",
+            "Band B — Composed Motion",
+            "Band C — Yijing Lifecycle",
+            "Band D — Accessibility",
+        ] {
+            assert!(html.contains(marker), "animation lab missing {marker}");
+        }
+        assert!(!css.contains("transition: all"));
+        assert!(css.contains("prefers-reduced-motion: reduce"));
+        assert!(css.contains("[data-animation-lab] .motion-spinner.is-running"));
+        assert!(services_css.contains("[data-test-services-grid] .portal-card::before"));
+        assert!(services_css.contains("transition-property: border-color"));
+        assert!(chrome.contains("document.querySelector('[data-portals-grid]')"));
+        assert!(!chrome.contains("document.querySelector('[data-test-services-grid]')"));
+        for marker in ["data-animation-play", "data-motion-stillness", "data-motion-phase-readback"] {
+            assert!(html.contains(marker));
+        }
+    }
+
+    #[test]
     fn uxport_002_ux_order_wall_matches_index_children() {
         let index: serde_json::Value = serde_json::from_str(SHELL_UX_INDEX_JSON).unwrap();
         assert_eq!(index["schema"], "coronatio.shell.ux.index.v1");

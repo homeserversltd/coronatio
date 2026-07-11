@@ -1,1 +1,15 @@
 /* portals.css owns portal-card vocabulary; this pack scopes catalog composition. */ .test-subpanel-header{display:flex;justify-content:space-between;gap:1rem;margin-bottom:1rem}.test-kicker{color:var(--primary);font-size:.75rem;font-weight:700;text-transform:uppercase}.test-services .portal-card{cursor:default;text-decoration:none;color:inherit}.test-service-icon{display:grid;place-items:center;width:4.5rem;height:4.5rem;background:var(--background-alt);color:var(--primary);font-weight:700}.test-services .portal-meta{display:flex;justify-content:center;gap:.5rem}.test-services .admin-controls{display:flex}.test-services .admin-controls button{min-height:30px;border:0;border-radius:6px;background:var(--primary);color:white}.test-add-portal{align-items:center;justify-content:center;border-style:dashed}.add-portal-icon{font-size:2rem;color:var(--primary)}
+
+/* Catalog specimens never inherit the live portal-card 3D stack. */
+.test-services [data-catalog-specimen] .portal-card,
+.test-services [data-test-services-grid] .portal-card {
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .05);
+  transition-property: border-color;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(.4, 0, .2, 1);
+}
+.test-services [data-catalog-specimen] .portal-card::before,
+.test-services [data-test-services-grid] .portal-card::before { content: none; display: none; transform: none; }
+.test-services [data-catalog-specimen] .portal-card:hover,
+.test-services [data-test-services-grid] .portal-card:hover { transform: none; box-shadow: 0 2px 4px rgba(0, 0, 0, .05); border-color: var(--primary); }
