@@ -242,6 +242,16 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
                 .into_response();
         }
     };
+    let portals = match read_portals_config() {
+        Ok(config) => config.portals,
+        Err(signal) => return portal_service_allowlist_refusal_response(&service, signal),
+    };
+    if !portal_service_is_allowlisted(&service, &portals) {
+        return portal_service_allowlist_refusal_response(
+            &service,
+            "portal-service-not-allowlisted".to_string(),
+        );
+    }
     let systemd_service = if service.ends_with(".service") { service.clone() } else { format!("{service}.service") };
     let caduceus = caduceus_http_json(
         "POST",
@@ -274,6 +284,30 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
         })),
     )
         .into_response()
+}
+
+fn portal_service_allowlist_refusal_response(service: &str, signal: String) -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Json(serde_json::json!({
+            "schema": "coronatio.portals.service_control.refusal.v1",
+            "success": false,
+            "ok": false,
+            "accepted": false,
+            "service": service,
+            "error": "portal-service-not-allowlisted",
+            "firstMissingSignal": signal
+        })),
+    )
+        .into_response()
+}
+
+fn portal_service_is_allowlisted(service: &str, portals: &[PortalEntry]) -> bool {
+    let requested = service.strip_suffix(".service").unwrap_or(service);
+    portals.iter().flat_map(|portal| &portal.services).any(|allowed| {
+        let allowed = allowed.trim();
+        allowed == service || allowed.strip_suffix(".service").unwrap_or(allowed) == requested
+    })
 }
 
 fn services_mutation_refusal_response(method: &str, path: &str) -> Response {

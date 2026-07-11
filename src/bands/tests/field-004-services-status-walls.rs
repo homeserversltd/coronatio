@@ -146,6 +146,13 @@
     async fn field_004_admin_mutation_wall_service_control_crosses_caduceus_after_session_gate() {
         let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
+        let config_path = std::env::temp_dir().join(format!("coronatio-portals-allowlist-{}.json", std::process::id()));
+        std::fs::write(
+            &config_path,
+            r#"{"tabs":{"portals":{"data":{"portals":[{"name":"SSH","services":["ssh.service"],"localURL":"https://ssh.home.arpa"}]}}}}"#,
+        )
+        .unwrap();
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config_path);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-004-service-control-admin")) });
         let token = authorize_test_admin_token();
         let response = router.oneshot(Request::builder().method("POST").uri("/api/service/control").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"service":"ssh","action":"restart"}"#)).unwrap()).await.unwrap();
@@ -156,6 +163,33 @@
         assert!(body.contains("\"output\":\"caduceus-unreachable\""), "{body}");
         assert!(body.contains("\"active\":false"), "{body}");
         std::env::remove_var("CADUCEUS_URL");
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+        std::fs::remove_file(config_path).unwrap();
+    }
+
+    #[test]
+    fn field_004_portal_service_allowlist_wall_precedes_caduceus_dispatch() {
+        let portals = vec![PortalEntry {
+            name: "Files".to_string(),
+            description: String::new(),
+            services: vec!["smbd.service".to_string(), "syncthing".to_string()],
+            r#type: "systemd".to_string(),
+            port: None,
+            local_url: "https://files.home.arpa".to_string(),
+            remote_url: None,
+            status: None,
+            visible: true,
+        }];
+
+        assert!(portal_service_is_allowlisted("smbd", &portals));
+        assert!(portal_service_is_allowlisted("smbd.service", &portals));
+        assert!(portal_service_is_allowlisted("syncthing.service", &portals));
+        assert!(!portal_service_is_allowlisted("ssh", &portals));
+
+        let source = std::fs::read_to_string("src/bands/full-rust-routes/portals.rs").unwrap();
+        let allowlist = source.find("if !portal_service_is_allowlisted").unwrap();
+        let dispatch = source.find("let caduceus = caduceus_http_json").unwrap();
+        assert!(allowlist < dispatch, "portal allow-list must fail closed before Caduceus dispatch");
     }
 
     #[test]
