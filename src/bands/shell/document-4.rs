@@ -1,35 +1,22 @@
 fn shell_document_4() -> &'static str {
     r####"      if (!el) return;
-      el.textContent = 'Loading ' + route + '…';
-      try {
-        const response = await fetch(route, { method });
-        const text = await response.text();
+      el.textContent = 'Loading ' + route + '…'; try {
+        const response = await fetch(route, { method }); const text = await response.text();
         try { el.textContent = JSON.stringify(JSON.parse(text), null, 2); }
         catch (_) { el.textContent = text; }
       } catch (error) { el.textContent = 'fetch failed: ' + error; }
     }
-    document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET')));
-
-    const uploadState = { currentPath: '/mnt/nas', selectedFiles: [], activeUploads: new Map(), pinRequired: false, uploading: false, blacklist: [], history: [] };
-    const uploadFileInput = document.querySelector('[data-upload-file]');
-    const uploadSubmit = document.querySelector('[data-upload-submit]');
-    const uploadProgressList = document.querySelector('[data-upload-progress-list]');
-    const uploadBreadcrumbs = document.querySelector('[data-upload-breadcrumbs]');
-    const uploadReadout = document.getElementById('upload-readout');
-    function uploadFormatSize(bytes) {
-      const units = ['B', 'KB', 'MB', 'GB'];
-      let size = Number(bytes || 0);
-      let unit = 0;
-      while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
-      return size.toFixed(1) + ' ' + units[unit];
-    }
+    document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET'))); const uploadState = { currentPath: '/mnt/nas', selectedFiles: [], activeUploads: new Map(), pinRequired: false, uploading: false, blacklist: [], history: [] };
+    const uploadFileInput = document.querySelector('[data-upload-file]'); const uploadSubmit = document.querySelector('[data-upload-submit]');
+    const uploadProgressList = document.querySelector('[data-upload-progress-list]'); const uploadBreadcrumbs = document.querySelector('[data-upload-breadcrumbs]');
+    const uploadReadout = document.getElementById('upload-readout'); function uploadFormatSize(bytes) {
+      const units = ['B', 'KB', 'MB', 'GB']; let size = Number(bytes || 0);
+      let unit = 0; while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+      return size.toFixed(1) + ' ' + units[unit]; }
     function uploadStatusIcon(status) {
-      if (status === 'pending') return '⏳';
-      if (status === 'uploading') return '📤';
-      if (status === 'completed') return '✅';
-      if (status === 'error') return '❌';
-      return '❓';
-    }
+      if (status === 'pending') return '⏳'; if (status === 'uploading') return '📤';
+      if (status === 'completed') return '✅'; if (status === 'error') return '❌';
+      return '❓'; }
     function uploadStatusColor(status) {
       if (status === 'pending') return '#f59e0b';
       if (status === 'uploading') return '#3b82f6';
@@ -177,7 +164,6 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
     document.querySelector('[data-upload-pin-toggle]')?.addEventListener('click', async event => { uploadState.pinRequired = !uploadState.pinRequired; event.currentTarget.classList.toggle('active', uploadState.pinRequired); event.currentTarget.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); await fetch('/api/upload/pin-required-status', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); });
     fetch('/api/upload/pin-required-status', { headers: uploadAdminHeaders() }).then(r => r.json()).then(data => { uploadState.pinRequired = !!data.isPinRequired; const b = document.querySelector('[data-upload-pin-toggle]'); b?.classList.toggle('active', uploadState.pinRequired); }).catch(() => {});
     syncUploadTreeSelection();
-
     let uptimeBaseSeconds = null;
     let uptimeBaseStamp = 0;
     function secondsFromUptimeText(text) {
@@ -524,7 +510,6 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         </article>
       </div>`;
     }
-
     function renderAddPortalCard() {
       return `<div class="portal-card add-portal-card" data-admin-only data-admin-viewport="portals" data-add-portal-open role="button" tabindex="0" aria-label="Add new portal">
         <div class="add-portal-content"><div class="add-portal-icon"><i class="fas fa-plus"></i></div><h3 class="add-portal-title">Add Portal</h3><p class="add-portal-description">Create a new portal for your services</p></div>
@@ -587,7 +572,6 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       }
       if (action === 'status') showPortalServiceStatus(results);
     }
-
     function bindPortalFragmentControls(grid) {
       grid.querySelectorAll('[data-portal-card]').forEach(card => {
         const open = () => { const url = card.dataset.portalUrl; if (url && url !== '#') window.open(url, '_blank', 'noopener,noreferrer'); };
@@ -668,7 +652,6 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         grid.innerHTML = '<article class="portal-card error portal-error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>' + renderAddPortalCard();
       }
     }
-
     async function hydrateFavoriteManifest() {
       try {
         const favorite = await fetch('/api/favorites').then(r => r.json());
@@ -680,8 +663,6 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       } catch (_) { setStarredTab(tabState.starredTab); }
       showPane((location.hash || '#' + (tabState.starredTab || firstVisibleTab())).slice(1));
     }
-
-
     // TEST-001: og Test UX-library chrome is allowed here: generic scoped tabs, demo modal, demo readbacks.
     function inTabScope(element, scope) {
       return element && element.closest('[data-tab-scope]') === scope;

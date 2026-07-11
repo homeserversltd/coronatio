@@ -259,3 +259,45 @@
         assert!(!admin.contains("data-admin-quarry"));
         assert!(!admin.contains("data-stub-action"));
     }
+
+    #[tokio::test]
+    async fn test_tab_secondary_panels_are_full_catalog_specimens() {
+        let temp = test_tab_root("test-003-secondary-panels");
+        let router = app(AppState { tab_root: Arc::new(temp) });
+        let response = router
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let shell = String::from_utf8(
+            axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        for marker in [
+            r#"data-catalog-specimen="test-services-portal-grid""#,
+            r#"data-config-pattern="readback""#,
+            r#"data-config-pattern="form""#,
+            r#"data-config-pattern="grid""#,
+            r#"data-health-viewport="summary""#,
+            r#"data-health-viewport="services""#,
+            r#"data-health-viewport="diagnostics""#,
+            "add-portal-card",
+            "admin-controls",
+            "health-timeline",
+            "health-results",
+            "data-test-health-output",
+        ] {
+            assert!(shell.contains(marker), "missing Test specimen marker: {marker}");
+        }
+        for status in ["up", "down", "partial", "unknown"] {
+            assert!(shell.contains(&format!("portal-card {status}")));
+        }
+        assert!(shell.matches("portal-element").count() >= 7);
+        assert!(shell.matches("health-service-card").count() >= 5);
+        for pack in ["test-services.css", "test-config.css", "test-health.css"] {
+            assert!(SHELL_UX_INDEX_JSON.contains(pack));
+        }
+    }
