@@ -190,7 +190,7 @@
         assert!(shell.contains(r#"data-stat-element-id="disk-usage""#));
         assert!(shell.contains(r#"data-stat-element-id="network-chart""#));
         assert!(shell.contains(r#"data-stat-element-id="kea-leases""#));
-        assert!(shell.contains(r#"data-stat-element-id="process-list""#));
+        assert!(shell.contains(r#"data-stat-element-id="process-usage""#));
         assert!(shell.contains(r#"class="disk-actions""#));
         assert!(!shell.contains("data-admin-quarry"));
         assert!(shell.contains("data-upload-regular=\"file-ingress\""));

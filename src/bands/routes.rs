@@ -379,6 +379,15 @@ async fn load_iris_facts() -> Result<(String, IrisFacts), String> {
     Ok((source, iris_facts_from_homeserver_value(&value)))
 }
 
+fn canonical_stats_element_id(id: &str) -> &str {
+    match id {
+        "network" => "network-chart",
+        "memory" => "memory-usage",
+        "process-list" => "process-usage",
+        canonical => canonical,
+    }
+}
+
 fn iris_facts_from_homeserver_value(value: &serde_json::Value) -> IrisFacts {
     let tabs_obj = value.get("tabs").and_then(serde_json::Value::as_object);
     let starred = tabs_obj
@@ -398,7 +407,12 @@ fn iris_facts_from_homeserver_value(value: &serde_json::Value) -> IrisFacts {
             if let Some(visibility) = raw.get("visibility").and_then(serde_json::Value::as_object) {
                 if let Some(visible) = visibility.get("tab").and_then(serde_json::Value::as_bool) { tab.visibility.tab = visible; }
                 if let Some(elements) = visibility.get("elements").and_then(serde_json::Value::as_object) {
-                    tab.visibility.elements = elements.iter().filter_map(|(id, v)| v.as_bool().map(|b| (id.clone(), b))).collect();
+                    tab.visibility.elements = elements.iter().filter_map(|(id, v)| {
+                        v.as_bool().map(|visible| {
+                            let canonical = if tab.id == "stats" { canonical_stats_element_id(id) } else { id.as_str() };
+                            (canonical.to_string(), visible)
+                        })
+                    }).collect();
                 }
             }
         }

@@ -474,6 +474,25 @@
   background-color: var(--hiddenTabBackground);
 }
 
+.stat-element[data-visible="false"] .stat-title {
+  color: var(--secondary);
+  opacity: 0.7;
+}
+
+.stat-element[data-visible="false"] .memory-bar-fill,
+.stat-element[data-visible="false"] .disk-usage-fill,
+.stat-element[data-visible="false"] .process-bar-fill {
+  opacity: 0.3;
+}
+
+.stat-element[data-visible="false"] .kea-leases-table {
+  opacity: 0.7;
+}
+
+.stat-element[data-visible="false"] .chart-container {
+  opacity: 0.7;
+}
+
 [data-admin-mode="true"] [data-stat-element-id][data-visible="false"] {
   opacity: .7;
 }
