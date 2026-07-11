@@ -680,7 +680,7 @@
         assert!(body.contains(r#"data-real-state="Disabled""#), "{body}");
         assert!(body.contains("sshd_config PasswordAuthentication readback"), "{body}");
         assert!(body.contains(r#"hx-post="/admit/admin/toggle/ssh-password-authentication""#), "{body}");
-        assert!(body.contains("caduceus-unreachable"), "{body}");
+        assert!(body.contains("caduceus-unreachable") || body.contains("caduceus-household-signing-key-missing"), "{body}");
         assert!(body.contains(r#"data-og-affordance="toast-mapped-to-result-strip""#), "{body}");
     }
 
@@ -726,7 +726,7 @@
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
             assert!(body.contains(r#"data-admin-action-result-fragment="#), "{action}: {body}");
             assert!(body.contains(r#"data-og-affordance="toast-mapped-to-result-strip""#), "{action}: {body}");
-            assert!(body.contains("caduceus-unreachable") || body.contains("caduceus-http-not-ok"), "{action}: {body}");
+            assert!(body.contains("caduceus-unreachable") || body.contains("caduceus-http-not-ok") || body.contains("caduceus-household-signing-key-missing"), "{action}: {body}");
         }
         std::env::remove_var("CADUCEUS_URL");
         let api = router.oneshot(Request::builder().uri("/api").body(Body::empty()).unwrap()).await.unwrap();

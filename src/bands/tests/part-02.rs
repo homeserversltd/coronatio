@@ -116,7 +116,7 @@
     }
 
     #[tokio::test]
-    async fn caduceus_update_now_acknowledges_self_restart_dispatch() {
+    async fn caduceus_update_now_refuses_guest_instead_of_faking_dispatch_success() {
         let temp = test_tab_root("caduceus-dispatch");
         let response = app(AppState {
             tab_root: Arc::new(temp),
@@ -130,14 +130,13 @@
         )
         .await
         .unwrap();
-        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(body.contains("coronatio.caduceus.dispatch.v1"));
-        assert!(body.contains("update_now"));
-        assert!(body.contains("/api/v1/update/now"));
+        assert!(body.contains("admin-session-required"));
+        assert!(!body.contains("\"ok\":true"));
     }
 
     #[tokio::test]
