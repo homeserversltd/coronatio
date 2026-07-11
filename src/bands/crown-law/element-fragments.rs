@@ -150,7 +150,7 @@ fn render_stat_element_from_grant(session: Session, facts: &IrisFacts, element_i
     let grant = default_element_grant_from_facts(facts, session, "stats", element_id);
     if grant.state == RenderState::Absent { return None; }
     let visible = grant.state == RenderState::Visible;
-    let eye = if visible { r#"<i class="fas fa-eye" aria-hidden="true"></i>"# } else { r#"<i class="fas fa-eye-slash" aria-hidden="true"></i>"# };
+    let eye = if visible { "👁" } else { "🙈" };
     let verb = if visible { "Hide" } else { "Show" };
     let mut html = template.to_string();
     html = replace_data_visible(&html, visible);
@@ -299,7 +299,11 @@ fn replace_visibility_toggle(html: &str, attr: &str, element_id: &str, visible: 
     let mut next = html.to_string();
     let attr_old = format!(r#"{}="{}""#, attr, element_id);
     if !next.contains(&attr_old) { return next; }
-    next = next.replace(&attr_old, &format!(r#"{}="{}" data-visible="{}""#, attr, element_id, visible));
+    for old_visible in [true, false] {
+        let old = format!(r#"{}="{}" data-visible="{}""#, attr, element_id, old_visible);
+        let new = format!(r#"{}="{}" data-visible="{}""#, attr, element_id, visible);
+        next = next.replace(&old, &new);
+    }
     next = next.replace(">👁</button>", &format!(">{}</button>", eye));
     next = next.replace("Hide ", &format!("{} ", verb));
     next

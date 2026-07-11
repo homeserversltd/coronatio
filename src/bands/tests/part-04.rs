@@ -491,7 +491,8 @@
     fn portals_visibility_uses_admin_mode_not_missing_apply_admin_mode() {
         let shell = render_crown_shell();
         assert!(!shell.contains("applyAdminMode()"));
-        assert!(shell.contains("setAdminMode(headerState.isAdmin)"));
+        assert!(shell.contains("bootstrapAdminMode();"));
+        assert!(shell.contains("applyAdminDomState();"));
         assert!(shell.contains("data-portal-element data-visible=\"${isVisible}\""));
         assert!(shell.contains("data-portal-visibility-toggle"));
         assert!(shell.contains("portal.visible !== false"));

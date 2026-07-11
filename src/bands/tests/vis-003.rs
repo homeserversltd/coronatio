@@ -62,7 +62,11 @@
         let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(fragment.contains(r#"data-stat-element-id="process-usage" data-visible="false""#), "{fragment}");
         assert!(fragment.contains(r#"data-stat-visibility-toggle="process-usage" data-visible="false""#), "{fragment}");
-        assert!(fragment.contains("fa-eye-slash"), "{fragment}");
+        assert!(fragment.contains("🙈"), "{fragment}");
+        let toggle_start = fragment.find(r#"data-stat-visibility-toggle="process-usage""#).unwrap();
+        let toggle_end = fragment[toggle_start..].find('>').unwrap() + toggle_start;
+        let toggle_tag = &fragment[toggle_start..toggle_end];
+        assert_eq!(toggle_tag.matches("data-visible=").count(), 1, "{toggle_tag}");
         let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
         assert_eq!(value["tabs"]["stats"]["visibility"]["elements"]["process-usage"], serde_json::Value::Bool(false));
         assert!(value["tabs"]["stats"]["visibility"]["elements"].get("network").is_none());
@@ -92,7 +96,13 @@
         let stats_admin = String::from_utf8(axum::body::to_bytes(stats_admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(stats_admin.contains(r#"data-stat-element-id="network-chart" data-visible="false""#), "{stats_admin}");
         assert!(stats_admin.contains(r#"data-stat-visibility-toggle="network-chart" data-visible="false""#), "{stats_admin}");
-        assert!(stats_admin.contains("fa-eye-slash"), "{stats_admin}");
+        assert!(stats_admin.contains("🙈"), "{stats_admin}");
+        assert!(stats_admin.contains("👁"), "{stats_admin}");
+        assert!(!stats_admin.contains("fa-eye"), "{stats_admin}");
+        let toggle_start = stats_admin.find(r#"data-stat-visibility-toggle="network-chart""#).unwrap();
+        let toggle_end = stats_admin[toggle_start..].find('>').unwrap() + toggle_start;
+        let toggle_tag = &stats_admin[toggle_start..toggle_end];
+        assert_eq!(toggle_tag.matches("data-visible=").count(), 1, "{toggle_tag}");
 
         let portals_guest = router.clone().oneshot(Request::builder().uri("/api/portals/elements").body(Body::empty()).unwrap()).await.unwrap();
         let portals_guest = String::from_utf8(axum::body::to_bytes(portals_guest.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
@@ -105,6 +115,18 @@
         assert!(portals_admin.contains(r#"data-portal-visibility-toggle="Jellyfin" data-visible="false""#), "{portals_admin}");
         assert!(portals_admin.contains("🙈"), "{portals_admin}");
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn admin_ping_reports_live_session_authority() {
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("admin-ping-app")) });
+        let guest = router.clone().oneshot(Request::builder().uri("/api/admin/ping").body(Body::empty()).unwrap()).await.unwrap();
+        let guest: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(guest.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(guest["authenticated"], false);
+
+        let admin = router.oneshot(Request::builder().uri("/api/admin/ping").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap();
+        let admin: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(admin.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(admin["authenticated"], true);
     }
 
     #[tokio::test(flavor = "current_thread")]
