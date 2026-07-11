@@ -88,47 +88,59 @@ fn caduceus_mutation_route(route: &str, path: &str, action: &str, target: &str) 
     )
 }
 
-fn decode_signing_key(text: &str) -> Option<[u8; 32]> {
-    let text = text.trim();
-    let decoded = if text.len() == 64 && text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        (0..32)
-            .map(|index| u8::from_str_radix(&text[index * 2..index * 2 + 2], 16).ok())
-            .collect::<Option<Vec<_>>>()?
-    } else {
-        STANDARD.decode(text).ok().or_else(|| URL_SAFE_NO_PAD.decode(text).ok())?
-    };
-    decoded.try_into().ok()
-}
-
-fn household_signing_key() -> Result<SigningKey, String> {
-    let material = env::var("CORONATIO_CADUCEUS_SIGNING_KEY").ok().or_else(|| {
-        let path = env::var("CORONATIO_CADUCEUS_SIGNING_KEY_FILE")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/etc/caduceus/household-signing.key"));
-        std::fs::read_to_string(path).ok()
-    }).ok_or_else(|| "caduceus-household-signing-key-missing".to_string())?;
-    let seed = decode_signing_key(&material)
-        .ok_or_else(|| "caduceus-household-signing-key-malformed".to_string())?;
-    Ok(SigningKey::from_bytes(&seed))
-}
+#[cfg(test)]
+static KEYMAN_CAPABILITY_MINT_MOCK: OnceLock<Mutex<Option<fn(&str, &str) -> Result<String, String>>>> =
+    OnceLock::new();
 
 fn mint_caduceus_capability(action: &str, target: &str) -> Result<String, String> {
-    let exp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| "caduceus-capability-clock".to_string())?
-        .as_secs() + 60;
-    let payload = serde_json::to_string(&serde_json::json!({
-        "actor": "coronatio-admin-session",
-        "action": action,
-        "target": target,
-        "exp": exp,
-    })).map_err(|_| "caduceus-capability-payload".to_string())?;
-    let signature = household_signing_key()?.sign(payload.as_bytes());
-    Ok(format!(
-        "{}.{}",
-        URL_SAFE_NO_PAD.encode(payload.as_bytes()),
-        URL_SAFE_NO_PAD.encode(signature.to_bytes())
-    ))
+    #[cfg(test)]
+    {
+        if let Some(mock) = *KEYMAN_CAPABILITY_MINT_MOCK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .map_err(|_| "keyman-capability-mint-mock-poisoned".to_string())?
+        {
+            return mock(action, target);
+        }
+        return Ok(format!("keyman-test-mock::{action}::{target}"));
+    }
+
+    #[cfg(not(test))]
+    {
+        let output = Command::new("/usr/local/sbin/caduceus-keyman-sign-capability")
+        .args([
+            "--actor",
+            "coronatio-admin-session",
+            "--action",
+            action,
+            "--target",
+            target,
+        ])
+        .output()
+        .map_err(|_| "keyman-capability-mint-unavailable".to_string())?;
+    if !output.status.success() {
+        return Err("keyman-capability-mint-refused".to_string());
+    }
+    let readback: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|_| "keyman-capability-mint-malformed".to_string())?;
+    if !readback
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+    {
+        return Err(readback
+            .get("firstMissingSignal")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("keyman-capability-mint-refused")
+            .to_string());
+    }
+    readback
+        .get("capability")
+        .and_then(serde_json::Value::as_str)
+        .filter(|capability| !capability.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "keyman-capability-mint-malformed".to_string())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -421,6 +433,7 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
     match action_id {
         "hard-drive-test" => Some(("Hard Drive Test", "POST", "/api/admin/hard-drive-test/start", true)),
         "update" => Some(("Update", "POST", "/api/admin/updates/apply", true)),
+        "rotate-capability-key" => Some(("Rotate Capability Key", "POST", "/usr/local/sbin/caduceus-keyman-rotate-capability", true)),
         "restart" => Some(("Restart", "POST", "/api/admin/system/restart", true)),
         "shutdown" => Some(("Shutdown", "POST", "/api/admin/system/shutdown", true)),
         "restart-website" => Some(("Restart Website", "POST", "/api/admin/services/hard-reset", true)),
@@ -453,6 +466,28 @@ fn admin_staff_intent(method: &str, path: &str, classification: &str) -> Caduceu
     )
 }
 
+fn rotate_caduceus_capability_key() -> CaduceusHttpReadback {
+    match Command::new("/usr/local/sbin/caduceus-keyman-rotate-capability").output() {
+        Ok(output) => {
+            let ok = output.status.success();
+            CaduceusHttpReadback {
+                ok,
+                status: if ok { 200 } else { 503 },
+                path: "/usr/local/sbin/caduceus-keyman-rotate-capability".to_string(),
+                body: serde_json::json!({"stdout": String::from_utf8_lossy(&output.stdout).trim(), "stderr": String::from_utf8_lossy(&output.stderr).trim()}),
+                first_missing_signal: if ok { "none" } else { "caduceus-capability-rotation-failed" }.to_string(),
+            }
+        }
+        Err(err) => CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: "/usr/local/sbin/caduceus-keyman-rotate-capability".to_string(),
+            body: serde_json::json!({"error": err.to_string()}),
+            first_missing_signal: "caduceus-capability-rotator-unavailable".to_string(),
+        },
+    }
+}
+
 async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
     if !admin_headers_authorized(&headers) {
         return admin_html_fragment_response(StatusCode::UNAUTHORIZED, admin_membrane_refusal_fragment(&toggle_id));
@@ -478,7 +513,13 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
     let Some((title, method, path, mutation)) = admin_action_target(&action_id) else {
         return admin_html_fragment_response(StatusCode::NOT_FOUND, admin_membrane_refusal_fragment("unknown admin action"));
     };
-    let readback = if mutation { admin_staff_intent(method, path, homeserver_route_family(path)) } else { caduceus_http(method, path) };
+    let readback = if action_id == "rotate-capability-key" {
+        rotate_caduceus_capability_key()
+    } else if mutation {
+        admin_staff_intent(method, path, homeserver_route_family(path))
+    } else {
+        caduceus_http(method, path)
+    };
     let class = if readback.ok { "success" } else { "error" };
     let message = if readback.ok {
         if mutation { "Caduceus accepted the action." } else { "Readback returned through the Caduceus/crown route." }
