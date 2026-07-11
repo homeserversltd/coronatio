@@ -28,6 +28,7 @@
     "packs/stats.css",
     "packs/portals.css",
     "packs/test-services.css",
+    "packs/test-animations.css",
     "packs/test-config.css",
     "packs/test-health.css",
     "packs/admin.css",

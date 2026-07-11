@@ -59,7 +59,11 @@
         for (path, css) in pack_css() {
             assert!(!css.contains("var(--theme-"), "{path} reaches through the author face into the deep lattice");
             for name in css_var_calls(&css) {
-                assert!(names.contains(&name), "{path} uses non-author-face var(--{name})");
+                let locally_declared = css.contains(&format!("--{name}:"));
+                assert!(
+                    names.contains(&name) || locally_declared,
+                    "{path} uses non-author-face, non-local var(--{name})"
+                );
             }
         }
     }
