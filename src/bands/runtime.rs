@@ -68,6 +68,8 @@ fn app(state: AppState) -> Router {
         .route("/api/tab-bar", get(tab_bar_fragment_route))
         .route("/api/boundary", get(boundary_route))
         .route("/api/installer", get(installer_route))
+        .route("/api/core/events", get(indicators::core_events_route))
+        .route("/api/core/events/renew", post(indicators::core_events_renew_route))
         .route("/api/stats/events", get(pulse::stats_events_route))
         .route("/api/stats/events/renew", post(pulse::stats_events_renew_route))
         .route("/api/stats", get(stats_route))

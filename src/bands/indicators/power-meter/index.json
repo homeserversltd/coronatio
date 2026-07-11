@@ -1,0 +1,6 @@
+{
+  "schema": "coronatio.indicator-band.v1",
+  "id": "power-meter",
+  "topicId": "power.status",
+  "children": []
+}

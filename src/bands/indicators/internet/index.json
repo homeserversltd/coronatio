@@ -1,0 +1,6 @@
+{
+  "schema": "coronatio.indicator-band.v1",
+  "id": "internet",
+  "topicId": "internet.status",
+  "children": []
+}

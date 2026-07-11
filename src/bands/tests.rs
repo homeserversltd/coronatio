@@ -32,4 +32,5 @@ mod tests {
     include!("tests/portals-htmx-mirror-walls.rs");
     include!("tests/portals-currentness-walls.rs");
     include!("tests/theme-net-author-face-walls.rs");
+    include!("tests/indicator-infinite-infinite-walls.rs");
 }

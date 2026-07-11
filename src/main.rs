@@ -30,6 +30,7 @@ include!("bands/router-readback.rs");
 include!("bands/full-rust-routes.rs");
 include!("bands/iris.rs");
 include!("bands/crown-law.rs");
+include!("bands/indicators.rs");
 include!("bands/shell.rs");
 
 #[cfg(test)]

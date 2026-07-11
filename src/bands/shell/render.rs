@@ -125,6 +125,8 @@ fn render_crown_shell_for_session(session: Session) -> String {
     .concat();
     let shell = shell
         .replace("__NAV__", &nav)
+        .replace("__INDICATOR_SPINE__", &render_indicator_strip(session))
+        .replace("__INDICATOR_MODAL_REGISTRY__", &render_indicator_modal_registry(session))
         .replace("__TEST__", &render_test_showcase())
         .replace("__ADMIN_AVAILABLE_DEVICES__", &render_admin_available_devices_html())
         .replace("__ADMIN_MOUNT_DESTINATIONS__", &render_admin_mount_destinations_html())

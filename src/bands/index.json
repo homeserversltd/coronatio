@@ -8,6 +8,7 @@
     "router-readback",
     "full-rust-routes",
     "crown-law",
+    "indicators",
     "shell",
     "tests"
   ],
