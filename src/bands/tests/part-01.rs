@@ -23,16 +23,15 @@
     }
 
     #[test]
-    fn docs_inscribe_one_to_one_port_doctrine() {
+    fn public_docs_explain_the_rebuild_without_duplicating_constitutional_law() {
         let readme = std::fs::read_to_string("README.md").unwrap();
-        let north_star = std::fs::read_to_string("docs/coronatio-north-star-contract.md").unwrap();
-        let bands = std::fs::read_to_string("src/bands/README.md").unwrap();
-        for doc in [&readme, &north_star, &bands] {
-            assert!(doc.contains("one-to-one port"));
-            assert!(doc.contains("not a reinterpretation, redesign, summary, scaffold, or inspired-by rebuild"));
-            assert!(doc.contains("directly queries the original Flask/React source and live quarry"));
-            assert!(doc.contains("indistinguishable to the user under the same viewport, theme, session/admin state, configuration, and data state"));
+        let architecture = std::fs::read_to_string("docs/architecture.md").unwrap();
+        for doc in [&readme, &architecture] {
+            assert!(doc.contains("Flask") && doc.contains("React") && doc.contains("Rust"));
+            assert!(doc.contains("pali:coronatio-north-star-contract"));
+            assert!(!doc.contains("SHALL"));
         }
+        assert!(!std::path::Path::new("docs/coronatio-north-star-contract.md").exists());
     }
 
 
