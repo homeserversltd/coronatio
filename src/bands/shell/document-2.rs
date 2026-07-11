@@ -78,9 +78,9 @@ fn shell_document_2() -> &'static str {
                   </div>
                 </div>
                 <div class="key-manager-right"><div class="key-actions">
-                  <button type="button" class="action-button create-button" aria-disabled="true"><span>+ Create New Key</span></button>
-                  <button type="button" class="action-button update-button" aria-disabled="true"><span>⟳ Update Key on Drive</span></button>
-                  <button type="button" class="action-button admin-password-button" aria-disabled="true"><span>🔒 Admin Password</span></button>
+                  <button type="button" class="action-button create-button"><span>+ Create New Key</span></button>
+                  <button type="button" class="action-button update-button"><span>⟳ Update Key on Drive</span></button>
+                  <button type="button" class="action-button admin-password-button"><span>🔒 Admin Password</span></button>
                 </div></div>
               </div>
             </div>
@@ -93,18 +93,18 @@ fn shell_document_2() -> &'static str {
                 <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list" data-admin-mounts-readback="/api/services/data">__ADMIN_MOUNT_DESTINATIONS__</div></div>
               </div>
               <div class="disk-actions">
-                <button type="button" class="action-button format" aria-disabled="true">Format</button>
-                <button type="button" class="action-button encrypt" aria-disabled="true">Encrypt</button>
-                <button type="button" class="action-button assign-primary" aria-disabled="true">Assign as primary NAS</button>
-                <button type="button" class="action-button assign-backup" aria-disabled="true">Assign as NAS Backup</button>
-                <button type="button" class="action-button unassign-nas" aria-disabled="true">Unassign drive</button>
-                <button type="button" class="action-button import-nas" aria-disabled="true">Import to NAS</button>
-                <button type="button" class="action-button permissions" aria-disabled="true">Setup NAS</button>
-                <button type="button" class="action-button unlock" aria-disabled="true">Unlock</button>
-                <button type="button" class="action-button mount" aria-disabled="true">Mount</button>
-                <button type="button" class="action-button unmount" aria-disabled="true">Unmount</button>
-                <button type="button" class="action-button sync" aria-disabled="true">Sync Now</button>
-                <button type="button" class="action-button auto-sync" aria-disabled="true">Auto Sync</button>
+                <button type="button" class="action-button format">Format</button>
+                <button type="button" class="action-button encrypt">Encrypt</button>
+                <button type="button" class="action-button assign-primary">Assign as primary NAS</button>
+                <button type="button" class="action-button assign-backup">Assign as NAS Backup</button>
+                <button type="button" class="action-button unassign-nas">Unassign drive</button>
+                <button type="button" class="action-button import-nas">Import to NAS</button>
+                <button type="button" class="action-button permissions">Setup NAS</button>
+                <button type="button" class="action-button unlock">Unlock</button>
+                <button type="button" class="action-button mount">Mount</button>
+                <button type="button" class="action-button unmount">Unmount</button>
+                <button type="button" class="action-button sync">Sync Now</button>
+                <button type="button" class="action-button auto-sync">Auto Sync</button>
               </div>
             </div>
           </section>
@@ -122,16 +122,16 @@ fn shell_document_2() -> &'static str {
           </div>
           <div class="portal-modal-overlay" data-add-portal-modal hidden>
             <div class="portal-modal-content">
-              <div class="add-portal-modal" data-portal-modal-not-wired="true">
+              <div class="add-portal-modal">
                 <div class="modal-header"><h2>Add New Portal</h2><button type="button" class="close-button" data-portal-modal-close aria-label="Close modal"><i class="fas fa-times"></i></button></div>
-                <form class="portal-form" data-portal-add-form aria-disabled="true" data-portal-create-not-wired="true">
-                  <div class="form-group"><label for="portal-name">Portal Name *</label><input id="portal-name" type="text" placeholder="e.g., MyApp" aria-disabled="true" data-portal-create-not-wired="true"><small class="help-text">Create portal endpoint is not wired in this tranche.</small></div>
-                  <div class="form-group"><label for="portal-description">Description *</label><input id="portal-description" type="text" placeholder="e.g., My custom application" aria-disabled="true" data-portal-create-not-wired="true"></div>
-                  <div class="form-group"><label for="portal-type">Service Type</label><select id="portal-type" aria-disabled="true" data-portal-create-not-wired="true"><option value="systemd">Systemd Service</option><option value="script">Script-managed Service</option><option value="link">Link Only</option></select><small class="help-text">Systemd services can be controlled directly. Script-managed services require system restart. Link-only portals are simple links without service management.</small></div>
-                  <div class="form-group"><label for="portal-services">Services *</label><input id="portal-services" type="text" placeholder="e.g., myapp, myapp-worker (comma-separated)" aria-disabled="true" data-portal-create-not-wired="true"><small class="help-text">Enter service names separated by commas</small></div>
-                  <div class="form-group"><label for="portal-port">Port *</label><input id="portal-port" type="number" min="1" max="65535" placeholder="e.g., 8080" aria-disabled="true" data-portal-create-not-wired="true"></div>
-                  <div class="form-group"><label for="portal-local-url">Local URL *</label><input id="portal-local-url" type="url" placeholder="e.g., https://myapp.home.arpa" aria-disabled="true" data-portal-create-not-wired="true"></div>
-                  <div class="form-actions"><button type="button" class="cancel-button" data-portal-modal-close>Cancel</button><button type="submit" class="submit-button" aria-disabled="true" data-portal-create-not-wired="true"><i class="fas fa-plus"></i> Create Portal</button></div>
+                <form class="portal-form" data-portal-add-form>
+                  <div class="form-group"><label for="portal-name">Portal Name *</label><input id="portal-name" name="name" type="text" placeholder="e.g., MyApp" required></div>
+                  <div class="form-group"><label for="portal-description">Description *</label><input id="portal-description" name="description" type="text" placeholder="e.g., My custom application" required></div>
+                  <div class="form-group"><label for="portal-type">Service Type</label><select id="portal-type" name="type"><option value="systemd">Systemd Service</option><option value="script">Script-managed Service</option><option value="link">Link Only</option></select><small class="help-text">Systemd services can be controlled directly. Script-managed services require system restart. Link-only portals are simple links without service management.</small></div>
+                  <div class="form-group"><label for="portal-services">Services *</label><input id="portal-services" name="services" type="text" placeholder="e.g., myapp, myapp-worker (comma-separated)"><small class="help-text">Enter service names separated by commas</small></div>
+                  <div class="form-group"><label for="portal-port">Port *</label><input id="portal-port" name="port" type="number" min="1" max="65535" placeholder="e.g., 8080"></div>
+                  <div class="form-group"><label for="portal-local-url">Local URL *</label><input id="portal-local-url" name="localURL" type="url" placeholder="e.g., https://myapp.home.arpa" required></div>
+                  <div class="form-actions"><button type="button" class="cancel-button" data-portal-modal-close>Cancel</button><button type="submit" class="submit-button"><i class="fas fa-plus"></i> Create Portal</button></div>
                 </form>
               </div>
             </div>
