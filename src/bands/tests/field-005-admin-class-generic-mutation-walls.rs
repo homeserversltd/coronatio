@@ -209,7 +209,7 @@
         }
         for (_method, route) in field_005_named_exclusion_mutations() {
             let line = source.lines().find(|line| line.contains(&format!(".route(\"{route}\""))).unwrap_or_else(|| panic!("missing exclusion route registration for {route}"));
-            assert!(line.contains("homeserver_rust_mutation_route") || line.contains("upload_file_route"), "upload/files exclusion was touched: {line}");
+            assert!(line.contains("homeserver_rust_mutation_route") || line.contains("upload_file_route") || line.contains("upload_default_directory_update_route"), "upload/files exclusion was touched: {line}");
             assert!(!line.contains("admin_class_generic_mutation_route"), "upload/files exclusion was gated: {line}");
         }
     }

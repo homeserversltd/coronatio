@@ -91,7 +91,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/upload/force-permissions", post(admin_class_generic_mutation_route))
         .route("/api/upload/history", get(upload_history_admin_route))
         .route("/api/upload/history/clear", post(admin_class_generic_mutation_route))
-        .route("/api/upload/default-directory", get(upload_default_directory_route).post(homeserver_rust_mutation_route))
+        .route("/api/upload/default-directory", get(upload_default_directory_route).post(upload_default_directory_update_route))
         .route("/api/upload/blacklist/list", get(upload_blacklist_admin_route))
         .route("/api/upload/blacklist/update", put(admin_class_generic_mutation_route))
         .route("/api/upload/pin-required-status", get(upload_pin_required_route).post(admin_class_generic_mutation_route))
@@ -222,7 +222,7 @@ fn full_rust_route_table() -> Router<AppState> {
 async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
     let mut filename = "upload.bin".to_string();
     let mut destination = "/mnt/nas".to_string();
-    let mut bytes: usize = 0;
+    let mut payload = Vec::new();
     let mut content_type = "application/octet-stream".to_string();
 
     while let Ok(Some(field)) = multipart.next_field().await {
@@ -237,7 +237,7 @@ async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
             if let Some(raw_name) = field.file_name() { filename = raw_name.to_string(); }
             if let Some(raw_type) = field.content_type() { content_type = raw_type.to_string(); }
             match field.bytes().await {
-                Ok(data) => bytes = data.len(),
+                Ok(data) => payload = data.to_vec(),
                 Err(err) => {
                     return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
                         "schema": "coronatio.upload.error.v1",
@@ -250,7 +250,7 @@ async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
         }
     }
 
-    if bytes == 0 {
+    if payload.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
             "schema": "coronatio.upload.error.v1",
             "ok": false,
@@ -258,6 +258,25 @@ async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
             "firstMissingSignal": "upload-file-missing"
         }))).into_response();
     }
+
+    let root = upload_root_path();
+    let display_root = upload_display_root(&root);
+    let filename_path = std::path::Path::new(&filename);
+    if filename_path.file_name().and_then(|value| value.to_str()) != Some(filename.as_str())
+        || upload_resolve_path(&root, &display_root, &destination).is_none()
+        || upload_path_blacklisted(&destination)
+        || !upload_root_available(&root)
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "schema":"coronatio.upload.error.v1", "ok":false,
+                "firstMissingSignal":"upload-validation-failed"
+            })),
+        )
+            .into_response();
+    }
+    let byte_count = payload.len();
 
     let caduceus = caduceus_http_json(
         "POST",
@@ -268,20 +287,24 @@ async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
             "classification": "file-ingress",
             "metadata": {
                 "filename": filename,
-                "bytes": bytes,
+                "bytes": byte_count,
                 "contentType": content_type,
-                "destination": destination
+                "destination": destination,
+                "payload": payload
             }
         }),
     );
+    if caduceus.ok {
+        let _ = append_upload_log(&format!("Uploaded {} ({} bytes) to {}", filename, byte_count, destination));
+    }
     (
-        if caduceus.ok { StatusCode::ACCEPTED } else { StatusCode::SERVICE_UNAVAILABLE },
+        if caduceus.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE },
         Json(serde_json::json!({
             "schema": "coronatio.upload.submit.v1",
             "ok": caduceus.ok,
             "accepted": caduceus.ok,
             "filename": filename,
-            "bytes": bytes,
+            "bytes": byte_count,
             "destination": destination,
             "authority": "Coronatio Rust upload route to Caduceus",
             "caduceus": caduceus,
@@ -332,37 +355,6 @@ fn clear_upload_history_route() -> Response {
         Ok(_) => Json(serde_json::json!({"schema": "coronatio.upload.history.clear.v1", "ok": true, "success": true, "firstMissingSignal": "none"})).into_response(),
         Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"schema": "coronatio.upload.history.clear.v1", "ok": false, "success": false, "error": error.to_string(), "firstMissingSignal": "upload-log-truncate-failed"}))).into_response(),
     }
-}
-
-async fn upload_default_directory_route() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "schema": "coronatio.upload.default_directory.v1",
-        "ok": true,
-        "defaultPath": "/mnt/nas",
-        "firstMissingSignal": "none"
-    }))
-}
-
-async fn upload_blacklist_admin_route(headers: axum::http::HeaderMap) -> Response {
-    if session_from_headers(&headers) != Session::Admin { return upload_admin_read_refusal_response("/api/upload/blacklist/list"); }
-    upload_blacklist_route().await.into_response()
-}
-async fn upload_blacklist_route() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "schema": "coronatio.upload.blacklist.v1",
-        "ok": true,
-        "blacklist": [],
-        "firstMissingSignal": "none"
-    }))
-}
-
-async fn upload_pin_required_route() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "schema": "coronatio.upload.pin_required.v1",
-        "ok": true,
-        "isPinRequired": false,
-        "firstMissingSignal": "none"
-    }))
 }
 
 async fn internet_status_route(headers: axum::http::HeaderMap) -> Response {
@@ -445,9 +437,13 @@ async fn homeserver_rust_read_route(headers: axum::http::HeaderMap, method: Meth
 
 async fn homeserver_rust_mutation_route(method: Method, uri: Uri) -> impl IntoResponse { homeserver_mutation_response(method.as_str(), uri.path()) }
 
-async fn admin_class_generic_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> Response {
+async fn admin_class_generic_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri, body: Bytes) -> Response {
     if session_from_headers(&headers) != Session::Admin { return admin_class_generic_mutation_refusal_response(method.as_str(), uri.path()); }
     if uri.path() == "/api/upload/history/clear" { return clear_upload_history_route(); }
+    let payload = serde_json::from_slice(&body).unwrap_or_else(|_| serde_json::json!({}));
+    if uri.path() == "/api/upload/blacklist/update" { return upload_blacklist_update(payload); }
+    if uri.path() == "/api/upload/pin-required-status" { return upload_pin_required_update(payload); }
+    if uri.path() == "/api/upload/force-permissions" { return upload_force_permissions(payload); }
     homeserver_mutation_response(method.as_str(), uri.path())
 }
 
