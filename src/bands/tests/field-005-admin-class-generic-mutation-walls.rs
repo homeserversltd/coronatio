@@ -250,6 +250,7 @@
 
     #[tokio::test]
     async fn field_005_admin_crosses_gate_wall_generic_mutation_reaches_caduceus() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005-admin-crosses-gate")) });
         let token = authorize_test_admin_token();

@@ -4,6 +4,9 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
+    static CADUCEUS_ENV_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
+        std::sync::OnceLock::new();
+
     include!("tests/part-01.rs");
     include!("tests/part-02.rs");
     include!("tests/part-03.rs");

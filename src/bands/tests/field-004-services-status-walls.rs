@@ -144,6 +144,7 @@
 
     #[tokio::test]
     async fn field_004_admin_mutation_wall_service_control_crosses_caduceus_after_session_gate() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-004-service-control-admin")) });
         let token = authorize_test_admin_token();

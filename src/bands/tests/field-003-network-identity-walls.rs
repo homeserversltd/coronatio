@@ -111,6 +111,7 @@
 
     #[tokio::test]
     async fn field_003_admin_mutation_wall_reaches_caduceus_membrane_after_session_check() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-003-admin-mutation-membrane")) });
         let token = authorize_test_admin_token();

@@ -38,6 +38,7 @@
 
     #[tokio::test]
     async fn dhcp_guest_identity_routes_refuse_without_contacting_caduceus() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("dhcp-guest-refusal")) });
         for route in ["/api/dhcp/leases", "/api/dhcp/reservations", "/api/dhcp/config", "/api/dhcp/pool-boundary"] {
@@ -51,8 +52,9 @@
     }
 
     #[tokio::test]
-    async fn dhcp_admin_mutation_preserves_real_caduceus_execution_receipt() {
-        let readback = CaduceusHttpReadback {
+    async fn dhcp_admin_mutation_returns_real_caduceus_execution_receipt() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
+        use std::io
             ok: true,
             status: 202,
             path: "/api/v1/staff/intent".to_string(),
