@@ -5,6 +5,13 @@
             "/api/stats/elements",
             "/api/status",
             "/api/tabs/elements/:tab_id",
+            "/api/dhcp/status",
+            "/api/dhcp/leases",
+            "/api/dhcp/reservations",
+            "/api/dhcp/config",
+            "/api/dhcp/health",
+            "/api/dhcp/statistics",
+            "/api/dhcp/pool-boundary",
         ]
     }
 
@@ -68,13 +75,6 @@
             "/api/version",
             "/api/wakeonlan/targets",
             "/api/wakeonlan/status",
-            "/api/dhcp/status",
-            "/api/dhcp/leases",
-            "/api/dhcp/reservations",
-            "/api/dhcp/config",
-            "/api/dhcp/health",
-            "/api/dhcp/statistics",
-            "/api/dhcp/pool-boundary",
             "/api/nasLinker/browse",
             "/api/nasLinker/scan",
             "/api/nasLinker/status",
@@ -141,8 +141,8 @@
         let real = field_005b_real_body_exception_get_routes();
         let og = field_005b_og_admin_gated_get_routes();
         assert_eq!(all.len(), 112, "new GET route entered full-rust-routes.rs and must be FIELD-005b-classified");
-        assert_eq!(typed.len(), 5, "typed-projection bucket changed");
-        assert_eq!(generic.len(), 95, "generic-projected-this-slice bucket changed");
+        assert_eq!(typed.len(), 12, "typed-projection bucket changed");
+        assert_eq!(generic.len(), 88, "generic-projected-this-slice bucket changed");
         assert_eq!(real.len(), 10, "real-body-exception bucket changed");
         assert_eq!(og.len(), 2, "og-admin-gated GET bucket changed");
 

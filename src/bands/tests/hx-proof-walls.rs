@@ -48,6 +48,7 @@
             ("/api/stats", "Chart.js data bootstrap"),
             ("/api/service/control", "owned portal chrome service action"),
             ("/api/portals", "owned portal chrome data bootstrap"),
+            ("/api/portals/currentness", "owned portal chrome currentness readback"),
             ("/api/favorites", "PIN/session chrome favorite bootstrap"),
         ];
         let mut start = 0;

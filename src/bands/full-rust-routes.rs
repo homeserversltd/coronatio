@@ -111,14 +111,14 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/wakeonlan/wake", post(network_identity_mutation_route))
         .route("/api/wakeonlan/targets/:name", delete(network_identity_mutation_route))
         .route("/api/wakeonlan/status", get(homeserver_rust_read_route))
-        .route("/api/dhcp/status", get(homeserver_rust_read_route))
-        .route("/api/dhcp/leases", get(homeserver_rust_read_route))
-        .route("/api/dhcp/reservations", get(homeserver_rust_read_route).post(network_identity_mutation_route))
+        .route("/api/dhcp/status", get(dhcp_read_route))
+        .route("/api/dhcp/leases", get(dhcp_read_route))
+        .route("/api/dhcp/reservations", get(dhcp_read_route).post(network_identity_mutation_route))
         .route("/api/dhcp/reservations/:reservation_id", put(network_identity_mutation_route).delete(network_identity_mutation_route))
-        .route("/api/dhcp/config", get(homeserver_rust_read_route).post(network_identity_mutation_route))
-        .route("/api/dhcp/health", get(homeserver_rust_read_route))
-        .route("/api/dhcp/statistics", get(homeserver_rust_read_route))
-        .route("/api/dhcp/pool-boundary", get(homeserver_rust_read_route).post(network_identity_mutation_route))
+        .route("/api/dhcp/config", get(dhcp_read_route).post(network_identity_mutation_route))
+        .route("/api/dhcp/health", get(dhcp_read_route))
+        .route("/api/dhcp/statistics", get(dhcp_read_route))
+        .route("/api/dhcp/pool-boundary", get(dhcp_read_route).post(network_identity_mutation_route))
         .route("/api/nasLinker/browse", get(homeserver_rust_read_route))
         .route("/api/nasLinker/deploy", post(admin_class_generic_mutation_route))
         .route("/api/nasLinker/delete", delete(admin_class_generic_mutation_route))
@@ -469,6 +469,8 @@ fn admin_class_generic_refusal_family(path: &str) -> &'static str {
 }
 
 include!("full-rust-routes/read.rs");
+
+include!("full-rust-routes/dhcp.rs");
 
 include!("full-rust-routes/power.rs");
 
