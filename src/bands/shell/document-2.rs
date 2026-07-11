@@ -325,6 +325,17 @@ fn shell_document_2() -> &'static str {
       Object.entries(theme).forEach(([key, value]) => {
         lines.push('  --theme-' + key + ': ' + value + ';');
       });
+      const hexToRgb = value => {
+        const match = /^#([0-9a-f]{6})$/i.exec(String(value || '').trim());
+        if (!match) return null;
+        const number = Number.parseInt(match[1], 16);
+        return [(number >> 16) & 255, (number >> 8) & 255, number & 255].join(', ');
+      };
+      const primaryRgb = hexToRgb(theme.primary);
+      const backgroundRgb = hexToRgb(theme.background);
+      lines.push('  --theme-accent-soft: color-mix(in srgb, var(--theme-accent) 16%, transparent);');
+      if (primaryRgb) lines.push('  --theme-primary-rgb: ' + primaryRgb + ';');
+      if (backgroundRgb) lines.push('  --theme-background-rgb: ' + backgroundRgb + ';');
       return ':root {\n' + lines.join('\n') + '\n}';
     }
     function themeLabel(name) {

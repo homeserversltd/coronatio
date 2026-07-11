@@ -445,7 +445,6 @@
             "--theme-card-radius",
             "--theme-font-mono",
             "--primary: var(--theme-primary)",
-            "--theme-primary: #A0AEC0",
             "--secondary: var(--theme-secondary)",
             "--primaryHover: var(--theme-primaryHover)",
             "--status-up: var(--theme-statusUp)",
@@ -458,6 +457,35 @@
         }
     }
 
+
+    #[test]
+    fn theme_projection_hoists_derived_author_face_values_and_live_shell_paint() {
+        let projector = std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap();
+        let chrome = std::fs::read_to_string("src/bands/shell/ux/shell/base-and-chrome.css").unwrap();
+        let root = chrome.split("* { box-sizing").next().unwrap();
+
+        for marker in [
+            "hexToRgb(theme.primary)",
+            "hexToRgb(theme.background)",
+            "--theme-accent-soft: color-mix",
+            "--theme-primary-rgb: ",
+            "--theme-background-rgb: ",
+        ] {
+            assert!(projector.contains(marker), "derived theme projection missing: {marker}");
+        }
+        assert!(!root.contains('#'), "static :root must not bake catalog paint");
+        for forbidden in ["#FFC107", "#cdefff", "--primary-hover"] {
+            assert!(!chrome.contains(forbidden), "stale shell paint survived: {forbidden}");
+        }
+        for binding in [
+            ".star-button.fas { color: var(--theme-accent-warm)",
+            "background: var(--theme-surface-1); border: 1px solid var(--theme-outline-variant)",
+            "color: var(--theme-accent-cool)",
+            ".indicator:hover { background: var(--theme-highlight-subtle)",
+        ] {
+            assert!(chrome.contains(binding), "live shell binding missing: {binding}");
+        }
+    }
 
     #[test]
     fn public_theme_guide_maps_catalog_to_contributor_workflow() {
