@@ -10,7 +10,7 @@
   border-radius: 12px;
   padding: 1.25rem;
   cursor: pointer;
-  transition-property: transform, box-shadow;
+  transition-property: border-color, box-shadow;
   transition-duration: 0.2s;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
@@ -22,30 +22,9 @@
   border: 1px solid var(--border);
 }
 
-/* 3D depth effect using pseudo-element */
-.portal-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to bottom right,
-    rgba(255, 255, 255, 0.1) 0%,
-    rgba(0, 0, 0, 0.05) 100%
-  );
-  border-radius: inherit;
-  z-index: -1;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
 .portal-card:hover {
-  transform: translateY(-2px);
+  border-color: var(--primary);
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-  background: color-mix(in srgb, var(--primary) 5%, transparent);
-}
-
-.portal-card:hover::before {
-  transform: translateZ(4px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
 }
 
 .portal-card-header {
@@ -61,11 +40,6 @@
   height: 120px;
   object-fit: contain;
   border-radius: 8px;
-  transition: transform 0.2s ease;
-}
-
-.portal-card:hover .portal-icon {
-  transform: scale(1.05);
 }
 
 .portal-name {
@@ -645,39 +619,16 @@
 .add-portal-card {
   border: 2px dashed var(--border);
   background: var(--background-alt);
-  transition-property: transform, box-shadow;
+  transition-property: border-color, box-shadow;
   transition-duration: 0.2s;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
 }
 
-.add-portal-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    rgba(var(--primary-rgb), 0.05) 0%,
-    rgba(var(--primary-rgb), 0.1) 100%
-  );
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
 .add-portal-card:hover {
   border-color: var(--primary);
-  background: var(--background);
-  transform: translateY(-2px);
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-}
-
-.add-portal-card:hover::before {
-  opacity: 1;
-}
-
-.add-portal-card:active {
-  transform: translateY(0);
 }
 
 .add-portal-content {
@@ -701,12 +652,11 @@
   align-items: center;
   justify-content: center;
   font-size: 2rem;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease;
   box-shadow: 0 4px 8px rgba(var(--primary-rgb), 0.2);
 }
 
 .add-portal-card:hover .add-portal-icon {
-  transform: scale(1.1);
   box-shadow: 0 6px 12px rgba(var(--primary-rgb), 0.3);
 }
 

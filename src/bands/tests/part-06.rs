@@ -10,7 +10,7 @@
             r#"data-motion-phase="REST""#,
             r#"data-motion-reduce-preview"#,
             "Band A — Motion Atoms",
-            "Band B — Composed Motion",
+            "Band B — Passive Hover",
             "Band C — Yijing Lifecycle",
             "Band D — Accessibility",
         ] {
@@ -23,9 +23,12 @@
         assert!(services_css.contains("transition-property: border-color"));
         assert!(chrome.contains("document.querySelector('[data-portals-grid]')"));
         assert!(!chrome.contains("document.querySelector('[data-test-services-grid]')"));
-        for marker in ["data-animation-play", "data-motion-stillness", "data-motion-phase-readback"] {
+        for marker in ["data-animation-play", "data-hover-specimen", "data-motion-phase-readback"] {
             assert!(html.contains(marker));
         }
+        assert!(!html.contains("data-motion-stillness"));
+        assert!(!chrome.contains("data-motion-stillness"));
+        for forbidden in [".motion-button:hover { transform", ".motion-card:hover { transform", ".motion-card:hover { scale"] { assert!(!css.contains(forbidden)); }
     }
 
     #[test]
