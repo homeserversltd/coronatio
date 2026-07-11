@@ -290,7 +290,7 @@
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!("data-tab-star=\"{}\"", pane)));
         }
-        assert!(shell.contains("class=\"visibility-toggle\""));
+        assert!(shell.contains("class=\"visibility-toggle ui-visibility-toggle\""));
         assert!(shell.contains("class=\"star-button fas fa-star\""));
         assert!(shell.contains("class=\"star-button"));
         assert!(shell.contains("data-visibility=\"visible\""));
@@ -299,13 +299,39 @@
         assert!(shell.contains("firstVisibleTab()"));
         assert!(shell.contains("setStarredTab"));
         assert!(shell.contains("refreshTabBar"));
-        assert!(shell.contains("🙈"));
+        assert!(shell.contains("fa-eye-slash"));
         let nav_start = shell.find("<nav class=\"tab-bar\"").expect("tab bar starts");
         let nav_end = shell[nav_start..].find("</nav>").map(|offset| nav_start + offset).expect("tab bar ends");
         let nav = &shell[nav_start..nav_end];
         assert!(!shell.contains(".tab[data-visibility=\"hidden\"] .tab-name { text-decoration: line-through; }"));
         assert!(!nav.contains("🔒"), "hidden tab state is the eye only, not a lock glyph");
         assert!(!shell.contains("class=\"tab-button\""));
+    }
+
+    #[test]
+    fn test_visibility_system_is_the_live_fontawesome_catalog() {
+        let source = std::fs::read_to_string("src/bands/shell/test.rs").unwrap();
+        let shell = render_crown_shell();
+        for marker in [
+            "visibility-system",
+            "Visibility System",
+            "data-visibility-system-catalog",
+            "ui-visibility-toggle",
+            "fa-eye",
+            "fa-eye-slash",
+            "aria-pressed",
+            "Visible tab",
+            "Hidden tab",
+            "Admin-only tab",
+            "Element visible",
+            "Element dimmed hidden",
+        ] {
+            assert!(shell.contains(marker), "missing visibility catalog marker: {marker}");
+        }
+        assert!(!source.contains("👁"), "Test visibility catalog retained emoji eye substitute");
+        assert!(!source.contains("🙈"), "Test visibility catalog retained emoji hidden substitute");
+        assert!(shell.contains("catalogEye.dataset.visible = String(visible)"));
+        assert!(shell.contains("icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash'"));
     }
 
     #[test]
@@ -492,6 +518,7 @@
             ("badges", "Badges"),
             ("checkboxes", "Checkboxes"),
             ("utilities", "Utilities"),
+            ("visibility-system", "Visibility System"),
             ("calendar-time", "Calendar & Time"),
             ("row-info-tile", "Row Info Tile"),
             ("dropdowns", "Dropdowns"),
@@ -508,8 +535,8 @@
             assert!(shell.contains(&format!("id=\"showcase-{}\"", id)), "missing category section {id}");
             assert!(shell.contains(title), "missing category title {title}");
         }
-        assert_eq!(shell.matches("data-category-chip=").count(), 18);
-        assert_eq!(shell.matches("data-og-category-section=").count(), 18);
+        assert_eq!(shell.matches("data-category-chip=").count(), 19);
+        assert_eq!(shell.matches("data-og-category-section=").count(), 19);
         assert!(!shell.contains("data-test-panel=\"theme-values\""));
         assert!(!shell.contains("Mini Theme Token Lab"));
         assert!(!shell.contains("data-theme-token-lab=\"true\""));

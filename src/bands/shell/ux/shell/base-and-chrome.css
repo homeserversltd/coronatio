@@ -298,7 +298,7 @@
     .tab:hover { background-color: var(--background-alt-hover); color: var(--text); transform: translateY(1px); }
     .tab.active, .tab[aria-selected="true"] { background: var(--primary); color: var(--text); border-color: var(--primary); border-top: 2px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,.1); }
     [data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }
-    [data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; opacity: .7; }
+    [data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }
     .tab-visibility-column, .tab-star-column { display: grid; place-items: center; min-width: 24px; }
     .visibility-toggle, .star-button {
       display: grid;
@@ -314,6 +314,8 @@
     }
     .visibility-toggle:hover, .star-button:hover { background: rgba(255,255,255,.1); color: var(--text); }
     .visibility-toggle[data-visible="false"] { color: var(--warning); }
+    .visibility-system-catalog [data-visibility-specimen][data-visible="false"] { background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }
+    .visibility-specimen-tabs .ui-tab--hidden { background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }
     .star-button.fas { color: #FFC107; }
     .star-button.far { color: var(--text); opacity: .55; }
     .tab-name { white-space: nowrap; }

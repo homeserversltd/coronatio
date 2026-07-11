@@ -472,6 +472,7 @@
 
 .stat-element[data-visible="false"] {
   background-color: var(--hiddenTabBackground);
+  color: var(--hiddenTabText);
 }
 
 .stat-element[data-visible="false"] .stat-title {

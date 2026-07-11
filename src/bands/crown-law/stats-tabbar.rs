@@ -722,10 +722,10 @@ fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, act
     let title = names.get(id).cloned().unwrap_or_else(|| id.to_string());
     let visibility = match grant.state { RenderState::DimmedHidden => "hidden", _ => "visible" };
     let visible_bool = grant.state != RenderState::DimmedHidden;
-    let eye = if visible_bool { "👁" } else { "🙈" };
+    let eye = if visible_bool { "fa-eye" } else { "fa-eye-slash" };
     let verb = if visible_bool { "Hide" } else { "Show" };
     let visibility_button = if grant.eye {
-        format!(r##"<div class="tab-visibility-column"><button type="button" class="visibility-toggle" data-admin-only="true" data-tab-visibility-toggle="{id}" data-visible="{visible_bool}" aria-label="{verb} {title} tab" title="{verb} {title} tab"><span class="eye-icon" aria-hidden="true">{eye}</span></button></div>"##)
+        format!(r##"<div class="tab-visibility-column"><button type="button" class="visibility-toggle ui-visibility-toggle" data-admin-only="true" data-tab-visibility-toggle="{id}" data-visible="{visible_bool}" aria-pressed="{visible_bool}" aria-label="{verb} {title} tab" title="{verb} {title} tab"><i class="fas {eye}" aria-hidden="true"></i></button></div>"##)
     } else {
         r##"<div class="tab-visibility-column" aria-hidden="true"></div>"##.to_string()
     };

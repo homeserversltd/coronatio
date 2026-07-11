@@ -96,7 +96,7 @@
         ] {
             assert!(stats.contains(required), "stats markup missing og class stack {required}");
         }
-        for forbidden in ["ui-progress-bar__", "ui-table", "ui-checkbox__", "ui-visibility-toggle"] {
+        for forbidden in ["ui-progress-bar__", "ui-table", "ui-checkbox__"] {
             assert!(!stats.contains(forbidden), "stats body renamed og class into shared ui vocabulary: {forbidden}");
         }
         assert!(std::fs::read_to_string("src/bands/crown-law/stats-tabbar.rs").unwrap().contains("star-button"), "tabbar file read only; eye/star campaign deferred");
@@ -168,7 +168,7 @@
         assert!(script.contains("<div class=\"admin-controls\""));
         assert!(!script.contains("portal-admin-controls"));
         assert!(!script.contains("<article class=\"card portal-card"));
-        assert!(script.contains("class=\"visibility-toggle\""), "VIS state-machine markup remains present for later campaign");
+        assert!(script.contains("class=\"visibility-toggle ui-visibility-toggle\""), "VIS state-machine markup uses the catalog vocabulary");
         assert!(portals.contains("data-portal-create-not-wired=\"true\""));
         assert!(portals.contains("aria-disabled=\"true\""));
     }

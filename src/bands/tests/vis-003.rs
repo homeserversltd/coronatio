@@ -62,7 +62,7 @@
         let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(fragment.contains(r#"data-stat-element-id="process-usage" data-visible="false""#), "{fragment}");
         assert!(fragment.contains(r#"data-stat-visibility-toggle="process-usage" data-visible="false""#), "{fragment}");
-        assert!(fragment.contains("🙈"), "{fragment}");
+        assert!(fragment.contains("fa-eye-slash"), "{fragment}");
         let toggle_start = fragment.find(r#"data-stat-visibility-toggle="process-usage""#).unwrap();
         let toggle_end = fragment[toggle_start..].find('>').unwrap() + toggle_start;
         let toggle_tag = &fragment[toggle_start..toggle_end];
@@ -96,9 +96,9 @@
         let stats_admin = String::from_utf8(axum::body::to_bytes(stats_admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(stats_admin.contains(r#"data-stat-element-id="network-chart" data-visible="false""#), "{stats_admin}");
         assert!(stats_admin.contains(r#"data-stat-visibility-toggle="network-chart" data-visible="false""#), "{stats_admin}");
-        assert!(stats_admin.contains("🙈"), "{stats_admin}");
-        assert!(stats_admin.contains("👁"), "{stats_admin}");
-        assert!(!stats_admin.contains("fa-eye"), "{stats_admin}");
+        assert!(stats_admin.contains("fa-eye-slash"), "{stats_admin}");
+        assert!(stats_admin.contains("fa-eye"), "{stats_admin}");
+        assert!(!stats_admin.contains("👁"), "{stats_admin}");
         let toggle_start = stats_admin.find(r#"data-stat-visibility-toggle="network-chart""#).unwrap();
         let toggle_end = stats_admin[toggle_start..].find('>').unwrap() + toggle_start;
         let toggle_tag = &stats_admin[toggle_start..toggle_end];
@@ -113,7 +113,7 @@
         let portals_admin = String::from_utf8(axum::body::to_bytes(portals_admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(portals_admin.contains(r#"data-portal-name="Jellyfin""#), "{portals_admin}");
         assert!(portals_admin.contains(r#"data-portal-visibility-toggle="Jellyfin" data-visible="false""#), "{portals_admin}");
-        assert!(portals_admin.contains("🙈"), "{portals_admin}");
+        assert!(portals_admin.contains("fa-eye-slash"), "{portals_admin}");
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     }
 
@@ -182,7 +182,7 @@
         let shell_css = std::fs::read_to_string("src/bands/shell/ux/shell/base-and-chrome.css").unwrap();
         let stats_css = std::fs::read_to_string("src/bands/shell/ux/packs/stats.css").unwrap();
         let portals_css = std::fs::read_to_string("src/bands/shell/ux/packs/portals.css").unwrap();
-        let hidden_tab_dim = r#"[data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; opacity: .7; }"#;
+        let hidden_tab_dim = r#"[data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }"#;
         let hidden_stat_dim = r#"[data-admin-mode="true"] [data-stat-element-id][data-visible="false"]"#;
         let hidden_portal_dim = r#"[data-admin-mode="true"] [data-portal-element][data-visible="false"] { display: block; opacity: .7; }"#;
         assert!(shell_css.contains(hidden_tab_dim), "missing hidden tab dim selector: {hidden_tab_dim}");

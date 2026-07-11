@@ -496,7 +496,7 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         <div class="admin-controls-row"><button data-service-action="enable" title="Enable service at boot">Enable</button><button data-service-action="disable" title="Disable service at boot">Disable</button><button data-service-action="status" title="Check service status">Status</button></div>
       </div>`;
       const isVisible = portal.visible !== false;
-      const visibilityToggle = `<button type="button" class="visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle data-visible="${isVisible}" aria-label="${isVisible ? 'Hide' : 'Show'} ${escapeHtml(portal.name)}">${isVisible ? '👁' : '🙈'}</button>`;
+      const visibilityToggle = `<button type="button" class="visibility-toggle ui-visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle data-visible="${isVisible}" aria-pressed="${isVisible}" aria-label="${isVisible ? 'Hide' : 'Show'} ${escapeHtml(portal.name)}"><i class="fas ${isVisible ? 'fa-eye' : 'fa-eye-slash'}" aria-hidden="true"></i></button>`;
       const portalName = headerState.isAdmin ? '' : `<h2 class="portal-name">${escapeHtml(portal.name)}</h2>`;
       return `<div class="portal-element" data-portal-element data-visible="${isVisible}" style="position:relative">
         ${visibilityToggle}
@@ -684,6 +684,8 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       });
     }
     document.body.addEventListener('click', event => {
+      const catalogEye = event.target.closest('[data-ui-visibility-toggle]');
+      if (catalogEye) { event.preventDefault(); const visible = catalogEye.dataset.visible !== 'true'; catalogEye.dataset.visible = String(visible); catalogEye.setAttribute('aria-pressed', String(visible)); catalogEye.classList.toggle('ui-visibility-toggle--visible', visible); catalogEye.classList.toggle('ui-visibility-toggle--hidden', !visible); const icon = catalogEye.querySelector('i'); if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash'; const specimen = catalogEye.closest('[data-visibility-specimen]'); if (specimen) { specimen.dataset.visible = String(visible); const label = specimen.querySelector('[data-visibility-state-label]'); if (label) label.textContent = visible ? 'Visible' : 'Dimmed hidden'; } return; }
       const scopedTab = event.target.closest('[data-tab-id]');
       if (scopedTab) return switchScopedTabs(scopedTab);
       const portalEye = event.target.closest('[data-portal-visibility-toggle]');

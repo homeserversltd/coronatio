@@ -150,7 +150,7 @@ fn render_stat_element_from_grant(session: Session, facts: &IrisFacts, element_i
     let grant = default_element_grant_from_facts(facts, session, "stats", element_id);
     if grant.state == RenderState::Absent { return None; }
     let visible = grant.state == RenderState::Visible;
-    let eye = if visible { "👁" } else { "🙈" };
+    let eye = if visible { "fa-eye" } else { "fa-eye-slash" };
     let verb = if visible { "Hide" } else { "Show" };
     let mut html = template.to_string();
     html = replace_data_visible(&html, visible);
@@ -239,7 +239,7 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
     let destination_raw = construct_portal_destination(portal, host);
     if destination_raw.trim().is_empty() && portal_access_is_remote(host) { return None; }
     let visible = grant.state == RenderState::Visible;
-    let eye = if visible { "👁" } else { "🙈" };
+    let eye = if visible { "fa-eye" } else { "fa-eye-slash" };
     let verb = if visible { "Hide" } else { "Show" };
     let name = html_escape(element_id);
     let description = html_escape(&portal.description);
@@ -250,7 +250,7 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
         format!(r#"<div class="admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="{}"><div class="admin-controls-row"><button data-service-action="start" title="Start service">Start</button><button data-service-action="stop" title="Stop service">Stop</button><button data-service-action="restart" title="Restart service">Restart</button></div><div class="admin-controls-row"><button data-service-action="enable" title="Enable service at boot">Enable</button><button data-service-action="disable" title="Disable service at boot">Disable</button><button data-service-action="status" title="Check service status">Status</button></div></div>"#, services)
     } else { String::new() };
     let toggle = if session == Session::Admin {
-        format!(r#"<button type="button" class="visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle="{}" data-visible="{}" aria-label="{} {}">{}</button>"#, name, visible, verb, name, eye)
+        format!(r#"<button type="button" class="visibility-toggle ui-visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle="{}" data-visible="{}" aria-pressed="{}" aria-label="{} {}"><i class="fas {}" aria-hidden="true"></i></button>"#, name, visible, visible, verb, name, eye)
     } else { String::new() };
     let portal_name = if session == Session::Admin {
         String::new()
@@ -304,7 +304,8 @@ fn replace_visibility_toggle(html: &str, attr: &str, element_id: &str, visible: 
         let new = format!(r#"{}="{}" data-visible="{}""#, attr, element_id, visible);
         next = next.replace(&old, &new);
     }
-    next = next.replace(">👁</button>", &format!(">{}</button>", eye));
+    next = next.replace("class=\"visibility-toggle\"", "class=\"visibility-toggle ui-visibility-toggle\"");
+    next = next.replace(">👁</button>", &format!(" aria-pressed=\"{}\"><i class=\"fas {}\" aria-hidden=\"true\"></i></button>", visible, eye));
     next = next.replace("Hide ", &format!("{} ", verb));
     next
 }
