@@ -79,11 +79,13 @@
             let method_call = match method { "POST" => "post", "PUT" => "put", "DELETE" => "delete", _ => unreachable!() };
             let registration = if route.contains("fixture-target") {
                 ".route(\"/api/wakeonlan/targets/:name\", delete(network_identity_mutation_route))".to_string()
-            } else if route.contains("fixture-reservation") && method == "PUT" {
-                ".route(\"/api/dhcp/reservations/:reservation_id\", put(network_identity_mutation_route).delete(network_identity_mutation_route))".to_string()
             } else if route.contains("fixture-reservation") {
-                ".route(\"/api/dhcp/reservations/:reservation_id\", put(network_identity_mutation_route).delete(network_identity_mutation_route))".to_string()
-            } else if matches!(route, "/api/dhcp/reservations" | "/api/dhcp/config" | "/api/dhcp/pool-boundary") {
+                ".route(\"/api/dhcp/reservations/:reservation_id\", put(dhcp_reservation_update_route).delete(dhcp_reservation_delete_route))".to_string()
+            } else if route == "/api/dhcp/reservations" {
+                ".route(\"/api/dhcp/reservations\", get(dhcp_read_route).post(dhcp_reservation_create_route))".to_string()
+            } else if route == "/api/dhcp/pool-boundary" {
+                ".route(\"/api/dhcp/pool-boundary\", get(dhcp_read_route).post(dhcp_pool_boundary_route))".to_string()
+            } else if route == "/api/dhcp/config" {
                 format!(".route(\"{route}\", get(dhcp_read_route).{method_call}(network_identity_mutation_route))")
             } else if matches!(route, "/api/status/tailscale/config" | "/api/network/notes" | "/api/wakeonlan/targets") {
                 format!(".route(\"{route}\", get(homeserver_rust_read_route).{method_call}(network_identity_mutation_route))")

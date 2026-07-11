@@ -49,3 +49,26 @@
         }
         std::env::remove_var("CADUCEUS_URL");
     }
+
+    #[tokio::test]
+    async fn dhcp_admin_mutation_preserves_real_caduceus_execution_receipt() {
+        let readback = CaduceusHttpReadback {
+            ok: true,
+            status: 202,
+            path: "/api/v1/staff/intent".to_string(),
+            body: serde_json::json!({
+                "schema": "caduceus.network.dhcp.intent.v1",
+                "ok": true,
+                "mutationPerformed": true,
+                "execution": "caduceus_staff.network.dhcp",
+                "receipt": {"serviceRestarted": true}
+            }),
+            first_missing_signal: "none".to_string(),
+        };
+        let response = dhcp_mutation_result_response("POST", "/api/dhcp/reservations", readback);
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(body["mutationPerformed"], true);
+        assert_eq!(body["execution"], "caduceus_staff.network.dhcp");
+        assert_eq!(body["receipt"]["serviceRestarted"], true);
+    }
