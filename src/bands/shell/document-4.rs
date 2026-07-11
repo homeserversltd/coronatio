@@ -603,8 +603,13 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         const data = await fetch('/api/portals/currentness', { cache: 'no-store' }).then(response => response.ok ? response.json() : null);
         if (!data?.portals) return;
         grid.querySelectorAll('[data-portal-card]').forEach(card => {
-          card.classList.remove('up', 'down', 'partial', 'unknown');
-          card.classList.add(data.portals[card.dataset.portalName] || 'unknown');
+          const next = data.portals[card.dataset.portalName] || 'unknown';
+          const statuses = ['up', 'down', 'partial', 'unknown'];
+          const current = statuses.find(status => card.classList.contains(status)) || 'unknown';
+          if (current !== next) {
+            card.classList.remove(...statuses);
+            card.classList.add(next);
+          }
         });
       } catch (_) {}
     }

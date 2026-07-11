@@ -523,9 +523,10 @@
         assert_eq!(portals_css.matches(".portal-card:hover {").count(), 1);
         let card_rule = &portals_css[portals_css.find(".portal-card {").unwrap()..portals_css.find(".portal-card::before").unwrap()];
         assert!(!card_rule.contains("transition: all"));
-        for property in ["transform", "box-shadow", "background-color"] {
+        for property in ["transform", "box-shadow"] {
             assert!(card_rule.contains(property), "portal card transition omits {property}");
         }
+        assert!(!card_rule.contains("background-color"));
     }
 
     #[tokio::test]
