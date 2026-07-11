@@ -32,6 +32,7 @@ const SHELL_UX_CHILDREN: &[&str] = &[
     "packs/stats.css",
     "packs/portals.css",
     "packs/admin.css",
+    "packs/dhcp.css",
     "shell/document-2-css.css",
 ];
 const SHELL_UX_CONTENTS: &[&str] = &[
@@ -62,6 +63,7 @@ const SHELL_UX_CONTENTS: &[&str] = &[
     include_str!("ux/packs/stats.css"),
     include_str!("ux/packs/portals.css"),
     include_str!("ux/packs/admin.css"),
+    include_str!("ux/packs/dhcp.css"),
     include_str!("ux/shell/document-2-css.css"),
 ];
 
@@ -70,7 +72,9 @@ fn shell_ux_css() -> String {
 }
 
 fn crown_chrome_js() -> String {
-    let raw = [shell_document_2(), shell_document_3(), shell_document_4()].concat();
+    let raw = [shell_document_2(), shell_document_3(), shell_document_4()]
+        .concat()
+        .replace("__DHCP_CLIENT__", shell_dhcp_client());
     extract_between(&raw, "<script>", "</script>").unwrap_or_default()
 }
 
@@ -119,6 +123,7 @@ fn render_crown_shell_for_session(session: Session) -> String {
         .replace("__ADMIN_AVAILABLE_DEVICES__", &render_admin_available_devices_html())
         .replace("__ADMIN_MOUNT_DESTINATIONS__", &render_admin_mount_destinations_html())
         .replace("__UPLOAD_TREE_FRAGMENT__", &render_upload_tree_fragment(None, None))
-        .replace("__STATS_ELEMENTS_FRAGMENT__", &render_stats_elements_fragment(session));
+        .replace("__STATS_ELEMENTS_FRAGMENT__", &render_stats_elements_fragment(session))
+        .replace("__DHCP_CLIENT__", shell_dhcp_client());
     remove_inline_chrome_script(shell)
 }

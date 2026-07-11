@@ -1,0 +1,62 @@
+#[test]
+fn dhcp_pane_replaces_stub_with_native_tablet_controls() {
+    let pane = include_str!("../shell/document-2.rs");
+    let start = pane.find("id=\"pane-dhcp\"").expect("DHCP pane exists");
+    let dhcp = &pane[start..];
+    assert!(dhcp.contains("class=\"dhcp-tablet\""));
+    assert!(!dhcp.contains("data-og-stub-pane=\"dhcp\""));
+    for required in [
+        "data-dhcp-info-banner",
+        "data-dhcp-items",
+        "data-dhcp-add-form",
+        "data-dhcp-boundary",
+        "data-dhcp-anonymize",
+    ] {
+        assert!(dhcp.contains(required), "DHCP pane missing {required}");
+    }
+}
+
+#[test]
+fn dhcp_pack_is_absorbed_and_served_by_the_shell() {
+    let pack = include_str!("../shell/ux/packs/dhcp.css");
+    for selector in [
+        ".dhcp-tablet",
+        ".dhcp-info-banner",
+        ".dhcp-list-item",
+        ".reservation-slider",
+        ".anonymize-toggle-input",
+    ] {
+        assert!(pack.contains(selector), "DHCP pack missing {selector}");
+    }
+    let render = include_str!("../shell/render.rs");
+    assert!(render.contains("packs/dhcp.css"));
+}
+
+#[test]
+fn dhcp_client_is_composed_into_served_crown_chrome() {
+    let shell = render_crown_shell_for_session(Session::Admin);
+    let chrome = crown_chrome_js();
+    assert!(shell.contains("data-dhcp-tablet"));
+    assert!(!shell.contains("__DHCP_CLIENT__"));
+    assert!(chrome.contains("hydrateDhcp"));
+    assert!(chrome.contains("/api/dhcp/reservations"));
+    assert!(!chrome.contains("__DHCP_CLIENT__"));
+}
+
+#[test]
+fn dhcp_client_refreshes_typed_routes_and_owns_all_controls() {
+    let client = [include_str!("../shell/dhcp-client.rs"), include_str!("../shell/document-4.rs")].join("\n");
+    for required in [
+        "hydrateDhcp()",
+        "'/api/dhcp/leases'",
+        "'/api/dhcp/reservations'",
+        "'/api/dhcp/statistics'",
+        "'/api/dhcp/pool-boundary'",
+        "data-dhcp-pin",
+        "data-dhcp-edit",
+        "data-dhcp-remove",
+        "setInterval(hydrateDhcp, 5000)",
+    ] {
+        assert!(client.contains(required), "DHCP client missing {required}");
+    }
+}
