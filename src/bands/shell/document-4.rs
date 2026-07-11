@@ -518,10 +518,22 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     }
     function openPortalModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
     function closePortalModals() { document.querySelectorAll('[data-add-portal-modal], [data-service-status-modal]').forEach(modal => { modal.hidden = true; }); }
+    function showCoronatioToast(message, variant = 'info') {
+      const stack = document.querySelector('[data-coronatio-toast-stack]');
+      if (!stack || !message) return;
+      const toast = document.createElement('div');
+      Object.assign(toast, { className: `coronatio-toast coronatio-toast--${variant}`, textContent: message });
+      toast.setAttribute('role', variant === 'error' ? 'alert' : 'status'); toast.addEventListener('click', () => toast.remove());
+      stack.appendChild(toast); window.setTimeout(() => toast.remove(), 3000);
+    }
     function showPortalServiceStatus(results) {
-      const modal = document.querySelector('[data-service-status-modal]');
-      const content = modal?.querySelector('[data-service-status-content]');
-      if (content) content.textContent = results.map(result => `=== ${result.service || 'service'} ===\n${result.output || result.message || result.error || ''}`).join('\n\n');
+      const modal = document.querySelector('[data-service-status-modal]'); const content = modal?.querySelector('[data-service-status-content]');
+      if (content) content.textContent = results.map(result => {
+        const header = `=== ${result.service || 'service'} ===`; const status = result.output || result.message || result.error || result.raw || 'No status available';
+        if (result.error) return `${header}\n⚠️ Error State:\n${status}`;
+        const isActive = result.active !== undefined ? result.active : result.success;
+        return `${header}\n${!isActive ? '⚠️ Service Inactive/Failed:\n' : ''}${status}`;
+      }).join('\n\n');
       if (modal) modal.hidden = false;
     }
     async function handlePortalServiceAction(event) {
@@ -533,7 +545,8 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       let services = [];
       try { services = JSON.parse(decodeURIComponent(controls?.dataset.portalServices || '%5B%5D')); } catch (_) { services = []; }
       if (!services.length) {
-        showPortalServiceStatus([{ action, error: 'No services specified for this portal.' }]);
+        if (action === 'status') showPortalServiceStatus([{ service: 'service', error: 'No services specified for this portal.' }]);
+        else showCoronatioToast('No services specified', 'error');
         return;
       }
       const results = [];
@@ -546,9 +559,16 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
             body: JSON.stringify({ service, action })
           });
           const text = await response.text();
-          try { const result = JSON.parse(text); results.push({ service, ...result }); } catch (_) { results.push({ service, action, raw: text }); }
+          let result;
+          try { result = JSON.parse(text); } catch (_) { result = { success: response.ok, output: text }; }
+          results.push({ service, ...result });
+          if (action !== 'status') {
+            if (response.ok && result.success !== false) showCoronatioToast(result.message || `Successfully ${action}ed ${service}`, 'success');
+            else showCoronatioToast(result.error || result.message || `Failed to ${action} ${service}`, 'error');
+          }
         } catch (error) {
           results.push({ service, action, error: String(error) });
+          if (action !== 'status') showCoronatioToast(`Failed to ${action} ${service}`, 'error');
         }
       }
       if (action === 'status') showPortalServiceStatus(results);
@@ -588,20 +608,29 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       applyAdminDomState();
     }
     async function toggleElementVisibility(tabId, elementId, visible) {
-      const token = localStorage.getItem('coronatioAdminToken');
-      const response = await fetch('/api/tabs/elements', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
-        body: JSON.stringify({ tabId, elementId, visibility: visible })
-      });
-      const html = await response.text();
-      if (!response.ok) return;
-      const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
-      if (!target) return;
-      target.innerHTML = html;
-      if (tabId === 'portals') { bindPortalFragmentControls(target); refreshPortalCurrentness(); }
-      if (tabId === 'stats') hydrateStats();
-      applyAdminDomState();
+      try {
+        const token = localStorage.getItem('coronatioAdminToken');
+        const response = await fetch('/api/tabs/elements', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
+          body: JSON.stringify({ tabId, elementId, visibility: visible })
+        });
+        const html = await response.text();
+        if (!response.ok) {
+          let message = `Failed to toggle visibility for ${elementId}`;
+          try { const error = JSON.parse(html); message = error.message || error.error || message; } catch (_) {}
+          showCoronatioToast(message, 'error');
+          return;
+        }
+        const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
+        if (!target) return;
+        target.innerHTML = html;
+        if (tabId === 'portals') { bindPortalFragmentControls(target); refreshPortalCurrentness(); }
+        if (tabId === 'stats') hydrateStats();
+        applyAdminDomState();
+      } catch (_) {
+        showCoronatioToast(`Failed to toggle visibility for ${elementId}`, 'error');
+      }
     }
     async function hydratePortals() {
       const grid = document.querySelector('[data-portals-grid]');

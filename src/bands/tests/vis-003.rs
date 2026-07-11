@@ -106,6 +106,54 @@
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn portals_visibility_put_returns_toggled_fragment() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap();
+        let _pulse_guard = pulse_test_lock().lock().await;
+        let temp = test_tab_root("portals-visibility-write");
+        let config = temp.join("homeserver.json");
+        vis_003_fixture_config(&config);
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
+        let token = authorize_test_admin_token();
+        let response = app(AppState {
+            tab_root: Arc::new(test_tab_root("portals-visibility-app")),
+        })
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/tabs/elements")
+                .header("X-Admin-Token", token)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"tabId":"portals","elementId":"Home","visibility":false}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let fragment = String::from_utf8(
+            axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(fragment.contains(r#"data-portal-name="Home""#), "{fragment}");
+        assert!(
+            fragment.contains(r#"data-portal-element data-visible="false""#),
+            "{fragment}"
+        );
+        assert!(
+            fragment.contains(r#"data-portal-visibility-toggle="Home" data-visible="false""#),
+            "{fragment}"
+        );
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+    }
+
     #[test]
     fn vis_003_e1_dimmed_hidden_css_and_e2_canonical_stat_key_wall() {
         let shell_css = std::fs::read_to_string("src/bands/shell/ux/shell/base-and-chrome.css").unwrap();

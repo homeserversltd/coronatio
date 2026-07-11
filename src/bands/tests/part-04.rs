@@ -512,8 +512,19 @@
         assert!(shell.contains("function handlePortalServiceAction(event)"));
         assert!(shell.contains("fetch('/api/service/control'"));
         assert!(shell.contains("'X-Admin-Token': token"));
-        assert!(shell.contains("`=== ${result.service || 'service'} ===\\n"));
+        assert!(shell.contains("const header = `=== ${result.service || 'service'} ===`"));
+        assert!(shell.contains("function showCoronatioToast(message, variant = 'info')"));
+        assert!(shell.contains("showCoronatioToast(result.message || `Successfully ${action}ed ${service}`, 'success')"));
+        assert!(shell.contains("⚠️ Service Inactive/Failed:\\n"));
+        assert!(!shell.contains("JSON.stringify(results)"));
         assert!(shell.contains("data-admin-only data-admin-viewport=\"portals\""));
+        let portals_css = std::fs::read_to_string("src/bands/shell/ux/packs/portals.css").unwrap();
+        assert_eq!(portals_css.matches(".portal-card:hover {").count(), 1);
+        let card_rule = &portals_css[portals_css.find(".portal-card {").unwrap()..portals_css.find(".portal-card::before").unwrap()];
+        assert!(!card_rule.contains("transition: all"));
+        for property in ["transform", "box-shadow", "background-color"] {
+            assert!(card_rule.contains(property), "portal card transition omits {property}");
+        }
     }
 
     #[tokio::test]
