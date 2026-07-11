@@ -785,15 +785,11 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         apply();
       });
     }
-    hydrateFavoriteManifest();
-    hydrateThemeTruth();
-    hydrateThemeTokenLab();
-    hydrateUptime();
-    hydrateStats();
-    hydratePortals();
-    setInterval(tickUptime, 1000);
-    setInterval(hydrateStats, 5000);
-    setInterval(refreshPortalCurrentness, 5000);
+    __DHCP_CLIENT__
+    hydrateFavoriteManifest(); hydrateThemeTruth(); hydrateThemeTokenLab();
+    hydrateUptime(); hydrateStats(); hydratePortals(); hydrateDhcp();
+    setInterval(tickUptime, 1000); setInterval(hydrateStats, 5000);
+    setInterval(refreshPortalCurrentness, 5000); setInterval(hydrateDhcp, 5000);
   </script>
 </body>
 </html>"####
