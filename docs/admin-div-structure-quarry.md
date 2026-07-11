@@ -16,6 +16,12 @@ Crown surface:
 - `src/bands/shell/document-2.rs`
 - `src/bands/crown-law/stats-tabbar.rs`
 
+## Governing law
+
+`pali:workflow-coronatio-admin-tab-parity-emerald-tablet` is the constitutional
+authority for the native Admin pane. This quarry remains the literal structural
+evidence beneath that tablet and does not supersede its parity walls.
+
 ## Side-by-side tree
 
 | Original Flask/React | Crown before | Crown after |
