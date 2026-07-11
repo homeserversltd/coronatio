@@ -409,19 +409,27 @@ fn render_admin_available_devices_html() -> String {
 
 fn render_admin_mount_destinations_html() -> String {
     let runtime = admin_runtime_readback();
-    let mounted: Vec<_> = runtime.mount_destinations.into_iter().filter(|dest| dest.in_use).collect();
-    if mounted.is_empty() {
-        return "<div class=\"disk-item empty\"><span class=\"lock-icon\">🔒</span><span class=\"disk-icon\">▦</span><div class=\"disk-info\"><div class=\"disk-name\">NAS destinations idle</div><div class=\"disk-details\">/mnt/nas and /mnt/nas_backup are not mounted on this body.</div></div></div>".to_string();
-    }
-    mounted.into_iter().map(|dest| {
+    [
+        ("NAS", "/mnt/nas"),
+        ("NAS Backup", "/mnt/nas_backup"),
+    ]
+    .into_iter()
+    .map(|(role, path)| {
+        let mounted = runtime.mount_destinations.iter().find(|dest| dest.path == path && dest.in_use);
+        let state_class = if mounted.is_some() { " mounted locked" } else { "" };
+        let mount = mounted.map(|dest| {
+            format!(
+                "<div class=\"disk-mount-info\">Device: <span class=\"device-label\">{}</span><div class=\"disk-space-usage\"><strong>Space:</strong> {}</div></div>",
+                html_escape(dest.device.as_deref().unwrap_or("unknown")),
+                format_space(dest.used_bytes, dest.total_bytes, dest.free_bytes, dest.usage_percent),
+            )
+        }).unwrap_or_default();
         format!(
-            "<div class=\"disk-item selected mounted locked-pair\"><span class=\"lock-icon\">🔒</span><span class=\"disk-icon\">▦</span><div class=\"disk-info\"><div class=\"disk-name\">{}</div><div class=\"disk-details\">{}</div><div class=\"disk-mount-info\">Device: <span class=\"device-label\">{}</span><div class=\"disk-space-usage\"><strong>Space:</strong> {}</div></div><span class=\"nas-badge\">In Use</span></div></div>",
-            html_escape(&dest.role),
-            html_escape(&dest.path),
-            html_escape(&dest.device.unwrap_or_else(|| "unknown".to_string())),
-            format_space(dest.used_bytes, dest.total_bytes, dest.free_bytes, dest.usage_percent),
+            "<div class=\"disk-item{state_class}\"><span class=\"disk-icon\">▦</span><div class=\"disk-info\"><div class=\"disk-name\">{role}</div><div class=\"disk-details\">{path}</div>{mount}</div></div>"
         )
-    }).collect::<Vec<_>>().join("")
+    })
+    .collect::<Vec<_>>()
+    .join("")
 }
 
 

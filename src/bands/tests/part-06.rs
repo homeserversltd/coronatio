@@ -218,7 +218,7 @@
     }
 
     #[test]
-    fn uxport_005_admin_markup_restores_first_three_og_structures_and_defers_modals_vis() {
+    fn uxport_005_admin_markup_restores_og_structures_without_static_modal_shelf() {
         let html = render_crown_shell();
         let admin_start = html.find("class=\"admin-tablet\"").unwrap();
         let admin_end = html.find("id=\"pane-stats\"").unwrap();
@@ -253,11 +253,9 @@
         ] {
             assert!(admin.contains(required), "admin markup missing og class stack {required}");
         }
-        let before_modals = &admin[..admin.find("class=\"admin-modal-shelf\"").unwrap()];
-        assert!(!before_modals.contains("class=\"system-controls-btn admin-quarry-button\""));
-        assert!(!before_modals.contains("class=\"action-button create-button admin-quarry-button\""));
-        assert!(!before_modals.contains("class=\"action-button update-button admin-quarry-button\""));
-        assert!(!before_modals.contains("class=\"action-button admin-password-button admin-quarry-button\""));
-        assert!(admin.contains("class=\"admin-modal-shelf\""), "modal shelf remains as continuation boundary");
-        assert!(std::fs::read_to_string("docs/great-porting-map.md").unwrap().contains("modal rows remain continuation"));
+        assert!(admin.contains("class=\"disk-actions\""));
+        assert!(admin.contains("class=\"action-button info-button\""));
+        assert!(!admin.contains("admin-modal-shelf"));
+        assert!(!admin.contains("data-admin-quarry"));
+        assert!(!admin.contains("data-stub-action"));
     }
