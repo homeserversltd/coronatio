@@ -289,8 +289,9 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
     function destroyStatsChart(key) {
       if (statsCharts[key]) { statsCharts[key].destroy(); statsCharts[key] = null; }
     }
-    function chartTicks(color, callback) { return { color, maxTicksLimit: 10, autoSkip: true, callback }; }
-    function chartGrid() { return { color: 'var(--border)', borderDash: [3, 3] }; }
+    function themeCssColor(token, fallback) { const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim(); return value || fallback; }
+    function chartTicks(tokenOrColor, callback) { const color = tokenOrColor.startsWith('--') ? themeCssColor(tokenOrColor, '#4A5568') : tokenOrColor; return { color, maxTicksLimit: 10, autoSkip: true, callback }; }
+    function chartGrid() { return { color: themeCssColor('--border', '#1E293B'), borderDash: [3, 3] }; }
     function chartTooltip(labelFormatter) {
       return { enabled: true, mode: 'index', intersect: false, callbacks: { label: labelFormatter } };
     }
@@ -317,9 +318,9 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         options: Object.assign(chartCommonOptions(), {
           plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + Number(context.parsed.y || 0).toFixed(1) + (context.dataset.yAxisID === 'y-temp' ? '°C' : '%')), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
           scales: {
-            x: { ticks: chartTicks('var(--hiddenTabText)', value => labels[value] || value), grid: { display: false } },
-            'y-cpu': { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, ticks: chartTicks('var(--hiddenTabText)', value => Number(value).toFixed(0) + '%'), grid: chartGrid() },
-            'y-temp': { type: 'linear', display: true, position: 'right', beginAtZero: true, max: 100, ticks: chartTicks('var(--hiddenTabText)', value => Number(value).toFixed(0) + '°C'), grid: { display: false } }
+            x: { ticks: chartTicks('--hiddenTabText', value => labels[value] || value), grid: { display: false } },
+            'y-cpu': { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, ticks: chartTicks('--hiddenTabText', value => Number(value).toFixed(0) + '%'), grid: chartGrid() },
+            'y-temp': { type: 'linear', display: true, position: 'right', beginAtZero: true, max: 100, ticks: chartTicks('--hiddenTabText', value => Number(value).toFixed(0) + '°C'), grid: { display: false } }
           }
         })
       });
@@ -327,7 +328,7 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
     function createNetworkChart(ctx, labels, downloadData, uploadData) {
       destroyStatsChart('network');
       const networkMax = Math.max(1, ...downloadData, ...uploadData) * 1.1;
-      const networkTicks = { color: 'var(--hiddenTabText)', maxTicksLimit: 10, autoSkip: true, callback: value => fmtBytes(value) + '/s' };
+      const networkTicks = { color: themeCssColor('--hiddenTabText', '#4A5568'), maxTicksLimit: 10, autoSkip: true, callback: value => fmtBytes(value) + '/s' };
       statsCharts.network = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets: [
@@ -337,7 +338,7 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         options: Object.assign(chartCommonOptions(), {
           plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + fmtBytes(context.parsed.y) + '/s'), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
           scales: {
-            x: { ticks: chartTicks('var(--hiddenTabText)', value => labels[value] || value), grid: { display: false } },
+            x: { ticks: chartTicks('--hiddenTabText', value => labels[value] || value), grid: { display: false } },
             y: { beginAtZero: true, suggestedMin: 0, max: networkMax, ticks: networkTicks, grid: chartGrid() },
             'y-right': { beginAtZero: true, suggestedMin: 0, max: networkMax, position: 'right', ticks: networkTicks, grid: { display: false } }
           }
