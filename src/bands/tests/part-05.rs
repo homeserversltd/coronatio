@@ -92,9 +92,11 @@
     #[tokio::test]
     async fn upload_viewport_posts_to_caduceus_route() {
         let temp = test_tab_root("upload-viewport");
+        std::env::set_var("CORONATIO_UPLOAD_ROOT", &temp);
         let response = app(AppState { tab_root: Arc::new(temp) })
             .oneshot(Request::builder().method("POST").uri("/api/files/upload").header("content-type", "multipart/form-data; boundary=X").body(Body::from("--X\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\n/mnt/nas\r\n--X\r\nContent-Disposition: form-data; name=\"file\"; filename=\"proof.txt\"\r\nContent-Type: text/plain\r\n\r\nhello\r\n--X--\r\n")).unwrap())
             .await.unwrap();
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
         assert_ne!(response.status(), StatusCode::NOT_FOUND);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
@@ -265,7 +267,6 @@
     }
 
 
-
     #[test]
     fn uxport_001_upload_source_and_library_walls_carry_og_citations() {
         let map = std::fs::read_to_string("docs/great-porting-map.md").unwrap();
@@ -382,7 +383,6 @@
         assert!(!directory_rule.contains("min-height"), "directory rows must not invent non-quarry row height: {directory_rule}");
     }
 
-
     #[tokio::test]
     async fn hx_001_seats_vendored_htmx_csp_and_external_chrome() {
         let temp = test_tab_root("hx-001-htmx");
@@ -409,7 +409,6 @@
         assert!(chrome_body.contains("htmx:afterSwap"));
         assert!(chrome_body.contains("if (id === 'stats') hydrateStats();"));
     }
-
 
     #[tokio::test]
     async fn test_tab_uses_generic_tab_scope_and_delegated_chrome() {
@@ -475,7 +474,6 @@
         let retired = router.clone().oneshot(Request::builder().uri(format!("/admit/{}", ["test", "tab"].concat())).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(retired.status(), StatusCode::NOT_FOUND, "retired route must stay absent");
     }
-
 
 
     static HX_EXEMPLAR_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();

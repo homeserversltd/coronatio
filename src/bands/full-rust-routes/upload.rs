@@ -75,6 +75,7 @@ fn upload_immediate_children(root: &FsPath, display_root: &str, path: &FsPath) -
         .into_iter()
         .flat_map(|entries| entries.filter_map(Result::ok))
         .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+        .filter(|entry| !upload_path_blacklisted(&upload_display_path(root, display_root, &entry.path())))
         .map(|entry| {
             let real_path = entry.path();
             UploadDirectoryEntry {
@@ -200,8 +201,13 @@ fn render_upload_tree_rows_for_path(path: &str, depth: usize, selected: &str, ex
 fn render_upload_tree_fragment(selected: Option<&str>, expanded: Option<&str>) -> String {
     let root = upload_root_path();
     let display_root = upload_display_root(&root);
-    let selected = selected.unwrap_or(&display_root);
-    if !root.is_dir() {
+    let configured = upload_config_value();
+    let configured_default = upload_data(&configured)
+        .and_then(|data| data.get("default-directory").or_else(|| data.get("defaultDirectory")))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&display_root);
+    let selected = selected.unwrap_or(configured_default);
+    if !upload_root_available(&root) {
         return format!(
             r#"{}<div class="directory-error nas-unavailable" data-nas-unavailable="true" data-upload-directory-error>⚠️ NAS Storage Unavailable</div><div class="directory-entry selected" data-directory-path="{}" role="treeitem" aria-selected="true" aria-expanded="false" style="padding-left: 12px"><span class="expand-control" aria-label="No child folders"></span><span class="entry-icon">📁</span><span class="entry-name">nas</span><span class="entry-selected" aria-hidden="true">✓</span></div>"#,
             upload_tree_state_inputs(selected, &BTreeSet::new()),
@@ -260,6 +266,12 @@ async fn upload_browse_hierarchical_route(Query(query): Query<UploadBrowseQuery>
     let display_root = upload_display_root(&root);
     let requested = query.path.as_deref().unwrap_or(&display_root);
     let expand = query.expand.unwrap_or(false);
+    if upload_path_blacklisted(requested) {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({
+            "schema":"coronatio.upload.browse_hierarchical.v1","ok":false,"success":false,
+            "entries":[],"firstMissingSignal":"upload-path-blacklisted"
+        }))).into_response();
+    }
     let Some(real_path) = upload_resolve_path(&root, &display_root, requested) else {
         return (
             StatusCode::BAD_REQUEST,
@@ -306,5 +318,91 @@ async fn upload_browse_hierarchical_route(Query(query): Query<UploadBrowseQuery>
         "firstMissingSignal": "none"
     }))
     .into_response()
+}
+
+
+
+fn upload_config_value() -> serde_json::Value {
+    read_first_json(&homeserver_config_candidates()).map(|(_, value)| value).unwrap_or_else(|_| serde_json::json!({}))
+}
+
+fn upload_data(value: &serde_json::Value) -> Option<&serde_json::Value> {
+    value.pointer("/tabs/upload/data")
+}
+
+fn upload_blacklist() -> Vec<String> {
+    let value = upload_config_value();
+    upload_data(&value).and_then(|data| data.get("blacklist")).and_then(serde_json::Value::as_array)
+        .map(|items| items.iter().filter_map(serde_json::Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+}
+
+fn upload_path_blacklisted(path: &str) -> bool {
+    upload_blacklist().iter().any(|blocked| path == blocked || path.starts_with(&(blocked.trim_end_matches('/').to_string() + "/")))
+}
+
+fn upload_root_available(root: &std::path::Path) -> bool {
+    if !root.is_dir() { return false; }
+    if std::env::var("CORONATIO_UPLOAD_ROOT").is_ok() { return true; }
+    std::process::Command::new("mountpoint").args(["-q", root.to_string_lossy().as_ref()]).status().map(|status| status.success()).unwrap_or(false)
+}
+
+fn update_upload_config(key: &str, value: serde_json::Value) -> Result<(), String> {
+    let candidates = homeserver_config_candidates();
+    let (path, mut document) = read_first_json(&candidates)?;
+    let root = document.as_object_mut().ok_or_else(|| "homeserver-config-root-invalid".to_string())?;
+    let tabs = root.entry("tabs").or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| "homeserver-config-tabs-invalid".to_string())?;
+    let upload = tabs.entry("upload").or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| "homeserver-config-upload-invalid".to_string())?;
+    let data = upload.entry("data").or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| "homeserver-config-upload-data-invalid".to_string())?;
+    data.insert(key.to_string(), value);
+    let rendered = serde_json::to_string_pretty(&document).map_err(|error| error.to_string())? + "\n";
+    std::fs::write(&path, rendered).map_err(|error| format!("{}: {error}", path.display()))
+}
+
+fn append_upload_log(line: &str) -> Result<(), String> {
+    use std::io::Write;
+    let log_dir = std::env::var("HOMESERVER_LOG_DIR").unwrap_or_else(|_| "/var/log/homeserver".to_string());
+    std::fs::create_dir_all(&log_dir).map_err(|error| error.to_string())?;
+    let mut log = std::fs::OpenOptions::new().create(true).append(true).open(std::path::Path::new(&log_dir).join("upload.log")).map_err(|error| error.to_string())?;
+    writeln!(log, "{line}").map_err(|error| error.to_string())
+}
+
+async fn upload_default_directory_route() -> impl IntoResponse {
+    let value = upload_config_value();
+    let path = upload_data(&value).and_then(|data| data.get("default-directory").or_else(|| data.get("defaultDirectory"))).and_then(serde_json::Value::as_str).unwrap_or("/mnt/nas");
+    Json(serde_json::json!({"schema":"coronatio.upload.default_directory.v1","ok":true,"defaultPath":path,"firstMissingSignal":"none"}))
+}
+
+async fn upload_default_directory_update_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    if session_from_headers(&headers) != Session::Admin { return upload_admin_read_refusal_response("/api/upload/default-directory"); }
+    let Some(path) = body.get("path").or_else(|| body.get("defaultPath")).and_then(serde_json::Value::as_str) else { return (StatusCode::BAD_REQUEST, "default-directory-missing").into_response(); };
+    match update_upload_config("default-directory", serde_json::json!(path)) { Ok(()) => Json(serde_json::json!({"ok":true,"defaultPath":path,"firstMissingSignal":"none"})).into_response(), Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response() }
+}
+
+async fn upload_blacklist_admin_route(headers: axum::http::HeaderMap) -> Response {
+    if session_from_headers(&headers) != Session::Admin { return upload_admin_read_refusal_response("/api/upload/blacklist/list"); }
+    Json(serde_json::json!({"schema":"coronatio.upload.blacklist.v1","ok":true,"blacklist":upload_blacklist(),"firstMissingSignal":"none"})).into_response()
+}
+
+fn upload_blacklist_update(body: serde_json::Value) -> Response {
+    let Some(list) = body.get("blacklist").or_else(|| body.get("paths")).and_then(serde_json::Value::as_array) else { return (StatusCode::BAD_REQUEST, "upload-blacklist-missing").into_response(); };
+    if list.iter().any(|value| value.as_str().is_none()) { return (StatusCode::BAD_REQUEST, "upload-blacklist-invalid").into_response(); }
+    match update_upload_config("blacklist", serde_json::Value::Array(list.clone())) { Ok(()) => Json(serde_json::json!({"ok":true,"blacklist":list,"firstMissingSignal":"none"})).into_response(), Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response() }
+}
+
+async fn upload_pin_required_route() -> impl IntoResponse {
+    let value = upload_config_value();
+    let required = upload_data(&value).and_then(|data| data.get("isPinRequired").or_else(|| data.get("pinRequired"))).and_then(serde_json::Value::as_bool).unwrap_or(false);
+    Json(serde_json::json!({"schema":"coronatio.upload.pin_required.v1","ok":true,"isPinRequired":required,"firstMissingSignal":"none"}))
+}
+
+fn upload_pin_required_update(body: serde_json::Value) -> Response {
+    let Some(required) = body.get("isPinRequired").or_else(|| body.get("required")).and_then(serde_json::Value::as_bool) else { return (StatusCode::BAD_REQUEST, "upload-pin-required-missing").into_response(); };
+    match update_upload_config("isPinRequired", serde_json::json!(required)) { Ok(()) => Json(serde_json::json!({"ok":true,"isPinRequired":required,"firstMissingSignal":"none"})).into_response(), Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response() }
+}
+
+fn upload_force_permissions(body: serde_json::Value) -> Response {
+    let destination = body.get("path").or_else(|| body.get("destination")).and_then(serde_json::Value::as_str).unwrap_or("/mnt/nas");
+    let caduceus = caduceus_http_json("POST", "/api/v1/staff/intent", serde_json::json!({"method":"POST","route":"/api/upload/force-permissions","classification":"force-permissions","metadata":{"destination":destination}}));
+    (if caduceus.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE }, Json(serde_json::json!({"ok":caduceus.ok,"caduceus":caduceus,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
 }
 
