@@ -63,6 +63,30 @@ fn shell_document_3() -> &'static str {
         if (selectedTab) showPane(selectedTab);
       });
     }
+    async function bootstrapAdminMode() {
+      if (!headerState.isAdmin) {
+        applyAdminDomState();
+        return;
+      }
+      const token = localStorage.getItem('coronatioAdminToken');
+      if (!token) {
+        setAdminMode(false);
+        return;
+      }
+      try {
+        const response = await fetch('/api/admin/ping', { headers: { 'X-Admin-Token': token }, cache: 'no-store' });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.authenticated) {
+          localStorage.removeItem('coronatioAdminToken');
+          setAdminMode(false);
+          return;
+        }
+        setAdminMode(true);
+      } catch (_) {
+        localStorage.removeItem('coronatioAdminToken');
+        setAdminMode(false);
+      }
+    }
     function openPinModal(mode) {
       modalMode = mode;
       modalTitle.textContent = mode === 'change' ? 'Change Admin PIN' : 'Enter Admin Mode';
@@ -393,7 +417,7 @@ fn shell_document_3() -> &'static str {
     setInterval(hydrateInternetIndicator, 1000);
     refreshPowerIndicator();
     setInterval(refreshPowerIndicator, 5000);
-    setAdminMode(headerState.isAdmin);
+    bootstrapAdminMode();
     connectPulseStream();
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function visibleTabs() { return headerState.isAdmin ? tabs.filter(tab => tab.dataset.pane !== fallbackTab) : eligibleRegularTabs(); }

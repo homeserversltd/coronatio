@@ -449,12 +449,13 @@ async fn homeserver_logout_route(headers: axum::http::HeaderMap) -> impl IntoRes
 }
 
 
-async fn homeserver_admin_ping_route() -> impl IntoResponse {
+async fn homeserver_admin_ping_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    let authenticated = session_from_headers(&headers) == Session::Admin;
     Json(serde_json::json!({
         "schema": "coronatio.homeserver.admin.ping.v1",
         "success": true,
         "ok": true,
-        "authenticated": true
+        "authenticated": authenticated
     }))
 }
 

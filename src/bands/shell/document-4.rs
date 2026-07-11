@@ -631,10 +631,10 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         });
         const html = await response.text();
         if (!response.ok) {
-          let message = `Failed to toggle visibility for ${elementId}`;
-          try { const error = JSON.parse(html); message = error.message || error.error || message; } catch (_) {}
-          showCoronatioToast(message, 'error');
-          return;
+          let message = `Failed to toggle visibility for ${elementId}`, refusal = html.includes('data-element-visibility-refusal="admin-session-required"') ? 'admin-session-required' : '';
+          try { const error = JSON.parse(html); refusal = error.refusal || error.error || error.code || refusal; message = error.message || error.error || message; } catch (_) {}
+          if (refusal === 'admin-session-required') { showCoronatioToast('Admin session expired — re-enter PIN', 'error'); setAdminMode(false); openPinModal('enter'); return; }
+          showCoronatioToast(message, 'error'); return;
         }
         const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
         if (!target) return;

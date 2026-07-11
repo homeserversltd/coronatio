@@ -37,6 +37,7 @@
             ("/api/portals/elements", "PIN/session chrome portal element projection"),
             ("/api/tab-bar", "PIN/session chrome tab-bar projection"),
             ("/api/logout", "PIN/session chrome logout invalidation"),
+            ("/api/admin/ping", "PIN/session bootstrap authority validation"),
             ("/api/upload/history", "upload chrome modal read"),
             ("/api/upload/blacklist/list", "upload chrome modal read"),
             ("/api/upload/force-permissions", "upload chrome owned admin control"),
