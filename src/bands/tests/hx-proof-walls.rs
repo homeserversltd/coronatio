@@ -199,7 +199,7 @@
         let source = std::fs::read_to_string("src/bands/caduceus.rs").unwrap();
         assert!(source.contains("admin_staff_intent(\"POST\", path, \"admin-service-toggle\")"));
         assert!(source.contains("render_admin_service_card_result_html(&toggle_id, Some(&result))"));
-        for (method, route) in [("POST", "/admit/admin/toggle/ssh-password-authentication"), ("POST", "/admit/admin/toggle/ssh-service"), ("POST", "/admit/admin/toggle/samba-file-sharing"), ("POST", "/admit/admin/action/hard-drive-test"), ("POST", "/admit/admin/action/update"), ("POST", "/admit/admin/action/restart"), ("POST", "/admit/admin/action/shutdown"), ("POST", "/admit/admin/action/restart-website"), ("POST", "/admit/admin/action/install-certificate")] {
+        for (method, route) in [("POST", "/admit/admin/toggle/ssh-password-authentication"), ("POST", "/admit/admin/toggle/ssh-service"), ("POST", "/admit/admin/toggle/samba-file-sharing"), ("POST", "/admit/admin/action/hard-drive-test"), ("POST", "/admit/admin/action/update"), ("POST", "/admit/admin/action/rotate-capability-key"), ("POST", "/admit/admin/action/restart"), ("POST", "/admit/admin/action/shutdown"), ("POST", "/admit/admin/action/restart-website"), ("POST", "/admit/admin/action/install-certificate")] {
             let response = router.clone().oneshot(Request::builder().method(method).uri(route).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{route}");
             html_response_has_csp(&response, route);

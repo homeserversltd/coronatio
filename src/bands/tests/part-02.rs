@@ -17,11 +17,11 @@
         ] {
             assert!(admin.contains(&format!("class=\"{class}")), "missing og admin class: {class}");
         }
-        assert_eq!(admin.matches("class=\"system-controls-btn\"").count(), 7);
+        assert_eq!(admin.matches("class=\"system-controls-btn\"").count(), 8);
         assert_eq!(admin.matches("class=\"disk-column\"").count(), 2);
         assert_eq!(admin.matches("class=\"action-button ").count(), 16);
         for label in [
-            "Hard Drive Test", "Restart Website", "Install Certificate",
+            "Hard Drive Test", "Rotate Capability Key", "Restart Website", "Install Certificate",
             "View Full Guide &amp; Critical Warnings", "+ Create New Key",
             "⟳ Update Key on Drive", "🔒 Admin Password", "Format", "Encrypt",
             "Assign as primary NAS", "Assign as NAS Backup", "Unassign drive",

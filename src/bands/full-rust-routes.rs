@@ -293,6 +293,7 @@ async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
                 "payload": payload
             }
         }),
+        None,
     );
     (
         if caduceus.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE },
@@ -492,6 +493,7 @@ fn homeserver_mutation_response(method: &str, path: &str) -> Response {
             "route": path,
             "classification": homeserver_route_family(path),
         }),
+        None,
     );
     (
         if caduceus.ok {

@@ -398,7 +398,7 @@ fn upload_force_permissions_destination(body: &serde_json::Value) -> &str {
 
 fn upload_force_permissions(body: serde_json::Value) -> Response {
     let destination = upload_force_permissions_destination(&body);
-    let caduceus = caduceus_http_json("POST", "/api/v1/staff/intent", serde_json::json!({"method":"POST","route":"/api/upload/force-permissions","classification":"force-permissions","metadata":{"destination":destination}}));
+    let caduceus = caduceus_http_json("POST", "/api/v1/staff/intent", serde_json::json!({"method":"POST","route":"/api/upload/force-permissions","classification":"force-permissions","metadata":{"destination":destination}}), None);
     (if caduceus.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE }, Json(serde_json::json!({"success":caduceus.ok,"message":if caduceus.ok { "Permissions updated successfully" } else { "Permissions update failed" },"ok":caduceus.ok,"caduceus":caduceus,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
 }
 

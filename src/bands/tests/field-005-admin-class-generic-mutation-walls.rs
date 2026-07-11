@@ -263,6 +263,48 @@
         std::env::remove_var("CADUCEUS_URL");
     }
 
+    #[test]
+    fn field_005_capability_wall_staff_intent_is_signed_and_unsigned_dispatch_is_refused() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_tx, request_rx) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0_u8; 8192];
+            let count = stream.read(&mut buffer).unwrap();
+            request_tx.send(String::from_utf8_lossy(&buffer[..count]).to_string()).unwrap();
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}").unwrap();
+        });
+        std::env::set_var("CADUCEUS_URL", format!("http://{address}"));
+        std::env::set_var("CORONATIO_TEST_CAPABILITY_TOKEN", "test-capability-token");
+        let readback = admin_staff_intent("POST", "/api/admin/updates/apply", "admin-updates");
+        assert!(readback.ok, "{readback:?}");
+        let request = request_rx.recv().unwrap();
+        assert!(request.contains("POST /api/v1/staff/intent HTTP/1.1"), "{request}");
+        assert!(request.contains("x-caduceus-capability: test-capability-token\r\n"), "{request}");
+        server.join().unwrap();
+
+        std::env::set_var("CORONATIO_TEST_CAPABILITY_TOKEN", "");
+        let refused = admin_staff_intent("POST", "/api/admin/system/restart", "admin-system");
+        assert!(!refused.ok);
+        assert_eq!(refused.first_missing_signal, "caduceus-capability-empty");
+        std::env::remove_var("CORONATIO_TEST_CAPABILITY_TOKEN");
+        std::env::remove_var("CADUCEUS_URL");
+    }
+
+    #[test]
+    fn field_005_capability_architecture_wall_has_one_mint_point_and_rotate_action() {
+        let source = std::fs::read_to_string("src/bands/caduceus.rs").unwrap();
+        assert!(source.contains("/usr/local/sbin/caduceus-keyman-sign-capability"));
+        assert!(source.contains("x-caduceus-capability: {token}"));
+        assert!(source.contains("mint_caduceus_capability(\"staff intent\", path)"));
+        assert!(source.contains("/usr/local/sbin/caduceus-keyman-rotate-capability"));
+        let shell = std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap();
+        assert!(shell.contains("data-admin-action-id=\"rotate-capability-key\""));
+        assert!(shell.contains("Rotate Capability Key"));
+    }
+
     #[tokio::test]
     async fn field_005_upload_exclusion_wall_guest_upload_route_is_not_session_gated() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005-upload-exclusion")) });
