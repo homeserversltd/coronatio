@@ -181,13 +181,17 @@ fn shell_document_2() -> &'static str {
               <button type="button" data-upload-submit disabled>Upload Selected Files</button>
             </div>
           </div>
-          <div class="modal-window" data-upload-history-modal hidden>
-            <div class="modal-titlebar">Upload History</div>
-            <div class="upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="clear-history-button" data-upload-clear-history disabled>Clear History</button></div>
+          <div class="modal-backdrop" data-upload-history-backdrop data-upload-history-modal aria-hidden="true">
+            <section class="modal modal-window" role="dialog" aria-modal="true" aria-labelledby="upload-history-title">
+              <div class="modal-titlebar"><span id="upload-history-title">Upload History</span><button type="button" class="secondary" data-upload-modal-close aria-label="Close upload history">×</button></div>
+              <div class="upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="clear-history-button" data-upload-clear-history disabled>Clear History</button></div>
+            </section>
           </div>
-          <div class="modal-window" data-upload-blacklist-modal hidden>
-            <div class="modal-titlebar">Manage Blacklist</div>
-            <div class="blacklist-manager"><div class="blacklist-entries" data-upload-blacklist-entries></div><div class="blacklist-controls"><form class="add-entry" data-upload-blacklist-form><input type="text" class="entry-input" placeholder="Enter path to blacklist" data-upload-blacklist-input><button type="button" class="add-button" data-upload-blacklist-add>New</button></form><button type="button" class="submit-button" data-upload-blacklist-submit>Submit</button></div></div>
+          <div class="modal-backdrop" data-upload-blacklist-backdrop data-upload-blacklist-modal aria-hidden="true">
+            <section class="modal modal-window" role="dialog" aria-modal="true" aria-labelledby="upload-blacklist-title">
+              <div class="modal-titlebar"><span id="upload-blacklist-title">Manage Blacklist</span><button type="button" class="secondary" data-upload-modal-close aria-label="Close upload blacklist">×</button></div>
+              <div class="blacklist-manager"><div class="blacklist-entries" data-upload-blacklist-entries></div><div class="blacklist-controls"><form class="add-entry" data-upload-blacklist-form><input type="text" class="entry-input" placeholder="Enter path to blacklist" data-upload-blacklist-input><button type="button" class="add-button" data-upload-blacklist-add>New</button></form><button type="button" class="submit-button" data-upload-blacklist-submit>Submit</button></div></div>
+            </section>
           </div>
           <div class="modal-window" data-upload-pin-modal hidden>
             <div class="modal-titlebar">Admin PIN Required</div>
