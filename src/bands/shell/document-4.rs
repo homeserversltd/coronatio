@@ -133,20 +133,20 @@ fn shell_document_4() -> &'static str {
       if (uploadSubmit) { uploadSubmit.textContent = 'Upload Selected Files'; uploadSubmit.disabled = uploadState.selectedFiles.length === 0; }
       if (uploadReadout) uploadReadout.textContent = failed ? `Uploaded ${success} file(s), ${failed} failed` : `Successfully uploaded ${success} file(s)`;
     }
-    function openUploadModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
+    function uploadAdminHeaders(json = false) { const token = localStorage.getItem('coronatioAdminToken'); return { ...(json ? { 'content-type': 'application/json' } : {}), ...(token ? { 'X-Admin-Token': token } : {}) }; }
+    function openUploadModal(selector) { const modal = document.querySelector(selector); if (modal) { modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); } }
+    function closeUploadModal(modal) { if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); } }
+    document.querySelectorAll('[data-upload-history-backdrop], [data-upload-blacklist-backdrop]').forEach(backdrop => { backdrop.addEventListener('click', event => { if (event.target === backdrop) closeUploadModal(backdrop); }); backdrop.querySelector('[data-upload-modal-close]')?.addEventListener('click', () => closeUploadModal(backdrop)); });
     async function refreshUploadHistory() {
-      const modal = document.querySelector('[data-upload-history-modal]');
-      const list = modal?.querySelector('.upload-history-list');
-      const empty = modal?.querySelector('.uploadHistoryModal');
-      const clear = modal?.querySelector('[data-upload-clear-history]');
-      try { const data = await fetch('/api/upload/history').then(r => r.json()); uploadState.history = data.history || []; } catch (_) { uploadState.history = []; }
+      const modal = document.querySelector('[data-upload-history-modal]'), list = modal?.querySelector('.upload-history-list'), empty = modal?.querySelector('.uploadHistoryModal'), clear = modal?.querySelector('[data-upload-clear-history]');
+      try { const data = await fetch('/api/upload/history', { headers: uploadAdminHeaders() }).then(r => r.json()); uploadState.history = data.history || []; } catch (_) { uploadState.history = []; }
       if (list) { list.hidden = uploadState.history.length === 0; list.innerHTML = uploadState.history.map(line => `<div class="history-item ${String(line).includes('Successfully') ? 'success' : 'error'}">${line}</div>`).join(''); }
       if (empty) empty.hidden = uploadState.history.length !== 0;
       if (clear) clear.disabled = uploadState.history.length === 0;
     }
     async function refreshUploadBlacklist() {
       const entries = document.querySelector('[data-upload-blacklist-entries]');
-      try { const data = await fetch('/api/upload/blacklist/list').then(r => r.json()); uploadState.blacklist = data.blacklist || []; } catch (_) { uploadState.blacklist = []; }
+      try { const data = await fetch('/api/upload/blacklist/list', { headers: uploadAdminHeaders() }).then(r => r.json()); uploadState.blacklist = data.blacklist || []; } catch (_) { uploadState.blacklist = []; }
       if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join('');
       entries?.querySelectorAll('[data-blacklist-remove]').forEach(button => button.addEventListener('click', () => { uploadState.blacklist.splice(Number(button.dataset.blacklistRemove), 1); refreshUploadBlacklistDomOnly(); }));
     }
@@ -155,15 +155,15 @@ fn shell_document_4() -> &'static str {
     uploadSubmit?.addEventListener('click', uploadSelectedFiles);
     document.querySelector('[data-upload-refresh]')?.addEventListener('click', () => { window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(uploadCurrentPath()), { target: '[data-upload-tree]', swap: 'innerHTML' }); });
     document.querySelector('[data-upload-force-allow]')?.addEventListener('click', async () => { if (!confirm(`WARNING: This will override security settings for ${uploadState.currentPath}. 
-Only continue if you understand the risks.`)) return; await fetch('/api/upload/force-permissions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ directory: uploadState.currentPath }) }); });
-    document.querySelector('[data-upload-set-default]')?.addEventListener('click', () => fetch('/api/upload/default-directory', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ directory: uploadState.currentPath }) }));
+Only continue if you understand the risks.`)) return; await fetch('/api/upload/force-permissions', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }); });
+    document.querySelector('[data-upload-set-default]')?.addEventListener('click', () => fetch('/api/upload/default-directory', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }));
     document.querySelector('[data-upload-history]')?.addEventListener('click', async () => { openUploadModal('[data-upload-history-modal]'); await refreshUploadHistory(); });
     document.querySelector('[data-upload-blacklist]')?.addEventListener('click', async () => { openUploadModal('[data-upload-blacklist-modal]'); await refreshUploadBlacklist(); });
     document.querySelector('[data-upload-blacklist-add]')?.addEventListener('click', () => { const input = document.querySelector('[data-upload-blacklist-input]'); const next = input?.value?.trim(); if (!next || uploadState.blacklist.includes(next)) return; uploadState.blacklist.push(next); input.value = ''; refreshUploadBlacklistDomOnly(); });
-    document.querySelector('[data-upload-blacklist-submit]')?.addEventListener('click', () => fetch('/api/upload/blacklist/update', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ blacklist: uploadState.blacklist }) }).then(() => window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(uploadCurrentPath()), { target: '[data-upload-tree]', swap: 'innerHTML' })));
-    document.querySelector('[data-upload-clear-history]')?.addEventListener('click', () => fetch('/api/upload/history/clear', { method: 'POST' }).then(refreshUploadHistory));
-    document.querySelector('[data-upload-pin-toggle]')?.addEventListener('click', async event => { uploadState.pinRequired = !uploadState.pinRequired; event.currentTarget.classList.toggle('active', uploadState.pinRequired); event.currentTarget.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); await fetch('/api/upload/pin-required-status', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); });
-    fetch('/api/upload/pin-required-status').then(r => r.json()).then(data => { uploadState.pinRequired = !!data.isPinRequired; const b = document.querySelector('[data-upload-pin-toggle]'); b?.classList.toggle('active', uploadState.pinRequired); }).catch(() => {});
+    document.querySelector('[data-upload-blacklist-submit]')?.addEventListener('click', () => fetch('/api/upload/blacklist/update', { method: 'PUT', headers: uploadAdminHeaders(true), body: JSON.stringify({ blacklist: uploadState.blacklist }) }).then(() => window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(uploadCurrentPath()), { target: '[data-upload-tree]', swap: 'innerHTML' })));
+    document.querySelector('[data-upload-clear-history]')?.addEventListener('click', () => fetch('/api/upload/history/clear', { method: 'POST', headers: uploadAdminHeaders() }).then(refreshUploadHistory));
+    document.querySelector('[data-upload-pin-toggle]')?.addEventListener('click', async event => { uploadState.pinRequired = !uploadState.pinRequired; event.currentTarget.classList.toggle('active', uploadState.pinRequired); event.currentTarget.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); await fetch('/api/upload/pin-required-status', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); });
+    fetch('/api/upload/pin-required-status', { headers: uploadAdminHeaders() }).then(r => r.json()).then(data => { uploadState.pinRequired = !!data.isPinRequired; const b = document.querySelector('[data-upload-pin-toggle]'); b?.classList.toggle('active', uploadState.pinRequired); }).catch(() => {});
     syncUploadTreeSelection();
 
     let uptimeBaseSeconds = null;
