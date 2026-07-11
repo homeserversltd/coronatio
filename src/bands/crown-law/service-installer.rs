@@ -143,7 +143,7 @@ fn installer_install_phases() -> Vec<InstallerPhase> {
         installer_phase(4, "root-files", "root config/readme/license and other files copied under the old tablet root", "non-code payloads become manifest/docs/license artifacts inside the installed cartridge", "Caduceus later"),
         installer_phase(5, "package-installations", "backend/requirements.txt, frontend/package.patch.json, system/dependencies.json", "dependency mutation is declared but not executed by Coronatio contract route", "Caduceus only"),
         installer_phase(6, "config-patches", "homeserver.patch.json applied to homeserver.json", "later registry transaction law owns deep merge, validation, atomic write, and permissions", "Caduceus later"),
-        installer_phase(7, "tab-hooks", "tab-specific hooks such as backupTab venv note and chiaTab key ownership", "hooks must become typed per-tab Caduceus actions, never ad-hoc Python side effects", "Caduceus only"),
+        installer_phase(7, "tab-hooks", "tab-specific hooks such as backupTab venv note", "hooks must become typed per-tab Caduceus actions, never ad-hoc Python side effects", "Caduceus only"),
         installer_phase(8, "frontend-rebuild", "BuildManager.rebuild_frontend unless batch mode defers it", "source-injection-recompile lane requires build/test/admission before restart", "Caduceus plus Cibation for repo-backed source"),
         installer_phase(9, "service-restart", "ServiceManager.restart_homeserver_services unless batch mode defers it", "restart is an explicit post-build live-body proof, not part of this readback route", "Caduceus only"),
     ]
