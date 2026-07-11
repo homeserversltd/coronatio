@@ -55,6 +55,8 @@
         let document = include_str!("../shell/document-4.rs");
         assert!(document.contains("async function refreshPortalCurrentness()"));
         assert!(document.contains("/api/portals/currentness"));
-        assert!(document.contains("card.classList.remove('up', 'down', 'partial', 'unknown')"));
+        assert!(document.contains("const statuses = ['up', 'down', 'partial', 'unknown']"));
+        assert!(document.contains("if (current !== next)"));
+        assert!(document.contains("card.classList.remove(...statuses)"));
         assert!(document.contains("setInterval(refreshPortalCurrentness, 5000)"));
     }
