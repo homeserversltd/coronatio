@@ -241,7 +241,7 @@
             .unwrap();
         assert_eq!(admin.status(), StatusCode::OK);
         let admin_body = String::from_utf8(axum::body::to_bytes(admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        for expected in ["data-stat-element-id=\"process-list\"", "data-stat-element-id=\"kea-leases\"", "data-stat-element-id=\"io-section\""] {
+        for expected in ["data-stat-element-id=\"process-usage\"", "data-stat-element-id=\"kea-leases\"", "data-stat-element-id=\"io-section\""] {
             assert!(admin_body.contains(expected), "admin full-page / omitted lawful admin stats element {expected}: {admin_body}");
         }
     }

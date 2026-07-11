@@ -45,7 +45,7 @@
 
         let guest = router
             .clone()
-            .oneshot(Request::builder().method("PUT").uri("/api/tabs/elements").header("content-type", "application/json").body(Body::from(r#"{"tabId":"stats","elementId":"process-list","visibility":false}"#)).unwrap())
+            .oneshot(Request::builder().method("PUT").uri("/api/tabs/elements").header("content-type", "application/json").body(Body::from(r#"{"tabId":"stats","elementId":"process-usage","visibility":false}"#)).unwrap())
             .await
             .unwrap();
         assert_eq!(guest.status(), StatusCode::UNAUTHORIZED);
@@ -55,17 +55,18 @@
         let token = authorize_test_admin_token();
         let response = router
             .clone()
-            .oneshot(Request::builder().method("PUT").uri("/api/tabs/elements").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tabId":"stats","elementId":"process-list","visibility":false}"#)).unwrap())
+            .oneshot(Request::builder().method("PUT").uri("/api/tabs/elements").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tabId":"stats","elementId":"process-usage","visibility":false}"#)).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        assert!(fragment.contains(r#"data-stat-element-id="process-list" data-visible="false""#), "{fragment}");
-        assert!(fragment.contains(r#"data-stat-visibility-toggle="process-list" data-visible="false""#), "{fragment}");
-        assert!(fragment.contains("🙈"), "{fragment}");
+        assert!(fragment.contains(r#"data-stat-element-id="process-usage" data-visible="false""#), "{fragment}");
+        assert!(fragment.contains(r#"data-stat-visibility-toggle="process-usage" data-visible="false""#), "{fragment}");
+        assert!(fragment.contains("fa-eye-slash"), "{fragment}");
         let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
-        assert_eq!(value["tabs"]["stats"]["visibility"]["elements"]["process-list"], serde_json::Value::Bool(false));
+        assert_eq!(value["tabs"]["stats"]["visibility"]["elements"]["process-usage"], serde_json::Value::Bool(false));
         assert!(value["tabs"]["stats"]["visibility"]["elements"].get("network").is_none());
+        assert!(value["tabs"]["stats"]["visibility"]["elements"].get("process-list").is_none());
         assert!(std::fs::read_dir(&temp).unwrap().all(|entry| !entry.unwrap().file_name().to_string_lossy().contains("tmp")));
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     }
@@ -91,7 +92,7 @@
         let stats_admin = String::from_utf8(axum::body::to_bytes(stats_admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(stats_admin.contains(r#"data-stat-element-id="network-chart" data-visible="false""#), "{stats_admin}");
         assert!(stats_admin.contains(r#"data-stat-visibility-toggle="network-chart" data-visible="false""#), "{stats_admin}");
-        assert!(stats_admin.contains("🙈"), "{stats_admin}");
+        assert!(stats_admin.contains("fa-eye-slash"), "{stats_admin}");
 
         let portals_guest = router.clone().oneshot(Request::builder().uri("/api/portals/elements").body(Body::empty()).unwrap()).await.unwrap();
         let portals_guest = String::from_utf8(axum::body::to_bytes(portals_guest.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();

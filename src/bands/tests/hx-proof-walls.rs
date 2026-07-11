@@ -46,6 +46,7 @@
             ("/api/upload/pin-required-status", "upload chrome owned admin control"),
             ("/api/uptime", "PIN/session chrome uptime chip"),
             ("/api/stats", "Chart.js data bootstrap"),
+            ("/api/network/notes", "Stats device-note read and admin edit"),
             ("/api/service/control", "owned portal chrome service action"),
             ("/api/portals", "owned portal chrome data bootstrap"),
             ("/api/portals/currentness", "owned portal chrome currentness readback"),

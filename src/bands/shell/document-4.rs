@@ -400,9 +400,11 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       }
     }
     function renderDiskIo(data) {
-      const controls = document.querySelector('[data-device-controls]');
-      const devices = data.io?.devices || [];
-      if (controls) controls.innerHTML = devices.map(device => { const name = diskDisplayName(device); return `<div class="device-control" data-io-device="${name}"><div class="device-name">${name}</div><div class="device-checkboxes"><label class="drive-checkbox"><input type="checkbox" name="read-${name}" value="${name}" checked>Read</label><label class="drive-checkbox"><input type="checkbox" name="write-${name}" value="${name}" checked>Write</label></div></div>`; }).join('') || '<div class="io-loading"><p>Loading disk I/O data...</p></div>';
+      const controls = document.querySelector('[data-device-controls]'), checked = new Map(Array.from(controls?.querySelectorAll('input[type="checkbox"]') || []).map(input => [input.name, input.checked])), devices = data.io?.devices || [];
+      if (controls) controls.innerHTML = devices.map(device => {
+        const name = diskDisplayName(device), readName = `read-${name}`, writeName = `write-${name}`, readChecked = checked.has(readName) ? checked.get(readName) : true, writeChecked = checked.has(writeName) ? checked.get(writeName) : true;
+        return `<div class="device-control" data-io-device="${escapeHtml(name)}"><div class="device-name">${escapeHtml(name)}</div><div class="device-checkboxes"><label class="drive-checkbox"><input type="checkbox" name="${escapeHtml(readName)}" value="${escapeHtml(name)}" ${readChecked ? 'checked' : ''}>Read</label><label class="drive-checkbox"><input type="checkbox" name="${escapeHtml(writeName)}" value="${escapeHtml(name)}" ${writeChecked ? 'checked' : ''}>Write</label></div></div>`;
+      }).join('') || '<div class="io-loading"><p>Loading disk I/O data...</p></div>';
       const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
       const datasets = devices.flatMap((device, index) => {
         const key = device.device || device.mount;
@@ -444,42 +446,42 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         return `<div class="disk-usage-item"><div class="disk-usage-header"><div class="disk-device">${label} (${Number(drive.usagePercent || 0).toFixed(1)}%)</div>${mountLine}</div><div class="disk-usage-bar"><div class="disk-usage-fill" style="width:${drive.usagePercent || 0}%"></div></div><div class="disk-usage-details"><div>Used: ${fmtBytes(drive.usedBytes)}</div><div>Free: ${fmtBytes(drive.freeBytes)}</div><div>Total: ${fmtBytes(drive.totalBytes)}</div></div></div>`;
       }).join('') || '<div class="disk-usage-loading"><p>Loading disk usage data...</p></div>';
     }
-    function renderKeaLeases(data) {
-      const tbody = document.querySelector('[data-kea-leases]');
-      if (!tbody) return;
-      if (data.keaLeases && !data.leases) {
-        tbody.innerHTML = '<tr><td colspan="4">No Kea leases available.</td></tr>';
-        return;
-      }
-      const leases = data.leases || [];
-      tbody.innerHTML = leases.length ? leases.map(lease => `<tr><td class="device-note-cell" data-label="Note:"><span class="note-text">${lease.note || ''}</span><button class="edit-note-button" data-admin-only="true" title="Edit device note">✎</button></td><td data-label="Hostname:">${lease.hostname || 'N/A'}</td><td data-label="IP:">${lease.ip}</td><td data-label="MAC:" title="${lease.mac}">${lease.mac}</td></tr>`).join('') : '<tr><td colspan="4">No Kea leases found.</td></tr>';
+    function renderKeaLeases(data, notes = {}) {
+      const tbody = document.querySelector('[data-kea-leases]'); if (!tbody) return; if (data.keaLeases && !data.leases) { tbody.innerHTML = '<tr><td colspan="4">No Kea leases available.</td></tr>'; return; }
+      const leases = data.leases || []; tbody.innerHTML = leases.length ? leases.map(lease => {
+        const mac = String(lease.mac || ''), note = notes[mac] ?? notes[mac.toLowerCase()] ?? '', pencil = headerState.isAdmin ? `<button type="button" class="edit-note-button" data-edit-note-button data-mac="${escapeHtml(mac)}" data-note="${escapeHtml(note)}" title="Edit device note" aria-label="Edit note for ${escapeHtml(mac)}"><i class="fas fa-pencil-alt" aria-hidden="true"></i></button>` : ''; return `<tr><td class="device-note-cell" data-label="Note:"><span class="note-text" data-note-text data-mac="${escapeHtml(mac)}">${escapeHtml(note)}</span>${pencil}</td><td data-label="Hostname:">${escapeHtml(lease.hostname || 'N/A')}</td><td data-label="IP:">${escapeHtml(lease.ip || '')}</td><td data-label="MAC:" title="${escapeHtml(mac)}">${escapeHtml(mac)}</td></tr>`;
+      }).join('') : '<tr><td colspan="4">No Kea leases found.</td></tr>';
     }
+    function ensureNoteModal() {
+      let modal = document.querySelector('[data-note-modal]'); if (modal) return modal;
+      modal = document.createElement('div'); modal.className = 'modal-backdrop'; modal.dataset.noteModal = ''; modal.hidden = true; modal.innerHTML = `<div class="modal-window edit-note-modal" role="dialog" aria-modal="true" aria-labelledby="note-modal-title"><h2 id="note-modal-title" data-note-modal-title></h2><textarea class="note-textarea" data-note-textarea rows="4"></textarea><div class="modal-actions"><button type="button" data-note-cancel>Cancel</button><button type="button" data-note-confirm>Confirm</button></div><p class="error-message" data-note-error role="alert" hidden></p></div>`;
+      document.body.appendChild(modal); modal.addEventListener('click', event => { if (event.target === modal || event.target.closest('[data-note-cancel]')) closeNoteModal(); }); modal.querySelector('[data-note-confirm]').addEventListener('click', saveDeviceNote); return modal;
+    }
+    function closeNoteModal() { const modal = document.querySelector('[data-note-modal]'); if (modal) { modal.hidden = true; modal.removeAttribute('data-mac'); } }
+    function openNoteModal(mac, note) { const modal = ensureNoteModal(); modal.dataset.mac = mac; modal.querySelector('[data-note-modal-title]').textContent = `Edit Note for ${mac}`; const textarea = modal.querySelector('[data-note-textarea]'); textarea.value = note; modal.querySelector('[data-note-error]').hidden = true; modal.hidden = false; textarea.focus(); }
+    async function saveDeviceNote() {
+      const modal = document.querySelector('[data-note-modal]'), mac = modal?.dataset.mac || '', textarea = modal?.querySelector('[data-note-textarea]'), errorNode = modal?.querySelector('[data-note-error]'), note = textarea?.value ?? '';
+      try { const response = await fetch('/api/network/notes', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...statsSessionHeaders() }, body: JSON.stringify({ mac, note }) }); if (!response.ok) throw new Error(`Save failed (${response.status})`); document.querySelectorAll('[data-note-text]').forEach(node => { if (node.dataset.mac === mac) node.textContent = note; }); document.querySelectorAll('[data-edit-note-button]').forEach(button => { if (button.dataset.mac === mac) button.dataset.note = note; }); closeNoteModal(); showCoronatioToast('Device note saved', 'success'); }
+      catch (error) { if (errorNode) { errorNode.textContent = String(error); errorNode.hidden = false; } }
+    }
+    function statsSessionHeaders() { const token = localStorage.getItem('coronatioAdminToken'); return token ? { 'X-Admin-Token': token } : {}; }
+    function normalizeNetworkNotes(payload) { const notes = payload?.networkNotes || payload?.notes || payload?.data?.networkNotes || payload?.data?.notes || payload; return notes && typeof notes === 'object' && !Array.isArray(notes) ? notes : {}; }
     function renderProcesses(data) {
       const target = document.querySelector('[data-process-usage-list]');
       if (!target) return;
       const processes = data.processes || [];
       target.innerHTML = processes.length ? processes.map(process => `<div class="process-bar" title="Process: ${process.name}\nMemory: ${fmtBytes(process.memoryBytes)}\nCPU: ${Number(process.cpuPercent || 0).toFixed(1)}%\nInstances: ${process.processCount || 1}"><div class="process-bar-fill" style="width:${Math.max(Number(process.cpuPercent || 0), 1)}%"></div><div class="process-text-container"><span class="process-name">${process.name}</span><span class="process-usage">${Number(process.cpuPercent || 0).toFixed(1)}%</span></div></div>`).join('') : '<div class="process-usage-empty"><p>No process data available</p></div>';
     }
+    let statsHydrationInFlight = false;
     async function hydrateStats() {
+      if (statsHydrationInFlight) return; statsHydrationInFlight = true;
       try {
-        const token = localStorage.getItem('coronatioAdminToken');
-        const headers = token ? { 'X-Admin-Token': token } : {};
-        // Allowlisted chart data lane: fetch('/api/stats') with session headers and no-store cache.
-        const data = await fetch('/api/stats', { headers, cache: 'no-store' }).then(r => r.json());
-        const label = formatChartTime();
-        pushChartPoint(label, data);
-        renderCpuChart(data);
-        renderNetwork(data);
-        renderDiskIo(data);
-        renderMemory(data);
-        renderDiskUsage(data);
-        renderKeaLeases(data);
-        renderProcesses(data);
-      } catch (error) {
-        document.querySelector('[data-process-usage-list]').innerHTML = '<div class="process-usage-empty"><p>' + String(error) + '</p></div>';
-      }
+        const headers = statsSessionHeaders(); // Owned chrome: fetch('/api/stats') + fetch('/api/network/notes'), session/no-store.
+        const [statsResponse, notesResponse] = await Promise.all([fetch('/api/stats', { headers, cache: 'no-store' }), fetch('/api/network/notes', { headers, cache: 'no-store' })]); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
+        const data = await statsResponse.json(), notes = notesResponse.ok ? normalizeNetworkNotes(await notesResponse.json()) : {}, label = formatChartTime(); pushChartPoint(label, data); renderCpuChart(data); renderNetwork(data); renderDiskIo(data); renderMemory(data); renderDiskUsage(data); renderKeaLeases(data, notes); renderProcesses(data);
+      } catch (error) { const target = document.querySelector('[data-process-usage-list]'); if (target) target.innerHTML = '<div class="process-usage-empty"><p>' + escapeHtml(String(error)) + '</p></div>'; }
+      finally { statsHydrationInFlight = false; }
     }
-
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     }
@@ -688,6 +690,8 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
       if (scopedTab) return switchScopedTabs(scopedTab);
       const portalEye = event.target.closest('[data-portal-visibility-toggle]');
       if (portalEye) { event.preventDefault(); event.stopPropagation(); toggleElementVisibility('portals', portalEye.dataset.portalVisibilityToggle, portalEye.dataset.visible !== 'true'); return; }
+      const editNote = event.target.closest('[data-edit-note-button]');
+      if (editNote) { event.preventDefault(); openNoteModal(editNote.dataset.mac || '', editNote.dataset.note || ''); return; }
       const statEye = event.target.closest('[data-stat-visibility-toggle]');
       if (statEye) { event.preventDefault(); event.stopPropagation(); toggleElementVisibility('stats', statEye.dataset.statVisibilityToggle, statEye.dataset.visible !== 'true'); return; }
       const addPortal = event.target.closest('[data-add-portal-open]');

@@ -15,7 +15,7 @@ async fn element_visibility_route(headers: axum::http::HeaderMap, Json(request):
         return element_refusal_fragment("admin-session-required");
     }
     let tab = normalize_tab_id(&request.tab_id.or(request.tab).unwrap_or_default());
-    let element = normalize_element_id(&request.element_id.or(request.element).or(request.id).unwrap_or_default());
+    let element = normalize_element_id_for_tab(&tab, &request.element_id.or(request.element).or(request.id).unwrap_or_default());
     if tab.is_empty() || element.is_empty() {
         return (StatusCode::BAD_REQUEST, Html(r#"<div data-element-visibility-refusal="invalid-element-request">invalid-element-request</div>"#.to_string())).into_response();
     }
@@ -80,6 +80,15 @@ fn normalize_element_id(raw: &str) -> String {
     raw.trim().chars().filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')).collect()
 }
 
+fn normalize_element_id_for_tab(tab: &str, raw: &str) -> String {
+    let id = normalize_element_id(raw);
+    if tab == "stats" {
+        canonical_stats_element_id(&id).to_string()
+    } else {
+        id
+    }
+}
+
 fn render_stats_elements_fragment(session: Session) -> String {
     let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
     let _plan = iris::plan(&facts, session);
@@ -115,12 +124,12 @@ fn stat_element_templates() -> Vec<(&'static str, &'static str)> {
             <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="kea-leases" data-visible="true" aria-label="Hide DHCP Leases">👁</button><h3 class="stat-title">DHCP Leases</h3></div>
             <div class="stat-content"><div class="kea-leases-table"><table><thead><tr><th>Device Note</th><th>Hostname</th><th>IP Address</th><th>MAC Address</th></tr></thead><tbody data-kea-leases><tr><td colspan="4">Loading Kea leases...</td></tr></tbody></table></div></div>
           </div>
-          <div class="stat-element" data-stat-element-id="process-list" data-visible="true">
-            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="process-list" data-visible="true" aria-label="Hide CPU Usage by Process">👁</button><h3 class="stat-title">CPU Usage by Process</h3></div>
+          <div class="stat-element" data-stat-element-id="process-usage" data-visible="true">
+            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="process-usage" data-visible="true" aria-label="Hide CPU Usage by Process">👁</button><h3 class="stat-title">CPU Usage by Process</h3></div>
             <div class="stat-content"><div class="process-usage-list" data-process-usage-list><p>Loading process usage...</p></div></div>
           </div>
 "####;
-    const IDS: [&str; 7] = ["cpu-chart", "network-chart", "io-section", "memory-usage", "disk-usage", "kea-leases", "process-list"];
+    const IDS: [&str; 7] = ["cpu-chart", "network-chart", "io-section", "memory-usage", "disk-usage", "kea-leases", "process-usage"];
     IDS.iter()
         .filter_map(|id| extract_stat_element_template(RAW, id).map(|html| (*id, html)))
         .collect()
@@ -141,7 +150,7 @@ fn render_stat_element_from_grant(session: Session, facts: &IrisFacts, element_i
     let grant = default_element_grant_from_facts(facts, session, "stats", element_id);
     if grant.state == RenderState::Absent { return None; }
     let visible = grant.state == RenderState::Visible;
-    let eye = if visible { "👁" } else { "🙈" };
+    let eye = if visible { r#"<i class="fas fa-eye" aria-hidden="true"></i>"# } else { r#"<i class="fas fa-eye-slash" aria-hidden="true"></i>"# };
     let verb = if visible { "Hide" } else { "Show" };
     let mut html = template.to_string();
     html = replace_data_visible(&html, visible);
