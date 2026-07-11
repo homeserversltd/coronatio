@@ -521,7 +521,7 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
     function showPortalServiceStatus(results) {
       const modal = document.querySelector('[data-service-status-modal]');
       const content = modal?.querySelector('[data-service-status-content]');
-      if (content) content.textContent = JSON.stringify(results, null, 2);
+      if (content) content.textContent = results.map(result => `=== ${result.service || 'service'} ===\n${result.output || result.message || result.error || ''}`).join('\n\n');
       if (modal) modal.hidden = false;
     }
     async function handlePortalServiceAction(event) {
@@ -537,15 +537,16 @@ Only continue if you understand the risks.`)) return; await fetch('/api/upload/f
         return;
       }
       const results = [];
+      const token = localStorage.getItem('coronatioAdminToken');
       for (const service of services) {
         try {
           const response = await fetch('/api/service/control', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
             body: JSON.stringify({ service, action })
           });
           const text = await response.text();
-          try { results.push(JSON.parse(text)); } catch (_) { results.push({ service, action, raw: text }); }
+          try { const result = JSON.parse(text); results.push({ service, ...result }); } catch (_) { results.push({ service, action, raw: text }); }
         } catch (error) {
           results.push({ service, action, error: String(error) });
         }

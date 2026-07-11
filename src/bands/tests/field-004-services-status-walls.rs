@@ -148,12 +148,12 @@
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-004-service-control-admin")) });
         let token = authorize_test_admin_token();
         let response = router.oneshot(Request::builder().method("POST").uri("/api/service/control").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"service":"ssh","action":"restart"}"#)).unwrap()).await.unwrap();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        assert!(body.contains("coronatio.portals.service_control.v1"), "{body}");
-        assert!(body.contains("Caduceus staff intent membrane"), "{body}");
-        assert!(body.contains("caduceus-unreachable"), "{body}");
-        assert!(body.contains("systemdService"), "admin control did not cross service membrane: {body}");
+        assert!(body.contains("\"success\":false"), "{body}");
+        assert!(body.contains("\"message\":"), "{body}");
+        assert!(body.contains("\"output\":\"caduceus-unreachable\""), "{body}");
+        assert!(body.contains("\"active\":false"), "{body}");
         std::env::remove_var("CADUCEUS_URL");
     }
 

@@ -259,26 +259,18 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
             }
         }),
     );
-    let accepted = caduceus.ok;
-    let status = if accepted { StatusCode::ACCEPTED } else { StatusCode::SERVICE_UNAVAILABLE };
+    let body = &caduceus.body;
+    let success = body.get("success").and_then(serde_json::Value::as_bool).unwrap_or(caduceus.ok);
+    let message = body.get("message").and_then(serde_json::Value::as_str).unwrap_or(if success { "Service action completed" } else { "Service action failed" });
+    let output = body.get("output").and_then(serde_json::Value::as_str).unwrap_or(caduceus.first_missing_signal.as_str());
+    let active = body.get("active").and_then(serde_json::Value::as_bool).unwrap_or(false);
     (
-        status,
+        StatusCode::OK,
         Json(serde_json::json!({
-            "schema": "coronatio.portals.service_control.v1",
-            "success": accepted,
-            "ok": accepted,
-            "accepted": accepted,
-            "message": if accepted { format!("Service {action} accepted for {service}") } else { format!("Service {action} for {service} could not reach Caduceus staff") },
-            "route": "/api/service/control",
-            "classification": "portal-service",
-            "service": service,
-            "action": action,
-            "systemdService": systemd_service,
-            "active": serde_json::Value::Null,
-            "output": "Caduceus staff intent membrane accepted the portal service command".to_string(),
-            "authority": "Caduceus staff intent membrane",
-            "caduceus": caduceus,
-            "firstMissingSignal": if accepted { "none".to_string() } else { caduceus.first_missing_signal }
+            "success": success,
+            "message": message,
+            "output": output,
+            "active": active
         })),
     )
         .into_response()
