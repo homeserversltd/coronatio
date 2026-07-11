@@ -117,9 +117,6 @@ fn render_crown_shell_for_session(session: Session) -> String {
     let shell = shell
         .replace("__NAV__", &nav)
         .replace("__TEST__", &render_test_showcase())
-        .replace("__ADMIN_SSH_PASSWORD_CARD__", &render_admin_service_card_html("ssh-password-authentication"))
-        .replace("__ADMIN_SSH_SERVICE_CARD__", &render_admin_service_card_html("ssh-service"))
-        .replace("__ADMIN_SAMBA_SERVICE_CARD__", &render_admin_service_card_html("samba-file-sharing"))
         .replace("__ADMIN_AVAILABLE_DEVICES__", &render_admin_available_devices_html())
         .replace("__ADMIN_MOUNT_DESTINATIONS__", &render_admin_mount_destinations_html())
         .replace("__UPLOAD_TREE_FRAGMENT__", &render_upload_tree_fragment(None, None))

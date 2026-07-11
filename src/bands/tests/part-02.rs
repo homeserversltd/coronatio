@@ -37,6 +37,14 @@
         assert!(admin.contains("/mnt/nas_backup"));
         assert!(admin.find("class=\"system-controls\"").unwrap()
             < admin.find("class=\"system-service-controls\"").unwrap());
+        for label in ["SSH Password Authentication", "SSH Service", "Samba File Sharing"] {
+            assert!(admin.contains(&format!("<h3>{label}</h3>")), "missing static service heading: {label}");
+        }
+        assert_eq!(admin.matches("class=\"toggle-switch\"").count(), 3);
+        assert_eq!(admin.matches("class=\"toggle-slider\"").count(), 3);
+        assert!(admin.find("class=\"system-service-controls\"").unwrap()
+            < admin.find("<div class=\"update-status-container\" data-admin-action-result").unwrap());
+        assert!(!admin.contains("__ADMIN_SSH_PASSWORD_CARD__"));
         assert!(!admin.contains("admin-modal-shelf"));
         assert!(!admin.contains("data-admin-quarry"));
         assert!(!admin.contains("data-stub-action"));
