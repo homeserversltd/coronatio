@@ -1,28 +1,6 @@
     :root {
-      color-scheme: light;
-      --theme-color-primary: #A0AEC0;
-      --theme-color-secondary: #4A5568;
-      --theme-bg-primary: #F7F7F7;
-      --theme-bg-secondary: #F7F7F7;
-      --theme-bg-tertiary: #E2E8F0;
-      --theme-bg-hover: #BCCCDC;
-      --theme-bg-active: #BCCCDC;
-      --theme-text-primary: #1A1A1A;
-      --theme-text-secondary: #4A5568;
-      --theme-text-tertiary: #6B7280;
-      --theme-text-disabled: #A0AEC0;
-      --theme-text-accent: #A78BFA;
-      --theme-status-success: #059669;
-      --theme-status-error: #EF4444;
-      --theme-status-warning: #F59E0B;
-      --theme-status-info: #A78BFA;
-      --theme-spacing-xxs: 0.125rem;
-      --theme-spacing-xs: 0.25rem;
-      --theme-spacing-sm: 0.5rem;
-      --theme-spacing-md: 1rem;
-      --theme-spacing-lg: 1.5rem;
-      --theme-spacing-xl: 2rem;
-      --theme-spacing-2xl: 3rem;
+      color-scheme: light dark;
+      /* Structural bootstrap only. Live paint arrives from the one firmware catalog. */
       --theme-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       --theme-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       --theme-font-size-xs: 12px;
@@ -41,99 +19,26 @@
       --theme-transition-fast: 150ms ease;
       --theme-transition-normal: 250ms ease;
       --theme-transition-slow: 350ms ease;
-      --theme-shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
-      --theme-shadow-md: 0 2px 4px rgba(0,0,0,0.1);
-      --theme-shadow-lg: 0 4px 8px rgba(0,0,0,0.1);
       --theme-radius: 4px;
       --theme-radius-sm: 4px;
       --theme-radius-md: 6px;
       --theme-radius-lg: 8px;
       --theme-radius-pill: 999px;
       --theme-border-width: 1px;
-      --theme-focus-ring: 0 0 0 2px color-mix(in srgb, var(--theme-color-primary) 30%, transparent);
       --theme-header-height: 48px;
       --theme-tab-height: 48px;
-      --theme-control-height: calc(var(--theme-header-height) - 8px);
+      --theme-control-height: 34px;
       --theme-control-padding-x: 0.9rem;
       --theme-control-padding-y: 0.55rem;
-      --theme-content-padding: var(--theme-content-padding);
-      --theme-card-padding: var(--theme-card-padding);
-      --theme-card-min-height: var(--theme-card-min-height);
+      --theme-content-padding: 20px;
+      --theme-card-padding: 1rem;
+      --theme-card-min-height: 112px;
       --theme-card-radius: 8px;
       --theme-modal-radius: 10px;
-      --theme-portal-icon-size: 120px;
-      --theme-chart-height: var(--theme-chart-height);
-      --theme-grid-gap: var(--theme-grid-gap);
-      --theme-background: #F7F7F7;
-      --theme-text: #1A1A1A;
-      --theme-primary: #A0AEC0;
-      --theme-primaryHover: #BCCCDC;
-      --theme-secondary: #4A5568;
-      --theme-accent: #A78BFA;
-      --theme-error: #df0a3f;
-      --theme-success: #10B981;
-      --theme-warning: #FBBF24;
-      --theme-border: #E5E7EB;
-      --theme-statusUp: #059669;
-      --theme-statusDown: #EF4444;
-      --theme-statusPartial: #F59E0B;
-      --theme-statusUnknown: #6B7280;
-      --theme-hiddenTabBackground: #E2E8F0;
-      --theme-hiddenTabText: #A0AEC0;
-      --theme-role-primary: #323840;
-      --theme-role-on-primary: #E0E0E0;
-      --theme-role-primary-container: #1E293B;
-      --theme-role-on-primary-container: #E0E0E0;
-      --theme-role-secondary: #9CA3AF;
-      --theme-role-tertiary: #A78BFA;
-      --theme-surface-0: #F7F7F7;
-      --theme-surface-1: #FFFFFF;
-      --theme-surface-2: #E2E8F0;
-      --theme-surface-3: #A0AEC0;
-      --theme-on-surface: #1A1A1A;
-      --theme-on-surface-muted: #4A5568;
-      --theme-outline: #CBD5E1;
-      --theme-outline-variant: #E5E7EB;
-      --theme-highlight-subtle: rgba(167,139,250,0.16);
-      --theme-highlight-strong: rgba(167,139,250,0.34);
-      --theme-highlight-ring: 0 0 0 3px rgba(167,139,250,0.34);
-      --theme-accent-warm: #FBBF24;
-      --theme-accent-cool: #90cff3;
-      --theme-accent-neutral: #9CA3AF;
-      --theme-accent-critical: #df0a3f;
-      --theme-gradient-primary: linear-gradient(135deg, #323840 0%, #6B7280 100%);
-      --theme-gradient-accent: linear-gradient(135deg, #A78BFA 0%, #90cff3 100%);
-      --theme-gradient-surface: linear-gradient(180deg, #FFFFFF 0%, #F7F7F7 100%);
-      --theme-gradient-highlight: radial-gradient(circle at 20% 20%, rgba(167,139,250,0.34), transparent 55%);
-      --theme-elevation-1: 0 1px 4px rgba(0,0,0,0.28);
-      --theme-elevation-2: 0 6px 16px rgba(0,0,0,0.34);
-      --theme-elevation-3: 0 18px 40px rgba(0,0,0,0.44);
-      --theme-cardlet-rest-shadow: 0 1px 3px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.035);
-      --theme-cardlet-hover-shadow: 0 12px 28px rgba(0,0,0,0.38), 0 0 0 1px var(--theme-highlight-strong), inset 0 1px 0 rgba(255,255,255,0.08);
-      --theme-cardlet-press-shadow: 0 3px 10px rgba(0,0,0,0.34), inset 0 1px 3px rgba(0,0,0,0.20);
-      --theme-cardlet-glimmer: linear-gradient(115deg, transparent 0%, transparent 38%, rgba(255,255,255,0.16) 48%, transparent 58%, transparent 100%);
-      /* Author-face system helpers; packs receive only their rebinds below. */
-      --theme-accent-soft: color-mix(in srgb, var(--theme-accent) 16%, transparent);
-      --theme-primary-rgb: 160, 174, 192;
-      --theme-background-rgb: 247, 247, 247;
-      --theme-overlay-scrim: rgba(0,0,0,0.68);
-      --theme-overlay-tint: rgba(167,139,250,0.10);
-      --theme-focus-color: #A78BFA;
-      --theme-focus-width: 2px;
-      --theme-focus-offset: 2px;
-      --theme-contrast-minimum: 4.5;
-      --theme-density: comfortable;
-      --theme-component-button-container: #A0AEC0;
-      --theme-component-button-on-container: #1A1A1A;
-      --theme-component-button-hover-container: #BCCCDC;
-      --theme-component-card-container: #FFFFFF;
-      --theme-component-card-outline: #E5E7EB;
-      --theme-flag-gradients: enabled;
-      --theme-flag-highlights: enabled;
-      --theme-flag-accent-stripes: enabled;
-      --theme-flag-state-layers: enabled;
-      --theme-flag-density-scale: enabled;
-      /* Theme Net author face: public rebinds for tab packs; the deep lattice stays shell-only. */
+      --theme-portal-icon-size: 96px;
+      --theme-chart-height: 200px;
+      --theme-grid-gap: 16px;
+      /* Theme Net author face: pure rebinds; packs never reach into the deep lattice. */
       --background: var(--theme-background);
       --background-alt: var(--theme-bg-tertiary);
       --background-alt-hover: var(--theme-bg-hover);
@@ -199,8 +104,8 @@
     .uptime { font-family: monospace; font-size: 14px; padding: 4px 8px; border-radius: 4px; display: inline-block; color: var(--text); }
     .status-indicators { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px; }
     .indicator { cursor: pointer; padding: .25rem; display: flex; align-items: center; justify-content: center; border: 0; border-radius: var(--theme-radius-md); background: transparent; color: var(--text); transition: transform .2s ease, background-color .2s ease, box-shadow .2s ease; }
-    .indicator:hover { background-color: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,.15); }
-    .indicator:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    .indicator:hover { background: var(--theme-highlight-subtle); transform: translateY(-1px); box-shadow: var(--theme-elevation-1); }
+    .indicator:active { transform: translateY(1px); box-shadow: var(--theme-elevation-1); }
     .indicator-icon { width: 18px; height: 18px; display: block; fill: currentColor; }
     .indicator .indicator-icon-spinner { display: none; animation: indicator-spin .9s linear infinite; }
     .indicator.loading .indicator-icon-plug { display: none; }
@@ -316,7 +221,7 @@
     .visibility-toggle[data-visible="false"] { color: var(--warning); }
     .visibility-system-catalog [data-visibility-specimen][data-visible="false"] { background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }
     .visibility-specimen-tabs .ui-tab--hidden { background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }
-    .star-button.fas { color: #FFC107; }
+    .star-button.fas { color: var(--theme-accent-warm); }
     .star-button.far { color: var(--text); opacity: .55; }
     .tab-name { white-space: nowrap; }
     .content { flex: 1; padding: var(--theme-content-padding); width: 100%; }
@@ -338,7 +243,7 @@
     .stats-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--theme-card-radius); padding: var(--theme-card-padding); box-shadow: var(--shadow); }
     .stats-section h2 { margin: 0 0 .75rem; font-size: 1rem; }
     .stats-resource-grid, .drives-grid, .network-grid, .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem; }
-    .stats-resource-card, .drive-info, .network-interface, .service-info, .connections-summary { background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.08); border-radius: var(--theme-card-radius); padding: .75rem; }
+    .stats-resource-card, .drive-info, .network-interface, .service-info, .connections-summary { background: var(--theme-surface-1); border: 1px solid var(--theme-outline-variant); border-radius: var(--theme-card-radius); padding: .75rem; }
     .stats-resource-card h3, .drive-info h3, .network-interface h3, .service-info h3 { margin: 0 0 .45rem; font-size: .95rem; }
     .chart-container { position: relative; width: 100%; height: var(--theme-chart-height); margin: .5rem 0 1rem; }
     .cpu-temp { font-weight: 800; color: var(--accent); }
@@ -355,7 +260,7 @@
     .status-dot.down, .status-dot.stopped { background: var(--error); }
     .stats-transport-card .button-row { margin-top: .65rem; }
     .muted { color: var(--text-secondary); }
-    .readout { margin-top: .75rem; padding: .75rem; border-radius: var(--theme-radius-md); background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.08); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; color: #cdefff; overflow: auto; max-height: 220px; white-space: pre-wrap; }
+    .readout { margin-top: .75rem; padding: .75rem; border-radius: var(--theme-radius-md); background: var(--theme-surface-2); border: 1px solid var(--theme-outline-variant); font-family: var(--theme-font-mono); font-size: .78rem; color: var(--theme-accent-cool); overflow: auto; max-height: 220px; white-space: pre-wrap; }
     .button-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .85rem; }
     /* UXPORT-005: admin system/key/disk declarations moved to packs/admin.css; modal shelf remains here for continuation. */
     .modal-window { background-color: var(--background); border: 1px solid var(--border); border-radius: var(--theme-card-radius); box-shadow: 0 4px 16px rgba(0,0,0,.25); overflow: hidden; flex-direction: column; min-height: 190px; }
@@ -498,6 +403,7 @@
     .theme-values-grid { align-items: stretch; }
     .theme-token-lab { display: grid; gap: var(--theme-grid-gap); }
     .theme-token-lab-grid { display: grid; gap: var(--theme-spacing-md); }
+
     .theme-token-row { display: grid; grid-template-columns: minmax(240px, .9fr) minmax(220px, 1.1fr); gap: var(--theme-grid-gap); align-items: center; padding: var(--theme-spacing-md); border: var(--theme-border-width) solid var(--theme-outline-variant); border-radius: var(--theme-radius-lg); background: var(--theme-surface-1); }
     .theme-token-control { display: grid; gap: var(--theme-spacing-xs); color: var(--text); }
     .theme-token-control input[type="range"] { width: 100%; accent-color: var(--accent); }
@@ -513,5 +419,3 @@
     .ux-state-layer::after { content: ''; position: absolute; inset: 0; background: var(--theme-focus-color); opacity: var(--theme-state-hover-opacity); pointer-events: none; }
     .showcase-item h4, .ux-card h3, .ux-card h4 { margin: 0 0 var(--theme-spacing-sm); }
     .theme-token-table { font-family: var(--theme-font-mono); font-size: var(--theme-font-size-xs); }
-
-

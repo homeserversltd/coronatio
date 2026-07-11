@@ -432,17 +432,26 @@
     #[test]
     fn crown_theme_system_uses_legacy_react_variable_membrane_across_panes() {
         let shell = render_crown_shell();
+        let catalog = std::fs::read_to_string("src/bands/theme/catalog.json").unwrap();
+        for catalog_key in [
+            "color-primary",
+            "bg-primary",
+            "bg-secondary",
+            "text-primary",
+            "status-success",
+            "spacing-md",
+            "transition-fast",
+            "shadow-md",
+        ] {
+            assert!(
+                catalog.contains(&format!("\"{catalog_key}\"")),
+                "firmware theme catalog marker missing: {catalog_key}"
+            );
+        }
         for preserved in [
-            "--theme-color-primary",
-            "--theme-bg-primary",
-            "--theme-bg-secondary",
-            "--theme-text-primary",
-            "--theme-status-success",
-            "--theme-spacing-md",
-            "--theme-transition-fast",
-            "--theme-shadow-md",
             "style[data-theme-styles]",
             "themeToCss(theme)",
+            "'  --theme-' + key",
             "themeCatalog",
             "preferred-theme",
             "themeData",
