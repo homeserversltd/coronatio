@@ -212,6 +212,14 @@
             assert!(line.contains("homeserver_rust_mutation_route") || line.contains("upload_file_route") || line.contains("upload_default_directory_update_route"), "upload/files exclusion was touched: {line}");
             assert!(!line.contains("admin_class_generic_mutation_route"), "upload/files exclusion was gated: {line}");
         }
+        let caduceus = std::fs::read_to_string("src/bands/caduceus.rs").unwrap();
+        assert!(caduceus.contains("\"rotate-capability-key\" => Some"));
+        assert!(caduceus.contains("fn rotate_caduceus_capability_key()"));
+        assert!(caduceus.contains("/usr/local/sbin/caduceus-keyman-rotate-capability"));
+        let shell = std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap();
+        assert!(shell.contains("data-admin-action-strip-count=\"8\""));
+        assert!(shell.contains("data-admin-action-id=\"rotate-capability-key\""));
+        assert!(shell.contains("Rotate Capability Key"));
     }
 
     #[tokio::test]

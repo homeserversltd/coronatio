@@ -6,11 +6,6 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
-use base64::{
-    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
-    Engine,
-};
-use ed25519_dalek::{Signer, SigningKey};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
