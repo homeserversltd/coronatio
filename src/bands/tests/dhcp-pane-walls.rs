@@ -45,7 +45,7 @@ fn dhcp_client_is_composed_into_served_crown_chrome() {
 
 #[test]
 fn dhcp_client_refreshes_typed_routes_and_owns_all_controls() {
-    let client = [include_str!("../shell/dhcp-client.rs"), include_str!("../shell/document-4.rs")].join("\n");
+    let client = [include_str!("../shell/dhcp-client.rs"), include_str!("../shell/document-4.rs"), include_str!("../shell/document-4-tail.rs")].join("\n");
     for required in [
         "hydrateDhcp()",
         "'/api/dhcp/leases'",

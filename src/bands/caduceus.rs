@@ -104,7 +104,9 @@ struct CaduceusHttpReadback {
 }
 
 fn caduceus_base() -> String {
-    env::var("CADUCEUS_URL").unwrap_or_else(|_| "http://127.0.0.1:3014".to_string())
+    env::var("CADUCEUS_BASE_URL")
+        .or_else(|_| env::var("CADUCEUS_URL"))
+        .unwrap_or_else(|_| "http://127.0.0.1:3014".to_string())
 }
 
 fn caduceus_authority() -> (String, String) {
@@ -265,6 +267,70 @@ fn parse_caduceus_response(path: &str, response: &str) -> CaduceusHttpReadback {
         first_missing_signal,
     }
 }
+
+
+fn hyalos_tail_path(kind: Option<&str>, count: usize) -> String {
+    let count = count.clamp(1, 1000);
+    match kind {
+        Some(kind) => format!("/api/v1/hyalos/tail?kind={kind}&count={count}"),
+        None => format!("/api/v1/hyalos/tail?count={count}"),
+    }
+}
+
+fn hyalos_tail_readback(kind: Option<&str>, count: usize) -> CaduceusHttpReadback {
+    caduceus_http("GET", &hyalos_tail_path(kind, count))
+}
+
+fn hyalos_upload_history_message_visible(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    !normalized.contains("[error]")
+        && !normalized.contains("failed to")
+        && !normalized.contains("[system]")
+}
+
+fn hyalos_event_is_upload(event: &serde_json::Value) -> bool {
+    event.get("kind").and_then(serde_json::Value::as_str) == Some("upload")
+        || event.get("organ").and_then(serde_json::Value::as_str) == Some("file-ingress")
+}
+
+fn hyalos_upload_history_from_tail(readback: &CaduceusHttpReadback) -> Vec<String> {
+    readback
+        .body
+        .get("events")
+        .and_then(serde_json::Value::as_array)
+        .map(|events| {
+            events
+                .iter()
+                .filter(|event| hyalos_event_is_upload(event))
+                .filter_map(|event| event.get("message").and_then(serde_json::Value::as_str))
+                .filter(|message| hyalos_upload_history_message_visible(message))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn hyalos_channel_clear_refusal_response(schema: &str, path: &str) -> Response {
+    (
+        StatusCode::GONE,
+        Json(serde_json::json!({
+            "schema": schema,
+            "ok": false,
+            "success": false,
+            "accepted": false,
+            "error": "hyalos-channel-append-only",
+            "message": "Hyalos channel is append-only; log truncation is not permitted.",
+            "path": path,
+            "authority": "Coronatio Hyalos consumer",
+            "firstMissingSignal": "hyalos-channel-append-only"
+        })),
+    )
+        .into_response()
+}
+
 
 
 #[derive(Debug, Clone)]

@@ -152,17 +152,6 @@
         assert_eq!(entries[1]["path"], format!("{}/media", root.display()));
     }
 
-    #[tokio::test]
-    async fn upload_history_reads_fixture_log_filters_noise_and_reverses() {
-        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap(); let log_dir = test_tab_root("upload-history-log");
-        std::fs::write(log_dir.join("upload.log"), "old success\n[ERROR] hidden\nfailed to copy\n[SYSTEM] rotate\nnew success\n").unwrap(); std::env::set_var("HOMESERVER_LOG_DIR", &log_dir);
-        let response = app(AppState { tab_root: Arc::new(test_tab_root("upload-history-app")) }).oneshot(Request::builder().uri("/api/upload/history").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK); let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-        assert_eq!(body["history"], serde_json::json!(["new success", "old success"]));
-        let cleared = app(AppState { tab_root: Arc::new(test_tab_root("upload-history-clear-app")) }).oneshot(Request::builder().method("POST").uri("/api/upload/history/clear").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap(); std::env::remove_var("HOMESERVER_LOG_DIR");
-        assert_eq!(cleared.status(), StatusCode::OK); assert_eq!(std::fs::read_to_string(log_dir.join("upload.log")).unwrap(), "");
-    }
-
     #[test]
     fn upload_viewport_ports_react_tablet_dom_grammar() {
         let html = render_crown_shell();
