@@ -303,12 +303,35 @@ async fn upload_history_admin_route(headers: axum::http::HeaderMap) -> Response 
 }
 
 async fn upload_history_route() -> impl IntoResponse {
+    let log_dir = std::env::var("HOMESERVER_LOG_DIR").unwrap_or_else(|_| "/var/log/homeserver".to_string());
+    let log_path = std::path::Path::new(&log_dir).join("upload.log");
+    let history = std::fs::read_to_string(log_path)
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| {
+            let normalized = line.to_ascii_lowercase();
+            !normalized.contains("[error]")
+                && !normalized.contains("failed to")
+                && !normalized.contains("[system]")
+        })
+        .map(str::to_string)
+        .rev()
+        .collect::<Vec<_>>();
     Json(serde_json::json!({
         "schema": "coronatio.upload.history.v1",
         "ok": true,
-        "history": [],
+        "history": history,
         "firstMissingSignal": "none"
     }))
+}
+
+fn clear_upload_history_route() -> Response {
+    let log_dir = std::env::var("HOMESERVER_LOG_DIR").unwrap_or_else(|_| "/var/log/homeserver".to_string());
+    let log_path = std::path::Path::new(&log_dir).join("upload.log");
+    match std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(log_path) {
+        Ok(_) => Json(serde_json::json!({"schema": "coronatio.upload.history.clear.v1", "ok": true, "success": true, "firstMissingSignal": "none"})).into_response(),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"schema": "coronatio.upload.history.clear.v1", "ok": false, "success": false, "error": error.to_string(), "firstMissingSignal": "upload-log-truncate-failed"}))).into_response(),
+    }
 }
 
 async fn upload_default_directory_route() -> impl IntoResponse {
@@ -424,6 +447,7 @@ async fn homeserver_rust_mutation_route(method: Method, uri: Uri) -> impl IntoRe
 
 async fn admin_class_generic_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> Response {
     if session_from_headers(&headers) != Session::Admin { return admin_class_generic_mutation_refusal_response(method.as_str(), uri.path()); }
+    if uri.path() == "/api/upload/history/clear" { return clear_upload_history_route(); }
     homeserver_mutation_response(method.as_str(), uri.path())
 }
 

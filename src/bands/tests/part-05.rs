@@ -150,6 +150,17 @@
         assert_eq!(entries[1]["path"], format!("{}/media", root.display()));
     }
 
+    #[tokio::test]
+    async fn upload_history_reads_fixture_log_filters_noise_and_reverses() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap(); let log_dir = test_tab_root("upload-history-log");
+        std::fs::write(log_dir.join("upload.log"), "old success\n[ERROR] hidden\nfailed to copy\n[SYSTEM] rotate\nnew success\n").unwrap(); std::env::set_var("HOMESERVER_LOG_DIR", &log_dir);
+        let response = app(AppState { tab_root: Arc::new(test_tab_root("upload-history-app")) }).oneshot(Request::builder().uri("/api/upload/history").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK); let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(body["history"], serde_json::json!(["new success", "old success"]));
+        let cleared = app(AppState { tab_root: Arc::new(test_tab_root("upload-history-clear-app")) }).oneshot(Request::builder().method("POST").uri("/api/upload/history/clear").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap(); std::env::remove_var("HOMESERVER_LOG_DIR");
+        assert_eq!(cleared.status(), StatusCode::OK); assert_eq!(std::fs::read_to_string(log_dir.join("upload.log")).unwrap(), "");
+    }
+
     #[test]
     fn upload_viewport_ports_react_tablet_dom_grammar() {
         let html = render_crown_shell();
@@ -175,12 +186,9 @@
         assert!(html.contains(r#"class="file-upload-section" data-upload-regular="file-ingress""#));
         assert!(html.contains(r#"type="file" multiple data-upload-file aria-label="Upload files""#));
         assert!(html.contains("Upload Selected Files"));
-        assert!(html.contains(r#"data-upload-history-modal"#));
-        assert!(html.contains("No upload history available"));
-        assert!(html.contains(r#"class="clear-history-button""#));
-        assert!(html.contains(r#"data-upload-blacklist-modal"#));
-        assert!(html.contains(r#"class="blacklist-manager""#));
-        assert!(html.contains("Enter path to blacklist"));
+        assert!(html.contains(r#"data-upload-history-modal"#)); assert!(html.contains(r#"class="modal-backdrop" data-upload-history-backdrop"#)); assert!(html.contains(r#"class="modal-backdrop" data-upload-blacklist-backdrop"#));
+        assert!(html.contains("No upload history available")); assert!(html.contains(r#"class="clear-history-button""#));
+        assert!(html.contains(r#"data-upload-blacklist-modal"#)); assert!(html.contains(r#"class="blacklist-manager""#)); assert!(html.contains("Enter path to blacklist"));
         assert!(html.contains(r#"data-upload-pin-modal"#));
         assert!(html.contains("Admin PIN Required"));
         assert!(html.contains("Please enter the admin PIN to proceed with the upload."));
@@ -679,8 +687,6 @@
         assert!(nav.contains(r#"hx-swap="innerHTML" hx-trigger="load, click""#));
     }
 
-
-
     #[tokio::test(flavor = "current_thread")]
     async fn hx_exemplar_admin_toggle_post_rerenders_real_state_card() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
@@ -735,8 +741,7 @@
 
     #[tokio::test(flavor = "current_thread")]
     async fn hx_exemplar_admin_action_strip_routes_and_og_affordance_markup() {
-        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-        let _caduceus_guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
+        let (_guard, _caduceus_guard) = (HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap(), CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap());
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-actions")) });
         for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "view-logs", "install-certificate"] {
