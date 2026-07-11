@@ -294,9 +294,6 @@ async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
             }
         }),
     );
-    if caduceus.ok {
-        let _ = append_upload_log(&format!("Uploaded {} ({} bytes) to {}", filename, byte_count, destination));
-    }
     (
         if caduceus.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE },
         Json(serde_json::json!({

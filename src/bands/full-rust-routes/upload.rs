@@ -358,14 +358,6 @@ fn update_upload_config(key: &str, value: serde_json::Value) -> Result<(), Strin
     std::fs::write(&path, rendered).map_err(|error| format!("{}: {error}", path.display()))
 }
 
-fn append_upload_log(line: &str) -> Result<(), String> {
-    use std::io::Write;
-    let log_dir = std::env::var("HOMESERVER_LOG_DIR").unwrap_or_else(|_| "/var/log/homeserver".to_string());
-    std::fs::create_dir_all(&log_dir).map_err(|error| error.to_string())?;
-    let mut log = std::fs::OpenOptions::new().create(true).append(true).open(std::path::Path::new(&log_dir).join("upload.log")).map_err(|error| error.to_string())?;
-    writeln!(log, "{line}").map_err(|error| error.to_string())
-}
-
 async fn upload_default_directory_route() -> impl IntoResponse {
     let value = upload_config_value();
     let path = upload_data(&value).and_then(|data| data.get("default-directory").or_else(|| data.get("defaultDirectory"))).and_then(serde_json::Value::as_str).unwrap_or("/mnt/nas");
