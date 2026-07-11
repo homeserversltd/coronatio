@@ -374,8 +374,8 @@ async fn upload_default_directory_route() -> impl IntoResponse {
 
 async fn upload_default_directory_update_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
     if session_from_headers(&headers) != Session::Admin { return upload_admin_read_refusal_response("/api/upload/default-directory"); }
-    let Some(path) = body.get("path").or_else(|| body.get("defaultPath")).and_then(serde_json::Value::as_str) else { return (StatusCode::BAD_REQUEST, "default-directory-missing").into_response(); };
-    match update_upload_config("default-directory", serde_json::json!(path)) { Ok(()) => Json(serde_json::json!({"ok":true,"defaultPath":path,"firstMissingSignal":"none"})).into_response(), Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response() }
+    let Some(path) = body.get("directory").or_else(|| body.get("path")).or_else(|| body.get("defaultPath")).and_then(serde_json::Value::as_str) else { return (StatusCode::BAD_REQUEST, "default-directory-missing").into_response(); };
+    match update_upload_config("default-directory", serde_json::json!(path)) { Ok(()) => Json(serde_json::json!({"success":true,"directory":path,"ok":true,"defaultPath":path,"firstMissingSignal":"none"})).into_response(), Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response() }
 }
 
 async fn upload_blacklist_admin_route(headers: axum::http::HeaderMap) -> Response {
@@ -400,9 +400,13 @@ fn upload_pin_required_update(body: serde_json::Value) -> Response {
     match update_upload_config("isPinRequired", serde_json::json!(required)) { Ok(()) => Json(serde_json::json!({"ok":true,"isPinRequired":required,"firstMissingSignal":"none"})).into_response(), Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response() }
 }
 
+fn upload_force_permissions_destination(body: &serde_json::Value) -> &str {
+    body.get("directory").or_else(|| body.get("path")).or_else(|| body.get("destination")).and_then(serde_json::Value::as_str).unwrap_or("/mnt/nas")
+}
+
 fn upload_force_permissions(body: serde_json::Value) -> Response {
-    let destination = body.get("path").or_else(|| body.get("destination")).and_then(serde_json::Value::as_str).unwrap_or("/mnt/nas");
+    let destination = upload_force_permissions_destination(&body);
     let caduceus = caduceus_http_json("POST", "/api/v1/staff/intent", serde_json::json!({"method":"POST","route":"/api/upload/force-permissions","classification":"force-permissions","metadata":{"destination":destination}}));
-    (if caduceus.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE }, Json(serde_json::json!({"ok":caduceus.ok,"caduceus":caduceus,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
+    (if caduceus.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE }, Json(serde_json::json!({"success":caduceus.ok,"message":if caduceus.ok { "Permissions updated successfully" } else { "Permissions update failed" },"ok":caduceus.ok,"caduceus":caduceus,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
 }
 

@@ -154,9 +154,21 @@ fn shell_document_4() -> &'static str {
     uploadFileInput?.addEventListener('change', setUploadSelection);
     uploadSubmit?.addEventListener('click', uploadSelectedFiles);
     document.querySelector('[data-upload-refresh]')?.addEventListener('click', () => { window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(uploadCurrentPath()), { target: '[data-upload-tree]', swap: 'innerHTML' }); });
+    async function postUploadDirectoryAction(url, successMessage) {
+      try {
+        const response = await fetch(url, { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !(data.success ?? data.ok)) throw new Error(data.message || data.error || data.firstMissingSignal || `Request failed with status ${response.status}`);
+        showCoronatioToast(successMessage, 'success');
+        return data;
+      } catch (error) {
+        showCoronatioToast(error?.message || 'Request failed', 'error');
+        return null;
+      }
+    }
     document.querySelector('[data-upload-force-allow]')?.addEventListener('click', async () => { if (!confirm(`WARNING: This will override security settings for ${uploadState.currentPath}. 
-Only continue if you understand the risks.`)) return; await fetch('/api/upload/force-permissions', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }); });
-    document.querySelector('[data-upload-set-default]')?.addEventListener('click', () => fetch('/api/upload/default-directory', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }));
+Only continue if you understand the risks.`)) return; await postUploadDirectoryAction('/api/upload/force-permissions', 'Directory permissions updated successfully'); });
+    document.querySelector('[data-upload-set-default]')?.addEventListener('click', () => postUploadDirectoryAction('/api/upload/default-directory', 'Default directory updated successfully'));
     document.querySelector('[data-upload-history]')?.addEventListener('click', async () => { openUploadModal('[data-upload-history-modal]'); await refreshUploadHistory(); });
     document.querySelector('[data-upload-blacklist]')?.addEventListener('click', async () => { openUploadModal('[data-upload-blacklist-modal]'); await refreshUploadBlacklist(); });
     document.querySelector('[data-upload-blacklist-add]')?.addEventListener('click', () => { const input = document.querySelector('[data-upload-blacklist-input]'); const next = input?.value?.trim(); if (!next || uploadState.blacklist.includes(next)) return; uploadState.blacklist.push(next); input.value = ''; refreshUploadBlacklistDomOnly(); });

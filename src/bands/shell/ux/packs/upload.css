@@ -62,6 +62,8 @@
     .blacklist-entry { display: flex; align-items: center; padding: 8px 12px; background: var(--hiddenTabBackground); border-radius: 8px; gap: 12px; }
     .entry-path { flex: 1; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .remove-entry { background: none; border: none; color: var(--text); font-size: 1.2em; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+    .close-button { background: none; border: none; font-size: 1.2rem; color: var(--text); cursor: pointer; padding: 4px; border-radius: 4px; transition: all 0.2s ease; }
+    .close-button:hover { background: var(--background-alt); color: var(--primary); }
     .blacklist-controls, .add-entry { display: flex; gap: 8px; }
     .blacklist-controls { flex-direction: column; }
     .entry-input { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--background); color: var(--text); font-family: monospace; }
