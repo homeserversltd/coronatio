@@ -78,9 +78,9 @@ fn shell_document_2() -> &'static str {
                   </div>
                 </div>
                 <div class="key-manager-right"><div class="key-actions">
-                  <button type="button" class="action-button create-button"><span>+ Create New Key</span></button>
-                  <button type="button" class="action-button update-button"><span>⟳ Update Key on Drive</span></button>
-                  <button type="button" class="action-button admin-password-button"><span>🔒 Admin Password</span></button>
+                  <button type="button" class="action-button create-button" aria-disabled="true"><span>+ Create New Key</span></button>
+                  <button type="button" class="action-button update-button" aria-disabled="true"><span>⟳ Update Key on Drive</span></button>
+                  <button type="button" class="action-button admin-password-button" aria-disabled="true"><span>🔒 Admin Password</span></button>
                 </div></div>
               </div>
             </div>
@@ -93,18 +93,18 @@ fn shell_document_2() -> &'static str {
                 <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list" data-admin-mounts-readback="/api/services/data">__ADMIN_MOUNT_DESTINATIONS__</div></div>
               </div>
               <div class="disk-actions">
-                <button type="button" class="action-button format">Format</button>
-                <button type="button" class="action-button encrypt">Encrypt</button>
-                <button type="button" class="action-button assign-primary">Assign as primary NAS</button>
-                <button type="button" class="action-button assign-backup">Assign as NAS Backup</button>
-                <button type="button" class="action-button unassign-nas">Unassign drive</button>
-                <button type="button" class="action-button import-nas">Import to NAS</button>
-                <button type="button" class="action-button permissions">Setup NAS</button>
-                <button type="button" class="action-button unlock">Unlock</button>
-                <button type="button" class="action-button mount">Mount</button>
-                <button type="button" class="action-button unmount">Unmount</button>
-                <button type="button" class="action-button sync">Sync Now</button>
-                <button type="button" class="action-button auto-sync">Auto Sync</button>
+                <button type="button" class="action-button format" aria-disabled="true">Format</button>
+                <button type="button" class="action-button encrypt" aria-disabled="true">Encrypt</button>
+                <button type="button" class="action-button assign-primary" aria-disabled="true">Assign as primary NAS</button>
+                <button type="button" class="action-button assign-backup" aria-disabled="true">Assign as NAS Backup</button>
+                <button type="button" class="action-button unassign-nas" aria-disabled="true">Unassign drive</button>
+                <button type="button" class="action-button import-nas" aria-disabled="true">Import to NAS</button>
+                <button type="button" class="action-button permissions" aria-disabled="true">Setup NAS</button>
+                <button type="button" class="action-button unlock" aria-disabled="true">Unlock</button>
+                <button type="button" class="action-button mount" aria-disabled="true">Mount</button>
+                <button type="button" class="action-button unmount" aria-disabled="true">Unmount</button>
+                <button type="button" class="action-button sync" aria-disabled="true">Sync Now</button>
+                <button type="button" class="action-button auto-sync" aria-disabled="true">Auto Sync</button>
               </div>
             </div>
           </section>

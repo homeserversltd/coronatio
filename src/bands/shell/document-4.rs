@@ -485,47 +485,28 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
     }
     let factoryPortalNamesPromise;
     function factoryPortalNames() {
-      if (!factoryPortalNamesPromise) {
-        factoryPortalNamesPromise = fetch('/api/portals/factory', { cache: 'no-store' })
-          .then(response => response.ok ? response.json() : Promise.reject(new Error(`Factory portals unavailable (${response.status})`)))
-          .then(payload => new Set(payload.factoryPortals || []))
-          .catch(error => { factoryPortalNamesPromise = undefined; throw error; });
-      }
+      if (!factoryPortalNamesPromise) factoryPortalNamesPromise = fetch('/api/portals/factory', { cache: 'no-store' }).then(response => response.ok ? response.json() : Promise.reject(new Error(`Factory portals unavailable (${response.status})`))).then(payload => new Set(payload.factoryPortals || [])).catch(error => { factoryPortalNamesPromise = undefined; throw error; });
       return factoryPortalNamesPromise;
     }
     async function submitPortalForm(event) {
-      event.preventDefault();
-      const form = event.currentTarget;
-      const type = form.elements.type.value;
-      const name = form.elements.name.value.trim();
-      const description = form.elements.description.value.trim();
-      const servicesText = form.elements.services.value.trim();
-      const port = Number.parseInt(form.elements.port.value, 10);
-      const localURL = form.elements.localURL.value.trim();
-      let error = !name ? 'Portal name is required' : !description ? 'Description is required' : '';
-      if (!error && type !== 'link' && !servicesText) error = 'At least one service is required';
-      if (!error && type !== 'link' && (!Number.isInteger(port) || port < 1 || port > 65535)) error = 'Port must be a valid number between 1 and 65535';
-      if (!error && !localURL) error = 'Local URL is required';
-      if (!error && !/^https?:\/\//.test(localURL)) error = 'Local URL must start with http:// or https://';
+      event.preventDefault(); const form = event.currentTarget, type = form.elements.type.value;
+      const name = form.elements.name.value.trim(), description = form.elements.description.value.trim();
+      const servicesText = form.elements.services.value.trim(), port = Number.parseInt(form.elements.port.value, 10), localURL = form.elements.localURL.value.trim();
+      let error = !name ? 'Portal name is required' : !description ? 'Description is required' : ''; if (!error && type !== 'link' && !servicesText) error = 'At least one service is required'; if (!error && type !== 'link' && (!Number.isInteger(port) || port < 1 || port > 65535)) error = 'Port must be a valid number between 1 and 65535';
+      if (!error && !localURL) error = 'Local URL is required'; else if (!error && !/^https?:\/\//.test(localURL)) error = 'Local URL must start with http:// or https://';
       if (error) { showCoronatioToast(error, 'error'); return; }
-      const portal = { name, description, type, localURL, services: type === 'link' ? [] : servicesText.split(',').map(service => service.trim()).filter(Boolean) };
-      if (type !== 'link') portal.port = port;
+      const portal = { name, description, type, localURL, services: type === 'link' ? [] : servicesText.split(',').map(service => service.trim()).filter(Boolean) }; if (type !== 'link') portal.port = port;
       const token = localStorage.getItem('coronatioAdminToken');
       try {
-        const response = await fetch('/api/portals', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) }, body: JSON.stringify(portal) });
-        if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Create failed (${response.status})`); }
+        const response = await fetch('/api/portals', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) }, body: JSON.stringify(portal) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Create failed (${response.status})`); }
         form.reset(); closePortalModals(); await refreshElementFragment('portals'); showCoronatioToast(`Portal "${name}" created successfully`, 'success');
       } catch (error) { showCoronatioToast(error.message || 'Failed to create portal', 'error'); }
     }
     async function deletePortal(event) {
-      event.preventDefault(); event.stopPropagation();
-      const name = event.currentTarget.dataset.portalName || event.currentTarget.dataset.deletePortal;
-      if (!headerState.isAdmin || !name) return;
+      event.preventDefault(); event.stopPropagation(); const name = event.currentTarget.dataset.portalName || event.currentTarget.dataset.deletePortal; if (!headerState.isAdmin || !name) return;
       try {
-        const factoryNames = await factoryPortalNames();
-        if (factoryNames.has(name)) { showCoronatioToast('Factory portals cannot be deleted', 'error'); return; }
-        if (!window.confirm(`Delete portal "${name}"?`)) return;
-        const token = localStorage.getItem('coronatioAdminToken');
+        const factoryNames = await factoryPortalNames(); if (factoryNames.has(name)) { showCoronatioToast('Factory portals cannot be deleted', 'error'); return; }
+        if (!window.confirm(`Delete portal "${name}"?`)) return; const token = localStorage.getItem('coronatioAdminToken');
         const response = await fetch(`/api/portals/${encodeURIComponent(name)}`, { method: 'DELETE', headers: token ? { 'X-Admin-Token': token } : {} });
         if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Delete failed (${response.status})`); }
         await refreshElementFragment('portals'); showCoronatioToast(`Portal "${name}" deleted`, 'success');
@@ -753,8 +734,6 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       if (editNote) { event.preventDefault(); openNoteModal(editNote.dataset.mac || '', editNote.dataset.note || ''); return; }
       const statEye = event.target.closest('[data-stat-visibility-toggle]');
       if (statEye) { event.preventDefault(); event.stopPropagation(); toggleElementVisibility('stats', statEye.dataset.statVisibilityToggle, statEye.dataset.visible !== 'true'); return; }
-      const deletePortalButton = event.target.closest('[data-portal-delete]');
-      if (deletePortalButton) { event.preventDefault(); event.stopPropagation(); deletePortal(deletePortalButton); return; }
       const addPortal = event.target.closest('[data-add-portal-open]');
       if (addPortal) { openPortalModal('[data-add-portal-modal]'); return; }
       const portalModalClose = event.target.closest('[data-portal-modal-close]');
