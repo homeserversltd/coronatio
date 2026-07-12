@@ -308,6 +308,29 @@
     }
 
     #[test]
+    fn crown_tabbar_seats_offline_icons_and_matches_guest_admin_grid_geometry() {
+        let guest = render_crown_shell_for_session(Session::Guest);
+        let admin = render_crown_shell_for_session(Session::Admin);
+        let fontawesome = std::fs::read_to_string("static/vendor/fontawesome/css/all.min.css").unwrap();
+
+        assert!(guest.contains(r#"href="/static/vendor/fontawesome/css/all.min.css""#));
+        assert!(fontawesome.contains("Font Awesome 5 Free"));
+        assert!(fontawesome.contains(".fa-eye:before"));
+        assert!(fontawesome.contains(".fa-eye-slash:before"));
+        assert!(std::path::Path::new("static/vendor/fontawesome/webfonts/fa-solid-900.woff2").is_file());
+
+        assert!(guest.contains(r#"[data-admin-mode="false"] .tab-visibility-column { display: none; }"#));
+        assert!(guest.contains(r#"[data-admin-mode="true"] .tab { justify-items: center; }"#));
+        assert!(guest.contains("width: 24px; min-width: 24px;"));
+        let guest_nav_start = guest.find("<nav class=\"tab-bar\"").unwrap();
+        let guest_nav_end = guest[guest_nav_start..].find("</nav>").unwrap() + guest_nav_start;
+        assert!(!guest[guest_nav_start..guest_nav_end].contains("data-tab-visibility-toggle"));
+        assert!(admin.contains("data-tab-visibility-toggle"));
+        assert!(admin.contains("fa-eye"));
+        assert!(admin.contains("fa-eye-slash"));
+    }
+
+    #[test]
     fn test_visibility_system_is_the_live_fontawesome_catalog() {
         let source = std::fs::read_to_string("src/bands/shell/test.rs").unwrap();
         let shell = render_crown_shell();

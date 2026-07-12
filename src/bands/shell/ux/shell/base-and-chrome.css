@@ -209,7 +209,9 @@
     .tab.active, .tab[aria-selected="true"] { background: var(--primary); color: var(--text); border-color: var(--primary); border-top: 2px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,.1); }
     [data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }
     [data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }
-    .tab-visibility-column, .tab-star-column { display: grid; place-items: center; min-width: 24px; }
+    [data-admin-mode="false"] .tab-visibility-column { display: none; }
+    [data-admin-mode="true"] .tab { justify-items: center; }
+    .tab-visibility-column, .tab-star-column { display: grid; place-items: center; width: 24px; min-width: 24px; }
     .visibility-toggle, .star-button {
       display: grid;
       place-items: center;
