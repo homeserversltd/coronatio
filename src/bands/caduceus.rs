@@ -61,8 +61,8 @@ async fn caduceus_receipts_latest_route() -> impl IntoResponse {
     )
 }
 
-fn caduceus_mutation_route(route: &str, path: &str, action: &str, target: &str) -> (StatusCode, Json<serde_json::Value>) {
-    let readback = match mint_caduceus_capability(action, target) {
+fn caduceus_mutation_readback(path: &str, action: &str, target: &str) -> CaduceusHttpReadback {
+    match mint_caduceus_capability(action, target) {
         Ok(capability) => caduceus_http_with_capability("POST", path, Some(&capability)),
         Err(signal) => CaduceusHttpReadback {
             ok: false,
@@ -71,7 +71,11 @@ fn caduceus_mutation_route(route: &str, path: &str, action: &str, target: &str) 
             body: serde_json::json!({"error": signal}),
             first_missing_signal: signal,
         },
-    };
+    }
+}
+
+fn caduceus_mutation_route(route: &str, path: &str, action: &str, target: &str) -> (StatusCode, Json<serde_json::Value>) {
+    let readback = caduceus_mutation_readback(path, action, target);
     (
         if readback.ok {
             StatusCode::OK
@@ -129,25 +133,34 @@ fn mint_caduceus_capability(action: &str, target: &str) -> Result<String, String
     if !output.status.success() {
         return Err("keyman-capability-mint-refused".to_string());
     }
-    let readback: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|_| "keyman-capability-mint-malformed".to_string())?;
-    if !readback
-        .get("ok")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false)
-    {
-        return Err(readback
-            .get("firstMissingSignal")
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if let Ok(readback) = serde_json::from_str::<serde_json::Value>(&stdout) {
+        if !readback
+            .get("ok")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true)
+        {
+            return Err(readback
+                .get("firstMissingSignal")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("keyman-capability-mint-refused")
+                .to_string());
+        }
+        if let Some(capability) = readback
+            .get("capability")
             .and_then(serde_json::Value::as_str)
-            .unwrap_or("keyman-capability-mint-refused")
-            .to_string());
+            .filter(|capability| !capability.is_empty())
+        {
+            return Ok(capability.to_string());
+        }
+        return Err("keyman-capability-mint-malformed".to_string());
     }
-    readback
-        .get("capability")
-        .and_then(serde_json::Value::as_str)
-        .filter(|capability| !capability.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| "keyman-capability-mint-malformed".to_string())
+    let token = stdout.trim().strip_prefix("Bearer ").unwrap_or(stdout.trim());
+    if token.is_empty() {
+        Err("keyman-capability-mint-malformed".to_string())
+    } else {
+        Ok(token.to_string())
+    }
     }
 }
 
@@ -449,7 +462,7 @@ fn admin_toggle_target(toggle_id: &str) -> Option<(&'static str, &'static str)> 
 fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &'static str, bool)> {
     match action_id {
         "hard-drive-test" => Some(("Hard Drive Test", "POST", "/api/admin/hard-drive-test/start", true)),
-        "update" => Some(("Update", "POST", "/api/admin/updates/apply", true)),
+        "update" => Some(("Update", "POST", "/api/v1/update/now", true)),
         "rotate-capability-key" => Some(("Rotate Capability Key", "POST", "/usr/local/sbin/caduceus-keyman-rotate-capability", true)),
         "restart" => Some(("Restart", "POST", "/api/admin/system/restart", true)),
         "shutdown" => Some(("Shutdown", "POST", "/api/admin/system/shutdown", true)),
@@ -532,6 +545,8 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
     };
     let readback = if action_id == "rotate-capability-key" {
         rotate_caduceus_capability_key()
+    } else if action_id == "update" {
+        caduceus_mutation_readback(path, "update now", "local")
     } else if mutation {
         admin_staff_intent(method, path, homeserver_route_family(path))
     } else {

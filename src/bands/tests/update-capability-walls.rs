@@ -1,5 +1,5 @@
     #[tokio::test(flavor = "current_thread")]
-    async fn admin_update_sends_caduceus_accepted_signed_capability() {
+    async fn admin_update_sends_caduceus_update_now_capability() {
         use std::net::TcpListener;
 
         fn mock_keyman_mint(action: &str, target: &str) -> Result<String, String> {
@@ -31,8 +31,8 @@
                         .then(|| value.trim().to_string())
                 })
                 .expect("Keyman-minted capability header");
-            assert_eq!(header, "keyman-mock::staff intent::/api/admin/updates/apply");
-            assert!(request.contains("\"route\":\"/api/admin/updates/apply\""));
+            assert_eq!(header, "keyman-mock::update now::local");
+            assert!(request.starts_with("POST /api/v1/update/now HTTP/1.1"), "{request}");
             stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 39\r\nConnection: close\r\n\r\n{\"ok\":true,\"firstMissingSignal\":\"none\"}").unwrap();
         });
 
