@@ -43,13 +43,14 @@ fn shell_document_2() -> &'static str {
     </div>
     <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist" data-admin-mode="false" data-hidden="false">__NAV__</nav>
     <section class="content" data-immortal-floor-shell data-startup-phase="Booting">
-      <aside class="immortal-floor-underlay" data-immortal-floor-layer="0" aria-live="polite">
+      <div class="immortal-floor-underlay" data-immortal-floor-layer="0" aria-hidden="true"></div>
+      <aside class="immortal-floor-admission-frame" data-immortal-floor-layer="1" aria-live="polite">
         <div class="immortal-floor-underlay-card">
-          <span class="immortal-floor-mark" aria-hidden="true">C</span>
+          <span class="immortal-floor-loader" aria-hidden="true"></span>
           <div><strong>HOMESERVER</strong><span data-immortal-floor-message>Preparing your controls…</span></div>
         </div>
       </aside>
-      <div class="immortal-floor-guest-slot" data-immortal-floor-layer="1" data-slot-empty="true">
+      <div class="immortal-floor-guest-slot" data-immortal-floor-layer="2" data-slot-empty="true">
       <section class="pane" id="pane-admin" data-pane-panel="admin" data-view-panel="admin" role="tabpanel" aria-label="Admin">
 
         <div class="admin-tablet" data-admin-only="true" data-admin-viewport="admin">
@@ -246,8 +247,8 @@ fn shell_document_2() -> &'static str {
     let tabs = [...document.querySelectorAll('[data-pane]')];
     const panes = [...document.querySelectorAll('[data-pane-panel]')];
     const immortalFloorShell = document.querySelector('[data-immortal-floor-shell]');
-    const immortalFloorGuestSlot = document.querySelector('[data-immortal-floor-layer="1"]');
-    panes.forEach(pane => pane.dataset.immortalFloorLayer = '1');
+    const immortalFloorGuestSlot = document.querySelector('[data-immortal-floor-layer="2"]');
+    panes.forEach(pane => pane.dataset.immortalFloorLayer = '2');
     const htmxOrgan = window.htmx;
     if (htmxOrgan && htmxOrgan.config) {
       htmxOrgan.config.allowScriptTags = false;

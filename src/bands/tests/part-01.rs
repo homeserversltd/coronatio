@@ -162,7 +162,7 @@
         assert!(body.contains("data-pane-panel=\"stats\""));
         assert!(body.contains("data-pane-panel=\"portals\""));
         assert!(body.contains("data-pane-panel=\"upload\""));
-        assert!(body.contains("function showPane(id)"));
+        assert!(body.contains("function showPane(id, options)"));
         assert!(body.contains("fetch('/api/stats')"));
         assert!(body.contains(r#"class="disk-actions""#));
         assert!(body.contains("Hard Drive Test"));
@@ -244,7 +244,7 @@
             "function reconcileActiveTabAfterAdminExit(previousActive)",
             "function applyTabBarVisibility()",
             "refreshTabBar(previousActive).then(selectedTab =>",
-            "if (selectedTab) showPane(selectedTab)",
+            "if (selectedTab) showPane(selectedTab, { refresh: true })",
             "?active=' + encodeURIComponent(activeTabId)",
             "if (!canStarTab(button.dataset.tabStar)) return;",
             "fetch('/api/tab-bar' + activeParam",
