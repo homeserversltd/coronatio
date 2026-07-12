@@ -95,7 +95,7 @@
         assert!(fragment.contains("data-tab-star=\"portals\""), "{fragment}");
         assert!(fragment.contains("aria-pressed=\"true\""), "{fragment}");
         let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
-        assert_eq!(value["tabs"]["starred"], serde_json::Value::String("portals".to_string()));
+        assert_eq!(value["tabs"]["starred"], serde_json::Value::String("stats".to_string()), "the crown fixture remains read-only; Caduceus owns persistence");
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     }
 

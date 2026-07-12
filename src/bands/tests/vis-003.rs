@@ -68,9 +68,9 @@
         let toggle_tag = &fragment[toggle_start..toggle_end];
         assert_eq!(toggle_tag.matches("data-visible=").count(), 1, "{toggle_tag}");
         let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
-        assert_eq!(value["tabs"]["stats"]["visibility"]["elements"]["process-usage"], serde_json::Value::Bool(false));
+        assert!(value["tabs"]["stats"]["visibility"]["elements"]["process-usage"].is_null(), "the crown fixture remains read-only; Caduceus owns persistence");
         assert!(value["tabs"]["stats"]["visibility"]["elements"].get("network").is_none());
-        assert!(value["tabs"]["stats"]["visibility"]["elements"].get("process-list").is_none());
+        assert!(value["tabs"]["stats"]["visibility"]["elements"].get("process-list").is_some(), "local read fixture is not rewritten or canonicalized by Coronatio");
         assert!(std::fs::read_dir(&temp).unwrap().all(|entry| !entry.unwrap().file_name().to_string_lossy().contains("tmp")));
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     }

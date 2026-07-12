@@ -25,11 +25,14 @@ async fn element_visibility_route(headers: axum::http::HeaderMap, Json(request):
         Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, Html(format!(r#"<div data-element-visibility-refusal="load-failed">{}</div>"#, html_escape(&error)))).into_response(),
     };
     let next = iris::apply_element_visibility(&facts, &tab, &element, visible);
-    if let Err(error) = persist_iris_facts(&next).await {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Html(format!(r#"<div data-element-visibility-refusal="persist-failed">{}</div>"#, html_escape(&error)))).into_response();
+    let path = format!("tabs.{tab}.visibility.elements.{element}");
+    let persisted = caduceus_config_set(&path, serde_json::Value::Bool(visible));
+    if !persisted.ok {
+        let status = if persisted.status == 0 { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::BAD_GATEWAY };
+        return (status, Html(format!(r#"<div data-element-visibility-refusal="persist-failed" data-first-missing-signal="{}">{}</div>"#, html_escape(&persisted.first_missing_signal), html_escape(&persisted.first_missing_signal)))).into_response();
     }
     pulse::poke(pulse::PokeTopic::TabsChanged);
-    element_fragment_response(Session::Admin, &tab)
+    element_fragment_response_from_facts(Session::Admin, &tab, &next)
 }
 
 async fn element_fragment_route(headers: axum::http::HeaderMap, Path(tab_id): Path<String>) -> impl IntoResponse {
@@ -64,6 +67,15 @@ fn element_fragment_response(session: Session, tab: &str) -> Response {
     element_fragment_response_with_host(session, tab, "")
 }
 
+fn element_fragment_response_from_facts(session: Session, tab: &str, facts: &IrisFacts) -> Response {
+    let body = match tab {
+        "stats" => render_stats_elements_fragment_from_facts(session, facts),
+        "portals" => render_portals_elements_fragment_from_facts(session, "", facts),
+        _ => String::new(),
+    };
+    (StatusCode::OK, Html(body)).into_response()
+}
+
 fn element_fragment_response_with_host(session: Session, tab: &str, host: &str) -> Response {
     let body = match tab {
         "stats" => render_stats_elements_fragment(session),
@@ -91,7 +103,10 @@ fn normalize_element_id_for_tab(tab: &str, raw: &str) -> String {
 
 fn render_stats_elements_fragment(session: Session) -> String {
     let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
-    let _plan = iris::plan(&facts, session);
+    render_stats_elements_fragment_from_facts(session, &facts)
+}
+
+fn render_stats_elements_fragment_from_facts(session: Session, facts: &IrisFacts) -> String {
     stat_element_templates()
         .into_iter()
         .filter_map(|(id, html)| render_stat_element_from_grant(session, &facts, id, html))
@@ -160,12 +175,16 @@ fn render_stat_element_from_grant(session: Session, facts: &IrisFacts, element_i
 
 fn render_portals_elements_fragment(session: Session, host: &str) -> String {
     let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
-    let plan = iris::plan(&facts, session);
+    render_portals_elements_fragment_from_facts(session, host, &facts)
+}
+
+fn render_portals_elements_fragment_from_facts(session: Session, host: &str, facts: &IrisFacts) -> String {
+    let plan = iris::plan(facts, session);
     match read_portals_config() {
         Ok(response) => {
             let factory_portals = response.factory_portals;
             let mut html = response.portals.into_iter()
-                .filter_map(|portal| render_portal_element_from_grant(session, &facts, &plan, &portal, host, &factory_portals))
+                .filter_map(|portal| render_portal_element_from_grant(session, facts, &plan, &portal, host, &factory_portals))
                 .collect::<Vec<_>>()
                 .join("\n");
             if html.is_empty() {
