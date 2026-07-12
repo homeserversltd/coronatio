@@ -64,3 +64,13 @@
         assert!(!source.contains("fn caduceus_dispatch_route"));
         assert!(!source.contains("thread::spawn"));
     }
+
+    #[test]
+    fn keyman_mint_uses_last_json_line_and_keeps_bare_token_fallback() {
+        let polluted = "Acquired key for caduceus_household\nAcquired key for caduceus_household\n{\"ok\":true,\"capability\":\"signed-token\",\"firstMissingSignal\":\"none\"}\n";
+        assert_eq!(parse_keyman_capability_stdout(polluted).unwrap(), "signed-token");
+        assert_eq!(
+            parse_keyman_capability_stdout("diagnostic\nBearer bare-token\n").unwrap(),
+            "bare-token"
+        );
+    }

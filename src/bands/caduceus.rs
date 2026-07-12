@@ -130,11 +130,22 @@ fn mint_caduceus_capability(action: &str, target: &str) -> Result<String, String
         ])
         .output()
         .map_err(|_| "keyman-capability-mint-unavailable".to_string())?;
-    if !output.status.success() {
-        return Err("keyman-capability-mint-refused".to_string());
+        if !output.status.success() {
+            return Err("keyman-capability-mint-refused".to_string());
+        }
+        parse_keyman_capability_stdout(&String::from_utf8_lossy(&output.stdout))
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if let Ok(readback) = serde_json::from_str::<serde_json::Value>(&stdout) {
+}
+
+fn parse_keyman_capability_stdout(stdout: &str) -> Result<String, String> {
+    let json_line = stdout
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| line.starts_with('{') && line.ends_with('}'));
+    if let Some(readback) =
+        json_line.and_then(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+    {
         if !readback
             .get("ok")
             .and_then(serde_json::Value::as_bool)
@@ -155,12 +166,17 @@ fn mint_caduceus_capability(action: &str, target: &str) -> Result<String, String
         }
         return Err("keyman-capability-mint-malformed".to_string());
     }
-    let token = stdout.trim().strip_prefix("Bearer ").unwrap_or(stdout.trim());
+    let token = stdout
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    let token = token.strip_prefix("Bearer ").unwrap_or(token);
     if token.is_empty() {
         Err("keyman-capability-mint-malformed".to_string())
     } else {
         Ok(token.to_string())
-    }
     }
 }
 
