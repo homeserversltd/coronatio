@@ -320,8 +320,15 @@
         assert!(std::path::Path::new("static/vendor/fontawesome/webfonts/fa-solid-900.woff2").is_file());
 
         assert!(guest.contains(r#"[data-admin-mode="false"] .tab-visibility-column { display: none; }"#));
-        assert!(guest.contains(r#"[data-admin-mode="true"] .tab { justify-items: center; }"#));
-        assert!(guest.contains("width: 24px; min-width: 24px;"));
+        assert!(guest.contains(r#"[data-admin-mode="true"] .tab { justify-items: stretch; }"#));
+        assert!(guest.contains("grid-template-columns: auto 1fr auto;"));
+        assert!(guest.contains("width: 36px;"));
+        assert!(guest.contains("min-width: 36px;"));
+        assert!(guest.contains(".tab-visibility-column .ui-visibility-toggle:hover:not(:disabled) { transform: none; }"));
+        let tab_name_css = guest.split(".tab-name {").nth(1).expect("tab name geometry").split('}').next().unwrap();
+        for marker in ["min-width: 0;", "padding: 0 4px;", "overflow: hidden;", "text-overflow: ellipsis;", "text-align: left;", "justify-self: stretch;"] {
+            assert!(tab_name_css.contains(marker), "missing tab-name geometry marker: {marker}");
+        }
         let guest_nav_start = guest.find("<nav class=\"tab-bar\"").unwrap();
         let guest_nav_end = guest[guest_nav_start..].find("</nav>").unwrap() + guest_nav_start;
         assert!(!guest[guest_nav_start..guest_nav_end].contains("data-tab-visibility-toggle"));
