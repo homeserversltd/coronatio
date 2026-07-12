@@ -719,6 +719,8 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
     document.body.addEventListener('click', event => {
       const catalogEye = event.target.closest('[data-ui-visibility-toggle]');
       if (catalogEye) { event.preventDefault(); const visible = catalogEye.dataset.visible !== 'true'; catalogEye.dataset.visible = String(visible); catalogEye.setAttribute('aria-pressed', String(visible)); catalogEye.classList.toggle('ui-visibility-toggle--visible', visible); catalogEye.classList.toggle('ui-visibility-toggle--hidden', !visible); const icon = catalogEye.querySelector('i'); if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash'; const specimen = catalogEye.closest('[data-visibility-specimen]'); if (specimen) { specimen.dataset.visible = String(visible); const label = specimen.querySelector('[data-visibility-state-label]'); if (label) label.textContent = visible ? 'Visible' : 'Dimmed hidden'; } return; }
+      const stillness = event.target.closest('[data-motion-stillness]');
+      if (stillness) { stillMotionLab(stillness.closest('[data-animation-lab]')); return; }
       const animationPlay = event.target.closest('[data-animation-play]');
       if (animationPlay) { playMotion(animationPlay); return; }
       const scopedTab = event.target.closest('[data-tab-id]');

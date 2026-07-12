@@ -1,6 +1,6 @@
 fn render_test_animations() -> String {
     r#"<section class="test-panel test-animations" data-tab-panel="animations" data-catalog-specimen="indranet-animation-lab" data-animation-lab>
-<header class="test-subpanel-header"><div><p class="test-kicker">IndraNet Animation Lab</p><h3>Animations</h3><p>Motion primitives proven here before they reflect through crown panes.</p></div></header>
+<header class="test-subpanel-header"><div><p class="test-kicker">IndraNet Animation Lab</p><h3>Animations</h3><p>Motion primitives proven here before they reflect through crown panes.</p></div><button type="button" class="ui-button ui-button--secondary" data-motion-stillness>Stillness</button></header>
 <section class="animation-band" data-animation-band="atoms"><header><h3>Band A — Motion Atoms</h3><p>Small, explicit transitions. Each specimen moves only when played.</p></header><div class="animation-grid">
 <article class="animation-specimen motion-fade"><h4>Fade in / out</h4><div class="motion-stage"><span class="motion-jewel">Fade</span></div><button class="ui-button" data-animation-play>Play</button></article>
 <article class="animation-specimen motion-slide"><h4>Slide up / down</h4><div class="motion-stage"><span class="motion-jewel">Slide</span></div><button class="ui-button" data-animation-play>Play</button></article>
@@ -8,9 +8,9 @@ fn render_test_animations() -> String {
 <article class="animation-specimen motion-color"><h4>Color crossfade</h4><div class="motion-stage"><span class="motion-jewel">Color</span></div><button class="ui-button" data-animation-play>Play</button></article>
 <article class="animation-specimen motion-height"><h4>Height collapse / expand</h4><div class="motion-stage"><span class="motion-jewel">Height</span></div><button class="ui-button" data-animation-play>Play</button></article>
 </div></section>
-<section class="animation-band" data-animation-band="composed"><header><h3>Band B — Passive Hover</h3><p>Hover specimens deepen shadow and border while their hit boxes stay fixed.</p></header><div class="animation-grid">
+<section class="animation-band" data-animation-band="composed"><header><h3>Band B — Composed Motion</h3><p>Reusable reflections keep stable hit boxes while the visible card lifts.</p></header><div class="animation-grid">
 <article class="animation-specimen" data-hover-specimen><h4>Button hover / press</h4><div class="motion-stage"><button class="ui-button ui-button--primary motion-button">Hover me</button></div></article>
-<article class="animation-specimen" data-hover-specimen><h4>Card hover</h4><div class="portal-card motion-card"><strong>Fixed hit box</strong><span>Shadow + border</span></div></article>
+<article class="animation-specimen" data-hover-specimen data-animation-catalog-id="MOTION-TRANCH-01"><h4>Card lift — MOTION-TRANCH-01</h4><p>REST → ENTER (pointer or keyboard focus) → HOLD → EXIT → REST. The stable stage owns hover; interruption or Stillness restores REST.</p><div class="motion-card-stage" tabindex="0"><div class="portal-card motion-card"><strong>Stable hit box</strong><span>Transform + shadow</span></div></div><button class="ui-button" data-animation-play>Play / interrupt</button></article>
 <article class="animation-specimen"><h4>Toggle slider travel</h4><div class="motion-stage"><div class="motion-toggle" role="switch" aria-checked="false"><span></span></div></div><button class="ui-button" data-animation-play>Play</button></article>
 <article class="animation-specimen"><h4>Modal fade + scale</h4><div class="motion-modal-stage"><div class="motion-backdrop"><div class="motion-dialog">Dialog</div></div></div><button class="ui-button" data-animation-play>Play</button></article>
 <article class="animation-specimen"><h4>Toast enter / exit</h4><div class="motion-stage"><div class="ui-card motion-toast">Settings saved</div></div><button class="ui-button" data-animation-play>Play</button></article>

@@ -520,17 +520,16 @@
         assert!(!shell.contains("JSON.stringify(results)"));
         assert!(shell.contains("data-admin-only data-admin-viewport=\"portals\""));
         let portals_css = std::fs::read_to_string("src/bands/shell/ux/packs/portals.css").unwrap();
-        assert_eq!(portals_css.matches(".portal-card:hover {").count(), 1);
-        let card_rule = &portals_css[portals_css.find(".portal-card {").unwrap()..portals_css.find(".portal-card:hover").unwrap()];
+        assert_eq!(portals_css.matches(".portal-element:is(:hover, :focus-within) > .portal-card {").count(), 1);
+        let card_rule = &portals_css[portals_css.find(".portal-card {").unwrap()..portals_css.find(".portal-element:is(:hover, :focus-within)").unwrap()];
         assert!(!card_rule.contains("transition: all"));
-        for property in ["border-color", "box-shadow"] {
+        for property in ["transform", "box-shadow"] {
             assert!(card_rule.contains(property), "portal card transition omits {property}");
         }
-        assert!(!card_rule.contains("transform"));
         assert!(!card_rule.contains("background-color"));
         assert!(!portals_css.contains(".portal-card:hover::before"));
         assert!(!portals_css.contains("animation: infinite"));
-        for forbidden in [".portal-card:hover {\n  transform", ".portal-card:hover .portal-icon", ".add-portal-card:hover {\n  transform", ".add-portal-card:hover .add-portal-icon {\n  transform"] { assert!(!portals_css.contains(forbidden), "forbidden hover geometry: {forbidden}"); }
+        for forbidden in [".portal-card:hover {\n  transform", ".portal-card:hover .portal-icon", ".add-portal-card:hover {\n  transform", ".add-portal-card:hover .add-portal-icon {\n  transform"] { assert!(!portals_css.contains(forbidden), "forbidden moving hit target: {forbidden}"); }
     }
 
     #[tokio::test]
