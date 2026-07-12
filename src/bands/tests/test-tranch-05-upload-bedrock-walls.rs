@@ -47,12 +47,44 @@ fn test_tranch_05_progress_catalog_carries_low_mid_high_and_all_upload_states() 
     for state in ["pending", "uploading", "completed", "error"] {
         assert!(progress.contains(&format!("upload-progress {state}")), "missing upload progress state {state}");
     }
-    for percentage in ["2%", "50%", "64%", "100%", "18%"] {
-        assert!(progress.contains(&format!("class=\"progress-text\">{percentage}")), "missing legible progress label {percentage}");
+    for percentage in ["2%", "64%", "100%", "18%"] {
+        assert!(progress.contains(&format!("class=\"progress-text\">{percentage}")), "missing legible upload progress label {percentage}");
     }
+    assert!(progress.contains("class=\"ui-progress-bar__text\">50%"), "missing library mid-progress label");
     for marker in ["progress-bar-container", "progress-bar", "progress-text", "upload-stats", "error-message"] {
         assert!(progress.contains(marker), "progress specimen missing production marker {marker}");
     }
+    for library_marker in [
+        "data-test-library-progress", "data-test-progress-sizes", "data-test-progress-variants",
+        "data-test-progress-indeterminate", "ui-progress-bar--small", "ui-progress-bar--medium",
+        "ui-progress-bar--large", "ui-progress-bar__fill--memory", "ui-progress-bar__fill--swap",
+        "ui-progress-bar__fill--process", "ui-progress-bar__fill--disk", "role=\"meter\"",
+    ] {
+        assert!(progress.contains(library_marker), "progress library showroom missing {library_marker}");
+    }
+    let indeterminate = &progress[progress.find("data-test-progress-indeterminate").unwrap()..progress.find("Upload domain-pack states").unwrap()];
+    assert!(indeterminate.contains("role=\"progressbar\""));
+    assert!(!indeterminate.contains("aria-valuenow"), "indeterminate specimen must not claim a fraction");
+}
+
+#[test]
+fn test_tranch_05_progress_paint_is_tokenized_legible_and_reduced_motion_safe() {
+    let html = render_crown_shell();
+    for marker in [
+        "pali:agentics-ux-progress-constitution-tablet", ".ui-progress-bar__container {",
+        "background: var(--hiddenTabBackground);", ".ui-progress-bar__fill {",
+        "background: var(--secondary);", ".ui-progress-bar--indeterminate .ui-progress-bar__fill",
+        "@media (prefers-reduced-motion: reduce)",
+        ".upload-progress.pending .progress-bar { background: var(--warning); }",
+        ".upload-progress.completed .progress-bar { background: var(--status-up); }",
+        ".upload-progress.error .progress-bar { background: var(--status-down); }",
+    ] {
+        assert!(html.contains(marker), "progress visual-law marker missing {marker}");
+    }
+    assert!(!html.contains(".progress-bar { height: 100%; border-radius: 10px; background: var(--hiddenTabBackground)"), "upload fill regressed to track paint");
+    let script = &html[html.find("function renderUploadProgress").unwrap()..html.find("function setUpload").unwrap()];
+    assert!(!script.contains("uploadStatusColor"), "upload status paint must come from Theme Net state classes");
+    assert!(!script.contains("background-color:"), "upload renderer must not inline status paint");
 }
 
 #[test]

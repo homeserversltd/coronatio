@@ -17,13 +17,7 @@ fn shell_document_4() -> &'static str {
       if (status === 'pending') return '⏳'; if (status === 'uploading') return '📤';
       if (status === 'completed') return '✅'; if (status === 'error') return '❌';
       return '❓'; }
-    function uploadStatusColor(status) {
-      if (status === 'pending') return '#f59e0b';
-      if (status === 'uploading') return '#3b82f6';
-      if (status === 'completed') return '#10b981';
-      if (status === 'error') return '#ef4444';
-      return '#6b7280';
-    }
+
     function renderUploadProgress() {
       if (!uploadProgressList) return;
       const uploads = Array.from(uploadState.activeUploads.values());
@@ -31,7 +25,7 @@ fn shell_document_4() -> &'static str {
       uploadProgressList.innerHTML = uploads.map(upload => `
         <div class="upload-progress ${upload.status}" data-upload-progress="${upload.filename}">
           <div class="upload-header"><span class="status-icon">${uploadStatusIcon(upload.status)}</span><span class="filename">${upload.filename}</span><button type="button" class="remove-button" data-upload-remove="${upload.filename}" aria-label="Remove upload">×</button></div>
-          <div class="progress-section"><div class="progress-bar-container" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${upload.progress.toFixed(1)}"><div class="progress-bar" style="width:${upload.progress}%;background-color:${uploadStatusColor(upload.status)};transition:width 0.3s ease-in-out"><span class="progress-text">${upload.progress.toFixed(1)}%</span></div></div><div class="upload-stats"><span class="size">${uploadFormatSize(upload.uploaded)} / ${uploadFormatSize(upload.total)}</span>${upload.status === 'uploading' ? `<span class="speed">${uploadFormatSize(upload.speed)}/s</span>` : ''}</div>${upload.status === 'error' ? `<div class="error-message">${upload.error || 'Upload failed'}</div>` : ''}</div>
+          <div class="progress-section"><div class="progress-bar-container" role="progressbar" aria-label="${upload.filename}: ${upload.status}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${upload.progress.toFixed(1)}"><div class="progress-bar" style="width:${upload.progress}%"><span class="progress-text">${upload.progress.toFixed(1)}%</span></div></div><div class="upload-stats"><span class="size">${uploadFormatSize(upload.uploaded)} / ${uploadFormatSize(upload.total)}</span><span class="speed">${upload.speed ? uploadFormatSize(upload.speed) + '/s' : upload.status}</span></div>${upload.error ? `<div class="error-message" role="alert">${upload.error}</div>` : ''}</div>
         </div>`).join('');
       uploadProgressList.querySelectorAll('[data-upload-remove]').forEach(button => button.addEventListener('click', () => { uploadState.activeUploads.delete(button.dataset.uploadRemove); renderUploadProgress(); }));
     }
