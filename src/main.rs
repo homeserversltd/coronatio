@@ -15,7 +15,6 @@ use std::{
     path::{Path as FsPath, PathBuf},
     process::Command,
     sync::{Arc, Mutex, OnceLock},
-    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::fs;

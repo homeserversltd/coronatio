@@ -31,6 +31,7 @@ mod tests {
     include!("tests/field-006-denylist-terminal-walls.rs");
     include!("tests/portals-htmx-mirror-walls.rs");
     include!("tests/portals-currentness-walls.rs");
+    include!("tests/update-capability-walls.rs");
     include!("tests/theme-net-author-face-walls.rs");
     include!("tests/indicator-infinite-infinite-walls.rs");
 }
