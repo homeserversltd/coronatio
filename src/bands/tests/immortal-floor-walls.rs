@@ -15,13 +15,13 @@ fn immortal_floor_four_state_authority_is_single_and_dom_readable() {
 }
 
 #[test]
-fn immortal_floor_crossings_empty_admit_reveal_and_fault_honestly() {
+fn immortal_floor_seats_before_non_blocking_admit_and_faults_honestly() {
     let chrome = crown_chrome_js();
-    let empty = chrome.find("emptySlot();").expect("empty-slot crossing");
-    let paint = chrome.find("requestAnimationFrame(resolve)").expect("empty paint witness");
-    let admit = chrome.find("await admitFreshGuest(selected)").expect("fresh admission");
-    let seated = chrome.rfind("expose('Seated')").expect("seated reveal");
-    assert!(empty < paint && paint < admit && admit < seated);
+    let seated = chrome.find("if (!seatGuest(selected))").expect("seat-first reveal");
+    let admit = chrome.find("void refreshSeatedGuest(selected, crossing)").expect("background admission");
+    assert!(seated < admit);
+    assert!(!chrome.contains("await admitFreshGuest(selected)"));
+    assert!(!chrome.contains("await new Promise(resolve => requestAnimationFrame(resolve));"));
     assert!(chrome.contains("expose('BareFloor'"));
     assert!(chrome.contains("window.getImmortalFloorState?.() !== 'Seated'"));
     assert!(chrome.contains("closeViewportStreamFamily();"));
@@ -50,7 +50,8 @@ fn immortal_floor_crossing_is_bounded_and_every_owned_failure_terminates() {
     assert!(chrome.contains("bounded(() => hydrateDhcp()"));
     assert!(chrome.contains("if (!readyNow) {\n          if (crossing === generation) { emptySlot(); expose('BareFloor'); }"));
     assert!(chrome.contains("if (crossing !== generation) return false; // A newer crossing owns the terminal state."));
-    assert!(chrome.contains("if (crossing === generation) fault(error?.message || 'admission-fault');"));
+    assert!(chrome.contains("document.documentElement.dataset.immortalFloorFault = error?.message || 'admission-fault';"));
+    assert!(chrome.contains("if (crossing === generation && activeGuest === id)"));
 }
 
 #[test]
@@ -68,4 +69,21 @@ fn immortal_floor_admin_rebind_is_idempotent_and_same_guest_does_not_blank() {
     assert!(chrome.contains("if (tab.dataset.immortalFloorBound === 'true') return;"));
     assert!(chrome.contains("tab.dataset.immortalFloorBound = 'true';"));
     assert!(chrome.contains("if (state === 'Seated' && activeGuest === selected)"));
+    assert!(chrome.contains("if (window.htmx) window.htmx.process(tabBar);"));
+    let seat = chrome.find("function seatGuest(id)").expect("seat helper");
+    let background = chrome.find("async function refreshSeatedGuest(id, crossing)").expect("background refresh");
+    let seat_body = &chrome[seat..background];
+    assert!(seat_body.contains("expose('Seated');"));
+    assert!(seat_body.contains("applyAdminDomState();"));
+}
+
+#[test]
+fn immortal_floor_reapplies_admin_projection_after_every_htmx_swap() {
+    let chrome = crown_chrome_js();
+    let listener = chrome.rfind("document.body.addEventListener('htmx:afterSwap', event => {").expect("after-swap listener");
+    let tail = &chrome[listener..];
+    let end = tail.find("\n    });").expect("after-swap listener end");
+    let body = &tail[..end];
+    assert!(body.contains("applyAdminDomState();"));
+    assert!(!body.contains("applyAdminDomState();\n      }"), "admin projection must not be portals-only");
 }
