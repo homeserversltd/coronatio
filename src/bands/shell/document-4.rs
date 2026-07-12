@@ -483,32 +483,34 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     }
-    function portalDestination(portal) {
-      // Dead client card builder: localURL is product link; stored remoteURL slash-paths are not.
-      // Live face is server fragment /api/portals/elements (HTMX). Keep local-first if this path runs.
-      return portal.localURL || '#';
+    let factoryPortalNamesPromise;
+    function factoryPortalNames() {
+      if (!factoryPortalNamesPromise) factoryPortalNamesPromise = fetch('/api/portals/factory', { cache: 'no-store' }).then(response => response.ok ? response.json() : Promise.reject(new Error(`Factory portals unavailable (${response.status})`))).then(payload => new Set(payload.factoryPortals || [])).catch(error => { factoryPortalNamesPromise = undefined; throw error; });
+      return factoryPortalNamesPromise;
     }
-    function renderPortalCard(portal, factoryNames) {
-      const destination = portalDestination(portal);
-      const serviceData = encodeURIComponent(JSON.stringify(portal.services || []));
-      const adminControls = portal.type === 'link' ? '' : `<div class="admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="${serviceData}">
-        <div class="admin-controls-row"><button data-service-action="start" title="Start service">Start</button><button data-service-action="stop" title="Stop service">Stop</button><button data-service-action="restart" title="Restart service">Restart</button></div>
-        <div class="admin-controls-row"><button data-service-action="enable" title="Enable service at boot">Enable</button><button data-service-action="disable" title="Disable service at boot">Disable</button><button data-service-action="status" title="Check service status">Status</button></div>
-      </div>`;
-      const isVisible = portal.visible !== false;
-      const visibilityToggle = `<button type="button" class="visibility-toggle ui-visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle data-visible="${isVisible}" aria-pressed="${isVisible}" aria-label="${isVisible ? 'Hide' : 'Show'} ${escapeHtml(portal.name)}"><i class="fas ${isVisible ? 'fa-eye' : 'fa-eye-slash'}" aria-hidden="true"></i></button>`;
-      const portalName = headerState.isAdmin ? '' : `<h2 class="portal-name">${escapeHtml(portal.name)}</h2>`;
-      return `<div class="portal-element" data-portal-element data-visible="${isVisible}" style="position:relative">
-        ${visibilityToggle}
-        <article class="portal-card ${escapeHtml(portal.status || 'unknown')}" data-portal-card data-portal-name="${escapeHtml(portal.name)}" data-portal-url="${escapeHtml(destination)}" role="link" tabindex="0">
-          <div class="portal-card-header">
-            <img src="/api/portals/images/${encodeURIComponent(portal.name)}.png" alt="${escapeHtml(portal.name)} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">
-            ${portalName}
-            <p class="portal-description">${escapeHtml(portal.description || '')}</p>
-          </div>
-          <div class="portal-meta">${adminControls}</div>
-        </article>
-      </div>`;
+    async function submitPortalForm(event) {
+      event.preventDefault(); const form = event.currentTarget, type = form.elements.type.value;
+      const name = form.elements.name.value.trim(), description = form.elements.description.value.trim();
+      const servicesText = form.elements.services.value.trim(), port = Number.parseInt(form.elements.port.value, 10), localURL = form.elements.localURL.value.trim();
+      let error = !name ? 'Portal name is required' : !description ? 'Description is required' : ''; if (!error && type !== 'link' && !servicesText) error = 'At least one service is required'; if (!error && type !== 'link' && (!Number.isInteger(port) || port < 1 || port > 65535)) error = 'Port must be a valid number between 1 and 65535';
+      if (!error && !localURL) error = 'Local URL is required'; else if (!error && !/^https?:\/\//.test(localURL)) error = 'Local URL must start with http:// or https://';
+      if (error) { showCoronatioToast(error, 'error'); return; }
+      const portal = { name, description, type, localURL, services: type === 'link' ? [] : servicesText.split(',').map(service => service.trim()).filter(Boolean) }; if (type !== 'link') portal.port = port;
+      const token = localStorage.getItem('coronatioAdminToken');
+      try {
+        const response = await fetch('/api/portals', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) }, body: JSON.stringify(portal) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Create failed (${response.status})`); }
+        form.reset(); closePortalModals(); await refreshElementFragment('portals'); showCoronatioToast(`Portal "${name}" created successfully`, 'success');
+      } catch (error) { showCoronatioToast(error.message || 'Failed to create portal', 'error'); }
+    }
+    async function deletePortal(event) {
+      event.preventDefault(); event.stopPropagation(); const name = event.currentTarget.dataset.portalName || event.currentTarget.dataset.deletePortal; if (!headerState.isAdmin || !name) return;
+      try {
+        const factoryNames = await factoryPortalNames(); if (factoryNames.has(name)) { showCoronatioToast('Factory portals cannot be deleted', 'error'); return; }
+        if (!window.confirm(`Delete portal "${name}"?`)) return; const token = localStorage.getItem('coronatioAdminToken');
+        const response = await fetch(`/api/portals/${encodeURIComponent(name)}`, { method: 'DELETE', headers: token ? { 'X-Admin-Token': token } : {} });
+        if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Delete failed (${response.status})`); }
+        await refreshElementFragment('portals'); showCoronatioToast(`Portal "${name}" deleted`, 'success');
+      } catch (error) { showCoronatioToast(error.message || 'Failed to delete portal', 'error'); }
     }
     function renderAddPortalCard() {
       return `<div class="portal-card add-portal-card" data-admin-only data-admin-viewport="portals" data-add-portal-open role="button" tabindex="0" aria-label="Add new portal">
@@ -579,6 +581,7 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
       });
       grid.querySelectorAll('[data-service-action]').forEach(button => button.addEventListener('click', handlePortalServiceAction));
+      grid.querySelectorAll('[data-portal-delete]').forEach(button => button.addEventListener('click', deletePortal));
     }
     async function refreshPortalCurrentness() {
       const grid = document.querySelector('[data-portals-grid]');
@@ -758,7 +761,7 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       const backdrop = event.target.closest('[data-ux-modal-demo-backdrop]');
       if (backdrop && event.target === backdrop) return closeUxModalDemo();
     });
-    document.querySelector('[data-portal-add-form]')?.addEventListener('submit', event => { event.preventDefault(); });
+    document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm);
     document.body.addEventListener('input', event => {
       const slider = event.target.closest('[data-ui-slider]');
       if (slider) { const out = slider.closest('.showcase-item')?.querySelector('[data-slider-value]'); if (out) out.textContent = slider.value; return; }

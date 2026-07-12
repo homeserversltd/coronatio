@@ -118,10 +118,10 @@
         assert!(html.contains("font-weight: 500;"));
         assert!(html.contains(".portal-description {"));
         assert!(html.contains("line-height: 1.4;"));
-        assert!(html.contains(r#"<img src="/api/portals/images/${encodeURIComponent(portal.name)}.png"#));
-        assert!(html.contains("<h2 class=\"portal-name\">${escapeHtml(portal.name)}</h2>"));
-        assert!(html.contains("<p class=\"portal-description\">${escapeHtml(portal.description || '')}</p>"));
-        let card = &html[html.find("function renderPortalCard").unwrap()..html.find("async function handlePortalServiceAction").unwrap()];
+        let card = include_str!("../crown-law/element-fragments.rs");
+        assert!(card.contains("/api/portals/images/{}.png"));
+        assert!(card.contains("class=\"portal-name\""));
+        assert!(card.contains("class=\"portal-description\""));
         for forbidden in ["portal-service-row", "portal-chip", ":${escapeHtml(portal.port)}", "factory</span>", "custom</span>", "class=\"card portal-card"] {
             assert!(!card.contains(forbidden), "portal face still carries non-quarry chip/detail: {forbidden}");
         }

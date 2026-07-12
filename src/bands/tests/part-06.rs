@@ -227,13 +227,25 @@
             let haystack = if required.contains("add-portal") { html.as_str() } else { portals };
             assert!(haystack.contains(required), "portals markup missing og class stack {required}");
         }
-        let script = &html[html.find("function renderPortalCard").unwrap()..html.find("async function hydrateFavoriteManifest").unwrap()];
-        assert!(script.contains("<div class=\"admin-controls\""));
-        assert!(!script.contains("portal-admin-controls"));
-        assert!(!script.contains("<article class=\"card portal-card"));
-        assert!(script.contains("class=\"visibility-toggle ui-visibility-toggle\""), "VIS state-machine markup uses the catalog vocabulary");
-        assert!(portals.contains("data-portal-create-not-wired=\"true\""));
-        assert!(portals.contains("aria-disabled=\"true\""));
+        let fragment = include_str!("../crown-law/element-fragments.rs");
+        assert!(fragment.contains("<div class=\"admin-controls\""));
+        assert!(fragment.contains("class=\"visibility-toggle ui-visibility-toggle\""), "VIS state-machine markup uses the catalog vocabulary");
+        assert!(!portals.contains("portal-create-not-wired"));
+        assert!(!portals.contains("aria-disabled=\"true\""));
+        assert!(html.contains("submitPortalForm"));
+        assert!(html.contains("deletePortal"));
+    }
+
+    #[test]
+    fn portal_ui_wire_add_and_delete_wall() {
+        let html = render_crown_shell();
+        let form = include_str!("../shell/document-2.rs");
+        assert!(!form.contains("portal-create-not-wired"));
+        assert!(html.contains("async function submitPortalForm"));
+        assert!(html.contains("async function deletePortal"));
+        assert!(html.contains("method: 'POST'"));
+        assert!(html.contains("method: 'DELETE'"));
+        assert!(include_str!("../crown-law/element-fragments.rs").contains("delete-portal-button"));
     }
 
 

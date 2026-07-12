@@ -163,8 +163,9 @@ fn render_portals_elements_fragment(session: Session, host: &str) -> String {
     let plan = iris::plan(&facts, session);
     match read_portals_config() {
         Ok(response) => {
+            let factory_portals = response.factory_portals;
             let mut html = response.portals.into_iter()
-                .filter_map(|portal| render_portal_element_from_grant(session, &facts, &plan, &portal, host))
+                .filter_map(|portal| render_portal_element_from_grant(session, &facts, &plan, &portal, host, &factory_portals))
                 .collect::<Vec<_>>()
                 .join("\n");
             if html.is_empty() {
@@ -229,7 +230,7 @@ fn regex_tailnet(hostname: &str) -> Option<String> {
     None
 }
 
-fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &RenderPlan, portal: &PortalEntry, host: &str) -> Option<String> {
+fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &RenderPlan, portal: &PortalEntry, host: &str, factory_portals: &[String]) -> Option<String> {
     let element_id = portal.name.trim();
     if element_id.is_empty() || portal.local_url.trim().is_empty() { return None; }
     let grant = plan.elements.iter().find(|grant| grant.tab_id == "portals" && grant.element_id == element_id)
@@ -249,6 +250,9 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
     let admin_controls = if session == Session::Admin && portal.r#type != "link" {
         format!(r#"<div class="admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="{}"><div class="admin-controls-row"><button data-service-action="start" title="Start service">Start</button><button data-service-action="stop" title="Stop service">Stop</button><button data-service-action="restart" title="Restart service">Restart</button></div><div class="admin-controls-row"><button data-service-action="enable" title="Enable service at boot">Enable</button><button data-service-action="disable" title="Disable service at boot">Disable</button><button data-service-action="status" title="Check service status">Status</button></div></div>"#, services)
     } else { String::new() };
+    let delete = if session == Session::Admin && !factory_portals.iter().any(|factory| factory == element_id) {
+        format!(r#"<button type="button" class="delete-portal-button" data-admin-only data-admin-viewport="portals" data-portal-delete data-portal-name="{}" title="Delete portal" aria-label="Delete {}"><i class="fas fa-trash" aria-hidden="true"></i></button>"#, name, name)
+    } else { String::new() };
     let toggle = if session == Session::Admin {
         format!(r#"<button type="button" class="visibility-toggle ui-visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle="{}" data-visible="{}" aria-pressed="{}" aria-label="{} {}"><i class="fas {}" aria-hidden="true"></i></button>"#, name, visible, visible, verb, name, eye)
     } else { String::new() };
@@ -257,7 +261,7 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
     } else {
         format!(r#"<h2 class="portal-name">{}</h2>"#, name)
     };
-    Some(format!(r#"<div class="portal-element" data-portal-element data-visible="{}" style="position:relative">{}<article class="portal-card {}" data-portal-card data-portal-name="{}" data-portal-url="{}" data-portal-services="{}" role="link" tabindex="0"><div class="portal-card-header"><img src="/api/portals/images/{}.png" alt="{} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">{}<p class="portal-description">{}</p></div><div class="portal-meta">{}</div></article></div>"#, visible, toggle, status, name, destination, services, name, name, portal_name, description, admin_controls))
+    Some(format!(r#"<div class="portal-element" data-portal-element data-visible="{}" style="position:relative">{}{}<article class="portal-card {}" data-portal-card data-portal-name="{}" data-portal-url="{}" data-portal-services="{}" role="link" tabindex="0"><div class="portal-card-header"><img src="/api/portals/images/{}.png" alt="{} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">{}<p class="portal-description">{}</p></div><div class="portal-meta">{}</div></article></div>"#, visible, toggle, delete, status, name, destination, services, name, name, portal_name, description, admin_controls))
 }
 
 fn render_add_portal_card_fragment() -> String {

@@ -48,7 +48,7 @@
         assert!(document2.contains("data-portals-source=\"/api/portals/elements\""), "source points at fragment not JSON list");
         let document4 = include_str!("../shell/document-4.rs");
         assert!(document4.contains("window.htmx") || document4.contains("htmx.trigger"), "hydratePortals prefers HTMX trigger");
-        assert!(document4.contains("return portal.localURL || '#'") || document4.contains("localURL || '#'"), "client fallback local-first");
+        assert!(!document4.contains("function renderPortalCard"), "server fragment is the sole portal-card face");
     }
 
     #[test]
