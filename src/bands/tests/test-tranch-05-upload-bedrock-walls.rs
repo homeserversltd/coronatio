@@ -88,6 +88,41 @@ fn test_tranch_05_progress_paint_is_tokenized_legible_and_reduced_motion_safe() 
 }
 
 #[test]
+fn test_tranch_05_upload_progress_label_geometry_does_not_falsify_fill_width() {
+    let html = render_crown_shell();
+    for percentage in ["2", "18", "50", "64", "100"] {
+        assert!(
+            html.contains(&format!(">{percentage}%</span>")),
+            "progress showroom missing {percentage}% label"
+        );
+    }
+
+    assert!(
+        html.contains(".progress-bar { height: 100%; border-radius: 10px; background: var(--secondary); position: static;"),
+        "fill must leave the full track as the percentage label containing block"
+    );
+    assert!(
+        html.contains(
+            ".progress-text { position: absolute; inset: 0; display: grid; place-items: center;"
+        ),
+        "percentage label must overlay the full track instead of fitting inside the fill"
+    );
+    assert!(
+        html.contains("pointer-events: none;"),
+        "overlay label must not intercept progress controls"
+    );
+
+    let upload_pack_start = html
+        .find("UXPORT-001 LIBRARY band: og src/tablets/upload upload domain pack")
+        .expect("shared Upload pack");
+    let upload_pack = &html[upload_pack_start..];
+    assert!(
+        !upload_pack.contains("min-width: 24px"),
+        "low progress must not be inflated to fit its label"
+    );
+}
+
+#[test]
 fn test_tranch_05_interactions_update_breadcrumb_and_file_selection_readbacks() {
     let html = render_crown_shell();
     for marker in [
