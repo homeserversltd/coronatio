@@ -210,27 +210,42 @@
     [data-admin-mode="false"] .tab[data-visibility="hidden"] { display: none; }
     [data-admin-mode="true"] .tab[data-visibility="hidden"] { display: grid; background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }
     [data-admin-mode="false"] .tab-visibility-column { display: none; }
-    [data-admin-mode="true"] .tab { justify-items: center; }
-    .tab-visibility-column, .tab-star-column { display: grid; place-items: center; width: 24px; min-width: 24px; }
+    [data-admin-mode="true"] .tab { justify-items: stretch; }
+    .tab-visibility-column, .tab-star-column {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      min-width: 36px;
+    }
     .visibility-toggle, .star-button {
       display: grid;
       place-items: center;
-      width: 24px;
-      height: 24px;
+      width: 36px;
+      height: 36px;
       padding: 0;
       border: 1px solid transparent;
       border-radius: 999px;
       background: transparent;
       color: var(--text-secondary);
+      font-size: 14px;
       line-height: 1;
     }
     .visibility-toggle:hover, .star-button:hover { background: rgba(255,255,255,.1); color: var(--text); }
+    .tab-visibility-column .ui-visibility-toggle:hover:not(:disabled) { transform: none; }
     .visibility-toggle[data-visible="false"] { color: var(--warning); }
     .visibility-system-catalog [data-visibility-specimen][data-visible="false"] { background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }
     .visibility-specimen-tabs .ui-tab--hidden { background: var(--hiddenTabBackground); color: var(--hiddenTabText); opacity: .7; }
     .star-button.fas { color: var(--theme-accent-warm); }
     .star-button.far { color: var(--text); opacity: .55; }
-    .tab-name { white-space: nowrap; }
+    .tab-name {
+      min-width: 0;
+      padding: 0 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+      justify-self: stretch;
+    }
     .content { flex: 1; display: grid; padding: var(--theme-content-padding); width: 100%; min-height: min(68vh, 48rem); }
     .immortal-floor-underlay, .immortal-floor-guest-slot { grid-area: 1 / 1; min-width: 0; min-height: 100%; }
     .immortal-floor-underlay { display: grid; place-items: center; opacity: 1; visibility: visible; transition: opacity var(--theme-transition-normal); }
