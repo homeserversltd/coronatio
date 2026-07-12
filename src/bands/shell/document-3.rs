@@ -497,7 +497,6 @@ fn shell_document_3() -> &'static str {
     loadThemeCatalog();
     bootstrapAdminMode();
     connectCoreStream();
-    connectPulseStream();
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function visibleTabs() { return headerState.isAdmin ? tabs.filter(tab => tab.dataset.pane !== fallbackTab) : eligibleRegularTabs(); }
     function firstVisibleTab() { return eligibleRegularTabs()[0]?.dataset.pane || fallbackTab; }
@@ -555,6 +554,30 @@ fn shell_document_3() -> &'static str {
       if (pulseRenewTimer) window.clearTimeout(pulseRenewTimer);
       pulseRenewTimer = null;
     }
+    const viewportStreamFamilies = Object.freeze({
+      stats: Object.freeze({ topics: ['stats.system'], snapshotRoutes: ['/api/stats', '/api/network/notes'], eventRoute: '/api/stats/events', renewRoute: '/api/stats/events/renew', authClass: 'public-enhanced' }),
+      dhcp: Object.freeze({ topics: ['admin.dhcp'], snapshotRoutes: ['/api/dhcp/leases', '/api/dhcp/reservations', '/api/dhcp/statistics', '/api/dhcp/pool-boundary'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
+      portals: Object.freeze({ topics: ['core.services'], snapshotRoutes: ['/api/portals/elements'], eventRoute: null, renewRoute: null, authClass: 'public' })
+    });
+    function viewportFamilyAdmitted(id) {
+      const family = viewportStreamFamilies[id];
+      if (!family || document.visibilityState !== 'visible' || currentActiveTabId() !== id) return false;
+      return family.authClass !== 'admin' || headerState.isAdmin;
+    }
+    function closeViewportStreamFamily() {
+      clearPulseRenewal();
+      if (pulseStream) pulseStream.close();
+      pulseStream = null;
+      pulseStreamId = null;
+    }
+    function reconcileViewportStreamFamily() {
+      closeViewportStreamFamily();
+      const active = currentActiveTabId();
+      if (!viewportFamilyAdmitted(active)) return;
+      if (active === 'stats') { hydrateStats(); connectPulseStream(); }
+      if (active === 'dhcp') hydrateDhcp();
+      if (active === 'portals') { hydratePortals(); refreshPortalCurrentness(); }
+    }
     function schedulePulseRenewal(renewRoute) {
       clearPulseRenewal();
       if (!renewRoute) return;
@@ -565,14 +588,13 @@ fn shell_document_3() -> &'static str {
       }, 15000);
     }
     function reconnectPulseStream() {
-      clearPulseRenewal();
-      if (pulseStream) pulseStream.close();
-      pulseStream = null;
-      pulseStreamId = null;
-      window.setTimeout(connectPulseStream, 0);
+      closeViewportStreamFamily();
+      if (viewportFamilyAdmitted('stats')) window.setTimeout(() => {
+        if (viewportFamilyAdmitted('stats')) connectPulseStream();
+      }, 1000);
     }
     function connectPulseStream() {
-      if (!window.EventSource) return;
+      if (!window.EventSource || !viewportFamilyAdmitted('stats')) return;
       clearPulseRenewal();
       if (pulseStream) pulseStream.close();
       pulseStream = new EventSource('/api/stats/events');
@@ -604,6 +626,7 @@ fn shell_document_3() -> &'static str {
       panes.forEach(pane => pane.classList.toggle('active', pane.dataset.panePanel === selected));
       applyTabBarVisibility();
       if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
+      reconcileViewportStreamFamily();
     }
     function bindTabControls() {
       tabs.forEach(tab => {
@@ -637,6 +660,7 @@ fn shell_document_3() -> &'static str {
     }
     bindTabControls();
     setStarredTab(tabState.starredTab);
+    document.addEventListener('visibilitychange', reconcileViewportStreamFamily);
     async function fetchInto(route, target, method = 'GET') {
       const el = document.getElementById(target);"####
 }

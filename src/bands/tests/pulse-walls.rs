@@ -282,9 +282,9 @@
     }
 
     #[test]
-    fn pulse_002_wall_shell_rider_state_precedes_init_time_connect_call() {
+    fn pulse_002_wall_shell_rider_waits_for_active_visible_stats_admission() {
         let chrome = crown_chrome_js();
-        let init_connect = chrome.find("\n    connectPulseStream();").expect("pulse rider init call must remain explicit");
+        let lifecycle_connect = chrome.find("if (active === 'stats') { hydrateStats(); connectPulseStream(); }").expect("stats stream must enter through viewport lifecycle admission");
         for declaration in [
             "\n    let pulseStream = null;",
             "\n    let pulseRenewTimer = null;",
@@ -292,9 +292,10 @@
         ] {
             let declaration_offset = chrome.find(declaration).unwrap_or_else(|| panic!("missing pulse rider state declaration: {declaration}"));
             assert!(
-                declaration_offset < init_connect,
-                "pulse rider state declaration must precede the init-time connectPulseStream() call to avoid let/const temporal-dead-zone crashes: {declaration}"
+                declaration_offset < lifecycle_connect,
+                "pulse rider state declaration must precede lifecycle connect: {declaration}"
             );
         }
-        assert!(chrome.find("function connectPulseStream()").expect("pulse rider function must exist") > init_connect);
+        assert!(chrome.contains("if (!window.EventSource || !viewportFamilyAdmitted('stats')) return;"));
+        assert!(chrome.contains("document.addEventListener('visibilitychange', reconcileViewportStreamFamily)"));
     }
