@@ -717,7 +717,7 @@ fn tab_display_names_from_facts(facts: &IrisFacts) -> BTreeMap<String, String> {
     names
 }
 
-fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, active_tab: &str, active_load_trigger: bool) -> String {
+fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, active_tab: &str, _active_load_trigger: bool) -> String {
     let id = &grant.tab_id;
     let title = names.get(id).cloned().unwrap_or_else(|| id.to_string());
     let visibility = match grant.state { RenderState::DimmedHidden => "hidden", _ => "visible" };
@@ -741,6 +741,6 @@ fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, act
     format!(
         r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}" hx-get="/admit/{id}" hx-target="[data-view-panel='{id}']" hx-swap="innerHTML" hx-trigger="{hx_trigger}">{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
         selected = active,
-        hx_trigger = if active && active_load_trigger { "load, click" } else { "click" },
+        hx_trigger = "immortal-floor-admit",
     )
 }

@@ -89,9 +89,10 @@
         let response = router.oneshot(Request::builder().uri("/api/tab-bar?active=stats").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        assert!(fragment.contains("hx-get=\"/admit/stats\""), "fragment must preserve click-driven pane admission: {fragment}");
+        assert!(fragment.contains("hx-get=\"/admit/stats\""), "fragment must preserve controller-driven pane admission: {fragment}");
         assert!(!fragment.contains("hx-trigger=\"load"), "served /api/tab-bar fragment must not reseat HTMX load triggers: {fragment}");
-        assert!(render_crown_shell().contains("hx-trigger=\"load, click\""), "first full-page render keeps the lawful initial active-pane load");
+        assert!(render_crown_shell().contains("hx-trigger=\"immortal-floor-admit\""), "the Immortal Floor controller owns initial and repeated admission");
+        assert!(!render_crown_shell().contains("hx-trigger=\"load, click\""), "page load must not bypass the BootFloor readiness gate");
     }
 
     #[tokio::test(flavor = "current_thread")]

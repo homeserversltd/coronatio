@@ -36,4 +36,5 @@ mod tests {
     include!("tests/portals-ui-wire-walls.rs");
     include!("tests/theme-net-author-face-walls.rs");
     include!("tests/indicator-infinite-infinite-walls.rs");
+    include!("tests/immortal-floor-walls.rs");
 }

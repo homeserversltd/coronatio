@@ -231,9 +231,22 @@
     .star-button.fas { color: var(--theme-accent-warm); }
     .star-button.far { color: var(--text); opacity: .55; }
     .tab-name { white-space: nowrap; }
-    .content { flex: 1; padding: var(--theme-content-padding); width: 100%; }
-    .pane { display: none; width: 100%; max-width: none; margin: 0; }
-    .pane.active { display: block; }
+    .content { flex: 1; display: grid; padding: var(--theme-content-padding); width: 100%; min-height: min(68vh, 48rem); }
+    .immortal-floor-underlay, .immortal-floor-guest-slot { grid-area: 1 / 1; min-width: 0; min-height: 100%; }
+    .immortal-floor-underlay { display: grid; place-items: center; opacity: 1; visibility: visible; transition: opacity var(--theme-transition-normal); }
+    .immortal-floor-underlay-card { display: flex; align-items: center; gap: var(--theme-spacing-md); color: var(--text-secondary); }
+    .immortal-floor-underlay-card div { display: grid; gap: var(--theme-spacing-xs); }
+    .immortal-floor-underlay-card strong { color: var(--text); letter-spacing: .08em; }
+    .immortal-floor-mark { display: grid; place-items: center; width: 3rem; height: 3rem; border: 1px solid var(--theme-outline-variant); border-radius: 50%; color: var(--accent); background: var(--theme-surface-1); box-shadow: var(--theme-elevation-1); font-weight: 800; }
+    .immortal-floor-guest-slot { position: relative; z-index: 1; }
+    [data-immortal-floor-state="Seated"] .immortal-floor-underlay { opacity: 0; visibility: hidden; pointer-events: none; }
+    .pane { display: none; width: 100%; max-width: none; margin: 0; opacity: 0; transform: translateY(6px); }
+    [data-immortal-floor-state="Seated"] .pane.active { display: block; opacity: 1; transform: translateY(0); }
+    .pane.immortal-floor-enter { transition-property: opacity, transform; transition-duration: var(--theme-transition-normal); transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+    @media (prefers-reduced-motion: reduce) {
+      .immortal-floor-underlay, .pane.immortal-floor-enter { transition-duration: 1ms; }
+      .pane, [data-immortal-floor-state="Seated"] .pane.active { transform: none; }
+    }
     .pane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: var(--theme-grid-gap); align-items: start; }
     .card {
       background: var(--theme-gradient-surface);

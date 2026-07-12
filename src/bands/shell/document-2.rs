@@ -42,7 +42,14 @@ fn shell_document_2() -> &'static str {
       </section>
     </div>
     <nav class="tab-bar" aria-label="Coronatio primary tabs" role="tablist" data-admin-mode="false" data-hidden="false">__NAV__</nav>
-    <section class="content">
+    <section class="content" data-immortal-floor-shell data-startup-phase="Booting">
+      <aside class="immortal-floor-underlay" data-immortal-floor-layer="0" aria-live="polite">
+        <div class="immortal-floor-underlay-card">
+          <span class="immortal-floor-mark" aria-hidden="true">C</span>
+          <div><strong>HOMESERVER</strong><span data-immortal-floor-message>Preparing your controls…</span></div>
+        </div>
+      </aside>
+      <div class="immortal-floor-guest-slot" data-immortal-floor-layer="1" data-slot-empty="true">
       <section class="pane" id="pane-admin" data-pane-panel="admin" data-view-panel="admin" role="tabpanel" aria-label="Admin">
 
         <div class="admin-tablet" data-admin-only="true" data-admin-viewport="admin">
@@ -229,7 +236,7 @@ fn shell_document_2() -> &'static str {
           </div>
         </div>
       </section>
-      </section>
+      </div>
     </section>
   </main>
   <div class="coronatio-toast-stack" data-coronatio-toast-stack aria-live="polite" aria-atomic="false"></div>
@@ -238,6 +245,9 @@ fn shell_document_2() -> &'static str {
     const tabBar = document.querySelector('[role="tablist"]');
     let tabs = [...document.querySelectorAll('[data-pane]')];
     const panes = [...document.querySelectorAll('[data-pane-panel]')];
+    const immortalFloorShell = document.querySelector('[data-immortal-floor-shell]');
+    const immortalFloorGuestSlot = document.querySelector('[data-immortal-floor-layer="1"]');
+    panes.forEach(pane => pane.dataset.immortalFloorLayer = '1');
     const htmxOrgan = window.htmx;
     if (htmxOrgan && htmxOrgan.config) {
       htmxOrgan.config.allowScriptTags = false;
@@ -265,6 +275,7 @@ fn shell_document_2() -> &'static str {
       }
       document.documentElement.dataset.cartridgeFaultReceipt = 'typed';
       document.documentElement.dataset.cartridgeFaultLast = kind;
+      window.immortalFloor?.fault(kind);
     }
     document.body.addEventListener('htmx:timeout', event => presentCartridgeFault('timeout', event));
     document.body.addEventListener('htmx:responseError', event => presentCartridgeFault(faultKindFromResponse(event, 'upstream-error'), event));
@@ -275,7 +286,7 @@ fn shell_document_2() -> &'static str {
       if (!(panel instanceof HTMLElement)) return;
       panel.dataset.viewportFaulted = 'false';
       const id = panel.dataset.viewPanel || panel.dataset.panePanel || '';
-      if (id === currentActiveTabId() && id !== 'stats') reconcileViewportStreamFamily();
+      if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats') reconcileViewportStreamFamily();
     });
     const fallbackTab = 'admin';
     const storageKey = 'coronatio.flask-react-tabbar.v1';

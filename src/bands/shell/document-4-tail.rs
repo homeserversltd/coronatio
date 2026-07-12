@@ -36,7 +36,7 @@ fn shell_document_4_tail() -> &'static str {
     hydrateFavoriteManifest(); hydrateThemeTruth(); hydrateThemeTokenLab();
     hydrateUptime();
     setInterval(tickUptime, 1000);
-    reconcileViewportStreamFamily();
+
   </script>
 </body>
 </html>"####

@@ -373,7 +373,7 @@
         assert!(chrome_body.contains("htmxOrgan.config.allowScriptTags = false"));
         assert!(chrome_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
         assert!(chrome_body.contains("htmx:afterSwap"));
-        assert!(chrome_body.contains("if (id === currentActiveTabId() && id !== 'stats') reconcileViewportStreamFamily();"));
+        assert!(chrome_body.contains("if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats') reconcileViewportStreamFamily();"));
         assert!(!chrome_body.contains("__INDICATOR_MODAL_REGISTRY__"));
         assert!(chrome_body.contains("const indicatorModalTemplates"));
         let stats_guard = chrome_body.find("let statsHydrationInFlight = false;").expect("stats hydration guard must be initialized");
@@ -657,7 +657,7 @@
         let nav = &shell[nav_start..nav_end];
         assert_eq!(nav.matches(r#"aria-selected="true""#).count(), 1);
         assert_eq!(nav.matches(r#"class="tab active""#).count(), 1);
-        assert!(nav.contains(r#"hx-swap="innerHTML" hx-trigger="load, click""#));
+        assert!(nav.contains(r#"hx-swap="innerHTML" hx-trigger="immortal-floor-admit""#));
     }
 
     #[tokio::test(flavor = "current_thread")]

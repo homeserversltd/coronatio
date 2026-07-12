@@ -561,7 +561,7 @@ fn shell_document_3() -> &'static str {
     });
     function viewportFamilyAdmitted(id) {
       const family = viewportStreamFamilies[id];
-      if (!family || document.visibilityState !== 'visible' || currentActiveTabId() !== id) return false;
+      if (!family || window.getImmortalFloorState?.() !== 'Seated' || document.visibilityState !== 'visible' || currentActiveTabId() !== id) return false;
       return family.authClass !== 'admin' || headerState.isAdmin;
     }
     function closeViewportStreamFamily() {
@@ -572,6 +572,7 @@ fn shell_document_3() -> &'static str {
     }
     function reconcileViewportStreamFamily() {
       closeViewportStreamFamily();
+      if (window.getImmortalFloorState?.() !== 'Seated') return;
       const active = currentActiveTabId();
       if (!viewportFamilyAdmitted(active)) return;
       if (active === 'stats') { hydrateStats(); connectPulseStream(); }
@@ -616,18 +617,116 @@ fn shell_document_3() -> &'static str {
         if (pulseStream && pulseStream.readyState === EventSource.CLOSED) reconnectPulseStream();
       });
     }
-    function showPane(id) {
-      const selected = lawfulPaneCandidate(id);
-      tabs.forEach(tab => {
-        const active = tab.dataset.pane === selected;
-        tab.setAttribute('aria-selected', String(active));
-        tab.classList.toggle('active', active);
-      });
-      panes.forEach(pane => pane.classList.toggle('active', pane.dataset.panePanel === selected));
-      applyTabBarVisibility();
-      if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
-      reconcileViewportStreamFamily();
-    }
+    const immortalFloorStates = Object.freeze(['BootFloor', 'Seated', 'GuestRevolution', 'BareFloor']);
+    const immortalFloor = (() => {
+      let state = 'BootFloor';
+      let generation = 0;
+      let activeGuest = null;
+      const ready = new Promise(resolve => requestAnimationFrame(() => {
+        if (immortalFloorShell && tabBar && panes.length) {
+          immortalFloorShell.dataset.startupPhase = 'Ready';
+          resolve(true);
+        } else resolve(false);
+      }));
+      function expose(next, detail = '') {
+        if (!immortalFloorStates.includes(next)) throw new Error('Invalid Immortal Floor state: ' + next);
+        state = next;
+        document.documentElement.dataset.immortalFloorState = next;
+        if (immortalFloorShell) immortalFloorShell.dataset.immortalFloorState = next;
+        if (immortalFloorGuestSlot) immortalFloorGuestSlot.dataset.slotEmpty = String(next !== 'Seated');
+        const message = immortalFloorShell?.querySelector('[data-immortal-floor-message]');
+        if (message) message.textContent = detail || ({ BootFloor: 'Preparing your controls…', GuestRevolution: 'Changing view…', BareFloor: 'Controls remain available. Choose a tab to try again.', Seated: '' }[next]);
+      }
+      function emptySlot() {
+        closeViewportStreamFamily();
+        panes.forEach(pane => {
+          pane.classList.remove('active', 'immortal-floor-enter');
+          pane.setAttribute('aria-hidden', 'true');
+        });
+        activeGuest = null;
+        if (immortalFloorGuestSlot) immortalFloorGuestSlot.dataset.slotEmpty = 'true';
+      }
+      async function admitFreshGuest(id) {
+        const pane = panes.find(candidate => candidate.dataset.panePanel === id);
+        const tab = tabs.find(candidate => candidate.dataset.pane === id);
+        if (!pane) throw new Error('guest-missing');
+        if (tab?.getAttribute('hx-get') && window.htmx) {
+          await new Promise((resolve, reject) => {
+            let timer = null;
+            const cleanup = () => {
+              document.body.removeEventListener('htmx:afterSwap', afterSwap);
+              document.body.removeEventListener('htmx:timeout', failed);
+              document.body.removeEventListener('htmx:responseError', failed);
+              document.body.removeEventListener('htmx:sendError', failed);
+              if (timer) window.clearTimeout(timer);
+            };
+            const afterSwap = event => {
+              if (panelFromHtmxEvent(event) !== pane) return;
+              cleanup();
+              resolve();
+            };
+            const failed = event => {
+              if (panelFromHtmxEvent(event) !== pane) return;
+              cleanup();
+              reject(new Error('admission-fault'));
+            };
+            document.body.addEventListener('htmx:afterSwap', afterSwap);
+            document.body.addEventListener('htmx:timeout', failed);
+            document.body.addEventListener('htmx:responseError', failed);
+            document.body.addEventListener('htmx:sendError', failed);
+            timer = window.setTimeout(() => { cleanup(); reject(new Error('admission-timeout')); }, 10000);
+            window.htmx.trigger(tab, 'immortal-floor-admit');
+          });
+        }
+        if (id === 'stats') await hydrateStats();
+        else if (id === 'dhcp') await hydrateDhcp();
+        else if (id === 'portals') await hydratePortals();
+        if (!pane || pane.dataset.viewportFaulted === 'true') throw new Error('guest-unhealthy');
+        return pane;
+      }
+      async function activate(requested) {
+        const selected = lawfulPaneCandidate(requested);
+        const crossing = ++generation;
+        const readyNow = await ready;
+        expose(state === 'BootFloor' ? 'BootFloor' : 'GuestRevolution');
+        emptySlot();
+        expose('GuestRevolution');
+        // The empty slot is committed for one paint before any successor can reveal.
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        if (!readyNow || crossing !== generation) return false;
+        try {
+          const pane = await admitFreshGuest(selected);
+          if (crossing !== generation) return false;
+          tabs.forEach(tab => {
+            const active = tab.dataset.pane === selected;
+            tab.setAttribute('aria-selected', String(active));
+            tab.classList.toggle('active', active);
+          });
+          pane.classList.add('active', 'immortal-floor-enter');
+          pane.setAttribute('aria-hidden', 'false');
+          activeGuest = selected;
+          expose('Seated');
+          applyTabBarVisibility();
+          if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
+          reconcileViewportStreamFamily();
+          return true;
+        } catch (error) {
+          if (crossing === generation) fault(error?.message || 'admission-fault');
+          return false;
+        }
+      }
+      function fault(kind = 'guest-fault') {
+        generation += 1;
+        emptySlot();
+        expose('BareFloor', 'This view could not open. Choose a tab to try again.');
+        document.documentElement.dataset.immortalFloorFault = kind;
+      }
+      expose('BootFloor');
+      return Object.freeze({ activate, fault, get state() { return state; }, get activeGuest() { return activeGuest; } });
+    })();
+    window.immortalFloor = immortalFloor;
+    window.getImmortalFloorState = () => immortalFloor.state;
+    function showPane(id) { return immortalFloor.activate(id); }
     function bindTabControls() {
       tabs.forEach(tab => {
         tab.addEventListener('click', event => {

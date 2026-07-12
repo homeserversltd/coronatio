@@ -1,6 +1,6 @@
 fn shell_document_1() -> &'static str {
     r####"<!doctype html>
-<html lang="en" class="theme-loaded">
+<html lang="en" class="theme-loaded" data-immortal-floor-state="BootFloor">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
