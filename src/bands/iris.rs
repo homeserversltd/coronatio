@@ -90,9 +90,10 @@ mod iris {
         let mut tabs = sorted_tabs(facts);
         let guest_visible_regular_count = tabs.iter().filter(|tab| guest_visible(tab)).count();
         let fallback_needed = guest_visible_regular_count == 0;
+        let starred = eligible_star(facts);
         let mut tab_grants = tabs
             .iter_mut()
-            .filter_map(|tab| grant_tab(tab, session))
+            .filter_map(|tab| grant_tab(tab, session, starred.as_deref()))
             .collect::<Vec<_>>();
         if fallback_needed {
             tab_grants.push(TabGrant {
@@ -108,7 +109,7 @@ mod iris {
             .iter()
             .flat_map(|tab| grant_elements(tab, session))
             .collect::<Vec<_>>();
-        let starred = eligible_star(facts).map_or(StarTarget::Fallback, StarTarget::Tab);
+        let starred = starred.map_or(StarTarget::Fallback, StarTarget::Tab);
         RenderPlan {
             session,
             tabs: tab_grants,
@@ -241,7 +242,7 @@ mod iris {
         tabs
     }
 
-    fn grant_tab(tab: &IrisTabFact, session: Session) -> Option<TabGrant> {
+    fn grant_tab(tab: &IrisTabFact, session: Session, starred: Option<&str>) -> Option<TabGrant> {
         let state = tab_state(tab, session);
         if state == RenderState::Absent {
             return None;
@@ -251,7 +252,7 @@ mod iris {
             tab_id: tab.id.clone(),
             state,
             eye: session == Session::Admin && !tab.admin_only,
-            star: state == RenderState::Visible && !tab.admin_only,
+            star: state == RenderState::Visible && starred == Some(tab.id.as_str()),
             star_eligible: star_eligible(tab),
         })
     }

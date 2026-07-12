@@ -77,6 +77,34 @@ fn iris_c_tab_row_02_regular_enabled_visible_admin() {
 }
 
 #[test]
+fn iris_c_visible_regular_tabs_have_exactly_one_filled_star() {
+    let facts = IrisFacts {
+        tabs: vec![iris_tab("alpha", 0, false, true, Some(true)), iris_tab("beta", 1, false, true, Some(true))],
+        starred: "beta".to_string(),
+    };
+    let plan = iris::plan(&facts, Session::Guest);
+    let eligible = plan.tabs.iter().filter(|grant| grant.star_eligible).collect::<Vec<_>>();
+    assert_eq!(eligible.len(), 2);
+    assert_eq!(eligible.iter().filter(|grant| grant.star).count(), 1);
+    assert!(!iris_tab_grant(&plan, "alpha").unwrap().star);
+    assert!(iris_tab_grant(&plan, "beta").unwrap().star);
+
+    let names = BTreeMap::from([
+        ("alpha".to_string(), "Alpha".to_string()),
+        ("beta".to_string(), "Beta".to_string()),
+    ]);
+    let html = plan
+        .tabs
+        .iter()
+        .map(|grant| render_plan_tab_grant(grant, &names, "beta", false))
+        .collect::<String>();
+    assert_eq!(html.matches("star-button fas fa-star").count(), 1);
+    assert_eq!(html.matches("star-button far fa-star").count(), 1);
+    assert!(!html.contains("<span aria-hidden=\"true\">★</span>"));
+    assert!(!html.contains('★'));
+}
+
+#[test]
 fn iris_c_tab_row_03_regular_enabled_hidden_guest() {
     assert_iris_tab_row("C tab row 03", false, true, false, Session::Guest, RenderState::Absent, false, false, false);
 }
