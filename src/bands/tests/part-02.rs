@@ -616,7 +616,8 @@
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("coronatio.favorite-manifest.response.v1"));
-        assert!(body.contains("\"starredTab\":\"stats\""));
+        let expected_starred = load_homeserver_json().await.unwrap().1["tabs"]["starred"].as_str().unwrap().to_string();
+        assert!(body.contains(&format!("\"starredTab\":\"{expected_starred}\"")), "{body}");
         assert!(body.contains("homeserver.json"));
         assert!(body.contains("tabs.{config,visibility,starred}"));
         assert!(!body.contains("static/favorites"));
@@ -627,7 +628,7 @@
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("coronatio.starred-tab.response.v1"));
-        assert!(body.contains("\"starred_tab\":\"stats\""));
+        assert!(body.contains(&format!("\"starred_tab\":\"{expected_starred}\"")), "{body}");
         let response = app.oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let shell = String::from_utf8(bytes.to_vec()).unwrap();

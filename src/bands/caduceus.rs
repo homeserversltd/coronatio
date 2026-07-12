@@ -92,6 +92,35 @@ fn caduceus_mutation_route(route: &str, path: &str, action: &str, target: &str) 
     )
 }
 
+fn caduceus_config_set(path: &str, value: serde_json::Value) -> CaduceusHttpReadback {
+    #[cfg(test)]
+    if env::var("CORONATIO_TEST_CAPABILITY_TOKEN").is_err() {
+        return CaduceusHttpReadback {
+            ok: true,
+            status: 200,
+            path: "/api/v1/config/set".to_string(),
+            body: serde_json::json!({"ok": true, "testPath": path, "testValue": value}),
+            first_missing_signal: "none".to_string(),
+        };
+    }
+    let capability = match mint_caduceus_capability("config set", path) {
+        Ok(capability) => capability,
+        Err(signal) => return CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: "/api/v1/config/set".to_string(),
+            body: serde_json::json!({"error": signal}),
+            first_missing_signal: signal,
+        },
+    };
+    caduceus_http_json(
+        "POST",
+        "/api/v1/config/set",
+        serde_json::json!({"path": path, "value": value}),
+        Some(&capability),
+    )
+}
+
 #[cfg(test)]
 static KEYMAN_CAPABILITY_MINT_MOCK: OnceLock<Mutex<Option<fn(&str, &str) -> Result<String, String>>>> =
     OnceLock::new();

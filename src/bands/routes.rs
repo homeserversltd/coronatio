@@ -198,11 +198,12 @@ async fn set_starred_tab_route(headers: axum::http::HeaderMap, Json(request): Js
             "source": source,
         }))).into_response(),
     };
-    if let Err(error) = persist_iris_facts(&next).await {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": error}))).into_response();
+    let persisted = caduceus_config_set("tabs.starred", serde_json::Value::String(next.starred.clone()));
+    if !persisted.ok {
+        return caduceus_config_failure_response(persisted);
     }
     pulse::poke(pulse::PokeTopic::TabsChanged);
-    tab_bar_html_response(session_from_headers(&headers))
+    tab_bar_html_response_from_facts(session_from_headers(&headers), &next)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -230,11 +231,19 @@ async fn tab_visibility_route(headers: axum::http::HeaderMap, Json(request): Jso
         Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": error}))).into_response(),
     };
     let next = iris::apply_tab_visibility(&facts, &tab, visible);
-    if let Err(error) = persist_iris_facts(&next).await {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": error}))).into_response();
+    let visibility_path = format!("tabs.{tab}.visibility.tab");
+    let persisted = caduceus_config_set(&visibility_path, serde_json::Value::Bool(visible));
+    if !persisted.ok {
+        return caduceus_config_failure_response(persisted);
+    }
+    if next.starred != facts.starred {
+        let starred = caduceus_config_set("tabs.starred", serde_json::Value::String(next.starred.clone()));
+        if !starred.ok {
+            return caduceus_config_failure_response(starred);
+        }
     }
     pulse::poke(pulse::PokeTopic::TabsChanged);
-    tab_bar_html_response(Session::Admin)
+    tab_bar_html_response_from_facts(Session::Admin, &next)
 }
 
 
@@ -250,8 +259,12 @@ async fn tab_bar_fragment_route(
     tab_bar_html_response_with_active(session_from_headers(&headers), query.active.as_deref())
 }
 
-fn tab_bar_html_response(session: Session) -> Response {
-    tab_bar_html_response_with_active(session, None)
+fn tab_bar_html_response_from_facts(session: Session, facts: &IrisFacts) -> Response {
+    let body = render_plan_tabbar_projection_from_facts(facts, session, None, false);
+    let mut response = (StatusCode::OK, Html(body)).into_response();
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
+    response
 }
 
 fn tab_bar_html_response_with_active(session: Session, active: Option<&str>) -> Response {
@@ -300,7 +313,6 @@ fn favorite_manifest_from_homeserver(source: String, value: &serde_json::Value) 
     let starred_tab = tabs_obj
         .get("starred")
         .and_then(serde_json::Value::as_str)
-        .map(|_| "stats")
         .unwrap_or("stats")
         .to_string();
     let mut tabs = Vec::new();
@@ -374,8 +386,6 @@ fn validate_favorite_manifest(manifest: &FavoriteManifest) -> Result<(), String>
     Ok(())
 }
 
-static HOMESERVER_CONFIG_WRITER: OnceLock<Mutex<()>> = OnceLock::new();
-
 async fn load_iris_facts() -> Result<(String, IrisFacts), String> {
     let (source, value) = load_homeserver_json().await?;
     Ok((source, iris_facts_from_homeserver_value(&value)))
@@ -422,31 +432,13 @@ fn iris_facts_from_homeserver_value(value: &serde_json::Value) -> IrisFacts {
     iris::from_coronatio_contracts(&tabs, &starred)
 }
 
-async fn persist_iris_facts(facts: &IrisFacts) -> Result<(), String> {
-    let path = homeserver_json_path();
-    let lock = HOMESERVER_CONFIG_WRITER.get_or_init(|| Mutex::new(()));
-    let _guard = lock.lock().map_err(|_| "homeserver config writer poisoned".to_string())?;
-    let raw = std::fs::read_to_string(&path).map_err(|error| format!("homeserver.json unreadable at {}: {}", path.display(), error))?;
-    let mut value: serde_json::Value = serde_json::from_str(&raw).map_err(|error| format!("homeserver.json invalid at {}: {}", path.display(), error))?;
-    let tabs = value.get_mut("tabs").and_then(serde_json::Value::as_object_mut).ok_or_else(|| "homeserver.json missing tabs object".to_string())?;
-    tabs.insert("starred".to_string(), serde_json::Value::String(facts.starred.clone()));
-    for fact in &facts.tabs {
-        if fact.id == "fallback" { continue; }
-        let entry = tabs.entry(fact.id.clone()).or_insert_with(|| serde_json::json!({"config": {}, "visibility": {}}));
-        let obj = entry.as_object_mut().ok_or_else(|| format!("tab {} is not an object", fact.id))?;
-        let visibility = obj.entry("visibility".to_string()).or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| format!("tab {} visibility is not an object", fact.id))?;
-        if let Some(tab_visible) = fact.visibility_tab { visibility.insert("tab".to_string(), serde_json::Value::Bool(tab_visible)); }
-        let elements = visibility.entry("elements".to_string()).or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| format!("tab {} elements is not an object", fact.id))?;
-        elements.clear();
-        for element in &fact.elements {
-            if let Some(value) = element.visibility { elements.insert(element.id.clone(), serde_json::Value::Bool(value)); }
-        }
-    }
-    let tmp = path.with_extension(format!("json.tmp.{}", std::process::id()));
-    let body = serde_json::to_string_pretty(&value).map_err(|error| error.to_string())? + "\n";
-    std::fs::write(&tmp, body).map_err(|error| format!("write temp {}: {}", tmp.display(), error))?;
-    std::fs::rename(&tmp, &path).map_err(|error| format!("rename temp {} to {}: {}", tmp.display(), path.display(), error))?;
-    Ok(())
+fn caduceus_config_failure_response(readback: CaduceusHttpReadback) -> Response {
+    let status = if readback.status == 0 { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::BAD_GATEWAY };
+    (status, Json(serde_json::json!({
+        "success": false,
+        "firstMissingSignal": readback.first_missing_signal,
+        "caduceus": readback,
+    }))).into_response()
 }
 
 async fn themes_route() -> impl IntoResponse {

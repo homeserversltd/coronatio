@@ -66,6 +66,34 @@
     }
 
     #[test]
+    fn config_set_mints_exact_capability_and_posts_json_without_local_write() {
+        use std::net::TcpListener;
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_millis(250))).unwrap();
+            let mut request = String::new();
+            stream.read_to_string(&mut request).ok();
+            assert!(request.starts_with("POST /api/v1/config/set HTTP/1.1"), "{request}");
+            assert!(request.contains("x-caduceus-capability: config-test-token\r\n"), "{request}");
+            assert!(request.contains(r#"{"path":"tabs.starred","value":"portals"}"#), "{request}");
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}").unwrap();
+        });
+        std::env::set_var("CADUCEUS_URL", format!("http://{address}"));
+        std::env::set_var("CORONATIO_TEST_CAPABILITY_TOKEN", "config-test-token");
+        let readback = caduceus_config_set("tabs.starred", serde_json::json!("portals"));
+        server.join().unwrap();
+        std::env::remove_var("CORONATIO_TEST_CAPABILITY_TOKEN");
+        std::env::remove_var("CADUCEUS_URL");
+        assert!(readback.ok, "{readback:?}");
+        let routes = std::fs::read_to_string("src/bands/routes.rs").unwrap();
+        assert!(!routes.contains("persist_iris_facts"));
+        assert!(!routes.contains("std::fs::write(&tmp"));
+    }
+
+    #[test]
     fn keyman_mint_uses_last_json_line_and_keeps_bare_token_fallback() {
         let polluted = "Acquired key for caduceus_household\nAcquired key for caduceus_household\n{\"ok\":true,\"capability\":\"signed-token\",\"firstMissingSignal\":\"none\"}\n";
         assert_eq!(parse_keyman_capability_stdout(polluted).unwrap(), "signed-token");

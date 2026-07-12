@@ -671,13 +671,17 @@ fn render_plan_tabbar_fragment_with_active(session: Session, active: Option<&str
 
 fn render_plan_tabbar_projection(session: Session, active: Option<&str>, active_load_trigger: bool) -> String {
     let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
-    let plan = iris::plan(&facts, session);
+    render_plan_tabbar_projection_from_facts(&facts, session, active, active_load_trigger)
+}
+
+fn render_plan_tabbar_projection_from_facts(facts: &IrisFacts, session: Session, active: Option<&str>, active_load_trigger: bool) -> String {
+    let plan = iris::plan(facts, session);
     let active_tab = active
         .map(normalize_tab_id)
         .filter(|tab| !tab.is_empty())
         .map(|tab| iris::landing_after_session_change(&plan, &plan, &tab))
         .unwrap_or_else(|| iris::initial_tab(&plan));
-    let names = tab_display_names_from_facts(&facts);
+    let names = tab_display_names_from_facts(facts);
     plan.tabs
         .into_iter()
         .filter(|grant| grant.tab_id != "fallback")
