@@ -745,13 +745,11 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       const fileButton = event.target.closest('[data-upload-file-button]');
       if (fileButton) { uploadFileInput?.click(); return; }
       const health = event.target.closest('[data-test-health-check]');
-      if (health) {
-        const out = document.querySelector('[data-test-health-output]');
-        if (out) out.textContent = JSON.stringify({ schema: 'coronatio.test.health.v1', status: 'ready', dependencies: { rust_shell: true, theme_catalog: Boolean(themeCatalog?.themes), ux_library: true }, theme: headerState.theme }, null, 2);
-        return;
-      }
-      const reset = event.target.closest('[data-reset-breadcrumbs]');
-      if (reset) { const out = document.querySelector('[data-breadcrumb-path]'); if (out) out.textContent = '/mnt/nas'; return; }
+      if (health) { const out = document.querySelector('[data-test-health-output]'); if (out) out.textContent = JSON.stringify({ schema: 'coronatio.test.health.v1', status: 'ready', dependencies: { rust_shell: true, theme_catalog: Boolean(themeCatalog?.themes), ux_library: true }, theme: headerState.theme }, null, 2); return; }
+      const testFileButton = event.target.closest('[data-test-file-input] .ui-file-input__button'); if (testFileButton) { testFileButton.closest('[data-test-file-input]')?.querySelector('[data-ui-file-input]')?.click(); return; }
+      const testBreadcrumb = event.target.closest('[data-test-breadcrumb-path]'); if (testBreadcrumb) { const path = testBreadcrumb.dataset.testBreadcrumbPath; const nav = testBreadcrumb.closest('.breadcrumb-navigation, .ui-breadcrumbs'); nav?.querySelectorAll('[data-test-breadcrumb-path]').forEach(crumb => { const current = crumb.dataset.testBreadcrumbPath === path; crumb.classList.toggle('current', current); crumb.classList.toggle('ui-breadcrumbs__item--current', current); if (current) crumb.setAttribute('aria-current', 'page'); else crumb.removeAttribute('aria-current'); }); const specimen = testBreadcrumb.closest('[data-test-upload-domain-pack]'); const out = specimen?.querySelector('[data-test-domain-path]') || testBreadcrumb.closest('.showcase-item')?.querySelector('[data-breadcrumb-path]'); if (out) out.textContent = path; return; }
+      const testDirectory = event.target.closest('[data-test-directory-path]'); if (testDirectory) { const specimen = testDirectory.closest('[data-test-upload-domain-pack]'); specimen?.querySelectorAll('[data-test-directory-path]').forEach(entry => { const selected = entry === testDirectory; entry.classList.toggle('selected', selected); entry.setAttribute('aria-selected', String(selected)); }); const out = specimen?.querySelector('[data-test-domain-path]'); if (out) out.textContent = testDirectory.dataset.testDirectoryPath; return; }
+      const reset = event.target.closest('[data-reset-breadcrumbs]'); if (reset) { const item = reset.closest('.showcase-item'); const out = item?.querySelector('[data-breadcrumb-path]'); if (out) out.textContent = '/mnt/nas'; item?.querySelectorAll('[data-test-breadcrumb-path]').forEach(crumb => { const current = crumb.dataset.testBreadcrumbPath === '/mnt/nas'; crumb.classList.toggle('current', current); crumb.classList.toggle('ui-breadcrumbs__item--current', current); if (current) crumb.setAttribute('aria-current', 'page'); else crumb.removeAttribute('aria-current'); }); return; }
       const expand = event.target.closest('[data-test-card-expand]');
       if (expand) { const expanded = expand.closest('.test-card')?.querySelector('.test-card-expanded'); if (expanded) { expanded.hidden = !expanded.hidden; expand.textContent = expanded.hidden ? '+' : '−'; } return; }
       const modalOpen = event.target.closest('[data-ux-modal-open]');
@@ -769,8 +767,10 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       if (time) { const out = document.querySelector('[data-ui-time-output]'); if (out) out.textContent = time.value; }
     });
     document.body.addEventListener('change', event => {
-      const box = event.target.closest('.file-input');
-      if (box && event.target.matches('input[type="file"]')) { const label = box.querySelector('[data-file-input-label]'); if (label) label.textContent = event.target.files?.[0]?.name || 'Choose file'; }
+      const box = event.target.closest('.file-input, .ui-file-input');
+      if (box && event.target.matches('input[type="file"]')) { const names = Array.from(event.target.files || []).map(file => file.name); const text = names.length ? names.join(', ') : 'No files selected'; const label = box.querySelector('[data-file-input-label]'); if (label) { if ('value' in label) label.value = text; else label.textContent = text; } const item = box.closest('.showcase-item'); const state = item?.querySelector('[data-test-file-state]'); const submit = item?.querySelector('[data-test-file-submit]'); if (state) state.textContent = text; if (submit) submit.disabled = names.length === 0; }
+      const domainFile = event.target.closest('[data-test-domain-file]');
+      if (domainFile) { const section = domainFile.closest('[data-test-domain-file-section]'); const names = Array.from(domainFile.files || []).map(file => file.name); const readback = section?.querySelector('[data-test-domain-file-name]'); const submit = section?.querySelector('[data-test-domain-submit]'); if (readback) readback.textContent = names.length ? names.join(', ') : 'No files selected'; if (submit) submit.disabled = names.length === 0; }
     });
     function openUxModalDemo(size) {
       const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
