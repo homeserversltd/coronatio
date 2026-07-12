@@ -522,21 +522,30 @@
         assert!(!shell.contains("JSON.stringify(results)"));
         assert!(shell.contains("data-admin-only data-admin-viewport=\"portals\""));
         let portals_css = std::fs::read_to_string("src/bands/shell/ux/packs/portals.css").unwrap();
-        assert_eq!(portals_css.matches(".portal-element:is(:hover, :focus-within) > .portal-card {").count(), 1);
-        let card_rule = &portals_css[portals_css.find(".portal-card {").unwrap()..portals_css.find(".portal-element:is(:hover, :focus-within)").unwrap()];
+        assert_eq!(portals_css.matches(".portal-element:is(:hover, :focus-within) > .portal-card > .portal-card-face,").count(), 1);
+        let card_rule = &portals_css[portals_css.find(".portal-card {").unwrap()..portals_css.find(".portal-card-face {").unwrap()];
         assert!(!card_rule.contains("transition: all"));
-        assert!(card_rule.contains("transition-property: transform, box-shadow"));
+        assert!(!card_rule.contains("transform"), "portal-card hit target must never transform");
+        assert!(!portals_css.contains(".portal-element:hover {"));
+        assert!(!portals_css.contains(".portal-element:is(:hover, :focus-within) {"));
         assert!(!card_rule.contains("transition-property: border-color"));
-        assert!(card_rule.contains("transition-duration: var(--motion-hover-raise-duration)"));
+        assert!(!card_rule.contains("transition-duration"));
+        let face_rule = &portals_css[portals_css.find(".portal-card-face {").unwrap()..portals_css.find(".portal-element:is(:hover, :focus-within)").unwrap()];
+        assert!(face_rule.contains("transition-property: transform, box-shadow"));
+        assert!(face_rule.contains("transition-duration: var(--motion-hover-raise-duration)"));
         assert!(!card_rule.contains("background-color"));
         assert!(!portals_css.contains(".portal-card:hover::before"));
         assert!(!portals_css.contains("animation: infinite"));
-        let emphasized_rule_start = portals_css.find(".portal-element:is(:hover, :focus-within) > .portal-card {").unwrap();
+        let emphasized_rule_start = portals_css.find(".portal-element:is(:hover, :focus-within) > .portal-card > .portal-card-face,").unwrap();
         let emphasized_rule_end = portals_css[emphasized_rule_start..].find(".portal-card-header").unwrap() + emphasized_rule_start;
         let emphasized_rule = &portals_css[emphasized_rule_start..emphasized_rule_end];
         assert!(!emphasized_rule.contains("border-color"), "portal hover steals status border authority");
         assert!(emphasized_rule.contains("box-shadow"), "portal hover omits stable-stage depth shadow");
         assert!(emphasized_rule.contains("transform: var(--motion-hover-raise-transform)"));
+        assert!(portals_css.contains(".portal-card-face {\n  pointer-events: none;"));
+        let fragment = include_str!("../crown-law/element-fragments.rs");
+        assert!(fragment.contains("<div class=\"portal-card-face\"><div class=\"portal-card-header\">"));
+        assert!(fragment.contains("<div class=\"portal-card-face\"><div class=\"add-portal-content\">"));
         assert!(!emphasized_rule.contains("translateZ"));
         for forbidden in [".portal-card:hover {\n  transform", ".portal-card:hover .portal-icon", ".add-portal-card:hover {\n  transform", ".add-portal-card:hover .add-portal-icon {\n  transform"] { assert!(!portals_css.contains(forbidden), "forbidden moving hit target: {forbidden}"); }
     }
