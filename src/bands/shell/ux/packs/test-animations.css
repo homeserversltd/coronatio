@@ -47,8 +47,8 @@
 .motion-modal-stage.is-running .motion-dialog { transform: scale(1); }
 .motion-toast { width: min(100%, 18rem); max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; opacity: 0; transform: translateY(14px); transition-property: opacity, transform; transition-duration: var(--motion-duration-base); }
 .motion-toast.is-running { opacity: 1; transform: translateY(0); }
-.motion-progress { width: 100%; height: 16px; overflow: hidden; border-radius: 8px; background: var(--background-alt); }
-.motion-progress span { display: block; width: 65%; height: 100%; background: repeating-linear-gradient(45deg, var(--primary), var(--primary) 8px, var(--primaryHover) 8px, var(--primaryHover) 16px); }
+.motion-progress { width: 100%; height: 16px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--hiddenTabBackground); }
+.motion-progress span { display: block; width: 65%; height: 100%; background: repeating-linear-gradient(45deg, var(--secondary), var(--secondary) 8px, var(--primaryHover) 8px, var(--primaryHover) 16px); }
 #pane-test [data-animation-lab] .motion-progress.is-running span { animation: indranet-stripes .8s linear infinite !important; }
 .motion-spinner { width: 34px; height: 34px; border: 4px solid var(--border); border-top-color: var(--primary); border-radius: 50%; }
 #pane-test [data-animation-lab] .motion-spinner.is-running { animation: indranet-spin .8s linear infinite !important; }

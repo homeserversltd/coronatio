@@ -6,7 +6,7 @@ The Theme Net has two levels. The shell owns the full system lattice and its bea
 
 ## Build ladder
 
-1. Compose existing `.ux-*` library classes first (`.ux-stack`, `.ux-row`, `.ux-grid`, `.ux-card`, `.ux-button`, `.ux-tab`, `.ux-field`, `.ux-badge`, and the focused library component classes).
+1. Compose existing `.ux-*` and `ui-*` library classes first (`.ux-stack`, `.ux-row`, `.ux-grid`, `.ux-card`, `.ux-button`, `.ux-tab`, `.ux-field`, `.ux-badge`, `.ui-progress-bar` and its `__container`, `__fill`, `__labels`, `__text`, size, variant, state, and indeterminate classes, plus other focused library components). Progress semantics and the upload-domain reflection are governed by `pali:agentics-ux-progress-constitution-tablet` and `pali:workflow-coronatio-progress-primitive-binding-tablet`.
 2. Add small pack CSS only when composition cannot express the domain need.
 3. In pack CSS, use `var(--name)` only from the author face below.
 4. If a domain needs a local emphasis, rebind one author-face name at its root:
