@@ -39,3 +39,33 @@ fn immortal_floor_motion_uses_stable_slot_and_reduced_motion_settles() {
     assert!(css.contains("@media (prefers-reduced-motion: reduce)"));
     assert!(!css.contains(".pane.immortal-floor-enter { transition: all"));
 }
+
+#[test]
+fn immortal_floor_crossing_is_bounded_and_every_owned_failure_terminates() {
+    let chrome = crown_chrome_js();
+    assert!(chrome.contains("const admissionTimeoutMs = 1500;"));
+    assert!(chrome.contains("const hydrationTimeoutMs = 750;"));
+    assert!(chrome.contains("bounded(() => hydrateStats()"));
+    assert!(chrome.contains("bounded(() => hydratePortals()"));
+    assert!(chrome.contains("bounded(() => hydrateDhcp()"));
+    assert!(chrome.contains("if (!readyNow) {\n          if (crossing === generation) { emptySlot(); expose('BareFloor'); }"));
+    assert!(chrome.contains("if (crossing !== generation) return false; // A newer crossing owns the terminal state."));
+    assert!(chrome.contains("if (crossing === generation) fault(error?.message || 'admission-fault');"));
+}
+
+#[test]
+fn immortal_floor_matches_htmx_by_panel_id_and_scopes_global_faults() {
+    let chrome = crown_chrome_js();
+    assert!(chrome.contains("panelIdFromHtmxEvent(event) !== id"));
+    assert!(!chrome.contains("panelFromHtmxEvent(event) !== pane"));
+    assert!(chrome.contains("window.immortalFloor?.faultForPanel(panelId, kind)"));
+    assert!(chrome.contains("if (state !== 'GuestRevolution' || !panelId || lawfulPaneCandidate(panelId) !== crossingGuest) return false;"));
+}
+
+#[test]
+fn immortal_floor_admin_rebind_is_idempotent_and_same_guest_does_not_blank() {
+    let chrome = crown_chrome_js();
+    assert!(chrome.contains("if (tab.dataset.immortalFloorBound === 'true') return;"));
+    assert!(chrome.contains("tab.dataset.immortalFloorBound = 'true';"));
+    assert!(chrome.contains("if (state === 'Seated' && activeGuest === selected)"));
+}

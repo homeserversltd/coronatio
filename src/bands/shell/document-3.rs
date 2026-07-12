@@ -622,6 +622,9 @@ fn shell_document_3() -> &'static str {
       let state = 'BootFloor';
       let generation = 0;
       let activeGuest = null;
+      let crossingGuest = null;
+      const admissionTimeoutMs = 1500;
+      const hydrationTimeoutMs = 750;
       const ready = new Promise(resolve => requestAnimationFrame(() => {
         if (immortalFloorShell && tabBar && panes.length) {
           immortalFloorShell.dataset.startupPhase = 'Ready';
@@ -646,6 +649,17 @@ fn shell_document_3() -> &'static str {
         activeGuest = null;
         if (immortalFloorGuestSlot) immortalFloorGuestSlot.dataset.slotEmpty = 'true';
       }
+      function panelIdFromHtmxEvent(event) {
+        const panel = panelFromHtmxEvent(event);
+        return panel instanceof HTMLElement ? (panel.dataset.viewPanel || panel.dataset.panePanel || '') : '';
+      }
+      function bounded(task, timeoutMs, kind) {
+        let timer = null;
+        return Promise.race([
+          Promise.resolve().then(task),
+          new Promise((_, reject) => { timer = window.setTimeout(() => reject(new Error(kind)), timeoutMs); })
+        ]).finally(() => { if (timer) window.clearTimeout(timer); });
+      }
       async function admitFreshGuest(id) {
         const pane = panes.find(candidate => candidate.dataset.panePanel === id);
         const tab = tabs.find(candidate => candidate.dataset.pane === id);
@@ -661,12 +675,12 @@ fn shell_document_3() -> &'static str {
               if (timer) window.clearTimeout(timer);
             };
             const afterSwap = event => {
-              if (panelFromHtmxEvent(event) !== pane) return;
+              if (panelIdFromHtmxEvent(event) !== id) return;
               cleanup();
               resolve();
             };
             const failed = event => {
-              if (panelFromHtmxEvent(event) !== pane) return;
+              if (panelIdFromHtmxEvent(event) !== id) return;
               cleanup();
               reject(new Error('admission-fault'));
             };
@@ -674,18 +688,23 @@ fn shell_document_3() -> &'static str {
             document.body.addEventListener('htmx:timeout', failed);
             document.body.addEventListener('htmx:responseError', failed);
             document.body.addEventListener('htmx:sendError', failed);
-            timer = window.setTimeout(() => { cleanup(); reject(new Error('admission-timeout')); }, 10000);
+            timer = window.setTimeout(() => { cleanup(); reject(new Error('admission-timeout')); }, admissionTimeoutMs);
             window.htmx.trigger(tab, 'immortal-floor-admit');
           });
         }
-        if (id === 'stats') await hydrateStats();
-        else if (id === 'dhcp') await hydrateDhcp();
-        else if (id === 'portals') await hydratePortals();
+        if (id === 'stats') await bounded(() => hydrateStats(), hydrationTimeoutMs, 'hydration-timeout');
+        else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout');
+        else if (id === 'portals') await bounded(() => hydratePortals(), hydrationTimeoutMs, 'hydration-timeout');
         if (!pane || pane.dataset.viewportFaulted === 'true') throw new Error('guest-unhealthy');
         return pane;
       }
       async function activate(requested) {
         const selected = lawfulPaneCandidate(requested);
+        crossingGuest = selected;
+        if (state === 'Seated' && activeGuest === selected) {
+          reconcileViewportStreamFamily();
+          return true;
+        }
         const crossing = ++generation;
         const readyNow = await ready;
         expose(state === 'BootFloor' ? 'BootFloor' : 'GuestRevolution');
@@ -693,7 +712,11 @@ fn shell_document_3() -> &'static str {
         expose('GuestRevolution');
         // The empty slot is committed for one paint before any successor can reveal.
         await new Promise(resolve => requestAnimationFrame(resolve));
-        if (!readyNow || crossing !== generation) return false;
+        if (!readyNow) {
+          if (crossing === generation) { emptySlot(); expose('BareFloor'); }
+          return false;
+        }
+        if (crossing !== generation) return false; // A newer crossing owns the terminal state.
         try {
           const pane = await admitFreshGuest(selected);
           if (crossing !== generation) return false;
@@ -705,6 +728,7 @@ fn shell_document_3() -> &'static str {
           pane.classList.add('active', 'immortal-floor-enter');
           pane.setAttribute('aria-hidden', 'false');
           activeGuest = selected;
+          crossingGuest = null;
           expose('Seated');
           applyTabBarVisibility();
           if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
@@ -719,16 +743,24 @@ fn shell_document_3() -> &'static str {
         generation += 1;
         emptySlot();
         expose('BareFloor', 'This view could not open. Choose a tab to try again.');
+        crossingGuest = null;
         document.documentElement.dataset.immortalFloorFault = kind;
       }
+      function faultForPanel(panelId, kind = 'guest-fault') {
+        if (state !== 'GuestRevolution' || !panelId || lawfulPaneCandidate(panelId) !== crossingGuest) return false;
+        fault(kind);
+        return true;
+      }
       expose('BootFloor');
-      return Object.freeze({ activate, fault, get state() { return state; }, get activeGuest() { return activeGuest; } });
+      return Object.freeze({ activate, fault, faultForPanel, get state() { return state; }, get activeGuest() { return activeGuest; } });
     })();
     window.immortalFloor = immortalFloor;
     window.getImmortalFloorState = () => immortalFloor.state;
     function showPane(id) { return immortalFloor.activate(id); }
     function bindTabControls() {
       tabs.forEach(tab => {
+        if (tab.dataset.immortalFloorBound === 'true') return;
+        tab.dataset.immortalFloorBound = 'true';
         tab.addEventListener('click', event => {
           if (event.target.closest('button')) return;
           event.preventDefault();
