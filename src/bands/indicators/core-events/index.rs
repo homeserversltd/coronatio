@@ -14,7 +14,7 @@ pub(crate) struct CoreRenewQuery { stream_id: String }
 struct CoreStreamState { stream_id: String, session: Session, index: usize, opened: bool }
 impl Drop for CoreStreamState { fn drop(&mut self) { core_leases().lock().unwrap().remove(&self.stream_id); } }
 
-pub(crate) async fn core_events_route(headers: axum::http::HeaderMap) -> Response {
+pub(crate) async fn core_pulse_route(headers: axum::http::HeaderMap) -> Response {
     let session = session_from_headers(&headers);
     let (_id, frames) = subscribe_core_stream(session, Duration::from_secs(CORE_LEASE_SECONDS));
     Sse::new(frames.map(|frame| Ok::<Event, Infallible>(Event::default().event(frame.0).id(frame.1).data(frame.2))))
@@ -22,7 +22,7 @@ pub(crate) async fn core_events_route(headers: axum::http::HeaderMap) -> Respons
         .into_response()
 }
 
-pub(crate) async fn core_events_renew_route(Query(query): Query<CoreRenewQuery>) -> Response {
+pub(crate) async fn core_pulse_renew_route(Query(query): Query<CoreRenewQuery>) -> Response {
     if renew_core_stream(&query.stream_id, Duration::from_secs(CORE_LEASE_SECONDS)) {
         Json(serde_json::json!({"schema":"coronatio.core.events.renewal.v1","streamId":query.stream_id,"status":"renewed","leaseSeconds":CORE_LEASE_SECONDS})).into_response()
     } else {
@@ -43,7 +43,7 @@ pub(crate) fn subscribe_core_stream(session: Session, lease: Duration) -> (Strin
         if !state.opened {
             state.opened = true;
             let id = state.stream_id.clone();
-            let data = serde_json::json!({"schema":"coronatio.core.events.v1","streamId":id,"leaseSeconds":CORE_LEASE_SECONDS,"renewRoute":format!("/api/core/events/renew?streamId={}", state.stream_id),"topics":catalog().iter().map(|e| e.topic_id).collect::<Vec<_>>()}).to_string();
+            let data = serde_json::json!({"schema":"coronatio.core.events.v1","streamId":id,"leaseSeconds":CORE_LEASE_SECONDS,"renewRoute":format!("/api/core/pulse/renew?streamId={}", state.stream_id),"topics":catalog().iter().map(|e| e.topic_id).collect::<Vec<_>>()}).to_string();
             return Some((("core.open".into(), id, data), Some(state)));
         }
         if state.index >= catalog().len() { tokio::time::sleep(Duration::from_secs(1)).await; state.index = 0; }

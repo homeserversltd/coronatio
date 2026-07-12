@@ -275,7 +275,7 @@
             "data-power-chart",
             "powerChartState.watts.slice(-seconds)",
             "pushPowerChartPoint(formatChartTime(), Number(formatPowerWatts(data.current)))",
-            "new EventSource('/api/core/events')",
+            "new EventSource('/api/core/pulse')",
             "coreTopicIds.forEach",
             "if (watts < 1) return 'var(--statusUp)'",
             "if (watts < 5) return 'var(--statusPartial)'",
@@ -368,7 +368,7 @@
             "data-speed-test-button",
             "Running Speed Test...",
             "internetState.speedTestResults = { download: parsed.download, upload: parsed.upload, latency: parsed.latency }",
-            "new EventSource('/api/core/events')",
+            "new EventSource('/api/core/pulse')",
             "applyCoreTopic(topicId, envelope)",
         ] {
             assert!(shell.contains(marker), "missing React InternetIndicator port marker: {marker}");
@@ -523,7 +523,7 @@
             .iter()
             .find(|topic| topic.pane_id == "stats")
             .unwrap();
-        assert_eq!(stats.event_route, "/api/stats/events");
-        assert_eq!(stats.renew_route, "/api/stats/events/renew");
+        assert_eq!(stats.event_route, "/api/stats/pulse");
+        assert_eq!(stats.renew_route, "/api/stats/pulse/renew");
     }
 

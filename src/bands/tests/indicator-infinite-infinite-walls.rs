@@ -64,9 +64,9 @@
     }
 
     #[tokio::test]
-    async fn core_events_route_is_sse_and_emits_all_topic_snapshots() {
+    async fn core_pulse_route_is_sse_and_emits_all_topic_snapshots() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("core-events")) });
-        let response = router.oneshot(Request::builder().uri("/api/core/events").body(Body::empty()).unwrap()).await.unwrap();
+        let response = router.oneshot(Request::builder().uri("/api/core/pulse").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers().get(axum::http::header::CONTENT_TYPE).unwrap(), "text/event-stream");
         let mut body = response.into_body().into_data_stream();
@@ -85,14 +85,14 @@
     async fn core_events_renew_accepts_stream_id() {
         let (stream_id, _stream) = indicators::subscribe_core_stream(Session::Guest, Duration::from_secs(1));
         let router = app(AppState { tab_root: Arc::new(test_tab_root("core-renew")) });
-        let response = router.oneshot(Request::builder().method("POST").uri(format!("/api/core/events/renew?streamId={stream_id}")).body(Body::empty()).unwrap()).await.unwrap();
+        let response = router.oneshot(Request::builder().method("POST").uri(format!("/api/core/pulse/renew?streamId={stream_id}")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[test]
     fn crown_chrome_mounts_one_persistent_generic_core_eventsource() {
         let chrome = crown_chrome_js();
-        assert_eq!(chrome.matches("new EventSource('/api/core/events')").count(), 1);
+        assert_eq!(chrome.matches("new EventSource('/api/core/pulse')").count(), 1);
         assert!(chrome.contains("coreTopicIds.forEach"));
         assert!(!chrome.contains("showPane(id) {\n      if (coreStream) coreStream.close()"));
     }

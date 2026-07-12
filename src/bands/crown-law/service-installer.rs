@@ -287,8 +287,8 @@ fn stats_snapshot() -> StatsSnapshot {
         },
         transport: StatsTransport {
             snapshot_route: "/api/stats".to_string(),
-            event_route: "/api/stats/events".to_string(),
-            renew_route: "/api/stats/events/renew".to_string(),
+            event_route: "/api/stats/pulse".to_string(),
+            renew_route: "/api/stats/pulse/renew".to_string(),
             stream_status: "available".to_string(),
             stream_reason: "persistent SSE pulse stream and renewal route are registered; pokes carry no stats payload".to_string(),
         },
@@ -308,8 +308,8 @@ fn stats_snapshot() -> StatsSnapshot {
         },
         next_routes: StatsNextRoutes {
             snapshot: "/api/stats".to_string(),
-            events: "/api/stats/events".to_string(),
-            renew: "/api/stats/events/renew".to_string(),
+            events: "/api/stats/pulse".to_string(),
+            renew: "/api/stats/pulse/renew".to_string(),
         },
     }
 }

@@ -11,8 +11,8 @@
             },
             transport: StatsTransport {
                 snapshot_route: "/api/stats".to_string(),
-                event_route: "/api/stats/events".to_string(),
-                renew_route: "/api/stats/events/renew".to_string(),
+                event_route: "/api/stats/pulse".to_string(),
+                renew_route: "/api/stats/pulse/renew".to_string(),
                 stream_status: "available".to_string(),
                 stream_reason: "DENY-implementation-stream-reason".to_string(),
             },
@@ -45,8 +45,8 @@
             },
             next_routes: StatsNextRoutes {
                 snapshot: "/api/stats".to_string(),
-                events: "/api/stats/events".to_string(),
-                renew: "/api/stats/events/renew".to_string(),
+                events: "/api/stats/pulse".to_string(),
+                renew: "/api/stats/pulse/renew".to_string(),
             },
         }
     }

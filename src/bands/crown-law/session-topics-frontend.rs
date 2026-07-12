@@ -126,8 +126,8 @@ fn monitor_pulse_readback() -> MonitorPulseReadback {
         schema: "coronatio.monitor-pulse.v1".to_string(),
         topic: stats_topic_contract(),
         snapshot_route: "/api/stats".to_string(),
-        event_route: "/api/stats/events".to_string(),
-        renew_route: "/api/stats/events/renew".to_string(),
+        event_route: "/api/stats/pulse".to_string(),
+        renew_route: "/api/stats/pulse/renew".to_string(),
         stream_contract: pulse_stream_contract(),
         proof_policy: vec![
             "initial subscriber receives stream identity and lease metadata only".to_string(),

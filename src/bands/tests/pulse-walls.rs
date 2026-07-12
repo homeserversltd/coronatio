@@ -9,7 +9,7 @@
         let temp = test_tab_root("pulse-open-route");
         let router = app(AppState { tab_root: Arc::new(temp) });
         let response = router
-            .oneshot(Request::builder().uri("/api/stats/events").body(Body::empty()).unwrap())
+            .oneshot(Request::builder().uri("/api/stats/pulse").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -120,7 +120,7 @@
         let router = app(AppState { tab_root: Arc::new(temp) });
         let ok = router
             .clone()
-            .oneshot(Request::builder().method("POST").uri(format!("/api/stats/events/renew?streamId={stream_id}")).body(Body::empty()).unwrap())
+            .oneshot(Request::builder().method("POST").uri(format!("/api/stats/pulse/renew?streamId={stream_id}")).body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(ok.status(), StatusCode::OK);
@@ -130,7 +130,7 @@
         assert_eq!(renew.status, "renewed");
 
         let missing = router
-            .oneshot(Request::builder().method("POST").uri("/api/stats/events/renew?streamId=missing-pulse-stream").body(Body::empty()).unwrap())
+            .oneshot(Request::builder().method("POST").uri("/api/stats/pulse/renew?streamId=missing-pulse-stream").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
@@ -270,7 +270,7 @@
     #[test]
     fn pulse_002_wall_shell_rider_is_data_free_eventsource_pull_only() {
         let chrome = crown_chrome_js();
-        assert!(chrome.contains("new EventSource('/api/stats/events')"));
+        assert!(chrome.contains("new EventSource('/api/stats/pulse')"));
         assert!(chrome.contains("pulseStream.addEventListener('pulse.open'"));
         assert!(chrome.contains("pulseStream.addEventListener('tabs.changed'"));
         assert!(chrome.contains("pulseStream.addEventListener('pulse.expired'"));

@@ -149,7 +149,7 @@ mod pulse {
         }
     }
 
-    pub(crate) async fn stats_events_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    pub(crate) async fn stats_pulse_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
         let session = session_from_headers(&headers);
         let (_stream_id, frames) = subscribe_stream(session, Duration::from_secs(PULSE_LEASE_SECONDS));
         Sse::new(frames.map(|frame| Ok::<Event, Infallible>(frame.into_event())))
@@ -161,12 +161,12 @@ mod pulse {
             .into_response()
     }
 
-    pub(crate) async fn stats_events_renew_route(Query(query): Query<PulseRenewQuery>) -> impl IntoResponse {
+    pub(crate) async fn stats_pulse_renew_route(Query(query): Query<PulseRenewQuery>) -> impl IntoResponse {
         if renew_stream(&query.stream_id, Duration::from_secs(PULSE_LEASE_SECONDS)) {
             Json(LeaseRenewalReadback {
                 schema: "coronatio.stats.events.renewal.v1".to_string(),
                 stream_id: query.stream_id,
-                route: "/api/stats/events/renew".to_string(),
+                route: "/api/stats/pulse/renew".to_string(),
                 lease_seconds: PULSE_LEASE_SECONDS,
                 status: "renewed".to_string(),
                 next_renewal_before_seconds: 20,
@@ -298,7 +298,7 @@ mod pulse {
                     "schema": "coronatio.pulse.stream.v1",
                     "streamId": subscription.stream_id,
                     "leaseSeconds": PULSE_LEASE_SECONDS,
-                    "renewRoute": format!("/api/stats/events/renew?streamId={}", subscription.stream_id),
+                    "renewRoute": format!("/api/stats/pulse/renew?streamId={}", subscription.stream_id),
                 })
                 .to_string(),
             });
