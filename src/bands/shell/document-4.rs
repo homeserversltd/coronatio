@@ -508,7 +508,7 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
     }
     function renderAddPortalCard() {
       return `<div class="portal-card add-portal-card" data-admin-only data-admin-viewport="portals" data-add-portal-open role="button" tabindex="0" aria-label="Add new portal">
-        <div class="add-portal-content"><div class="add-portal-icon"><i class="fas fa-plus"></i></div><h3 class="add-portal-title">Add Portal</h3><p class="add-portal-description">Create a new portal for your services</p></div>
+        <div class="portal-card-face"><div class="add-portal-content"><div class="add-portal-icon"><i class="fas fa-plus"></i></div><h3 class="add-portal-title">Add Portal</h3><p class="add-portal-description">Create a new portal for your services</p></div></div>
       </div>`;
     }
     function openPortalModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }

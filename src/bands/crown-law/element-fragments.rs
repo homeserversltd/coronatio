@@ -261,11 +261,11 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
     } else {
         format!(r#"<h2 class="portal-name">{}</h2>"#, name)
     };
-    Some(format!(r#"<div class="portal-element" data-portal-element data-visible="{}" style="position:relative">{}{}<article class="portal-card {}" data-portal-card data-portal-name="{}" data-portal-url="{}" data-portal-services="{}" role="link" tabindex="0"><div class="portal-card-header"><img src="/api/portals/images/{}.png" alt="{} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">{}<p class="portal-description">{}</p></div><div class="portal-meta">{}</div></article></div>"#, visible, toggle, delete, status, name, destination, services, name, name, portal_name, description, admin_controls))
+    Some(format!(r#"<div class="portal-element" data-portal-element data-visible="{}" style="position:relative">{}{}<article class="portal-card {}" data-portal-card data-portal-name="{}" data-portal-url="{}" data-portal-services="{}" role="link" tabindex="0"><div class="portal-card-face"><div class="portal-card-header"><img src="/api/portals/images/{}.png" alt="{} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">{}<p class="portal-description">{}</p></div><div class="portal-meta">{}</div></div></article></div>"#, visible, toggle, delete, status, name, destination, services, name, name, portal_name, description, admin_controls))
 }
 
 fn render_add_portal_card_fragment() -> String {
-    r#"<div class="portal-card add-portal-card" data-admin-only data-admin-viewport="portals" data-add-portal-open role="button" tabindex="0" aria-label="Add new portal"><div class="add-portal-content"><div class="add-portal-icon"><i class="fas fa-plus"></i></div><h3 class="add-portal-title">Add Portal</h3><p class="add-portal-description">Create a new portal for your services</p></div></div>"#.to_string()
+    r#"<div class="portal-card add-portal-card" data-admin-only data-admin-viewport="portals" data-add-portal-open role="button" tabindex="0" aria-label="Add new portal"><div class="portal-card-face"><div class="add-portal-content"><div class="add-portal-icon"><i class="fas fa-plus"></i></div><h3 class="add-portal-title">Add Portal</h3><p class="add-portal-description">Create a new portal for your services</p></div></div></div>"#.to_string()
 }
 
 fn default_element_grant_from_facts(facts: &IrisFacts, session: Session, tab_id: &str, element_id: &str) -> ElementGrant {

@@ -62,8 +62,8 @@
             assert!(portals_css.contains(&format!("var({token})")), "Portals does not consume {token}");
         }
 
-        assert!(lab_css.contains(".motion-card-stage:is(:hover, :focus-visible) .motion-card"));
-        assert!(portals_css.contains(".portal-element:is(:hover, :focus-within) > .portal-card"));
+        assert!(lab_css.contains(".motion-card-stage:is(:hover, :focus-visible) .motion-card-face"));
+        assert!(portals_css.contains(".portal-element:is(:hover, :focus-within) > .portal-card > .portal-card-face"));
         assert!(portals_css.contains("MOTION-TRANCH-01 => MOTION-ATOM(transform, box-shadow) => MOTION-COMPOSE(stable-stage raise) => MOTION-REFLECT(Portals cards)"));
         assert!(portals_css.contains("@media (prefers-reduced-motion: reduce)"));
         assert!(portals_css.contains("transition-duration: .001ms !important"));
@@ -76,7 +76,9 @@
         assert!(!lift_path.contains("translateZ"));
         assert!(lift_path.contains("transition-property: transform, box-shadow"));
         assert!(lift_path.contains("transform: var(--motion-hover-raise-transform)"));
-        let lab_hover_start = lab_css.find(".motion-card-stage:is(:hover, :focus-visible) .motion-card").unwrap();
+        assert!(lift_path.contains(".portal-card-face"));
+        assert!(lift_path.contains("pointer-events: none"));
+        let lab_hover_start = lab_css.find(".motion-card-stage:is(:hover, :focus-visible) .motion-card-face").unwrap();
         let lab_hover_end = lab_css[lab_hover_start..].find(".motion-toggle").unwrap() + lab_hover_start;
         let lab_hover_path = &lab_css[lab_hover_start..lab_hover_end];
         for path in [lift_path, lab_hover_path] {
@@ -84,6 +86,7 @@
             assert!(path.contains("box-shadow"), "MOTION-TRANCH-01 hover raise must retain depth evidence");
         }
         assert!(lab_hover_path.contains("transform: var(--motion-hover-raise-transform)"));
+        assert!(lab_css.contains(".motion-card-face { pointer-events: none"));
         assert!(!portals_css.contains(".portal-card:hover .portal-icon"));
         assert!(!portals_css.contains(".add-portal-card:hover .add-portal-icon"));
     }

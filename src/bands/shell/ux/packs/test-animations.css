@@ -34,10 +34,9 @@
 .motion-button:hover { border-color: var(--primary); box-shadow: 0 4px 10px rgba(0,0,0,.14); }
 .motion-button:active { transform: translateY(1px) scale(.98); }
 .motion-card-stage { min-height: 220px; }
-.motion-card { transition-property: transform, box-shadow; transition-duration: var(--motion-hover-raise-duration); transition-timing-function: var(--motion-hover-raise-easing); }
-.motion-card::before { content: none; }
-.motion-card-stage:is(:hover, :focus-visible) .motion-card,
-.motion-card.is-running { transform: var(--motion-hover-raise-transform); box-shadow: var(--motion-hover-raise-shadow); }
+.motion-card-face { pointer-events: none; display: grid; gap: .35rem; padding: 1.25rem; border-radius: 12px; background: var(--background); box-shadow: 0 2px 4px rgba(0,0,0,.05); transition-property: transform, box-shadow; transition-duration: var(--motion-hover-raise-duration); transition-timing-function: var(--motion-hover-raise-easing); }
+.motion-card-stage:is(:hover, :focus-visible) .motion-card-face,
+.motion-card-stage.is-running .motion-card-face { transform: var(--motion-hover-raise-transform); box-shadow: var(--motion-hover-raise-shadow); }
 .motion-toggle { width: 48px; height: 26px; padding: 3px; border-radius: 20px; background: var(--border); }
 .motion-toggle span { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--text); transform: translateX(0); transition: transform var(--motion-duration-base) var(--motion-ease-standard); }
 .motion-toggle.is-running span { transform: translateX(22px); }
