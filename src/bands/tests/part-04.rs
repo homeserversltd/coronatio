@@ -525,12 +525,19 @@
         assert_eq!(portals_css.matches(".portal-element:is(:hover, :focus-within) > .portal-card {").count(), 1);
         let card_rule = &portals_css[portals_css.find(".portal-card {").unwrap()..portals_css.find(".portal-element:is(:hover, :focus-within)").unwrap()];
         assert!(!card_rule.contains("transition: all"));
-        for property in ["transform", "box-shadow"] {
+        for property in ["border-color", "box-shadow"] {
             assert!(card_rule.contains(property), "portal card transition omits {property}");
         }
+        assert!(!card_rule.contains("transform"));
         assert!(!card_rule.contains("background-color"));
         assert!(!portals_css.contains(".portal-card:hover::before"));
         assert!(!portals_css.contains("animation: infinite"));
+        let emphasized_rule_start = portals_css.find(".portal-element:is(:hover, :focus-within) > .portal-card {").unwrap();
+        let emphasized_rule_end = portals_css[emphasized_rule_start..].find(".portal-card-header").unwrap() + emphasized_rule_start;
+        let emphasized_rule = &portals_css[emphasized_rule_start..emphasized_rule_end];
+        for forbidden in ["transform:", "translateY", "scale(", "translateZ"] {
+            assert!(!emphasized_rule.contains(forbidden), "portal hover changes hit geometry with {forbidden}");
+        }
         for forbidden in [".portal-card:hover {\n  transform", ".portal-card:hover .portal-icon", ".add-portal-card:hover {\n  transform", ".add-portal-card:hover .add-portal-icon {\n  transform"] { assert!(!portals_css.contains(forbidden), "forbidden moving hit target: {forbidden}"); }
     }
 

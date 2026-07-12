@@ -53,10 +53,10 @@
         }
 
         for token in [
-            "--motion-hover-lift-transform",
-            "--motion-hover-lift-shadow",
-            "--motion-hover-lift-duration",
-            "--motion-hover-lift-easing",
+            "--motion-hover-emphasis-border-color",
+            "--motion-hover-emphasis-shadow",
+            "--motion-hover-emphasis-duration",
+            "--motion-hover-emphasis-easing",
         ] {
             assert!(lab_css.contains(token), "Animation Lab does not define {token}");
             assert!(portals_css.contains(&format!("var({token})")), "Portals does not consume {token}");
@@ -64,7 +64,7 @@
 
         assert!(lab_css.contains(".motion-card-stage:is(:hover, :focus-visible) .motion-card"));
         assert!(portals_css.contains(".portal-element:is(:hover, :focus-within) > .portal-card"));
-        assert!(portals_css.contains("MOTION-TRANCH-01 => MOTION-ATOM(transform, box-shadow) => MOTION-COMPOSE(hover-lift) => MOTION-REFLECT(Portals cards)"));
+        assert!(portals_css.contains("MOTION-TRANCH-01 => MOTION-ATOM(border-color, box-shadow) => MOTION-COMPOSE(stable-hit emphasis) => MOTION-REFLECT(Portals cards)"));
         assert!(portals_css.contains("@media (prefers-reduced-motion: reduce)"));
         assert!(portals_css.contains("transition-duration: .001ms !important"));
         let lift_start = portals_css.find("IndraNet reflection: MOTION-TRANCH-01").unwrap();
@@ -74,6 +74,15 @@
         assert!(!lift_path.contains("animation:"));
         assert!(!lift_path.contains("infinite"));
         assert!(!lift_path.contains("translateZ"));
+        for forbidden in ["transform:", "translateY", "scale(", "translateZ"] {
+            assert!(!lift_path.contains(forbidden), "MOTION-TRANCH-01 portal reflection changes hit geometry with {forbidden}");
+        }
+        let lab_hover_start = lab_css.find(".motion-card-stage:is(:hover, :focus-visible) .motion-card").unwrap();
+        let lab_hover_end = lab_css[lab_hover_start..].find(".motion-toggle").unwrap() + lab_hover_start;
+        let lab_hover_path = &lab_css[lab_hover_start..lab_hover_end];
+        for forbidden in ["transform:", "translateY", "scale(", "translateZ"] {
+            assert!(!lab_hover_path.contains(forbidden), "MOTION-TRANCH-01 Lab specimen changes hit geometry with {forbidden}");
+        }
         assert!(!portals_css.contains(".portal-card:hover .portal-icon"));
         assert!(!portals_css.contains(".add-portal-card:hover .add-portal-icon"));
     }
