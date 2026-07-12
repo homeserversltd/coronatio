@@ -74,8 +74,8 @@ fn shell_document_4() -> &'static str {
       if (target instanceof Element && (target.matches('[data-portals-grid]') || target.closest('[data-portals-grid]'))) {
         const grid = target.matches('[data-portals-grid]') ? target : target.closest('[data-portals-grid]');
         if (grid) { bindPortalFragmentControls(grid); refreshPortalCurrentness(); }
-        applyAdminDomState();
       }
+      applyAdminDomState();
     });
     async function uploadOneFile(file) {
       setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending' });

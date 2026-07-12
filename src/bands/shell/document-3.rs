@@ -545,6 +545,7 @@ fn shell_document_3() -> &'static str {
       const response = await fetch('/api/tab-bar' + activeParam, { headers });
       if (!response.ok) return null;
       tabBar.innerHTML = await response.text();
+      if (window.htmx) window.htmx.process(tabBar);
       tabs = [...document.querySelectorAll('[data-pane]')];
       bindTabControls();
       applyTabBarVisibility();
@@ -698,46 +699,48 @@ fn shell_document_3() -> &'static str {
         if (!pane || pane.dataset.viewportFaulted === 'true') throw new Error('guest-unhealthy');
         return pane;
       }
-      async function activate(requested) {
-        const selected = lawfulPaneCandidate(requested);
-        crossingGuest = selected;
-        if (state === 'Seated' && activeGuest === selected) {
-          reconcileViewportStreamFamily();
-          return true;
+      function seatGuest(id) {
+        const pane = panes.find(candidate => candidate.dataset.panePanel === id); if (!pane) return false;
+        tabs.forEach(tab => {
+          const active = tab.dataset.pane === id;
+          tab.setAttribute('aria-selected', String(active));
+          tab.classList.toggle('active', active);
+        });
+        panes.forEach(candidate => {
+          const active = candidate === pane;
+          candidate.classList.toggle('active', active);
+          candidate.classList.toggle('immortal-floor-enter', active);
+          candidate.setAttribute('aria-hidden', String(!active));
+        });
+        activeGuest = id; crossingGuest = null; expose('Seated'); applyAdminDomState(); applyTabBarVisibility();
+        if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
+        reconcileViewportStreamFamily();
+        return true;
+      }
+      async function refreshSeatedGuest(id, crossing) {
+        try {
+          await admitFreshGuest(id);
+          if (crossing !== generation || activeGuest !== id) return;
+          applyAdminDomState(); reconcileViewportStreamFamily();
+        } catch (error) {
+          if (crossing === generation && activeGuest === id) document.documentElement.dataset.immortalFloorFault = error?.message || 'admission-fault';
         }
-        const crossing = ++generation;
-        const readyNow = await ready;
-        expose(state === 'BootFloor' ? 'BootFloor' : 'GuestRevolution');
-        emptySlot();
-        expose('GuestRevolution');
-        // The empty slot is committed for one paint before any successor can reveal.
-        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+      async function activate(requested) {
+        const selected = lawfulPaneCandidate(requested); crossingGuest = selected;
+        if (state === 'Seated' && activeGuest === selected) {
+          applyAdminDomState(); reconcileViewportStreamFamily(); return true;
+        }
+        const crossing = ++generation; const readyNow = await ready;
         if (!readyNow) {
           if (crossing === generation) { emptySlot(); expose('BareFloor'); }
           return false;
         }
         if (crossing !== generation) return false; // A newer crossing owns the terminal state.
-        try {
-          const pane = await admitFreshGuest(selected);
-          if (crossing !== generation) return false;
-          tabs.forEach(tab => {
-            const active = tab.dataset.pane === selected;
-            tab.setAttribute('aria-selected', String(active));
-            tab.classList.toggle('active', active);
-          });
-          pane.classList.add('active', 'immortal-floor-enter');
-          pane.setAttribute('aria-hidden', 'false');
-          activeGuest = selected;
-          crossingGuest = null;
-          expose('Seated');
-          applyTabBarVisibility();
-          if (location.hash !== '#' + selected) history.replaceState(null, '', '#' + selected);
-          reconcileViewportStreamFamily();
-          return true;
-        } catch (error) {
-          if (crossing === generation) fault(error?.message || 'admission-fault');
-          return false;
-        }
+        expose('GuestRevolution');
+        if (!seatGuest(selected)) { fault('guest-missing'); return false; }
+        void refreshSeatedGuest(selected, crossing);
+        return true;
       }
       function fault(kind = 'guest-fault') {
         generation += 1;
