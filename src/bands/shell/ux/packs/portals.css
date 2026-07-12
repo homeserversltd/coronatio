@@ -2,7 +2,15 @@
    Og sources: src/tablets/portals/index.tsx; components/{PortalCard,AddPortalCard,AddPortalModal,ServiceStatusModal}.tsx; PortalCard.css.
    Declaration-diff receipts: pane-root=ABSORB(tab-local PortalCard.css .portals-tablet); grid=ABSORB(tab-local .portals-grid; current .portal-grid helper differed/name drift); portal-card=ABSORB(tab-local .portal-card and og status border accents; generic .card removed from portal card stack); admin-mode=REBIND(data-admin-mode on .app replaces dead .admin-mode class selectors); card-interior=ABSORB(portal-card-header/icon/name/description/meta); admin-controls=ABSORB(og .admin-controls replaces Rust-only .portal-admin-controls); add-portal-card=ABSORB(og caboose card); portal-modal-form=ABSORB(og modal/form selectors; AddPortalModal rendered native input/select/button, not shared ui-input/ui-select/ui-button); service-status-modal=ABSORB(og ServiceStatusModal shell/pre/copy-button); visibility-toggle=DEFERRED-to-VIS(current eye/visibility state machine left untouched).
    Holding-pen drain: portals selectors moved out of shell/base-and-chrome.css and ux/shell/document-2-css.css; shell/document-2-css.css keeps only non-portals mobile substrate.
-   Og inline-style fold: PortalElement root style position:relative represented by .portal-element position:relative; visibility toggle inline top/right/z-index intentionally deferred with VIS; current toggle markup/classes stay untouched. */
+   Og inline-style fold: PortalElement root style position:relative represented by .portal-element position:relative; visibility toggle inline top/right/z-index intentionally deferred with VIS; current toggle markup/classes stay untouched.
+   IndraNet reflection: MOTION-TRANCH-01 => MOTION-ATOM(transform, box-shadow) => MOTION-COMPOSE(hover-lift) => MOTION-REFLECT(Portals cards). The stable .portal-element owns the trigger so the transformed child cannot oscillate its hit target. */
+
+:root {
+  --motion-hover-lift-transform: translateY(-3px);
+  --motion-hover-lift-shadow: 0 8px 18px rgba(0, 0, 0, .16);
+  --motion-hover-lift-duration: 200ms;
+  --motion-hover-lift-easing: cubic-bezier(0.4, 0, 0.2, 1);
+}
 
 .portal-card {
   position: relative;
@@ -10,9 +18,9 @@
   border-radius: 12px;
   padding: 1.25rem;
   cursor: pointer;
-  transition-property: border-color, box-shadow;
-  transition-duration: 0.2s;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-property: transform, box-shadow;
+  transition-duration: var(--motion-hover-lift-duration);
+  transition-timing-function: var(--motion-hover-lift-easing);
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -22,9 +30,9 @@
   border: 1px solid var(--border);
 }
 
-.portal-card:hover {
-  border-color: var(--primary);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+.portal-element:is(:hover, :focus-within) > .portal-card {
+  transform: var(--motion-hover-lift-transform);
+  box-shadow: var(--motion-hover-lift-shadow);
 }
 
 .portal-card-header {
@@ -620,15 +628,15 @@
   border: 2px dashed var(--border);
   background: var(--background-alt);
   transition-property: border-color, box-shadow;
-  transition-duration: 0.2s;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: var(--motion-hover-lift-duration);
+  transition-timing-function: var(--motion-hover-lift-easing);
   position: relative;
   overflow: hidden;
 }
 
 .add-portal-card:hover {
   border-color: var(--primary);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--motion-hover-lift-shadow);
 }
 
 .add-portal-content {
@@ -654,10 +662,6 @@
   font-size: 2rem;
   transition: box-shadow 0.2s ease;
   box-shadow: 0 4px 8px rgba(var(--primary-rgb), 0.2);
-}
-
-.add-portal-card:hover .add-portal-icon {
-  box-shadow: 0 6px 12px rgba(var(--primary-rgb), 0.3);
 }
 
 .add-portal-title {
@@ -738,3 +742,8 @@
 
 /* UXPORT-004 delegated chrome label for endpoints/workflows present as og shells but not recomposed in this tranche. */
 [data-portal-create-not-wired="true"], [data-portal-modal-not-wired="true"] { cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-card,
+  .add-portal-card { transition-duration: .001ms !important; }
+}

@@ -10,7 +10,7 @@
             r#"data-motion-phase="REST""#,
             r#"data-motion-reduce-preview"#,
             "Band A — Motion Atoms",
-            "Band B — Passive Hover",
+            "Band B — Composed Motion",
             "Band C — Yijing Lifecycle",
             "Band D — Accessibility",
         ] {
@@ -26,9 +26,49 @@
         for marker in ["data-animation-play", "data-hover-specimen", "data-motion-phase-readback"] {
             assert!(html.contains(marker));
         }
-        assert!(!html.contains("data-motion-stillness"));
-        assert!(!chrome.contains("data-motion-stillness"));
+        assert!(html.contains("data-motion-stillness"));
+        assert!(chrome.contains("data-motion-stillness"));
         for forbidden in [".motion-button:hover { transform", ".motion-card:hover { transform", ".motion-card:hover { scale"] { assert!(!css.contains(forbidden)); }
+    }
+
+    #[test]
+    fn portals_hover_lift_reflects_motion_tranch_01() {
+        let html = render_crown_shell();
+        let lab_css = std::fs::read_to_string("src/bands/shell/ux/packs/test-animations.css").unwrap();
+        let portals_css = std::fs::read_to_string("src/bands/shell/ux/packs/portals.css").unwrap();
+
+        for marker in [
+            r#"data-animation-catalog-id="MOTION-TRANCH-01""#,
+            "REST → ENTER (pointer or keyboard focus) → HOLD → EXIT → REST",
+            r#"class="motion-card-stage" tabindex="0""#,
+        ] {
+            assert!(html.contains(marker), "hover-lift specimen missing {marker}");
+        }
+
+        for token in [
+            "--motion-hover-lift-transform",
+            "--motion-hover-lift-shadow",
+            "--motion-hover-lift-duration",
+            "--motion-hover-lift-easing",
+        ] {
+            assert!(lab_css.contains(token), "Animation Lab does not define {token}");
+            assert!(portals_css.contains(&format!("var({token})")), "Portals does not consume {token}");
+        }
+
+        assert!(lab_css.contains(".motion-card-stage:is(:hover, :focus-visible) .motion-card"));
+        assert!(portals_css.contains(".portal-element:is(:hover, :focus-within) > .portal-card"));
+        assert!(portals_css.contains("MOTION-TRANCH-01 => MOTION-ATOM(transform, box-shadow) => MOTION-COMPOSE(hover-lift) => MOTION-REFLECT(Portals cards)"));
+        assert!(portals_css.contains("@media (prefers-reduced-motion: reduce)"));
+        assert!(portals_css.contains("transition-duration: .001ms !important"));
+        let lift_start = portals_css.find("IndraNet reflection: MOTION-TRANCH-01").unwrap();
+        let lift_end = portals_css.find(".portal-card-header").unwrap();
+        let lift_path = &portals_css[lift_start..lift_end];
+        assert!(!lift_path.contains("transition: all"));
+        assert!(!lift_path.contains("animation:"));
+        assert!(!lift_path.contains("infinite"));
+        assert!(!lift_path.contains("translateZ"));
+        assert!(!portals_css.contains(".portal-card:hover .portal-icon"));
+        assert!(!portals_css.contains(".add-portal-card:hover .add-portal-icon"));
     }
 
     #[test]
