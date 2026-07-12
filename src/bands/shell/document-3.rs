@@ -61,7 +61,7 @@ fn shell_document_3() -> &'static str {
         applyTabBarVisibility();
         refreshElementFragment('stats');
         refreshElementFragment('portals');
-        if (selectedTab) showPane(selectedTab);
+        if (selectedTab) showPane(selectedTab, { refresh: true });
       });
     }
     async function bootstrapAdminMode() {
@@ -544,12 +544,14 @@ fn shell_document_3() -> &'static str {
       const activeParam = activeTabId ? '?active=' + encodeURIComponent(activeTabId) : '';
       const response = await fetch('/api/tab-bar' + activeParam, { headers });
       if (!response.ok) return null;
-      tabBar.innerHTML = await response.text();
-      if (window.htmx) window.htmx.process(tabBar);
-      tabs = [...document.querySelectorAll('[data-pane]')];
+      replaceTabBar(await response.text());
+      return currentActiveTabId();
+    }
+    function replaceTabBar(html) { if (!tabBar) return;
+      tabBar.innerHTML = html;
+      if (window.htmx) window.htmx.process(tabBar); tabs = [...document.querySelectorAll('[data-pane]')];
       bindTabControls();
       applyTabBarVisibility();
-      return currentActiveTabId();
     }
     function clearPulseRenewal() {
       if (pulseRenewTimer) window.clearTimeout(pulseRenewTimer);
@@ -717,18 +719,9 @@ fn shell_document_3() -> &'static str {
         reconcileViewportStreamFamily();
         return true;
       }
-      async function refreshSeatedGuest(id, crossing) {
-        try {
-          await admitFreshGuest(id);
-          if (crossing !== generation || activeGuest !== id) return;
-          applyAdminDomState(); reconcileViewportStreamFamily();
-        } catch (error) {
-          if (crossing === generation && activeGuest === id) document.documentElement.dataset.immortalFloorFault = error?.message || 'admission-fault';
-        }
-      }
-      async function activate(requested) {
+      async function activate(requested, options = {}) {
         const selected = lawfulPaneCandidate(requested); crossingGuest = selected;
-        if (state === 'Seated' && activeGuest === selected) {
+        if (state === 'Seated' && activeGuest === selected && !options.refresh) {
           applyAdminDomState(); reconcileViewportStreamFamily(); return true;
         }
         const crossing = ++generation; const readyNow = await ready;
@@ -738,9 +731,16 @@ fn shell_document_3() -> &'static str {
         }
         if (crossing !== generation) return false; // A newer crossing owns the terminal state.
         expose('GuestRevolution');
-        if (!seatGuest(selected)) { fault('guest-missing'); return false; }
-        void refreshSeatedGuest(selected, crossing);
-        return true;
+        emptySlot();
+        try {
+          await admitFreshGuest(selected);
+          if (crossing !== generation) return false;
+          if (!seatGuest(selected)) { fault('guest-missing'); return false; }
+          return true;
+        } catch (error) {
+          if (crossing === generation) fault(error?.message || 'admission-fault');
+          return false;
+        }
       }
       function fault(kind = 'guest-fault') {
         generation += 1;
@@ -759,7 +759,7 @@ fn shell_document_3() -> &'static str {
     })();
     window.immortalFloor = immortalFloor;
     window.getImmortalFloorState = () => immortalFloor.state;
-    function showPane(id) { return immortalFloor.activate(id); }
+    function showPane(id, options) { return immortalFloor.activate(id, options); }
     function bindTabControls() {
       tabs.forEach(tab => {
         if (tab.dataset.immortalFloorBound === 'true') return;
@@ -776,7 +776,7 @@ fn shell_document_3() -> &'static str {
         if (!canStarTab(button.dataset.tabStar)) return;
         try {
           const response = await fetch('/api/set_starred_tab', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tabName: button.dataset.tabStar }) });
-          if (response.ok && tabBar) { tabBar.innerHTML = await response.text(); tabs = [...document.querySelectorAll('[data-pane]')]; bindTabControls(); }
+          if (response.ok && tabBar) replaceTabBar(await response.text());
         } catch (_) {}
       }));
       document.querySelectorAll('[data-tab-visibility-toggle]').forEach(button => button.addEventListener('click', async event => {
@@ -786,7 +786,7 @@ fn shell_document_3() -> &'static str {
         const token = localStorage.getItem('coronatioAdminToken');
         try {
           const response = await fetch('/api/tabs/visibility', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) }, body: JSON.stringify({ tab: id, visible }) });
-          if (response.ok && tabBar) { tabBar.innerHTML = await response.text(); tabs = [...document.querySelectorAll('[data-pane]')]; bindTabControls(); }
+          if (response.ok && tabBar) replaceTabBar(await response.text());
         } catch (_) {}
         const active = tabs.find(tab => tab.getAttribute('aria-selected') === 'true');
         if (!active || active.dataset.visibility === 'hidden') showPane(firstVisibleTab());

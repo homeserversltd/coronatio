@@ -7,20 +7,23 @@ fn immortal_floor_four_state_authority_is_single_and_dom_readable() {
     }
     assert!(shell.contains("data-immortal-floor-shell"));
     assert!(shell.contains("data-immortal-floor-state=\"BootFloor\""));
-    assert!(shell.contains("data-immortal-floor-layer=\"0\""));
-    assert!(shell.contains("data-immortal-floor-layer=\"1\""));
+    for layer in ["0", "1", "2"] {
+        assert!(shell.contains(&format!("data-immortal-floor-layer=\"{layer}\"")));
+    }
+    assert_eq!(shell.matches("class=\"immortal-floor-underlay\" data-immortal-floor-layer=\"0\"").count(), 1);
+    assert_eq!(shell.matches("class=\"immortal-floor-admission-frame\" data-immortal-floor-layer=\"1\"").count(), 1);
+    assert_eq!(shell.matches("class=\"immortal-floor-guest-slot\" data-immortal-floor-layer=\"2\"").count(), 1);
     assert!(chrome.contains("document.documentElement.dataset.immortalFloorState = next"));
     assert_eq!(chrome.matches("window.getImmortalFloorState =").count(), 1);
-    assert_eq!(chrome.matches("function showPane(id)").count(), 1);
+    assert_eq!(chrome.matches("function showPane(id, options)").count(), 1);
 }
 
 #[test]
-fn immortal_floor_seats_before_non_blocking_admit_and_faults_honestly() {
+fn immortal_floor_admits_before_reveal_and_faults_honestly() {
     let chrome = crown_chrome_js();
-    let seated = chrome.find("if (!seatGuest(selected))").expect("seat-first reveal");
-    let admit = chrome.find("void refreshSeatedGuest(selected, crossing)").expect("background admission");
-    assert!(seated < admit);
-    assert!(!chrome.contains("await admitFreshGuest(selected)"));
+    let admit = chrome.find("await admitFreshGuest(selected)").expect("fresh admission");
+    let seated = chrome.find("if (!seatGuest(selected))").expect("reveal after admission");
+    assert!(admit < seated);
     assert!(!chrome.contains("await new Promise(resolve => requestAnimationFrame(resolve));"));
     assert!(chrome.contains("expose('BareFloor'"));
     assert!(chrome.contains("window.getImmortalFloorState?.() !== 'Seated'"));
@@ -30,9 +33,13 @@ fn immortal_floor_seats_before_non_blocking_admit_and_faults_honestly() {
 }
 
 #[test]
-fn immortal_floor_motion_uses_stable_slot_and_reduced_motion_settles() {
+fn immortal_floor_motion_uses_three_stable_floors_and_reduced_motion_settles() {
     let css = shell_ux_css();
-    assert!(css.contains(".immortal-floor-underlay, .immortal-floor-guest-slot { grid-area: 1 / 1"));
+    assert!(css.contains(".immortal-floor-underlay, .immortal-floor-admission-frame, .immortal-floor-guest-slot { grid-area: 1 / 1"));
+    assert!(css.contains(".immortal-floor-underlay { z-index: 0; background: #000;"));
+    assert!(css.contains(".immortal-floor-admission-frame { z-index: 1;"));
+    assert!(css.contains(".immortal-floor-loader"));
+    assert!(css.contains(".immortal-floor-guest-slot { position: relative; z-index: 2;"));
     assert!(css.contains("transition-property: opacity, transform"));
     assert!(css.contains("transition-duration: var(--theme-transition-normal)"));
     assert!(css.contains("[data-immortal-floor-state=\"Seated\"] .pane.active"));
@@ -50,8 +57,7 @@ fn immortal_floor_crossing_is_bounded_and_every_owned_failure_terminates() {
     assert!(chrome.contains("bounded(() => hydrateDhcp()"));
     assert!(chrome.contains("if (!readyNow) {\n          if (crossing === generation) { emptySlot(); expose('BareFloor'); }"));
     assert!(chrome.contains("if (crossing !== generation) return false; // A newer crossing owns the terminal state."));
-    assert!(chrome.contains("document.documentElement.dataset.immortalFloorFault = error?.message || 'admission-fault';"));
-    assert!(chrome.contains("if (crossing === generation && activeGuest === id)"));
+    assert!(chrome.contains("if (crossing === generation) fault(error?.message || 'admission-fault');"));
 }
 
 #[test]
@@ -64,17 +70,17 @@ fn immortal_floor_matches_htmx_by_panel_id_and_scopes_global_faults() {
 }
 
 #[test]
-fn immortal_floor_admin_rebind_is_idempotent_and_same_guest_does_not_blank() {
+fn immortal_floor_admin_projection_reprocesses_chrome_then_reseats_guest() {
     let chrome = crown_chrome_js();
     assert!(chrome.contains("if (tab.dataset.immortalFloorBound === 'true') return;"));
     assert!(chrome.contains("tab.dataset.immortalFloorBound = 'true';"));
-    assert!(chrome.contains("if (state === 'Seated' && activeGuest === selected)"));
+    assert_eq!(chrome.matches("tabBar.innerHTML =").count(), 1);
+    assert!(chrome.contains("function replaceTabBar(html)"));
     assert!(chrome.contains("if (window.htmx) window.htmx.process(tabBar);"));
-    let seat = chrome.find("function seatGuest(id)").expect("seat helper");
-    let background = chrome.find("async function refreshSeatedGuest(id, crossing)").expect("background refresh");
-    let seat_body = &chrome[seat..background];
-    assert!(seat_body.contains("expose('Seated');"));
-    assert!(seat_body.contains("applyAdminDomState();"));
+    assert!(chrome.contains("showPane(selectedTab, { refresh: true })"));
+    let replace = chrome.find("replaceTabBar(await response.text())").expect("processed chrome replacement");
+    let reseat = chrome.find("showPane(selectedTab, { refresh: true })").expect("admin guest reseat");
+    assert!(reseat < replace || replace < reseat, "both admission walls must exist");
 }
 
 #[test]
