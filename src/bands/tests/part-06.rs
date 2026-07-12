@@ -46,16 +46,17 @@
 
         for marker in [
             r#"data-animation-catalog-id="MOTION-TRANCH-01""#,
-            "REST → ENTER (pointer or keyboard focus) → HOLD → EXIT → REST",
+            "REST → ENTER (pointer/focus on stage) → HOLD → EXIT → REST",
             r#"class="motion-card-stage" tabindex="0""#,
         ] {
             assert!(html.contains(marker), "hover-lift specimen missing {marker}");
         }
 
         for token in [
-            "--motion-hover-emphasis-shadow",
-            "--motion-hover-emphasis-duration",
-            "--motion-hover-emphasis-easing",
+            "--motion-hover-raise-transform",
+            "--motion-hover-raise-shadow",
+            "--motion-hover-raise-duration",
+            "--motion-hover-raise-easing",
         ] {
             assert!(lab_css.contains(token), "Animation Lab does not define {token}");
             assert!(portals_css.contains(&format!("var({token})")), "Portals does not consume {token}");
@@ -63,7 +64,7 @@
 
         assert!(lab_css.contains(".motion-card-stage:is(:hover, :focus-visible) .motion-card"));
         assert!(portals_css.contains(".portal-element:is(:hover, :focus-within) > .portal-card"));
-        assert!(portals_css.contains("MOTION-TRANCH-01 => MOTION-ATOM(box-shadow) => MOTION-COMPOSE(stable-hit emphasis) => MOTION-REFLECT(Portals cards)"));
+        assert!(portals_css.contains("MOTION-TRANCH-01 => MOTION-ATOM(transform, box-shadow) => MOTION-COMPOSE(stable-stage raise) => MOTION-REFLECT(Portals cards)"));
         assert!(portals_css.contains("@media (prefers-reduced-motion: reduce)"));
         assert!(portals_css.contains("transition-duration: .001ms !important"));
         let lift_start = portals_css.find("IndraNet reflection: MOTION-TRANCH-01").unwrap();
@@ -73,19 +74,16 @@
         assert!(!lift_path.contains("animation:"));
         assert!(!lift_path.contains("infinite"));
         assert!(!lift_path.contains("translateZ"));
-        for forbidden in ["transform:", "translateY", "scale(", "translateZ"] {
-            assert!(!lift_path.contains(forbidden), "MOTION-TRANCH-01 portal reflection changes hit geometry with {forbidden}");
-        }
+        assert!(lift_path.contains("transition-property: transform, box-shadow"));
+        assert!(lift_path.contains("transform: var(--motion-hover-raise-transform)"));
         let lab_hover_start = lab_css.find(".motion-card-stage:is(:hover, :focus-visible) .motion-card").unwrap();
         let lab_hover_end = lab_css[lab_hover_start..].find(".motion-toggle").unwrap() + lab_hover_start;
         let lab_hover_path = &lab_css[lab_hover_start..lab_hover_end];
         for path in [lift_path, lab_hover_path] {
             assert!(!path.contains("border-color"), "MOTION-TRANCH-01 hover emphasis steals status border authority");
-            assert!(path.contains("box-shadow"), "MOTION-TRANCH-01 hover emphasis must retain shadow evidence");
+            assert!(path.contains("box-shadow"), "MOTION-TRANCH-01 hover raise must retain depth evidence");
         }
-        for forbidden in ["transform:", "translateY", "scale(", "translateZ"] {
-            assert!(!lab_hover_path.contains(forbidden), "MOTION-TRANCH-01 Lab specimen changes hit geometry with {forbidden}");
-        }
+        assert!(lab_hover_path.contains("transform: var(--motion-hover-raise-transform)"));
         assert!(!portals_css.contains(".portal-card:hover .portal-icon"));
         assert!(!portals_css.contains(".add-portal-card:hover .add-portal-icon"));
     }
