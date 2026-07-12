@@ -634,6 +634,8 @@
         assert!(shell.contains("const tabState = Object.assign({ starredTab: 'stats'"));
         assert!(shell.contains("fetch('/api/favorites')"));
         assert!(shell.contains("fetch('/api/set_starred_tab'"));
-        assert!(shell.contains("Stats tab is starred"));
+        assert_eq!(shell.matches("class=\"star-button fas fa-star\"").count(), 1);
+        assert!(shell.contains("class=\"star-button far fa-star\""));
+        assert!(!shell.contains("<span aria-hidden=\"true\">★</span>"));
     }
 

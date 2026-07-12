@@ -732,7 +732,7 @@ fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, act
     let star_button = if grant.star_eligible {
         let star_class = if grant.star { "fas" } else { "far" };
         let label = if grant.star { format!("{} tab is starred", title) } else { format!("Star {} tab", title) };
-        format!(r##"<div class="tab-star-column"><button type="button" class="star-button {star_class} fa-star" data-tab-star="{id}" aria-pressed="{pressed}" aria-label="{label}" title="{label}"><span aria-hidden="true">★</span></button></div>"##, pressed = grant.star)
+        format!(r##"<div class="tab-star-column"><button type="button" class="star-button {star_class} fa-star" data-tab-star="{id}" aria-pressed="{pressed}" aria-label="{label}" title="{label}"></button></div>"##, pressed = grant.star)
     } else {
         r##"<div class="tab-star-column" aria-hidden="true"></div>"##.to_string()
     };
