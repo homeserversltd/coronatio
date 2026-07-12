@@ -275,8 +275,7 @@ fn shell_document_2() -> &'static str {
       if (!(panel instanceof HTMLElement)) return;
       panel.dataset.viewportFaulted = 'false';
       const id = panel.dataset.viewPanel || panel.dataset.panePanel || '';
-      if (id === 'stats') hydrateStats();
-      if (id === 'portals') hydratePortals();
+      if (id === currentActiveTabId() && id !== 'stats') reconcileViewportStreamFamily();
     });
     const fallbackTab = 'admin';
     const storageKey = 'coronatio.flask-react-tabbar.v1';

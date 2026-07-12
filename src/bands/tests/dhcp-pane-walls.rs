@@ -44,8 +44,8 @@ fn dhcp_client_is_composed_into_served_crown_chrome() {
 }
 
 #[test]
-fn dhcp_client_refreshes_typed_routes_and_owns_all_controls() {
-    let client = [include_str!("../shell/dhcp-client.rs"), include_str!("../shell/document-4.rs"), include_str!("../shell/document-4-tail.rs")].join("\n");
+fn dhcp_client_declares_admin_family_and_hydrates_only_when_active_visible() {
+    let client = [include_str!("../shell/dhcp-client.rs"), include_str!("../shell/document-3.rs"), include_str!("../shell/document-4.rs"), include_str!("../shell/document-4-tail.rs")].join("\n");
     for required in [
         "hydrateDhcp()",
         "'/api/dhcp/leases'",
@@ -55,8 +55,12 @@ fn dhcp_client_refreshes_typed_routes_and_owns_all_controls() {
         "data-dhcp-pin",
         "data-dhcp-edit",
         "data-dhcp-remove",
-        "setInterval(hydrateDhcp, 5000)",
+        "viewportFamilyAdmitted('dhcp')",
+        "authClass: 'admin'",
+        "document.visibilityState !== 'visible'",
     ] {
         assert!(client.contains(required), "DHCP client missing {required}");
     }
+    assert!(!client.contains("setInterval(hydrateDhcp"));
+    assert!(!client.contains("hydratePortals(); hydrateDhcp()"));
 }

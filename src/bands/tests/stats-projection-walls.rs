@@ -255,15 +255,16 @@
         assert!(chrome.contains("pulseStream.addEventListener('stats.tick'"));
         assert!(chrome.contains("refreshElementFragment('stats').catch(() => {})"));
         assert!(chrome.contains("fetch('/api/stats', { headers, cache: 'no-store' })"));
-        let init_connect = chrome.find("\n    connectPulseStream();").expect("pulse rider init call must remain explicit");
+        let lifecycle_connect = chrome.find("if (active === 'stats') { hydrateStats(); connectPulseStream(); }").expect("stats stream must enter through viewport lifecycle admission");
         for declaration in [
             "\n    let pulseStream = null;",
             "\n    let pulseRenewTimer = null;",
             "\n    let pulseStreamId = null;",
         ] {
             let declaration_offset = chrome.find(declaration).unwrap_or_else(|| panic!("missing pulse rider state declaration: {declaration}"));
-            assert!(declaration_offset < init_connect, "pulse rider declaration must precede connectPulseStream(): {declaration}");
+            assert!(declaration_offset < lifecycle_connect, "pulse rider declaration must precede lifecycle connect: {declaration}");
         }
+        assert!(!chrome.contains("\n    connectPulseStream();"));
         assert!(chrome.contains("function statsNetworkTotals(data)"));
         assert!(chrome.contains("network.receivedBytes"));
         assert!(chrome.contains("drive.productLabel || drive.name || 'Storage'"));

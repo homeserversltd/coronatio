@@ -61,6 +61,7 @@ fn shell_dhcp_client() -> &'static str {
     }
     async function hydrateDhcp() {
       const tablet = document.querySelector('[data-dhcp-tablet]'); if (!tablet) return;
+      if (!viewportFamilyAdmitted('dhcp')) return;
       const error = document.querySelector('[data-dhcp-error]'); if (error) error.hidden = true;
       try {
         const [leases, reservations, statistics, boundary] = await Promise.all([

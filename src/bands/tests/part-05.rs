@@ -373,14 +373,16 @@
         assert!(chrome_body.contains("htmxOrgan.config.allowScriptTags = false"));
         assert!(chrome_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
         assert!(chrome_body.contains("htmx:afterSwap"));
-        assert!(chrome_body.contains("if (id === 'stats') hydrateStats();"));
+        assert!(chrome_body.contains("if (id === currentActiveTabId() && id !== 'stats') reconcileViewportStreamFamily();"));
         assert!(!chrome_body.contains("__INDICATOR_MODAL_REGISTRY__"));
         assert!(chrome_body.contains("const indicatorModalTemplates"));
         let stats_guard = chrome_body.find("let statsHydrationInFlight = false;").expect("stats hydration guard must be initialized");
         let after_swap = chrome_body.find("htmx:afterSwap").expect("HTMX swap listener must remain present");
-        let boot_hydration = chrome_body.rfind("hydrateUptime(); hydrateStats();").expect("initial stats hydration must remain present");
+        let lifecycle_gate = chrome_body.rfind("reconcileViewportStreamFamily();").expect("viewport stream lifecycle gate must remain present");
         assert!(stats_guard < after_swap, "stats hydration guard must precede the earliest HTMX swap callback");
-        assert!(stats_guard < boot_hydration, "stats hydration guard must precede boot hydration");
+        assert!(stats_guard < lifecycle_gate, "stats hydration guard must precede lifecycle admission");
+        assert!(!chrome_body.contains("setInterval(hydrateStats"));
+        assert!(!chrome_body.contains("setInterval(hydrateDhcp"));
     }
 
     #[tokio::test]

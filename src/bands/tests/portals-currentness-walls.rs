@@ -52,11 +52,13 @@
 
     #[test]
     fn portals_currentness_shell_refreshes_visible_portals_only() {
-        let document = [include_str!("../shell/document-4.rs"), include_str!("../shell/document-4-tail.rs")].join("\n");
+        let document = [include_str!("../shell/document-3.rs"), include_str!("../shell/document-4.rs"), include_str!("../shell/document-4-tail.rs")].join("\n");
         assert!(document.contains("async function refreshPortalCurrentness()"));
         assert!(document.contains("/api/portals/currentness"));
         assert!(document.contains("const statuses = ['up', 'down', 'partial', 'unknown']"));
         assert!(document.contains("if (current !== next)"));
         assert!(document.contains("card.classList.remove(...statuses)"));
-        assert!(document.contains("setInterval(refreshPortalCurrentness, 5000)"));
+        assert!(document.contains("if (active === 'portals') { hydratePortals(); refreshPortalCurrentness(); }"));
+        assert!(document.contains("document.visibilityState !== 'visible'"));
+        assert!(!document.contains("setInterval(refreshPortalCurrentness"));
     }

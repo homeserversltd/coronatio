@@ -34,9 +34,9 @@ fn shell_document_4_tail() -> &'static str {
     }
     __DHCP_CLIENT__
     hydrateFavoriteManifest(); hydrateThemeTruth(); hydrateThemeTokenLab();
-    hydrateUptime(); hydrateStats(); hydratePortals(); hydrateDhcp();
-    setInterval(tickUptime, 1000); setInterval(hydrateStats, 5000);
-    setInterval(refreshPortalCurrentness, 5000); setInterval(hydrateDhcp, 5000);
+    hydrateUptime();
+    setInterval(tickUptime, 1000);
+    reconcileViewportStreamFamily();
   </script>
 </body>
 </html>"####
