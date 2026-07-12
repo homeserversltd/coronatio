@@ -525,9 +525,8 @@
         assert_eq!(portals_css.matches(".portal-element:is(:hover, :focus-within) > .portal-card {").count(), 1);
         let card_rule = &portals_css[portals_css.find(".portal-card {").unwrap()..portals_css.find(".portal-element:is(:hover, :focus-within)").unwrap()];
         assert!(!card_rule.contains("transition: all"));
-        for property in ["border-color", "box-shadow"] {
-            assert!(card_rule.contains(property), "portal card transition omits {property}");
-        }
+        assert!(card_rule.contains("transition-property: box-shadow"));
+        assert!(!card_rule.contains("transition-property: border-color"));
         assert!(!card_rule.contains("transform"));
         assert!(!card_rule.contains("background-color"));
         assert!(!portals_css.contains(".portal-card:hover::before"));
@@ -535,6 +534,8 @@
         let emphasized_rule_start = portals_css.find(".portal-element:is(:hover, :focus-within) > .portal-card {").unwrap();
         let emphasized_rule_end = portals_css[emphasized_rule_start..].find(".portal-card-header").unwrap() + emphasized_rule_start;
         let emphasized_rule = &portals_css[emphasized_rule_start..emphasized_rule_end];
+        assert!(!emphasized_rule.contains("border-color"), "portal hover steals status border authority");
+        assert!(emphasized_rule.contains("box-shadow"), "portal hover omits stable-hit shadow emphasis");
         for forbidden in ["transform:", "translateY", "scale(", "translateZ"] {
             assert!(!emphasized_rule.contains(forbidden), "portal hover changes hit geometry with {forbidden}");
         }
