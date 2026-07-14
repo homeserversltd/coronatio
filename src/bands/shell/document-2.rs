@@ -350,11 +350,86 @@ fn shell_document_2() -> &'static str {
     function themeLabel(name) {
       return name;
     }
+    function installCrownDebugEmitter() {
+      const endpoint = '/api/debug/emit';
+      const safeKind = value => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(value || ''));
+      function debugParams() {
+        try { return new URLSearchParams(window.location.search || ''); } catch (_) { return new URLSearchParams(''); }
+      }
+      function storageValue(name) {
+        try { return window.localStorage?.getItem(name) || ''; } catch (_) { return ''; }
+      }
+      function enabled(kind) {
+        const diagnosticKind = String(kind || '');
+        if (!safeKind(diagnosticKind)) return false;
+        const params = debugParams();
+        if (params.has('debug')) {
+          const selected = params.get('debug');
+          if (selected === null || selected === '' || selected === '1' || selected === 'true') return true;
+          return selected.split(',').map(value => value.trim()).includes(diagnosticKind);
+        }
+        const flag = storageValue('coronatioDebug');
+        if (flag === '1' || flag === 'true') return true;
+        const kinds = storageValue('coronatioDebugKinds');
+        return kinds.split(',').map(value => value.trim()).filter(Boolean).includes(diagnosticKind);
+      }
+      function clean(value, depth = 0) {
+        if (value === null || value === undefined) return value;
+        if (depth > 4) return '[trimmed]';
+        if (typeof value === 'string') return value.length > 512 ? value.slice(0, 512) + '…' : value;
+        if (typeof value === 'number' || typeof value === 'boolean') return value;
+        if (Array.isArray(value)) return value.slice(0, 32).map(item => clean(item, depth + 1));
+        if (typeof value === 'object') {
+          const out = {};
+          Object.keys(value).slice(0, 48).forEach(key => {
+            const lower = key.toLowerCase();
+            if (lower.includes('token') || lower.includes('pin') || lower.includes('password') || lower === 'headers' || lower.includes('localstorage') || lower.includes('dom')) return;
+            out[key] = clean(value[key], depth + 1);
+          });
+          return out;
+        }
+        return String(value);
+      }
+      function debugId() {
+        if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+        return 'dbg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+      }
+      function now() { return Math.round(performance.now()); }
+      function emit(kind, event, attrs = {}) {
+        if (!enabled(kind)) return false;
+        const payload = { kind, event, correlationId: attrs?.correlationId || attrs?.bootId || attrs?.runId, attributes: clean(attrs) };
+        try {
+          fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true }).catch(() => {});
+          return true;
+        } catch (_) { return false; }
+      }
+      function begin(kind, attrs = {}) {
+        if (!enabled(kind)) return null;
+        const startedAt = now();
+        return { kind, correlationId: attrs.correlationId || attrs.bootId || attrs.runId || debugId(), startedAt, attrs: clean(attrs), marks: [], settled: false };
+      }
+      function mark(handleOrKind, markName, attrs = {}) {
+        if (!handleOrKind) return false;
+        if (typeof handleOrKind === 'string') return emit(handleOrKind, 'mark', Object.assign({ mark: markName, phase: markName }, attrs));
+        if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false;
+        handleOrKind.marks.push({ mark: markName, phase: attrs.phase || markName, t: now() - handleOrKind.startedAt, attributes: clean(attrs) });
+        return true;
+      }
+      function settle(handleOrKind, ok, attrs = {}) {
+        if (!handleOrKind) return false;
+        if (typeof handleOrKind === 'string') return emit(handleOrKind, ok ? 'settle-ok' : 'settle-fault', Object.assign({ ok }, attrs));
+        if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false;
+        handleOrKind.settled = true;
+        return emit(handleOrKind.kind, attrs.event || 'settle', Object.assign({}, handleOrKind.attrs, attrs, { ok: Boolean(ok), correlationId: handleOrKind.correlationId, durationMs: now() - handleOrKind.startedAt, marks: handleOrKind.marks }));
+      }
+      return Object.freeze({ enabled, emit, begin, mark, settle });
+    }
     function renderThemeChoices() {
       if (!themeChoiceRow) return;
       themeChoiceRow.innerHTML = '';
       themes.forEach(name => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'theme-choice';"####
+        button.className = 'theme-choice';
+"####
 }

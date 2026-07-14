@@ -29,6 +29,7 @@ mod tests {
     include!("tests/upload-completion-walls.rs");
     include!("tests/test-tranch-05-upload-bedrock-walls.rs");
     include!("tests/hyalos-consumer-walls.rs");
+    include!("tests/debug-emitter-walls.rs");
     include!("tests/field-006-denylist-terminal-walls.rs");
     include!("tests/portals-htmx-mirror-walls.rs");
     include!("tests/portals-currentness-walls.rs");
