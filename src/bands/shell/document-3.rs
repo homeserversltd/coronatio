@@ -481,7 +481,7 @@ fn shell_document_3() -> &'static str {
     }
     function connectCoreStream() {
       if (!window.EventSource || coreStream) return;
-      coreStream = new EventSource('/api/core/events');
+      coreStream = new EventSource('/api/core/pulse');
       coreStream.addEventListener('core.open', event => {
         let data = {};
         try { data = JSON.parse(event.data || '{}'); } catch (_) {}
@@ -558,7 +558,7 @@ fn shell_document_3() -> &'static str {
       pulseRenewTimer = null;
     }
     const viewportStreamFamilies = Object.freeze({
-      stats: Object.freeze({ topics: ['stats.system'], snapshotRoutes: ['/api/stats', '/api/network/notes'], eventRoute: '/api/stats/events', renewRoute: '/api/stats/events/renew', authClass: 'public-enhanced' }),
+      stats: Object.freeze({ topics: ['stats.system'], snapshotRoutes: ['/api/stats', '/api/network/notes'], eventRoute: '/api/stats/pulse', renewRoute: '/api/stats/pulse/renew', authClass: 'public-enhanced' }),
       dhcp: Object.freeze({ topics: ['admin.dhcp'], snapshotRoutes: ['/api/dhcp/leases', '/api/dhcp/reservations', '/api/dhcp/statistics', '/api/dhcp/pool-boundary'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
       portals: Object.freeze({ topics: ['core.services'], snapshotRoutes: ['/api/portals/elements'], eventRoute: null, renewRoute: null, authClass: 'public' })
     });
@@ -601,12 +601,12 @@ fn shell_document_3() -> &'static str {
       if (!window.EventSource || !viewportFamilyAdmitted('stats')) return;
       clearPulseRenewal();
       if (pulseStream) pulseStream.close();
-      pulseStream = new EventSource('/api/stats/events');
+      pulseStream = new EventSource('/api/stats/pulse');
       pulseStream.addEventListener('pulse.open', event => {
         let data = {};
         try { data = JSON.parse(event.data || '{}'); } catch (_) {}
         pulseStreamId = data.streamId || event.lastEventId || null;
-        schedulePulseRenewal(data.renewRoute || (pulseStreamId ? '/api/stats/events/renew?streamId=' + encodeURIComponent(pulseStreamId) : null));
+        schedulePulseRenewal(data.renewRoute || (pulseStreamId ? '/api/stats/pulse/renew?streamId=' + encodeURIComponent(pulseStreamId) : null));
       });
       pulseStream.addEventListener('tabs.changed', () => {
         const active = currentActiveTabId();

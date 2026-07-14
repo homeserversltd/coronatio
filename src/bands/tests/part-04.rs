@@ -24,7 +24,7 @@
         assert_eq!(pulse.stream_contract.schema, "coronatio.pulse.stream.v1");
         assert_eq!(pulse.stream_contract.first_event, "pulse.open");
         assert_eq!(pulse.stream_contract.poke_data, "{}");
-        assert_eq!(pulse.event_route, "/api/stats/events");
+        assert_eq!(pulse.event_route, "/api/stats/pulse");
         assert!(pulse.proof_policy.iter().any(|law| law.contains("data-free invalidations")));
     }
 

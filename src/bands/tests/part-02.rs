@@ -207,8 +207,8 @@
         assert_eq!(snapshot.pane_id, "stats");
         assert_eq!(snapshot.product, "Coronatio");
         assert_eq!(snapshot.transport.snapshot_route, "/api/stats");
-        assert_eq!(snapshot.transport.event_route, "/api/stats/events");
-        assert_eq!(snapshot.transport.renew_route, "/api/stats/events/renew");
+        assert_eq!(snapshot.transport.event_route, "/api/stats/pulse");
+        assert_eq!(snapshot.transport.renew_route, "/api/stats/pulse/renew");
         assert_eq!(snapshot.transport.stream_status, "available");
         for section in ["cpu-chart", "network", "io-section", "memory", "disk-usage", "kea-leases", "process-usage"] {
             assert!(

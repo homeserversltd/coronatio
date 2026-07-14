@@ -428,8 +428,8 @@ fn topic_catalog_readback() -> TopicCatalogReadback {
             TabTopicContract {
                 pane_id: "stats".to_string(),
                 topics: vec!["tabs.changed".to_string()],
-                event_route: "/api/stats/events".to_string(),
-                renew_route: "/api/stats/events/renew".to_string(),
+                event_route: "/api/stats/pulse".to_string(),
+                renew_route: "/api/stats/pulse/renew".to_string(),
                 lifecycle: "active pane + visible document".to_string(),
             },
             TabTopicContract { pane_id: "upload".to_string(), topics: vec![], event_route: "snapshot-only".to_string(), renew_route: "snapshot-only".to_string(), lifecycle: "no live stream yet".to_string() },
