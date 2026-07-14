@@ -48,6 +48,7 @@ fn app(state: AppState) -> Router {
             get(session_route).post(session_renew_route),
         )
         .route("/api/caduceus/status", get(caduceus_status_route))
+        .route("/api/debug/emit", post(debug_emit_route))
         .route(
             "/api/caduceus/update/check",
             post(caduceus_update_check_route),

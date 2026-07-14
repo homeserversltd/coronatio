@@ -43,6 +43,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/caduceus/update/check".to_string(),
             "/api/caduceus/update/now".to_string(),
             "/api/caduceus/receipts/latest".to_string(),
+            "/api/debug/emit".to_string(),
             "/api/topics".to_string(),
             "/api/monitor/pulse".to_string(),
             "/api/services/data".to_string(),
@@ -76,6 +77,19 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
         primary_tabs: PRIMARY_TABS.iter().map(|tab| (*tab).to_string()).collect(),
         first_party_panes: native_crown_panes(),
     })
+}
+
+async fn debug_emit_route(Json(request): Json<CrownDebugEmitRequest>) -> impl IntoResponse {
+    let readback = caduceus_hyalos_reflect_debug(request);
+    (
+        if readback.ok { StatusCode::OK } else if readback.status == 400 { StatusCode::BAD_REQUEST } else { StatusCode::SERVICE_UNAVAILABLE },
+        Json(serde_json::json!({
+            "schema": "coronatio.debug.emit.v1",
+            "ok": readback.ok,
+            "readback": readback,
+            "firstMissingSignal": readback.first_missing_signal,
+        })),
+    )
 }
 
 async fn panes_route() -> impl IntoResponse {
