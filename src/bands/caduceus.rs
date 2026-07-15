@@ -483,9 +483,15 @@ fn debug_key_sensitive(key: &str) -> bool {
         || key.contains("pin")
         || key.contains("password")
         || key.contains("secret")
+        || key.contains("capability")
+        || key.contains("connection")
+        || key.contains("body")
+        || key.contains("payload")
         || key == "headers"
         || key.contains("localstorage")
         || key.contains("dom")
+        || key.contains("snapshot")
+        || key.contains("source")
 }
 
 fn debug_safe_kebab(value: &str) -> bool {
