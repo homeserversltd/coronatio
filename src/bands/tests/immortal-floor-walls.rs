@@ -56,8 +56,8 @@ fn immortal_floor_crossing_is_bounded_and_every_owned_failure_terminates() {
     assert!(chrome.contains("const admissionTimeoutMs = 1500;"));
     assert!(chrome.contains("const hydrationTimeoutMs = 750;"));
     assert!(chrome.contains("bounded(() => hydrateStats()"));
-    assert!(chrome.contains("bounded(() => hydratePortals()"));
     assert!(chrome.contains("bounded(() => hydrateDhcp()"));
+    assert!(!chrome.contains("hydratePortals"), "Portals HTMX load is the sole admission hydration owner");
     assert!(chrome.contains("if (!readyNow) {\n          if (crossing === generation) { emptySlot(); expose('BareFloor'); }"));
     assert!(chrome.contains("if (crossing !== generation) return false; // A newer crossing owns the terminal state."));
     assert!(chrome.contains("if (crossing === generation) fault(error?.message || 'admission-fault');"));

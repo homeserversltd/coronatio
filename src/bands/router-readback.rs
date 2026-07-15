@@ -257,13 +257,22 @@ fn fragment_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKi
 
 fn render_og_pane_fragment(tab_id: &str) -> String {
     let shell = render_crown_shell();
-    extract_pane_inner_html(&shell, tab_id).unwrap_or_else(|| {
+    let fragment = extract_pane_inner_html(&shell, tab_id).unwrap_or_else(|| {
         record_cartridge_fault(tab_id, CartridgeFaultKind::TabNotFound);
         format!(
             r#"<section class="card error-message" data-cartridge-fault="true" data-cartridge-fault-kind="tab-not-found" data-tab-id="{}"><h2>Cartridge fault</h2><p>Pane not found.</p></section>"#,
             tab_id
         )
-    })
+    });
+    if tab_id == "portals" {
+        fragment.replacen(
+            "data-portals-fragment=\"/api/portals/elements\"",
+            "data-portals-fragment=\"/api/portals/elements\" hx-get=\"/api/portals/elements\" hx-trigger=\"load\" hx-swap=\"innerHTML\"",
+            1,
+        )
+    } else {
+        fragment
+    }
 }
 
 fn extract_pane_inner_html(shell: &str, tab_id: &str) -> Option<String> {

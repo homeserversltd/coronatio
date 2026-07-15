@@ -60,7 +60,6 @@ fn shell_document_3() -> &'static str {
       refreshTabBar(previousActive).then(selectedTab => {
         applyTabBarVisibility();
         refreshElementFragment('stats');
-        refreshElementFragment('portals');
         if (selectedTab) showPane(selectedTab, { refresh: true });
       });
     }
@@ -698,8 +697,7 @@ fn shell_document_3() -> &'static str {
           });
         }
         try { if (id === 'stats') await bounded(() => hydrateStats(), hydrationTimeoutMs, 'hydration-timeout');
-          else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout');
-          else if (id === 'portals') await bounded(() => hydratePortals(), hydrationTimeoutMs, 'hydration-timeout'); }
+          else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout'); }
         catch (error) { if ((error?.message || '') === 'hydration-timeout') crownDebug.mark(floorDebugHandle, 'hydration-timeout', { guest: id, phase: 'hydration' }); throw error; }
         if (!pane || pane.dataset.viewportFaulted === 'true') throw new Error('guest-unhealthy');
         return pane;

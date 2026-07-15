@@ -139,7 +139,7 @@ fn shell_document_2() -> &'static str {
       </section>
       <section class="pane" id="pane-portals" data-pane-panel="portals" data-view-panel="portals" role="tabpanel" aria-label="Portals">
         <div class="portals-tablet" data-portals-viewport data-react-quarry="PortalsTablet" data-identity-standard="one-to-one">
-          <div class="portals-grid" data-portals-grid data-portals-source="/api/portals/elements" data-portals-fragment="/api/portals/elements" hx-get="/api/portals/elements" hx-trigger="load, portals-refresh" hx-swap="innerHTML">
+          <div class="portals-grid" data-portals-grid data-portals-source="/api/portals/elements" data-portals-fragment="/api/portals/elements">
             <article class="portal-card portal-loading" data-portals-loading><div><h2>Admitted services</h2><p>Reading homeserver.json portal entries.</p></div></article>
           </div>
           <div class="portal-modal-overlay" data-add-portal-modal hidden>
@@ -301,7 +301,7 @@ fn shell_document_2() -> &'static str {
       if (!(panel instanceof HTMLElement)) return;
       panel.dataset.viewportFaulted = 'false';
       const id = panel.dataset.viewPanel || panel.dataset.panePanel || '';
-      if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats') reconcileViewportStreamFamily();
+      if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats' && id !== 'portals') reconcileViewportStreamFamily();
     });
     const fallbackTab = 'admin';
     const storageKey = 'coronatio.flask-react-tabbar.v1';

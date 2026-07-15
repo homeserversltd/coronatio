@@ -632,21 +632,6 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         showCoronatioToast(`Failed to toggle visibility for ${elementId}`, 'error');
       }
     }
-    let portalHydrationInFlight = null;
-    async function hydratePortals() {
-      if (portalHydrationInFlight) return portalHydrationInFlight;
-      portalHydrationInFlight = (async () => {
-        const grid = document.querySelector('[data-portals-grid]');
-        if (!grid) return;
-        try {
-          // One owner performs the fragment pull. HTMX afterSwap only binds controls.
-          await refreshElementFragment('portals');
-        } catch (_) {
-          grid.innerHTML = '<article class="portal-card error portal-error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>' + renderAddPortalCard();
-        }
-      })().finally(() => { portalHydrationInFlight = null; });
-      return portalHydrationInFlight;
-    }
     async function hydrateFavoriteManifest() {
       try {
         const favorite = await fetch('/api/favorites').then(r => r.json());

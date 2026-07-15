@@ -373,7 +373,7 @@
         assert!(chrome_body.contains("htmxOrgan.config.allowScriptTags = false"));
         assert!(chrome_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
         assert!(chrome_body.contains("htmx:afterSwap"));
-        assert!(chrome_body.contains("if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats') reconcileViewportStreamFamily();"));
+        assert!(chrome_body.contains("if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats' && id !== 'portals') reconcileViewportStreamFamily();"));
         assert!(!chrome_body.contains("__INDICATOR_MODAL_REGISTRY__"));
         assert!(chrome_body.contains("const indicatorModalTemplates"));
         let stats_guard = chrome_body.find("let statsHydrationInFlight = false;").expect("stats hydration guard must be initialized");
@@ -427,13 +427,12 @@
         std::env::remove_var("CORONATIO_UPLOAD_ROOT");
         let temp = test_tab_root("hx-001-admit");
         let router = app(AppState { tab_root: Arc::new(temp) });
-        let shell = render_crown_shell();
         for pane in ["portals", "stats", "upload", "admin", "test"] {
             let response = router.clone().oneshot(Request::builder().uri(format!("/admit/{pane}")).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK, "{pane} admits");
             assert_eq!(response.headers().get(header::CACHE_CONTROL).and_then(|value| value.to_str().ok()), Some("no-store"));
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-            let expected = extract_pane_inner_html(&shell, pane).unwrap();
+            let expected = render_og_pane_fragment(pane);
             assert_eq!(body, expected, "{pane} fragment is exact og pane body");
         }
         let missing = router.clone().oneshot(Request::builder().uri("/admit/missing-tab").body(Body::empty()).unwrap()).await.unwrap();

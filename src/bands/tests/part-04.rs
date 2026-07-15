@@ -478,7 +478,12 @@
         let shell = render_crown_shell();
         assert!(shell.contains("data-portals-grid"));
         assert!(shell.contains("data-portals-source=\"/api/portals/elements\""));
-        assert!(shell.contains("function hydratePortals()"));
+        assert!(!shell.contains("data-portals-fragment=\"/api/portals/elements\" hx-get"));
+        let admitted = render_og_pane_fragment("portals");
+        assert!(admitted.contains("hx-get=\"/api/portals/elements\""));
+        assert!(admitted.contains("hx-trigger=\"load\""));
+        assert!(!admitted.contains("portals-refresh"));
+        assert!(!shell.contains("function hydratePortals()"));
         assert!(shell.contains("submitPortalForm"));
         assert!(shell.contains("deletePortal"));
         assert!(!shell.contains("function renderPortalCard"));

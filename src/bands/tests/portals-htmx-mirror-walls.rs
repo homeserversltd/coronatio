@@ -44,7 +44,9 @@
     #[test]
     fn portals_htmx_mirror_001_shell_declares_htmx_fragment_pull() {
         let document2 = include_str!("../shell/document-2.rs");
-        assert!(document2.contains("hx-get=\"/api/portals/elements\""), "portals grid must hx-get fragment");
+        let admitted = render_og_pane_fragment("portals");
+        assert!(admitted.contains("hx-get=\"/api/portals/elements\""), "admitted portals grid must hx-get fragment");
+        assert!(admitted.contains("hx-trigger=\"load\""), "admitted portals grid must hydrate once at insertion");
         assert!(document2.contains("data-portals-source=\"/api/portals/elements\""), "source points at fragment not JSON list");
         let document4 = include_str!("../shell/document-4.rs");
         assert!(document4.contains("window.htmx") || document4.contains("htmx.trigger"), "hydratePortals prefers HTMX trigger");
