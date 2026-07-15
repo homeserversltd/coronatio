@@ -571,7 +571,7 @@ fn stats_kea_leases() -> Vec<StatsKeaLease> {
                 } else {
                     (
                         parts.get(2).unwrap_or(&"").to_string(),
-                        parts.get(0).unwrap_or(&"").to_string(),
+                        parts.first().unwrap_or(&"").to_string(),
                         parts.get(1).unwrap_or(&"N/A").to_string(),
                     )
                 };

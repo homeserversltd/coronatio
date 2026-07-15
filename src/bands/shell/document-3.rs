@@ -60,7 +60,6 @@ fn shell_document_3() -> &'static str {
       refreshTabBar(previousActive).then(selectedTab => {
         applyTabBarVisibility();
         refreshElementFragment('stats');
-        refreshElementFragment('portals');
         if (selectedTab) showPane(selectedTab, { refresh: true });
       });
     }
@@ -573,14 +572,23 @@ fn shell_document_3() -> &'static str {
       pulseStream = null;
       pulseStreamId = null;
     }
+    let portalCurrentnessTimer = null;
+    function stopPortalCurrentnessCadence() { if (portalCurrentnessTimer) window.clearInterval(portalCurrentnessTimer); portalCurrentnessTimer = null; }
+    function startPortalCurrentnessCadence() {
+      stopPortalCurrentnessCadence();
+      if (!viewportFamilyAdmitted('portals')) return;
+      refreshPortalCurrentness();
+      portalCurrentnessTimer = window.setInterval(() => { if (viewportFamilyAdmitted('portals')) refreshPortalCurrentness(); else stopPortalCurrentnessCadence(); }, 5000);
+    }
     function reconcileViewportStreamFamily() {
       closeViewportStreamFamily();
+      stopPortalCurrentnessCadence();
       if (window.getImmortalFloorState?.() !== 'Seated') return;
       const active = currentActiveTabId();
       if (!viewportFamilyAdmitted(active)) return;
       if (active === 'stats') { hydrateStats(); connectPulseStream(); }
       if (active === 'dhcp') hydrateDhcp();
-      if (active === 'portals') { hydratePortals(); refreshPortalCurrentness(); }
+      if (active === 'portals') startPortalCurrentnessCadence();
     }
     function schedulePulseRenewal(renewRoute) {
       clearPulseRenewal();
@@ -620,11 +628,9 @@ fn shell_document_3() -> &'static str {
         if (pulseStream && pulseStream.readyState === EventSource.CLOSED) reconnectPulseStream();
       });
     }
-    const crownDebug = installCrownDebugEmitter(); window.crownDebug = crownDebug;
-    const immortalFloorStates = Object.freeze(['BootFloor', 'Seated', 'GuestRevolution', 'BareFloor']);
+    const crownDebug = installCrownDebugEmitter(); window.crownDebug = crownDebug; installCrownRequestDiagnostics(crownDebug); installCrownLayoutDiagnostics(crownDebug); const immortalFloorStates = Object.freeze(['BootFloor', 'Seated', 'GuestRevolution', 'BareFloor']);
     const immortalFloor = (() => {
-      let state = 'BootFloor'; let generation = 0;
-      let activeGuest = null;
+      let state = 'BootFloor'; let generation = 0; let activeGuest = null;
       let crossingGuest = null;
       let floorDebugHandle = crownDebug.begin('immortal-floor-boot', { phase: 'boot', event: 'begin' });
       const admissionTimeoutMs = 1500;
@@ -641,7 +647,7 @@ fn shell_document_3() -> &'static str {
         state = next;
         document.documentElement.dataset.immortalFloorState = next;
         if (immortalFloorShell) immortalFloorShell.dataset.immortalFloorState = next;
-        if (immortalFloorGuestSlot) immortalFloorGuestSlot.dataset.slotEmpty = String(next !== 'Seated');
+        if (immortalFloorGuestSlot) immortalFloorGuestSlot.dataset.slotEmpty = String(!activeGuest && next !== 'Seated');
         const message = immortalFloorShell?.querySelector('[data-immortal-floor-message]');
         if (message) message.textContent = detail || ({ BootFloor: 'Preparing your controls…', GuestRevolution: 'Changing view…', BareFloor: 'Controls remain available. Choose a tab to try again.', Seated: '' }[next]);
       }
@@ -691,25 +697,17 @@ fn shell_document_3() -> &'static str {
           });
         }
         try { if (id === 'stats') await bounded(() => hydrateStats(), hydrationTimeoutMs, 'hydration-timeout');
-          else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout');
-          else if (id === 'portals') await bounded(() => hydratePortals(), hydrationTimeoutMs, 'hydration-timeout'); }
+          else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout'); }
         catch (error) { if ((error?.message || '') === 'hydration-timeout') crownDebug.mark(floorDebugHandle, 'hydration-timeout', { guest: id, phase: 'hydration' }); throw error; }
         if (!pane || pane.dataset.viewportFaulted === 'true') throw new Error('guest-unhealthy');
         return pane;
       }
-      function seatGuest(id) {
+      async function seatGuest(id) {
         const pane = panes.find(candidate => candidate.dataset.panePanel === id); if (!pane) return false;
-        tabs.forEach(tab => {
-          const active = tab.dataset.pane === id;
-          tab.setAttribute('aria-selected', String(active));
-          tab.classList.toggle('active', active);
-        });
-        panes.forEach(candidate => {
-          const active = candidate === pane;
-          candidate.classList.toggle('active', active);
-          candidate.classList.toggle('immortal-floor-enter', active);
-          candidate.setAttribute('aria-hidden', String(!active));
-        });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        crownDebug.mark(floorDebugHandle, 'paint-reveal-boundary', { phase: 'reveal', guest: id });
+        tabs.forEach(tab => { const active = tab.dataset.pane === id; tab.setAttribute('aria-selected', String(active)); tab.classList.toggle('active', active); });
+        panes.forEach(candidate => { const active = candidate === pane; candidate.classList.toggle('active', active); candidate.classList.toggle('immortal-floor-enter', active); candidate.setAttribute('aria-hidden', String(!active)); });
         activeGuest = id; crossingGuest = null; expose('Seated'); crownDebug.settle(floorDebugHandle, true, { event: 'settle', phase: 'seated', guest: id }); floorDebugHandle = null; applyAdminDomState(); applyTabBarVisibility();
         if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
         reconcileViewportStreamFamily();
@@ -729,11 +727,11 @@ fn shell_document_3() -> &'static str {
         }
         if (crossing !== generation) return false; // A newer crossing owns the terminal state.
         expose('GuestRevolution');
-        emptySlot();
+        // Keep the healthy outgoing floor-2 guest visible under the held frame until reveal.
         try {
           await admitFreshGuest(selected);
           if (crossing !== generation) return false;
-          if (!seatGuest(selected)) { fault('guest-missing'); return false; }
+          if (!await seatGuest(selected)) { fault('guest-missing'); return false; }
           return true;
         } catch (error) {
           if (crossing === generation) fault(error?.message || 'admission-fault');

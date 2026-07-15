@@ -109,7 +109,7 @@ fn render_stats_elements_fragment(session: Session) -> String {
 fn render_stats_elements_fragment_from_facts(session: Session, facts: &IrisFacts) -> String {
     stat_element_templates()
         .into_iter()
-        .filter_map(|(id, html)| render_stat_element_from_grant(session, &facts, id, html))
+        .filter_map(|(id, html)| render_stat_element_from_grant(session, facts, id, html))
         .collect::<Vec<_>>()
         .join("\n")
 }

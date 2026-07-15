@@ -173,6 +173,7 @@ fn visible_tab_ids(tabs: &[CoronatioTabContract], is_admin: bool) -> Vec<String>
         .collect()
 }
 
+#[allow(dead_code)]
 fn tab_accessible_in_mode(tab: &CoronatioTabContract, is_admin: bool) -> bool {
     let facts = iris::from_coronatio_contracts(&[tab.clone()], "stats");
     iris::plan(&facts, registry_session(is_admin))

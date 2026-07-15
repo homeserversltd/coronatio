@@ -66,6 +66,19 @@ fn shell_document_2() -> &'static str {
                 <button type="button" class="system-controls-btn" data-admin-action-id="view-logs" hx-get="/admit/admin/action/view-logs" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">▤</span><span>View Logs</span></button>
                 <button type="button" class="system-controls-btn" data-admin-action-id="install-certificate" hx-post="/admit/admin/action/install-certificate" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">◆</span><span>Install Certificate</span></button>
               </div>
+              <section class="crown-diagnostics" data-crown-diagnostics aria-label="Crown Diagnostics">
+                <div><strong>Crown Diagnostics</strong><span data-crown-diagnostics-state>Off</span></div>
+                <p>Temporary, redacted troubleshooting signals. They turn off automatically.</p>
+                <div data-crown-diagnostics-controls>
+                  <button type="button" data-crown-diagnostic-toggle="immortal-floor">Floor &amp; crossings</button>
+                  <button type="button" data-crown-diagnostic-toggle="requests">Requests &amp; resources</button>
+                  <button type="button" data-crown-diagnostic-toggle="layout">Layout &amp; paint</button>
+                  <button type="button" data-crown-diagnostic-toggle="sessions">Sessions &amp; access</button>
+                  <button type="button" data-crown-diagnostic-toggle="streams">Streams</button>
+                  <button type="button" data-crown-diagnostic-toggle="caduceus">Caduceus</button>
+                </div>
+                <small data-crown-diagnostics-unavailable>Sessions/access, streams, and Caduceus are control-ready; no additional safe browser source is claimed by this view.</small>
+              </section>
               <div class="system-service-controls" data-admin-service-controls data-state-source="/api/services/data">
                 <div class="ssh-controls">
                   <div class="ssh-control" data-service-card="ssh-password-authentication" data-state-field="ssh.password_auth_enabled" data-state-source="/api/services/data"><div class="ssh-status" data-admin-toggle-card="ssh-password-authentication"><h3>SSH Password Authentication</h3><div class="ssh-toggle"><label class="toggle-switch"><input type="checkbox" data-state-source="/api/services/data" hx-post="/admit/admin/toggle/ssh-password-authentication" hx-target="closest [data-service-card]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="toggle-slider"></span></label><span class="toggle-label">Off</span><span class="ssh-icon disabled" data-packed-icon="lock" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8H4v-8a2 2 0 0 1 2-2h1Zm2 0h6V7a3 3 0 0 0-6 0v3Z"/></svg></span></div></div></div>
@@ -126,7 +139,7 @@ fn shell_document_2() -> &'static str {
       </section>
       <section class="pane" id="pane-portals" data-pane-panel="portals" data-view-panel="portals" role="tabpanel" aria-label="Portals">
         <div class="portals-tablet" data-portals-viewport data-react-quarry="PortalsTablet" data-identity-standard="one-to-one">
-          <div class="portals-grid" data-portals-grid data-portals-source="/api/portals/elements" data-portals-fragment="/api/portals/elements" hx-get="/api/portals/elements" hx-trigger="load, portals-refresh" hx-swap="innerHTML">
+          <div class="portals-grid" data-portals-grid data-portals-source="/api/portals/elements" data-portals-fragment="/api/portals/elements">
             <article class="portal-card portal-loading" data-portals-loading><div><h2>Admitted services</h2><p>Reading homeserver.json portal entries.</p></div></article>
           </div>
           <div class="portal-modal-overlay" data-add-portal-modal hidden>
@@ -288,7 +301,7 @@ fn shell_document_2() -> &'static str {
       if (!(panel instanceof HTMLElement)) return;
       panel.dataset.viewportFaulted = 'false';
       const id = panel.dataset.viewPanel || panel.dataset.panePanel || '';
-      if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats') reconcileViewportStreamFamily();
+      if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats' && id !== 'portals') reconcileViewportStreamFamily();
     });
     const fallbackTab = 'admin';
     const storageKey = 'coronatio.flask-react-tabbar.v1';
@@ -351,78 +364,73 @@ fn shell_document_2() -> &'static str {
       return name;
     }
     function installCrownDebugEmitter() {
-      const endpoint = '/api/debug/emit';
+      const endpoint = '/api/debug/emit', ttlMs = 5 * 60 * 1000;
+      const families = Object.freeze({ 'immortal-floor': ['immortal-floor-boot'], requests: ['crown-requests'], layout: ['crown-layout'], sessions: ['crown-sessions'], streams: ['crown-streams'], caduceus: ['crown-caduceus'] });
       const safeKind = value => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(value || ''));
-      function debugParams() {
-        try { return new URLSearchParams(window.location.search || ''); } catch (_) { return new URLSearchParams(''); }
-      }
-      function storageValue(name) {
-        try { return window.localStorage?.getItem(name) || ''; } catch (_) { return ''; }
-      }
+      const familyFor = kind => Object.keys(families).find(family => families[family].includes(kind)) || kind;
+      const read = () => { try { const value = JSON.parse(localStorage.getItem('coronatioDiagnostics') || '{}'); return value.expiresAt > Date.now() ? value : { enabled: [] }; } catch (_) { return { enabled: [] }; } };
+      const write = value => { try { localStorage.setItem('coronatioDiagnostics', JSON.stringify(value)); } catch (_) {} };
+      function debugParams() { try { return new URLSearchParams(window.location.search || ''); } catch (_) { return new URLSearchParams(''); } }
+      function storageValue(name) { try { return window.localStorage?.getItem(name) || ''; } catch (_) { return ''; } }
       function enabled(kind) {
-        const diagnosticKind = String(kind || '');
-        if (!safeKind(diagnosticKind)) return false;
+        if (!safeKind(kind)) return false;
         const params = debugParams();
-        if (params.has('debug')) {
-          const selected = params.get('debug');
-          if (selected === null || selected === '' || selected === '1' || selected === 'true') return true;
-          return selected.split(',').map(value => value.trim()).includes(diagnosticKind);
-        }
-        const flag = storageValue('coronatioDebug');
-        if (flag === '1' || flag === 'true') return true;
-        const kinds = storageValue('coronatioDebugKinds');
-        return kinds.split(',').map(value => value.trim()).filter(Boolean).includes(diagnosticKind);
+        if (params.has('debug')) { const selected = params.get('debug'); return selected === null || selected === '' || selected === '1' || selected === 'true' || selected.split(',').map(value => value.trim()).includes(kind); }
+        if (storageValue('coronatioDebug') === '1' || storageValue('coronatioDebug') === 'true') return true;
+        if (storageValue('coronatioDebugKinds').split(',').map(value => value.trim()).includes(kind)) return true;
+        return read().enabled.includes(familyFor(kind));
       }
-      function clean(value, depth = 0) {
-        if (value === null || value === undefined) return value;
-        if (depth > 4) return '[trimmed]';
-        if (typeof value === 'string') return value.length > 512 ? value.slice(0, 512) + '…' : value;
-        if (typeof value === 'number' || typeof value === 'boolean') return value;
-        if (Array.isArray(value)) return value.slice(0, 32).map(item => clean(item, depth + 1));
-        if (typeof value === 'object') {
-          const out = {};
-          Object.keys(value).slice(0, 48).forEach(key => {
-            const lower = key.toLowerCase();
-            if (lower.includes('token') || lower.includes('pin') || lower.includes('password') || lower === 'headers' || lower.includes('localstorage') || lower.includes('dom')) return;
-            out[key] = clean(value[key], depth + 1);
-          });
-          return out;
-        }
-        return String(value);
+      function refreshControl() {
+        const state = read(), active = state.enabled || [], label = document.querySelector('[data-crown-diagnostics-state]');
+        if (label) label.textContent = active.length ? `Active for ${Math.max(0, Math.ceil((state.expiresAt - Date.now()) / 1000))}s` : 'Off';
+        document.querySelectorAll('[data-crown-diagnostic-toggle]').forEach(button => { const on = active.includes(button.dataset.crownDiagnosticToggle); button.setAttribute('aria-pressed', String(on)); button.classList.toggle('active', on); });
       }
-      function debugId() {
-        if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-        return 'dbg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
-      }
+      function toggle(family) { const state = read(), enabled = new Set(state.enabled || []); if (enabled.has(family)) enabled.delete(family); else enabled.add(family); write({ enabled: [...enabled], expiresAt: Date.now() + ttlMs }); refreshControl(); return enabled.has(family); }
+      function clean(value, depth = 0) { if (value === null || value === undefined) return value; if (depth > 4) return '[trimmed]'; if (typeof value === 'string') return value.length > 512 ? value.slice(0, 512) + '…' : value; if (typeof value === 'number' || typeof value === 'boolean') return value; if (Array.isArray(value)) return value.slice(0, 32).map(item => clean(item, depth + 1)); if (typeof value === 'object') { const out = {}; Object.keys(value).slice(0, 48).forEach(key => { const lower = key.toLowerCase(); if (/(token|pin|password|secret|capability|connection|string)/.test(lower) || lower === 'headers' || lower.includes('localstorage') || lower.includes('dom') || lower.includes('payload')) return; out[key] = clean(value[key], depth + 1); }); return out; } return String(value); }
+      function debugId() { return window.crypto?.randomUUID ? window.crypto.randomUUID() : 'dbg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
       function now() { return Math.round(performance.now()); }
-      function emit(kind, event, attrs = {}) {
-        if (!enabled(kind)) return false;
-        const payload = { kind, event, correlationId: attrs?.correlationId || attrs?.bootId || attrs?.runId, attributes: clean(attrs) };
-        try {
-          fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true }).catch(() => {});
-          return true;
-        } catch (_) { return false; }
-      }
-      function begin(kind, attrs = {}) {
-        if (!enabled(kind)) return null;
-        const startedAt = now();
-        return { kind, correlationId: attrs.correlationId || attrs.bootId || attrs.runId || debugId(), startedAt, attrs: clean(attrs), marks: [], settled: false };
-      }
-      function mark(handleOrKind, markName, attrs = {}) {
-        if (!handleOrKind) return false;
-        if (typeof handleOrKind === 'string') return emit(handleOrKind, 'mark', Object.assign({ mark: markName, phase: markName }, attrs));
-        if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false;
-        handleOrKind.marks.push({ mark: markName, phase: attrs.phase || markName, t: now() - handleOrKind.startedAt, attributes: clean(attrs) });
-        return true;
-      }
-      function settle(handleOrKind, ok, attrs = {}) {
-        if (!handleOrKind) return false;
-        if (typeof handleOrKind === 'string') return emit(handleOrKind, ok ? 'settle-ok' : 'settle-fault', Object.assign({ ok }, attrs));
-        if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false;
-        handleOrKind.settled = true;
-        return emit(handleOrKind.kind, attrs.event || 'settle', Object.assign({}, handleOrKind.attrs, attrs, { ok: Boolean(ok), correlationId: handleOrKind.correlationId, durationMs: now() - handleOrKind.startedAt, marks: handleOrKind.marks }));
-      }
-      return Object.freeze({ enabled, emit, begin, mark, settle });
+      function emit(kind, event, attrs = {}) { if (!enabled(kind)) return false; try { window.fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, event, correlationId: attrs?.correlationId || attrs?.bootId || attrs?.runId, attributes: clean(attrs) }), keepalive: true }).catch(() => {}); return true; } catch (_) { return false; } }
+      function begin(kind, attrs = {}) { if (!enabled(kind)) return null; return { kind, correlationId: attrs.correlationId || attrs.bootId || attrs.runId || debugId(), startedAt: now(), attrs: clean(attrs), marks: [], settled: false }; }
+      function mark(handleOrKind, markName, attrs = {}) { if (!handleOrKind) return false; if (typeof handleOrKind === 'string') return emit(handleOrKind, 'mark', Object.assign({ mark: markName, phase: markName }, attrs)); if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false; handleOrKind.marks.push({ mark: markName, phase: attrs.phase || markName, t: now() - handleOrKind.startedAt, attributes: clean(attrs) }); return true; }
+      function settle(handleOrKind, ok, attrs = {}) { if (!handleOrKind) return false; if (typeof handleOrKind === 'string') return emit(handleOrKind, ok ? 'settle-ok' : 'settle-fault', Object.assign({ ok }, attrs)); if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false; handleOrKind.settled = true; return emit(handleOrKind.kind, attrs.event || 'settle', Object.assign({}, handleOrKind.attrs, attrs, { ok: Boolean(ok), correlationId: handleOrKind.correlationId, durationMs: now() - handleOrKind.startedAt, marks: handleOrKind.marks })); }
+      window.setInterval(refreshControl, 1000); window.addEventListener('DOMContentLoaded', () => { document.querySelectorAll('[data-crown-diagnostic-toggle]').forEach(button => button.addEventListener('click', () => toggle(button.dataset.crownDiagnosticToggle))); refreshControl(); });
+      return Object.freeze({ enabled, emit, begin, mark, settle, toggle, families });
+    }
+    function installCrownRequestDiagnostics(crownDebug) {
+      const safePane = value => /^[a-z0-9-]+$/.test(String(value || '')) ? String(value) : undefined;
+      const safePath = value => { try { const url = new URL(String(value || ''), window.location.origin); return url.origin === window.location.origin && url.pathname !== '/api/debug/emit' ? url.pathname : null; } catch (_) { return null; } };
+      const started = new WeakMap();
+      const metadata = (event, phase) => {
+        const detail = event.detail || {}, xhr = detail.xhr, config = detail.requestConfig || {}, path = safePath(config.path || detail.pathInfo?.requestPath || xhr?.responseURL);
+        if (!path) return null;
+        const began = xhr && started.get(xhr), pane = safePane((detail.elt || detail.target || event.target)?.closest?.('[data-view-panel]')?.dataset?.viewPanel);
+        const attrs = { phase, pathname: path };
+        const method = String(config.verb || config.method || '').toUpperCase(); if (/^(GET|POST|PUT|PATCH|DELETE)$/.test(method)) attrs.method = method;
+        if (Number.isInteger(xhr?.status) && xhr.status >= 0) attrs.status = xhr.status;
+        if (began !== undefined) attrs.durationMs = Math.max(0, Math.round(performance.now() - began));
+        if (pane) attrs.pane = pane;
+        return attrs;
+      };
+      const observe = (name, phase) => document.body.addEventListener(name, event => {
+        if (!crownDebug.enabled('crown-requests')) return;
+        const xhr = event.detail?.xhr;
+        if (name === 'htmx:beforeRequest' && xhr) started.set(xhr, performance.now());
+        const attrs = metadata(event, phase); if (attrs) crownDebug.emit('crown-requests', 'htmx', attrs);
+        if ((name === 'htmx:afterRequest' || name === 'htmx:responseError' || name === 'htmx:sendError') && xhr) started.delete(xhr);
+      });
+      observe('htmx:beforeRequest', 'before-request'); observe('htmx:afterRequest', 'after-request'); observe('htmx:responseError', 'response-error'); observe('htmx:sendError', 'send-error'); observe('htmx:beforeSwap', 'before-swap'); observe('htmx:afterSwap', 'after-swap');
+    }
+    function installCrownLayoutDiagnostics(crownDebug) {
+      if (!window.PerformanceObserver) return;
+      const observe = type => { try { new PerformanceObserver(list => {
+        if (!crownDebug.enabled('crown-layout')) return;
+        list.getEntries().forEach(entry => {
+          const attrs = { entryType: type, name: String(entry.name || type).slice(0, 96), duration: Math.max(0, Number(entry.duration || 0)), phase: type };
+          if (type === 'layout-shift') { attrs.value = Math.max(0, Number(entry.value || 0)); attrs.hadRecentInput = Boolean(entry.hadRecentInput); }
+          crownDebug.emit('crown-layout', 'performance-entry', attrs);
+        });
+      }).observe({ type, buffered: true }); } catch (_) {} };
+      ['paint', 'layout-shift', 'longtask'].forEach(observe);
     }
     function renderThemeChoices() {
       if (!themeChoiceRow) return;

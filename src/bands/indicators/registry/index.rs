@@ -6,6 +6,7 @@ pub(crate) struct IndicatorRenderContext {
 pub(crate) type IndicatorRenderer = fn(IndicatorRenderContext) -> String;
 pub(crate) type IndicatorCollector = fn(Session) -> Result<serde_json::Value, String>;
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub(crate) struct IndicatorManifest {
     pub(crate) id: &'static str,

@@ -245,9 +245,7 @@ async fn upload_tree_fragment_route(headers: axum::http::HeaderMap, Query(query)
         let selected = query.selected.as_deref().unwrap_or(&display_root);
         let mut expanded = upload_expanded_set(query.expanded.as_deref());
         expanded.insert(display_root.clone());
-        if path != display_root {
-            if !expanded.remove(path) { expanded.insert(path.to_string()); }
-        }
+        if path != display_root && !expanded.remove(path) { expanded.insert(path.to_string()); }
         let expanded_csv = upload_expanded_csv(&expanded);
         render_upload_tree_fragment(Some(selected), Some(&expanded_csv))
     } else {

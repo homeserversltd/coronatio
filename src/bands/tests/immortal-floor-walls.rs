@@ -22,9 +22,10 @@ fn immortal_floor_four_state_authority_is_single_and_dom_readable() {
 fn immortal_floor_admits_before_reveal_and_faults_honestly() {
     let chrome = crown_chrome_js();
     let admit = chrome.find("await admitFreshGuest(selected)").expect("fresh admission");
-    let seated = chrome.find("if (!seatGuest(selected))").expect("reveal after admission");
+    let seated = chrome.find("if (!await seatGuest(selected))").expect("reveal after admission");
     assert!(admit < seated);
-    assert!(!chrome.contains("await new Promise(resolve => requestAnimationFrame(resolve));"));
+    assert!(chrome.contains("requestAnimationFrame(() => requestAnimationFrame(resolve))"));
+    assert!(chrome.contains("Keep the healthy outgoing floor-2 guest visible"));
     assert!(chrome.contains("expose('BareFloor'"));
     assert!(chrome.contains("window.getImmortalFloorState?.() !== 'Seated'"));
     assert!(chrome.contains("closeViewportStreamFamily();"));
@@ -37,7 +38,9 @@ fn immortal_floor_motion_uses_three_stable_floors_and_reduced_motion_settles() {
     let css = shell_ux_css();
     assert!(css.contains(".immortal-floor-underlay, .immortal-floor-admission-frame, .immortal-floor-guest-slot { grid-area: 1 / 1"));
     assert!(css.contains(".immortal-floor-underlay { z-index: 0; background: #000;"));
-    assert!(css.contains(".immortal-floor-admission-frame { z-index: 1;"));
+    assert!(css.contains(".immortal-floor-admission-frame { z-index: 3;"));
+    assert!(css.contains("pointer-events: none"));
+    assert!(css.contains("contain: layout paint"));
     assert!(css.contains(".immortal-floor-loader"));
     assert!(css.contains(".immortal-floor-guest-slot { position: relative; z-index: 2;"));
     assert!(css.contains("transition-property: opacity, transform"));
@@ -53,8 +56,8 @@ fn immortal_floor_crossing_is_bounded_and_every_owned_failure_terminates() {
     assert!(chrome.contains("const admissionTimeoutMs = 1500;"));
     assert!(chrome.contains("const hydrationTimeoutMs = 750;"));
     assert!(chrome.contains("bounded(() => hydrateStats()"));
-    assert!(chrome.contains("bounded(() => hydratePortals()"));
     assert!(chrome.contains("bounded(() => hydrateDhcp()"));
+    assert!(!chrome.contains("hydratePortals"), "Portals HTMX load is the sole admission hydration owner");
     assert!(chrome.contains("if (!readyNow) {\n          if (crossing === generation) { emptySlot(); expose('BareFloor'); }"));
     assert!(chrome.contains("if (crossing !== generation) return false; // A newer crossing owns the terminal state."));
     assert!(chrome.contains("if (crossing === generation) fault(error?.message || 'admission-fault');"));

@@ -72,7 +72,7 @@
         let chrome = crown_chrome_js();
         assert!(chrome.contains("function applyAdminDomState()"), "admin DOM projection must be separated from network refresh");
         assert!(chrome.contains("refreshElementFragment('stats');"), "session change still refreshes stats fragment once");
-        assert!(chrome.contains("refreshElementFragment('portals');"), "session change still refreshes portals fragment once");
+        assert!(!chrome.contains("refreshElementFragment('portals');\n        if (selectedTab) showPane(selectedTab, { refresh: true });"), "session reconciliation must not eagerly refresh hidden Portals before its admission");
         for function_name in ["refreshElementFragment", "toggleElementVisibility"] {
             let start = chrome.find(&format!("async function {function_name}")).expect(function_name);
             let tail = &chrome[start..];

@@ -1,0 +1,147 @@
+#!/usr/bin/env node
+/**
+ * Dependency-free Chromium/CDP proof for CORONATIO-BUTTERY-CONVERGENCE-001.
+ * Requires Node 22+ and /usr/bin/chromium; it starts only an isolated fixture
+ * Coronatio server and removes every temporary surface in finally.
+ */
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+import net from 'node:net';
+
+const root = resolve(new URL('../..', import.meta.url).pathname);
+const binary = process.env.CORONATIO_BROWSER_BIN || join(root, 'target/debug/coronatio');
+const chromium = process.env.CHROMIUM || '/usr/bin/chromium';
+const timeoutMs = Number(process.env.BUTTERY_TIMEOUT_MS || 45_000);
+const summary = { schema: 'coronatio.buttery.browser.v1', assertions: {}, counts: {}, routes: [], metrics: {}, ok: false };
+let server, browser, temp;
+
+function assert(name, condition, detail = '') {
+  summary.assertions[name] = { ok: Boolean(condition), detail };
+  if (!condition) throw new Error(`${name}: ${detail || 'assertion failed'}`);
+}
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function freePort() { return new Promise((resolve, reject) => { const s = net.createServer(); s.once('error', reject); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(error => error ? reject(error) : resolve(port)); }); }); }
+async function eventually(label, predicate, ms = 8_000) { const end = Date.now() + ms; let last; while (Date.now() < end) { try { last = await predicate(); if (last) return last; } catch (error) { last = error; } await sleep(80); } throw new Error(`${label}: ${last?.message || last || 'timed out'}`); }
+async function stop(child) {
+  if (!child || child.exitCode !== null) return;
+  const exited = new Promise(resolve => { child.once('exit', resolve); child.once('close', resolve); child.once('error', resolve); });
+  child.kill('SIGTERM');
+  const killer = setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 1_000);
+  await exited;
+  clearTimeout(killer);
+}
+function run(label, command, args, options = {}) {
+  const child = spawn(command, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], ...options });
+  child.once('error', error => finish(new Error(`${label} spawn: ${error.message}`)));
+  return child;
+}
+
+class Cdp {
+  constructor(url) { this.ws = new WebSocket(url); this.next = 1; this.pending = new Map(); this.events = new Map(); }
+  async open() { await new Promise((resolve, reject) => { this.ws.addEventListener('open', resolve, { once: true }); this.ws.addEventListener('error', reject, { once: true }); }); this.ws.addEventListener('message', event => { const m = JSON.parse(event.data); if (m.id) { const p = this.pending.get(m.id); this.pending.delete(m.id); if (p) m.error ? p.reject(new Error(m.error.message)) : p.resolve(m.result); return; } for (const fn of this.events.get(m.method) || []) fn(m.params || {}); }); }
+  send(method, params = {}) { const id = this.next++; return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.ws.send(JSON.stringify({ id, method, params })); }); }
+  on(method, fn) { const list = this.events.get(method) || []; list.push(fn); this.events.set(method, list); }
+  async eval(expression) { const out = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (out.exceptionDetails) throw new Error(out.exceptionDetails.text); return out.result.value; }
+  close() { this.ws.close(); }
+}
+
+async function main() {
+  temp = await mkdtemp(join(tmpdir(), 'coronatio-buttery-'));
+  const [port, debugPort] = await Promise.all([freePort(), freePort()]);
+  const config = join(temp, 'homeserver.json'), systemctl = join(temp, 'systemctl.json'), tabs = join(temp, 'tabs'), profile = join(temp, 'chromium');
+  await mkdir(tabs, { recursive: true });
+  await writeFile(config, JSON.stringify({ global: { admin: { pin: '1234' } }, tabs: { starred: 'portals', portals: { config: { displayName: 'Portals', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: { Jellyfin: true, Transmission: true, Relay: true, Docs: true } }, data: { portals: [ { name: 'Jellyfin', description: 'Media', type: 'systemd', localURL: 'https://jellyfin.home.arpa', port: 8096, services: ['jellyfin'] }, { name: 'Transmission', description: 'Downloads', type: 'systemd', localURL: 'https://transmission.home.arpa', port: 9091, services: ['transmission'] }, { name: 'Relay', description: 'Mixed', type: 'systemd', localURL: 'https://relay.home.arpa', port: 4040, services: ['relay', 'vpn'] }, { name: 'Docs', description: 'Reference', type: 'link', localURL: 'https://docs.home.arpa', services: [] } ] } }, stats: { config: { displayName: 'Stats', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: {} } } } }));
+  await writeFile(systemctl, JSON.stringify({ jellyfin: 'active', transmission: 'inactive', relay: 'inactive', vpn: 'active' }));
+  server = run('coronatio', binary, [], { env: { ...process.env, CORONATIO_PORT: String(port), CORONATIO_TAB_ROOT: tabs, CORONATIO_HOMESERVER_JSON: config, CORONATIO_SYSTEMCTL_FIXTURE: systemctl, CORONATIO_STATIC_ROOT: join(root, 'static') } });
+  let serverLog = ''; server.stdout.on('data', d => { serverLog += d; }); server.stderr.on('data', d => { serverLog += d; });
+  await eventually('server health', async () => (await fetch(`http://127.0.0.1:${port}/health`)).ok);
+  browser = run('chromium', chromium, [`--headless=new`, '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-background-networking', '--disable-component-update', '--disable-default-apps', '--disable-sync', '--metrics-recording-only', '--no-first-run', `--user-data-dir=${profile}`, `--remote-debugging-port=${debugPort}`, 'about:blank']);
+  let chromiumLog = ''; browser.stdout.on('data', d => { chromiumLog += d; }); browser.stderr.on('data', d => { chromiumLog += d; });
+  const version = await eventually('chromium CDP', async () => { const r = await fetch(`http://127.0.0.1:${debugPort}/json/version`); return r.ok ? r.json() : false; });
+  const target = await fetch(`http://127.0.0.1:${debugPort}/json/new?about:blank`, { method: 'PUT' }).then(r => r.json());
+  const cdp = new Cdp(target.webSocketDebuggerUrl); await cdp.open();
+  const routes = [], debugEmits = []; cdp.on('Network.requestWillBeSent', event => { const pathname = new URL(event.request.url).pathname; routes.push(pathname); if (pathname === '/api/debug/emit') debugEmits.push(event.request.postData || ''); });
+  await Promise.all(['Page.enable', 'Runtime.enable', 'Network.enable', 'Performance.enable'].map(method => cdp.send(method)));
+  try { await cdp.send('PerformanceTimeline.enable', { eventTypes: ['layout-shift', 'longtask'] }); } catch (_) {}
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { window.__butteryMetrics = { longtasks: 0, layoutShifts: 0, shiftValue: 0 }; window.__butteryObserverCallbacks = []; const NativePerformanceObserver = window.PerformanceObserver; if (NativePerformanceObserver) window.PerformanceObserver = class { constructor(callback) { this.callback = callback; this.native = new NativePerformanceObserver(callback); } observe(options) { window.__butteryObserverCallbacks.push({ type: options.type, callback: this.callback }); return this.native.observe(options); } disconnect() { return this.native.disconnect(); } takeRecords() { return this.native.takeRecords(); } }; try { new PerformanceObserver(list => { for (const e of list.getEntries()) window.__butteryMetrics.longtasks++; }).observe({ type: 'longtask', buffered: true }); new PerformanceObserver(list => { for (const e of list.getEntries()) if (!e.hadRecentInput) { window.__butteryMetrics.layoutShifts++; window.__butteryMetrics.shiftValue += e.value || 0; } }).observe({ type: 'layout-shift', buffered: true }); } catch (_) {} })();` });
+  routes.length = 0;
+  await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/` });
+  await eventually('initial portals seated', () => cdp.eval(`document.documentElement.dataset.immortalFloorState === 'Seated' && window.getImmortalFloorState?.() === 'Seated' && document.querySelectorAll('[data-portals-grid] [data-portal-card]').length === 4`));
+  const initial = routes.filter(p => p === '/api/portals/elements' || p === '/api/portals/currentness');
+  summary.counts.initialPortalsElements = initial.filter(p => p === '/api/portals/elements').length;
+  summary.counts.initialPortalsCurrentness = initial.filter(p => p === '/api/portals/currentness').length;
+  assert('initial_portals_one_owner', summary.counts.initialPortalsElements === 1, JSON.stringify(initial));
+  assert('initial_portals_currentness_cadence_lawful', summary.counts.initialPortalsCurrentness === 1, JSON.stringify(initial));
+  const diagnostics = await cdp.eval(`(() => { const controls = [...document.querySelectorAll('[data-crown-diagnostic-toggle]')]; controls.find(x => x.dataset.crownDiagnosticToggle === 'requests')?.click(); controls.find(x => x.dataset.crownDiagnosticToggle === 'layout')?.click(); const enabled = JSON.parse(localStorage.getItem('coronatioDiagnostics')).enabled; return { sections: controls.map(x => x.dataset.crownDiagnosticToggle), requests: enabled.includes('requests'), layout: enabled.includes('layout') }; })()`);
+  assert('diagnostics_sections', diagnostics.sections.length === 6 && diagnostics.sections.includes('layout') && diagnostics.sections.includes('requests'), JSON.stringify(diagnostics));
+  assert('diagnostics_sections_enabled', diagnostics.requests && diagnostics.layout, JSON.stringify(diagnostics));
+  await sleep(120); debugEmits.length = 0;
+  const syntheticLayout = await cdp.eval(`(() => { const nativeFetch = window.fetch.bind(window); const emits = []; window.fetch = (input, init = {}) => { if (String(input).includes('/api/debug/emit')) emits.push(init.body || ''); return nativeFetch(input, init); }; for (const observer of window.__butteryObserverCallbacks.filter(observer => ['paint', 'layout-shift', 'longtask'].includes(observer.type))) { const entry = observer.type === 'layout-shift' ? { name: 'layout-shift', duration: 0, value: 0.02, hadRecentInput: false } : { name: observer.type === 'paint' ? 'first-contentful-paint' : 'self', duration: 12.5 }; observer.callback({ getEntries: () => [entry] }); } return { observers: window.__butteryObserverCallbacks.map(observer => observer.type), enabled: window.crownDebug.enabled('crown-layout'), emits }; })()`);
+  summary.metrics.syntheticLayout = { observers: syntheticLayout.observers, emitCount: syntheticLayout.emits.length, enabled: syntheticLayout.enabled };
+  const layoutEvents = syntheticLayout.emits.map(raw => { try { return JSON.parse(raw); } catch (_) { return null; } }).filter(event => event?.kind === 'crown-layout');
+  assert('layout_observer_installation', ['layout-shift', 'longtask'].every(type => syntheticLayout.observers.includes(type)), JSON.stringify(syntheticLayout.observers));
+  assert('layout_bounded_schema', layoutEvents.every(event => event.event === 'performance-entry' && event.attributes && !('sources' in event.attributes) && !('attribution' in event.attributes)) && layoutEvents.some(event => event.attributes.entryType === 'layout-shift' && event.attributes.hadRecentInput === false && Number(event.attributes.value) === 0.02) && layoutEvents.some(event => event.attributes.entryType === 'longtask' && Number(event.attributes.duration) === 12.5), JSON.stringify(layoutEvents));
+  const redaction = await cdp.eval(`fetch('/api/debug/emit', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({kind:'crown-layout', event:'browser-proof', attributes:{pin:'1234', adminToken:'do-not-leak', headers:'redact', phase:'seated'}}) }).then(async r => ({ status:r.status, body:await r.text() }))`);
+  assert('diagnostics_redaction', !redaction.body.includes('do-not-leak') && !redaction.body.includes('"pin":"1234"'), JSON.stringify(redaction));
+  debugEmits.length = 0;
+  routes.length = 0;
+  await sleep(3_100);
+  const idle = routes.filter(p => p === '/api/portals/elements' || p === '/api/portals/currentness');
+  summary.counts.idlePortalsElements = idle.filter(p => p === '/api/portals/elements').length;
+  summary.counts.idlePortalsCurrentness = idle.filter(p => p === '/api/portals/currentness').length;
+  assert('idle_portals_no_rehydration', summary.counts.idlePortalsElements === 0, JSON.stringify(idle));
+  assert('idle_portals_cadence_lawful', summary.counts.idlePortalsCurrentness === 0, JSON.stringify(idle));
+  // Initial browser layout is intentionally observed; only crossing-induced shift is a wall.
+  await cdp.eval(`window.__butteryMetrics = { longtasks: 0, layoutShifts: 0, shiftValue: 0 }`);
+  const crossings = [];
+  const cross = async (from, to) => {
+    routes.length = 0;
+    const result = await cdp.eval(`(async () => { const before = { state: window.getImmortalFloorState(), guest: [...document.querySelectorAll('[data-pane-panel].active')].map(x => x.dataset.panePanel) }; const p = showPane(${JSON.stringify(to)}, { refresh: true }); await new Promise(requestAnimationFrame); const during = { state: window.getImmortalFloorState(), guest: [...document.querySelectorAll('[data-pane-panel].active')].map(x => x.dataset.panePanel) }; await p; return { before, during, after: { state: window.getImmortalFloorState(), guest: [...document.querySelectorAll('[data-pane-panel].active')].map(x => x.dataset.panePanel), floor2: document.querySelectorAll('[data-immortal-floor-layer="2"] .pane.active').length } }; })()`);
+    if (to === 'portals') await eventually(`${from}-to-portals cards`, () => cdp.eval(`document.querySelectorAll('[data-portals-grid] [data-portal-card]').length === 4`));
+    const portalRoutes = routes.filter(p => p === '/api/portals/elements' || p === '/api/portals/currentness');
+    const counts = { from, to, elements: portalRoutes.filter(p => p === '/api/portals/elements').length, currentness: portalRoutes.filter(p => p === '/api/portals/currentness').length };
+    crossings.push(counts);
+    assert(`cross_${from}_to_${to}_single_guest`, result.after.state === 'Seated' && result.after.guest.length === 1 && result.after.floor2 === 1, JSON.stringify(result));
+    assert(`cross_${from}_to_${to}_source_matches`, result.before.guest[0] === from && result.after.guest[0] === to, JSON.stringify(result));
+    assert(`cross_${from}_to_${to}_elements_lawful`, counts.elements === (to === 'portals' ? 1 : 0), JSON.stringify(counts));
+    assert(`cross_${from}_to_${to}_currentness_lawful`, counts.currentness === (to === 'portals' ? 1 : 0), JSON.stringify(counts));
+    if (from === 'portals' && to === 'test') {
+      await eventually('production request diagnostics', () => debugEmits.some(raw => { try { const event = JSON.parse(raw); return event.kind === 'crown-requests' && event.attributes?.phase === 'before-request' && event.attributes?.pathname === '/admit/test'; } catch (_) { return false; } }));
+      const requestEvents = debugEmits.map(raw => { try { return JSON.parse(raw); } catch (_) { return null; } }).filter(event => event?.kind === 'crown-requests');
+      assert('request_phase_reaches_debug_emit_without_recursion', requestEvents.some(event => event.attributes?.phase === 'before-request' && event.attributes?.pathname === '/admit/test' && event.attributes?.method === 'GET') && requestEvents.every(event => event.attributes?.pathname !== '/api/debug/emit'), JSON.stringify(requestEvents));
+    }
+    return result;
+  };
+  const first = await cross('portals', 'test');
+  assert('outgoing_guest_retained_until_reveal', first.before.guest[0] === 'portals' && first.during.guest[0] === 'portals', JSON.stringify(first));
+  await cross('test', 'portals'); await cross('portals', 'test'); await cross('test', 'portals');
+  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  await cross('portals', 'test'); await cross('test', 'portals');
+  assert('reduced_motion_settles', await cdp.eval(`matchMedia('(prefers-reduced-motion: reduce)').matches && window.getImmortalFloorState() === 'Seated'`));
+  await sleep(120);
+  debugEmits.length = 0;
+  const ttlExpired = await cdp.eval(`(() => { localStorage.setItem('coronatioDiagnostics', JSON.stringify({ enabled: ['requests', 'layout'], expiresAt: Date.now() - 1 })); const observer = window.__butteryObserverCallbacks.find(observer => observer.type === 'paint'); observer?.callback({ getEntries: () => [{ name: 'first-paint', duration: 1 }] }); return !window.crownDebug.enabled('crown-layout') && !window.crownDebug.enabled('crown-requests'); })()`);
+  await sleep(120);
+  assert('diagnostics_ttl_expiry_stops_emissions', ttlExpired && debugEmits.length === 0, JSON.stringify(debugEmits));
+  summary.counts.crossings = crossings;
+  summary.metrics = await cdp.eval(`window.__butteryMetrics`);
+  assert('longtask_telemetry_honest', Number.isInteger(Number(summary.metrics.longtasks)) && Number(summary.metrics.longtasks) >= 0, JSON.stringify(summary.metrics));
+  assert('no_unintended_layout_shift', Number(summary.metrics.shiftValue || 0) === 0, JSON.stringify(summary.metrics));
+  summary.routes = ['/api/portals/currentness', '/api/portals/elements']; summary.counts.routeCensus = crossings.length; summary.ok = true;
+  cdp.close();
+}
+
+const watchdog = setTimeout(() => { finish(new Error(`harness timeout after ${timeoutMs}ms`)); }, timeoutMs);
+let finishing = false;
+async function finish(error) {
+  if (finishing) return;
+  finishing = true;
+  clearTimeout(watchdog);
+  await Promise.all([stop(browser), stop(server)]);
+  if (temp) await rm(temp, { recursive: true, force: true, maxRetries: 4, retryDelay: 100 });
+  if (error) { summary.error = error.message; console.log(JSON.stringify(summary)); process.exitCode = 1; } else console.log(JSON.stringify(summary));
+}
+process.on('SIGINT', () => finish(new Error('SIGINT'))); process.on('SIGTERM', () => finish(new Error('SIGTERM')));
+main().then(() => finish()).catch(finish);
