@@ -25,7 +25,7 @@ function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function freePort() { return new Promise((resolve, reject) => { const s = net.createServer(); s.once('error', reject); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(error => error ? reject(error) : resolve(port)); }); }); }
 async function eventually(label, predicate, ms = 8_000) { const end = Date.now() + ms; let last; while (Date.now() < end) { try { last = await predicate(); if (last) return last; } catch (error) { last = error; } await sleep(80); } throw new Error(`${label}: ${last?.message || last || 'timed out'}`); }
 async function stop(child) {
-  if (!child || child.exitCode !== null) return;
+  if (!child || child.exitCode !== null || child.pid === undefined) return;
   const exited = new Promise(resolve => { child.once('exit', resolve); child.once('close', resolve); child.once('error', resolve); });
   child.kill('SIGTERM');
   const killer = setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 1_000);
@@ -52,7 +52,7 @@ async function main() {
   const [port, debugPort] = await Promise.all([freePort(), freePort()]);
   const config = join(temp, 'homeserver.json'), systemctl = join(temp, 'systemctl.json'), tabs = join(temp, 'tabs'), profile = join(temp, 'chromium');
   await mkdir(tabs, { recursive: true });
-  await writeFile(config, JSON.stringify({ global: { admin: { pin: '1234' } }, tabs: { starred: 'portals', portals: { config: { displayName: 'Portals', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: { Jellyfin: true, Transmission: true, Relay: true, Docs: true } }, data: { portals: [ { name: 'Jellyfin', description: 'Media', type: 'systemd', localURL: 'https://jellyfin.home.arpa', port: 8096, services: ['jellyfin'] }, { name: 'Transmission', description: 'Downloads', type: 'systemd', localURL: 'https://transmission.home.arpa', port: 9091, services: ['transmission'] }, { name: 'Relay', description: 'Mixed', type: 'systemd', localURL: 'https://relay.home.arpa', port: 4040, services: ['relay', 'vpn'] }, { name: 'Docs', description: 'Reference', type: 'link', localURL: 'https://docs.home.arpa', services: [] } ] } }, stats: { config: { displayName: 'Stats', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: {} } } } }));
+  await writeFile(config, JSON.stringify({ global: { admin: { pin: '1234' } }, tabs: { starred: 'portals', portals: { config: { displayName: 'Portals', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: { Jellyfin: true, Transmission: true, Relay: true, Docs: true } }, data: { portals: [ { name: 'Jellyfin', description: 'Media', type: 'systemd', localURL: 'https://jellyfin.home.arpa', port: 8096, services: ['jellyfin'] }, { name: 'Transmission', description: 'Downloads', type: 'systemd', localURL: 'https://transmission.home.arpa', port: 9091, services: ['transmission'] }, { name: 'Relay', description: 'Mixed', type: 'systemd', localURL: 'https://relay.home.arpa', port: 4040, services: ['relay', 'vpn'] }, { name: 'Docs', description: 'Reference', type: 'link', localURL: 'https://docs.home.arpa', services: [] } ] } }, stats: { config: { displayName: 'Stats', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: {} } }, admin: { config: { displayName: 'Admin', isEnabled: true, adminOnly: true }, visibility: { tab: true, elements: {} } }, test: { config: { displayName: 'Test', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: {} } } } }));
   await writeFile(systemctl, JSON.stringify({ jellyfin: 'active', transmission: 'inactive', relay: 'inactive', vpn: 'active' }));
   server = run('coronatio', binary, [], { env: { ...process.env, CORONATIO_PORT: String(port), CORONATIO_TAB_ROOT: tabs, CORONATIO_HOMESERVER_JSON: config, CORONATIO_SYSTEMCTL_FIXTURE: systemctl, CORONATIO_STATIC_ROOT: join(root, 'static') } });
   let serverLog = ''; server.stdout.on('data', d => { serverLog += d; }); server.stderr.on('data', d => { serverLog += d; });
@@ -96,18 +96,18 @@ async function main() {
   // Initial browser layout is intentionally observed; only crossing-induced shift is a wall.
   await cdp.eval(`window.__butteryMetrics = { longtasks: 0, layoutShifts: 0, shiftValue: 0 }`);
   const crossings = [];
-  const cross = async (from, to) => {
+  const cross = async (from, to, mode = 'public') => {
     routes.length = 0;
     const result = await cdp.eval(`(async () => { const before = { state: window.getImmortalFloorState(), guest: [...document.querySelectorAll('[data-pane-panel].active')].map(x => x.dataset.panePanel) }; const p = showPane(${JSON.stringify(to)}, { refresh: true }); await new Promise(requestAnimationFrame); const during = { state: window.getImmortalFloorState(), guest: [...document.querySelectorAll('[data-pane-panel].active')].map(x => x.dataset.panePanel) }; await p; return { before, during, after: { state: window.getImmortalFloorState(), guest: [...document.querySelectorAll('[data-pane-panel].active')].map(x => x.dataset.panePanel), floor2: document.querySelectorAll('[data-immortal-floor-layer="2"] .pane.active').length } }; })()`);
     if (to === 'portals') await eventually(`${from}-to-portals cards`, () => cdp.eval(`document.querySelectorAll('[data-portals-grid] [data-portal-card]').length === 4`));
     const portalRoutes = routes.filter(p => p === '/api/portals/elements' || p === '/api/portals/currentness');
     const counts = { from, to, elements: portalRoutes.filter(p => p === '/api/portals/elements').length, currentness: portalRoutes.filter(p => p === '/api/portals/currentness').length };
     crossings.push(counts);
-    assert(`cross_${from}_to_${to}_single_guest`, result.after.state === 'Seated' && result.after.guest.length === 1 && result.after.floor2 === 1, JSON.stringify(result));
-    assert(`cross_${from}_to_${to}_source_matches`, result.before.guest[0] === from && result.after.guest[0] === to, JSON.stringify(result));
-    assert(`cross_${from}_to_${to}_elements_lawful`, counts.elements === (to === 'portals' ? 1 : 0), JSON.stringify(counts));
-    assert(`cross_${from}_to_${to}_currentness_lawful`, counts.currentness === (to === 'portals' ? 1 : 0), JSON.stringify(counts));
-    if (from === 'portals' && to === 'test') {
+    assert(`cross_${mode}_${from}_to_${to}_single_guest`, result.after.state === 'Seated' && result.after.guest.length === 1 && result.after.floor2 === 1, JSON.stringify(result));
+    assert(`cross_${mode}_${from}_to_${to}_source_matches`, result.before.guest[0] === from && result.after.guest[0] === to, JSON.stringify(result));
+    assert(`cross_${mode}_${from}_to_${to}_elements_lawful`, counts.elements === (to === 'portals' ? 1 : 0), JSON.stringify(counts));
+    assert(`cross_${mode}_${from}_to_${to}_currentness_lawful`, counts.currentness === (to === 'portals' ? 1 : 0), JSON.stringify(counts));
+    if (mode === 'public' && from === 'portals' && to === 'test') {
       await eventually('production request diagnostics', () => debugEmits.some(raw => { try { const event = JSON.parse(raw); return event.kind === 'crown-requests' && event.attributes?.phase === 'before-request' && event.attributes?.pathname === '/admit/test'; } catch (_) { return false; } }));
       const requestEvents = debugEmits.map(raw => { try { return JSON.parse(raw); } catch (_) { return null; } }).filter(event => event?.kind === 'crown-requests');
       assert('request_phase_reaches_debug_emit_without_recursion', requestEvents.some(event => event.attributes?.phase === 'before-request' && event.attributes?.pathname === '/admit/test' && event.attributes?.method === 'GET') && requestEvents.every(event => event.attributes?.pathname !== '/api/debug/emit'), JSON.stringify(requestEvents));
@@ -125,10 +125,29 @@ async function main() {
   const ttlExpired = await cdp.eval(`(() => { localStorage.setItem('coronatioDiagnostics', JSON.stringify({ enabled: ['requests', 'layout'], expiresAt: Date.now() - 1 })); const observer = window.__butteryObserverCallbacks.find(observer => observer.type === 'paint'); observer?.callback({ getEntries: () => [{ name: 'first-paint', duration: 1 }] }); return !window.crownDebug.enabled('crown-layout') && !window.crownDebug.enabled('crown-requests'); })()`);
   await sleep(120);
   assert('diagnostics_ttl_expiry_stops_emissions', ttlExpired && debugEmits.length === 0, JSON.stringify(debugEmits));
+  summary.metrics.public = await cdp.eval(`window.__butteryMetrics`);
+  assert('public_longtask_telemetry_honest', Number.isInteger(Number(summary.metrics.public.longtasks)) && Number(summary.metrics.public.longtasks) >= 0, JSON.stringify(summary.metrics.public));
+  assert('public_no_unintended_layout_shift', Number(summary.metrics.public.shiftValue || 0) === 0, JSON.stringify(summary.metrics.public));
+  await cdp.eval(`(() => { document.querySelector('[data-admin-button]')?.click(); const pin = document.querySelector('[data-pin-current]'); if (!pin) throw new Error('admin-pin-input-missing'); pin.value = '1234'; document.querySelector('[data-pin-confirm-button]')?.click(); })()`);
+  const adminSession = await eventually('admin browser session', async () => { const state = await cdp.eval(`(() => ({ established: document.querySelector('[data-product="Coronatio"]')?.dataset.adminMode === 'true' && Boolean(localStorage.getItem('coronatioAdminToken')), floor0: document.querySelectorAll('[data-immortal-floor-layer="0"]').length, floor1: document.querySelectorAll('[data-immortal-floor-layer="1"]').length, activeFloor2: document.querySelectorAll('[data-immortal-floor-layer="2"] .pane.active').length, state: window.getImmortalFloorState?.() }))()`); return state.established ? state : false; });
+  summary.counts.adminSessionEstablished = adminSession.established;
+  assert('admin_session_established_through_pin_ui', adminSession.established === true, JSON.stringify(adminSession));
+  assert('admin_projection_is_same_crown', adminSession.floor0 === 1 && adminSession.floor1 === 1 && adminSession.activeFloor2 === 1 && adminSession.state === 'Seated', JSON.stringify(adminSession));
+  await sleep(250); // Let the genuine session projection settle before opening its idle census window.
+  await cdp.eval(`window.__butteryMetrics = { longtasks: 0, layoutShifts: 0, shiftValue: 0 }`);
+  routes.length = 0;
+  await sleep(3_100);
+  const adminIdle = routes.filter(p => p === '/api/portals/elements' || p === '/api/portals/currentness');
+  summary.counts.adminIdlePortalsElements = adminIdle.filter(p => p === '/api/portals/elements').length;
+  summary.counts.adminIdlePortalsCurrentness = adminIdle.filter(p => p === '/api/portals/currentness').length;
+  assert('admin_idle_portals_no_rehydration', summary.counts.adminIdlePortalsElements === 0 && summary.counts.adminIdlePortalsCurrentness === 0, JSON.stringify(adminIdle));
+  const adminFirst = await cross('portals', 'test', 'admin');
+  assert('admin_outgoing_guest_retained_until_reveal', adminFirst.before.guest[0] === 'portals' && adminFirst.during.guest[0] === 'portals', JSON.stringify(adminFirst));
+  await cross('test', 'portals', 'admin');
   summary.counts.crossings = crossings;
-  summary.metrics = await cdp.eval(`window.__butteryMetrics`);
-  assert('longtask_telemetry_honest', Number.isInteger(Number(summary.metrics.longtasks)) && Number(summary.metrics.longtasks) >= 0, JSON.stringify(summary.metrics));
-  assert('no_unintended_layout_shift', Number(summary.metrics.shiftValue || 0) === 0, JSON.stringify(summary.metrics));
+  summary.metrics.admin = await cdp.eval(`window.__butteryMetrics`);
+  assert('admin_longtask_telemetry_honest', Number.isInteger(Number(summary.metrics.admin.longtasks)) && Number(summary.metrics.admin.longtasks) >= 0, JSON.stringify(summary.metrics.admin));
+  assert('admin_no_unintended_layout_shift', Number(summary.metrics.admin.shiftValue || 0) === 0, JSON.stringify(summary.metrics.admin));
   summary.routes = ['/api/portals/currentness', '/api/portals/elements']; summary.counts.routeCensus = crossings.length; summary.ok = true;
   cdp.close();
 }

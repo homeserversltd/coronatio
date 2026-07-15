@@ -336,6 +336,7 @@
 
     #[tokio::test]
     async fn portals_route_reads_homeserver_json_portals_like_original_surface() {
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let temp = test_tab_root("portals-json-read");
         let config_path = temp.join("homeserver.json");
         let factory_path = temp.join("homeserver.factory");
