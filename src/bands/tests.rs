@@ -6,6 +6,14 @@ mod tests {
 
     static CADUCEUS_ENV_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
         std::sync::OnceLock::new();
+    static HX_EXEMPLAR_ENV_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
+        std::sync::OnceLock::new();
+
+    fn test_tab_root(name: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("coronatio-test-{name}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
 
     include!("tests/part-01.rs");
     include!("tests/part-02.rs");
@@ -39,4 +47,6 @@ mod tests {
     include!("tests/theme-net-author-face-walls.rs");
     include!("tests/indicator-infinite-infinite-walls.rs");
     include!("tests/immortal-floor-walls.rs");
+    include!("tests/slice-c-caduceus-session-walls.rs");
+    include!("tests/caduceus-successor-fixture.rs");
 }

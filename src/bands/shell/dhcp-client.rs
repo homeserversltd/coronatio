@@ -1,8 +1,7 @@
 fn shell_dhcp_client() -> &'static str {
     r####"    const dhcpState = { leases: [], reservations: [], statistics: {}, boundary: {}, anonymized: false };
     function dhcpHeaders(json = false) {
-      const token = localStorage.getItem('coronatioAdminToken');
-      return { ...(json ? { 'content-type': 'application/json' } : {}), ...(token ? { 'X-Admin-Token': token } : {}) };
+      return json ? { 'content-type': 'application/json' } : {};
     }
     function dhcpRows(payload, key) {
       if (Array.isArray(payload)) return payload;

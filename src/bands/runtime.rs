@@ -37,16 +37,9 @@ fn app(state: AppState) -> Router {
         .route("/api/startup", get(startup_route))
         .route("/api/lanes", get(lane_policy_route))
         .route("/api/fallback", get(fallback_route))
-        .route("/api/session", get(session_route))
-        .route("/api/validatePin", post(homeserver_validate_pin_route))
-        .route("/api/verifyPin", post(homeserver_validate_pin_route))
-        .route("/api/logout", post(homeserver_logout_route))
-        .route("/api/admin/ping", get(homeserver_admin_ping_route))
-        .route("/api/admin/pin", post(homeserver_rust_mutation_route))
-        .route(
-            "/api/admin/session",
-            get(session_route).post(session_renew_route),
-        )
+        .route("/api/session/mint", post(caduceus_session_mint_route))
+        .route("/api/session/prove", post(caduceus_session_prove_route))
+        .route("/api/session/clear", post(caduceus_session_clear_route))
         .route("/api/caduceus/status", get(caduceus_status_route))
         .route("/api/debug/emit", post(debug_emit_route))
         .route(

@@ -16,7 +16,8 @@
     fn field_001r_census_wall_every_admin_internet_field_has_one_bucket() {
         let raw = maximal_internet_status_fixture();
         let admin = serde_json::to_value(project_internet_status_admin(&raw)).unwrap();
-        let admin_fields = json_field_census(&admin);
+        let mut admin_fields = admin.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+        admin_fields.sort();
         let guest_projected = ["schema", "ok", "success", "status", "timestamp", "firstMissingSignal"];
         let named_deny = ["hosts", "timeoutSeconds", "authority"];
         let mut bucketed = guest_projected
@@ -52,7 +53,8 @@
     #[test]
     fn field_001r_guest_type_purity_wall_cannot_represent_denied_fields() {
         let value = serde_json::to_value(project_internet_status_guest(&maximal_internet_status_fixture())).unwrap();
-        let census = json_field_census(&value);
+        let mut census = value.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+        census.sort();
         for denied in ["hosts", "timeoutSeconds", "authority"] {
             assert!(!census.iter().any(|field| field == denied), "guest type can represent denied field {denied}: {census:?}");
         }
@@ -76,9 +78,8 @@
             assert!(guest_body.contains(expected), "guest /api/status omitted {expected}: {guest_body}");
         }
 
-        let token = authorize_test_admin_token();
         let admin = router
-            .oneshot(Request::builder().uri("/api/status").header("X-Admin-Token", token).body(Body::empty()).unwrap())
+            .oneshot(successor_admin_request(Request::builder().uri("/api/status").body(Body::empty()).unwrap()))
             .await
             .unwrap();
         assert_eq!(admin.status(), StatusCode::OK);

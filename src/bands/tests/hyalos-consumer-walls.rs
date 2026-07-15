@@ -54,11 +54,10 @@
             tab_root: Arc::new(test_tab_root("hyalos-upload-history-app")),
         })
         .oneshot(
-            Request::builder()
+            successor_admin_request(Request::builder()
                 .uri("/api/upload/history")
-                .header("X-Admin-Token", authorize_test_admin_token())
                 .body(Body::empty())
-                .unwrap(),
+                .unwrap()),
         )
         .await
         .unwrap();
@@ -76,8 +75,7 @@
         let router = app(AppState {
             tab_root: Arc::new(test_tab_root("hyalos-clear-refusal-app")),
         });
-        let token = authorize_test_admin_token();
-        for (path, schema) in [
+                for (path, schema) in [
             ("/api/upload/history/clear", "coronatio.upload.history.clear.v1"),
             (
                 "/api/admin/logs/homeserver/clear",
@@ -87,12 +85,11 @@
             let response = router
                 .clone()
                 .oneshot(
-                    Request::builder()
+                    successor_admin_request(Request::builder()
                         .method("POST")
                         .uri(path)
-                        .header("X-Admin-Token", token.clone())
                         .body(Body::empty())
-                        .unwrap(),
+                        .unwrap()),
                 )
                 .await
                 .unwrap();
@@ -119,11 +116,10 @@
             tab_root: Arc::new(test_tab_root("hyalos-homeserver-logs-app")),
         })
         .oneshot(
-            Request::builder()
+            successor_admin_request(Request::builder()
                 .uri("/api/admin/logs/homeserver")
-                .header("X-Admin-Token", authorize_test_admin_token())
                 .body(Body::empty())
-                .unwrap(),
+                .unwrap()),
         )
         .await
         .unwrap();

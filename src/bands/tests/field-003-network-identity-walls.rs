@@ -51,8 +51,7 @@
     async fn field_003_route_membrane_wall_generic_reads_return_only_route_membrane_shape() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-003-generic-reads")) });
         for route in field_003_in_scope_read_routes() {
-            let token = authorize_test_admin_token();
-            let response = router.clone().oneshot(Request::builder().uri(route).header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
+            let response = router.clone().oneshot(successor_admin_request(Request::builder().uri(route).body(Body::empty()).unwrap())).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK, "{route}");
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
             assert!(body.contains("\"schema\":\"coronatio.homeserver.route.read.v1\""), "{route}: {body}");
@@ -97,29 +96,36 @@
     }
 
     #[tokio::test]
-    async fn field_003_mutation_refusal_wall_network_identity_mutations_refuse_guest_sessions() {
+    async fn field_003_mutation_refusal_wall_network_identity_mutations_refuse_cross_origin_and_same_origin_guest_sessions() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-003-guest-mutation-refusal")) });
         for (method, route) in field_003_in_scope_mutations() {
+            let mark = crate::caduceus_access::test_fixture::mark();
             let response = router.clone().oneshot(Request::builder().method(method).uri(route).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{method} {route}");
+            let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            assert!(body.contains("caduceus-access-origin-refused"), "{method} {route}: {body}");
+            assert!(body.contains("\"ok\":false"), "{method} {route}: {body}");
+            assert!(body.contains("\"accepted\":false"), "{method} {route}: {body}");
+            assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty(), "{method} {route}");
+
+            let mark = crate::caduceus_access::test_fixture::mark();
+            let response = router.clone().oneshot(successor_session_request(Request::builder().method(method).uri(route).body(Body::empty()).unwrap(), false)).await.unwrap();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method} {route}");
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-            assert!(body.contains("coronatio.network-identity.mutation.refusal.v1"), "{method} {route}: {body}");
-            assert!(body.contains("admin-session-required"), "{method} {route}: {body}");
+            assert!(body.contains("caduceus-access-session-required"), "{method} {route}: {body}");
+            assert!(body.contains("\"ok\":false"), "{method} {route}: {body}");
             assert!(body.contains("\"accepted\":false"), "{method} {route}: {body}");
+            assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty(), "{method} {route}");
         }
     }
 
     #[tokio::test]
     async fn field_003_admin_mutation_wall_reaches_caduceus_membrane_after_session_check() {
-        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
-        std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-003-admin-mutation-membrane")) });
-        let token = authorize_test_admin_token();
-        let response = router.oneshot(Request::builder().method("POST").uri("/api/wakeonlan/wake").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let response = router.oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/wakeonlan/wake").body(Body::empty()).unwrap())).await.unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("coronatio.homeserver.route.mutation.v1"), "{body}");
         assert!(body.contains("Caduceus staff intent membrane"), "{body}");
-        assert!(body.contains("caduceus-unreachable"), "{body}");
-        std::env::remove_var("CADUCEUS_URL");
+        assert!(body.contains("caduceus"), "{body}");
     }

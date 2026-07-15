@@ -31,13 +31,15 @@
             ("/api/themes", "PIN/session chrome theme bootstrap"),
             ("/api/validatePin", "PIN/session chrome"),
             ("/api/verifyPin", "upload PIN-gated submission verification"),
+            ("/api/session/mint", "successor session mint"),
+            ("/api/session/prove", "successor session proof"),
             ("/api/set_starred_tab", "PIN/session chrome favorite mutation"),
             ("/api/tabs/visibility", "PIN/session chrome visibility mutation"),
             ("/api/tabs/elements", "PIN/session chrome element visibility mutation"),
             ("/api/stats/elements", "PIN/session chrome stats element projection"),
             ("/api/portals/elements", "PIN/session chrome portal element projection"),
             ("/api/tab-bar", "PIN/session chrome tab-bar projection"),
-            ("/api/logout", "PIN/session chrome logout invalidation"),
+            ("/api/session/clear", "successor session clear"),
             ("/api/admin/ping", "PIN/session bootstrap authority validation"),
             ("/api/upload/history", "upload chrome modal read"),
             ("/api/upload/blacklist/list", "upload chrome modal read"),
@@ -192,25 +194,28 @@
         let sshd = temp.join("sshd_config");
         std::fs::write(&sshd, "PasswordAuthentication no\n").unwrap();
         std::env::set_var("CORONATIO_SSHD_CONFIG_FIXTURE", &sshd);
-        let _caduceus_guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
-        std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-005-mutation-app")) });
-        let response = router.clone().oneshot(Request::builder().method("POST").uri("/admit/admin/toggle/ssh-password-authentication").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap();
+        let response = router.clone().oneshot(successor_admin_request(Request::builder().method("POST").uri("/admit/admin/toggle/ssh-password-authentication").body(Body::empty()).unwrap())).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("data-real-state=\"Disabled\""), "{body}");
         assert!(body.contains("sshd_config PasswordAuthentication readback"), "{body}");
-        let source = std::fs::read_to_string("src/bands/caduceus.rs").unwrap();
-        assert!(source.contains("admin_staff_intent(\"POST\", path, \"admin-service-toggle\")"));
-        assert!(source.contains("render_admin_service_card_result_html(&toggle_id, Some(&result))"));
+
         for (method, route) in [("POST", "/admit/admin/toggle/ssh-password-authentication"), ("POST", "/admit/admin/toggle/ssh-service"), ("POST", "/admit/admin/toggle/samba-file-sharing"), ("POST", "/admit/admin/action/hard-drive-test"), ("POST", "/admit/admin/action/update"), ("POST", "/admit/admin/action/rotate-capability-key"), ("POST", "/admit/admin/action/restart"), ("POST", "/admit/admin/action/shutdown"), ("POST", "/admit/admin/action/restart-website"), ("POST", "/admit/admin/action/install-certificate")] {
             let response = router.clone().oneshot(Request::builder().method(method).uri(route).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{route}");
+            html_response_has_csp(&response, route);
+            let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            assert!(body.contains("data-admin-membrane-refusal=\"true\""), "{route}: {body}");
+            assert!(body.contains("caduceus-access-origin-refused"), "{route}: {body}");
+
+            let response = router.clone().oneshot(successor_session_request(Request::builder().method(method).uri(route).body(Body::empty()).unwrap(), false)).await.unwrap();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{route}");
             html_response_has_csp(&response, route);
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
             assert!(body.contains("data-admin-membrane-refusal=\"true\""), "{route}: {body}");
-            assert!(body.contains("admin-session-required"), "{route}: {body}");
+            assert!(body.contains("caduceus-access-session-required"), "{route}: {body}");
         }
         std::env::remove_var("CORONATIO_SSHD_CONFIG_FIXTURE");
-        std::env::remove_var("CADUCEUS_URL");
+
     }

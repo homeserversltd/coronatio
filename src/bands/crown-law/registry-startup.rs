@@ -391,11 +391,11 @@ fn normalize_tab_id(tab_id: &str) -> String {
 fn admin_session_readback() -> AdminSessionReadback {
     AdminSessionReadback {
         schema: "coronatio.admin.session.v1".to_string(),
-        pin_validation: "POST /api/validatePin compared request pin to homeserver.json global.admin.pin and returned a generated session token".to_string(),
+        pin_validation: "POST /api/session/mint proxies one PIN presentation to Caduceus and stores only the opaque secure cookie".to_string(),
         session_timeout_seconds: 30 * 60,
         keepalive_route: "/api/admin/session".to_string(),
-        logout_route: "/api/logout".to_string(),
-        token_header: "X-Admin-Token".to_string(),
+        logout_route: "/api/session/clear".to_string(),
+        token_header: "caduceus_session cookie".to_string(),
         token_policy: vec![
             "tokens are generated from random bytes, timestamp, and uuid".to_string(),
             "token expiry refreshes on validation".to_string(),

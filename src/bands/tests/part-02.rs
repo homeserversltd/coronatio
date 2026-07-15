@@ -1,3 +1,16 @@
+    fn successor_session_request(mut request: Request<Body>, with_cookie: bool) -> Request<Body> {
+        for (name, value) in crate::caduceus_access::test_fixture::same_origin_headers(with_cookie) {
+            if let Some(name) = name {
+                request.headers_mut().insert(name, value);
+            }
+        }
+        request
+    }
+
+    fn successor_admin_request(request: Request<Body>) -> Request<Body> {
+        successor_session_request(request, true)
+    }
+
     #[test]
     fn admin_pane_matches_original_flask_react_div_skeleton() {
         let shell = render_crown_shell();
@@ -136,11 +149,13 @@
     }
 
     #[tokio::test]
-    async fn caduceus_update_now_refuses_guest_instead_of_faking_dispatch_success() {
+    async fn caduceus_update_now_refuses_cross_origin_and_same_origin_guest_before_dispatch() {
         let temp = test_tab_root("caduceus-dispatch");
-        let response = app(AppState {
+        let router = app(AppState {
             tab_root: Arc::new(temp),
-        })
+        });
+        let mark = crate::caduceus_access::test_fixture::mark();
+        let response = router.clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -150,13 +165,35 @@
         )
         .await
         .unwrap();
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(body.contains("admin-session-required"));
+        assert!(body.contains("caduceus-access-origin-refused"));
+        assert!(body.contains("\"ok\":false"));
+        assert!(body.contains("\"accepted\":false"));
         assert!(!body.contains("\"ok\":true"));
+        assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
+
+        let mark = crate::caduceus_access::test_fixture::mark();
+        let response = router
+            .oneshot(successor_session_request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/caduceus/update/now")
+                    .body(Body::empty())
+                    .unwrap(),
+                false,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("caduceus-access-session-required"));
+        assert!(body.contains("\"ok\":false"));
+        assert!(body.contains("\"accepted\":false"));
+        assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
     }
 
     #[tokio::test]
@@ -208,13 +245,12 @@
         let response = app(AppState {
             tab_root: Arc::new(temp),
         })
-        .oneshot(
+        .oneshot(successor_admin_request(
             Request::builder()
                 .uri("/api/stats")
-                .header("X-Admin-Token", authorize_test_admin_token())
                 .body(Body::empty())
                 .unwrap(),
-        )
+        ))
         .await
         .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -659,4 +695,3 @@
         assert!(shell.contains("class=\"star-button far fa-star\""));
         assert!(!shell.contains("<span aria-hidden=\"true\">★</span>"));
     }
-

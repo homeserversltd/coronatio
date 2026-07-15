@@ -437,56 +437,95 @@
     }
 
     #[tokio::test]
-    async fn session_route_encodes_admin_and_caduceus_membrane() {
-        let temp = test_tab_root("session-law");
-        let response = app(AppState {
-            tab_root: Arc::new(temp),
-        })
-        .oneshot(
-            Request::builder()
-                .uri("/api/session")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+    async fn successor_session_mint_prove_clear_projects_secure_cookie_and_safe_boundaries() {
+        let state = AppState {
+            tab_root: Arc::new(test_tab_root("successor-session-law")),
+        };
+        let mint = app(state.clone())
+            .oneshot(successor_session_request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/session/mint")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"pin":"fixture-only-input"}"#))
+                    .unwrap(),
+                false,
+            ))
             .await
             .unwrap();
-        let session: AdminSessionReadback = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(session.schema, "coronatio.admin.session.v1");
-        assert_eq!(session.session_timeout_seconds, 1800);
-        assert_eq!(session.token_header, "X-Admin-Token");
-        let session_value = serde_json::to_value(&session).unwrap();
-        let mut fields = json_field_census(&session_value);
-        fields.sort();
+        assert_eq!(mint.status(), StatusCode::OK);
         assert_eq!(
-            fields,
-            vec![
-                "caduceusMembrane",
-                "caduceusMembrane.caduceusRole",
-                "caduceusMembrane.coronatioRole",
-                "caduceusMembrane.firstMissingSignal",
-                "caduceusMembrane.privilegedMutations",
-                "caduceusMembrane.schema",
-                "keepaliveRoute",
-                "logoutRoute",
-                "pinValidation",
-                "schema",
-                "sessionTimeoutSeconds",
-                "tokenHeader",
-                "tokenPolicy",
-            ]
+            mint.headers().get(axum::http::header::SET_COOKIE).and_then(|value| value.to_str().ok()),
+            Some("caduceus_session=caduceus-test-session-ticket; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=1800"),
         );
+        let mint_body: serde_json::Value = serde_json::from_slice(
+            &axum::body::to_bytes(mint.into_body(), usize::MAX).await.unwrap(),
+        )
+        .unwrap();
+        assert_eq!(mint_body["schema"], "coronatio.caduceus.session.projection.v1");
+        assert_eq!(mint_body["ok"], true);
+        assert_eq!(mint_body["admin"], true);
+        assert_eq!(mint_body["firstMissingSignal"], "none");
+
+        let prove = app(state.clone())
+            .oneshot(successor_admin_request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/session/prove")
+                    .body(Body::empty())
+                    .unwrap(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(prove.status(), StatusCode::OK);
+        let prove_body: serde_json::Value = serde_json::from_slice(
+            &axum::body::to_bytes(prove.into_body(), usize::MAX).await.unwrap(),
+        )
+        .unwrap();
+        assert_eq!(prove_body["admin"], true);
+
+        let missing = app(state.clone())
+            .oneshot(successor_session_request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/session/prove")
+                    .body(Body::empty())
+                    .unwrap(),
+                false,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+        let missing_body: serde_json::Value = serde_json::from_slice(
+            &axum::body::to_bytes(missing.into_body(), usize::MAX).await.unwrap(),
+        )
+        .unwrap();
+        assert_eq!(missing_body["admin"], false);
+        assert_eq!(missing_body["firstMissingSignal"], "caduceus-access-session-required");
+
+        let clear = app(state.clone())
+            .oneshot(successor_session_request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/session/clear")
+                    .body(Body::empty())
+                    .unwrap(),
+                false,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(clear.status(), StatusCode::OK);
         assert_eq!(
-            session.caduceus_membrane.schema,
-            "coronatio.caduceus.membrane.v1"
+            clear.headers().get(axum::http::header::SET_COOKIE).and_then(|value| value.to_str().ok()),
+            Some("caduceus_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0"),
         );
-        assert!(session
-            .caduceus_membrane
-            .privileged_mutations
-            .contains(&"service restart".to_string()));
+        let clear_body: serde_json::Value = serde_json::from_slice(
+            &axum::body::to_bytes(clear.into_body(), usize::MAX).await.unwrap(),
+        )
+        .unwrap();
+        assert_eq!(clear_body["ok"], true);
+        assert_eq!(clear_body["admin"], false);
+        assert_eq!(clear_body["firstMissingSignal"], "none");
     }
 
     #[tokio::test]
@@ -526,4 +565,3 @@
         assert_eq!(stats.event_route, "/api/stats/pulse");
         assert_eq!(stats.renew_route, "/api/stats/pulse/renew");
     }
-

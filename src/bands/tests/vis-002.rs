@@ -1,6 +1,6 @@
     fn vis_002_fixture_config(path: &FsPath) {
         std::fs::write(path, serde_json::json!({
-            "global": { "admin": { "pin": "1234" }, "theme": { "name": "light" } },
+            "global": { "theme": { "name": "light" } },
             "tabs": {
                 "starred": "stats",
                 "admin": { "config": { "displayName": "Admin", "isEnabled": true, "adminOnly": true }, "visibility": { "tab": true, "elements": {} } },
@@ -11,52 +11,39 @@
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn vis_002_validate_pin_mints_server_session_and_refuses_pin_shaped_tokens() {
+    async fn vis_002_session_mint_prove_and_refusal_use_only_successor_cookie_transport() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-        let temp = test_tab_root("vis-002-session");
-        let config = temp.join("homeserver.json");
-        vis_002_fixture_config(&config);
-        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("vis-002-session-app")) });
-        let response = router.clone().oneshot(Request::builder().method("POST").uri("/api/validatePin").header("content-type", "application/json").body(Body::from(r#"{"pin":"1234"}"#)).unwrap()).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-        let token = body.get("token").and_then(serde_json::Value::as_str).unwrap();
-        assert!(token.starts_with("coronatio-admin-session-"));
-        assert_ne!(token, "1234");
-        assert!(!token.starts_with("1234"));
-        assert!(!token.contains("1234"));
-        let ok = router.clone().oneshot(Request::builder().method("POST").uri("/admit/admin/toggle/ssh-service").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
-        assert_ne!(ok.status(), StatusCode::UNAUTHORIZED);
-        for bad in ["1234", "1234-deadbeef", "x1234x"] {
-            let response = router.clone().oneshot(Request::builder().method("POST").uri("/admit/admin/toggle/ssh-service").header("X-Admin-Token", bad).body(Body::empty()).unwrap()).await.unwrap();
-            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{bad}");
-        }
-        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
-    }
+        let mint = router.clone().oneshot(successor_session_request(
+            Request::builder().method("POST").uri("/api/session/mint").header("content-type", "application/json").body(Body::from(r#"{"pin":"fixture-only-input"}"#)).unwrap(),
+            false,
+        )).await.unwrap();
+        assert_eq!(mint.status(), StatusCode::OK);
+        let cookie = mint.headers().get(header::SET_COOKIE).and_then(|value| value.to_str().ok()).unwrap();
+        assert!(cookie.contains("HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=1800"), "{cookie}");
+        assert!(!cookie.contains("fixture-only-input"), "{cookie}");
+        let projection: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(mint.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(projection["schema"], "coronatio.caduceus.session.projection.v1");
+        assert_eq!(projection["admin"], true);
+        assert!(projection.get("ticket").is_none(), "{projection}");
 
+        let proved = router.clone().oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/session/prove").body(Body::empty()).unwrap())).await.unwrap();
+        assert_eq!(proved.status(), StatusCode::OK);
+        let refused = router.oneshot(successor_session_request(Request::builder().method("POST").uri("/api/session/prove").body(Body::empty()).unwrap(), false)).await.unwrap();
+        assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
+    }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn vis_002_logout_invalidates_server_session_token() {
+    async fn vis_002_session_clear_invalidates_the_browser_cookie_and_records_clear() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-        let token = authorize_test_admin_token();
-        let router = app(AppState { tab_root: Arc::new(test_tab_root("vis-002-logout-app")) });
-        let before = router.clone().oneshot(Request::builder().method("POST").uri("/admit/admin/toggle/ssh-service").header("X-Admin-Token", token.as_str()).body(Body::empty()).unwrap()).await.unwrap();
-        assert_ne!(before.status(), StatusCode::UNAUTHORIZED);
-        let logout = router.clone().oneshot(Request::builder().method("POST").uri("/api/logout").header("X-Admin-Token", token.as_str()).body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(logout.status(), StatusCode::OK);
-        let after = router.clone().oneshot(Request::builder().method("POST").uri("/admit/admin/toggle/ssh-service").header("X-Admin-Token", token.as_str()).body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(after.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[test]
-    fn vis_002_lockout_ladder_matches_og_schedule() {
-        assert_eq!(lockout_ms(1), 1_000);
-        assert_eq!(lockout_ms(2), 2_000);
-        assert_eq!(lockout_ms(3), 4_000);
-        assert_eq!(lockout_ms(9), 256_000);
-        assert_eq!(lockout_ms(10), 256_000);
-        assert_eq!(lockout_ms(99), 256_000);
+        let mark = crate::caduceus_access::test_fixture::mark();
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("vis-002-clear-app")) });
+        let cleared = router.oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/session/clear").body(Body::empty()).unwrap())).await.unwrap();
+        assert_eq!(cleared.status(), StatusCode::OK);
+        let cookie = cleared.headers().get(header::SET_COOKIE).and_then(|value| value.to_str().ok()).unwrap();
+        assert_eq!(cookie, "caduceus_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0");
+        let records = crate::caduceus_access::test_fixture::records_since(mark);
+        assert!(records.iter().any(|record| record.path == "/api/v1/access/sessions/clear"), "{records:?}");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -67,9 +54,8 @@
         let config = temp.join("homeserver.json");
         vis_002_fixture_config(&config);
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
-        let token = authorize_test_admin_token();
         let response = app(AppState { tab_root: Arc::new(test_tab_root("vis-002-visibility-app")) })
-            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap())
+            .oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/tabs/visibility").header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap()))
             .await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
@@ -88,7 +74,7 @@
         vis_002_fixture_config(&config);
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let response = app(AppState { tab_root: Arc::new(test_tab_root("vis-002-star-app")) })
-            .oneshot(Request::builder().method("POST").uri("/api/set_starred_tab").header("content-type", "application/json").body(Body::from(r#"{"tabName":"portals"}"#)).unwrap())
+            .oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/set_starred_tab").header("content-type", "application/json").body(Body::from(r#"{"tabName":"portals"}"#)).unwrap()))
             .await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
@@ -107,12 +93,7 @@
         vis_002_fixture_config(&config);
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("vis-002-tab-bar-active-app")) });
-
-        for (uri, expected) in [
-            ("/api/tab-bar", "stats"),
-            ("/api/tab-bar?active=portals", "portals"),
-            ("/api/tab-bar?active=admin", "stats"),
-        ] {
+        for (uri, expected) in [("/api/tab-bar", "stats"), ("/api/tab-bar?active=portals", "portals"), ("/api/tab-bar?active=admin", "stats")] {
             let response = router.clone().oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK, "{uri}");
             let fragment = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
@@ -120,7 +101,6 @@
             assert_eq!(fragment.matches("class=\"tab active\"").count(), 1, "{uri}: {fragment}");
             assert!(fragment.contains(&format!("aria-selected=\"true\" data-pane=\"{expected}\"")), "{uri}: {fragment}");
         }
-
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     }
 

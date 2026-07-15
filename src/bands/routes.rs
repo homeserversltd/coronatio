@@ -128,18 +128,7 @@ async fn fallback_route() -> impl IntoResponse {
     Json(fallback_readback())
 }
 
-async fn session_route() -> impl IntoResponse {
-    Json(admin_session_readback())
-}
 
-async fn session_renew_route() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "schema": "coronatio.admin.session.renewal.v1",
-        "status": "contract-only",
-        "leaseSeconds": 1800,
-        "authority": "Caduceus must mint or refresh privileged mutation capability before live mutation is enabled"
-    }))
-}
 
 async fn favorites_route() -> impl IntoResponse {
     match load_favorite_manifest().await {
@@ -187,6 +176,9 @@ async fn get_starred_tab_route() -> impl IntoResponse {
 }
 
 async fn set_starred_tab_route(headers: axum::http::HeaderMap, Json(request): Json<SetStarredTabRequest>) -> impl IntoResponse {
+    if let Some(refusal) = mutation_context_refusal(&headers) {
+        return caduceus_config_failure_response(mutation_refusal_readback("/api/v1/config/set", refusal));
+    }
     let requested = normalize_tab_id(&request.tab_name.or(request.tab).unwrap_or_default());
     let (source, facts) = match load_iris_facts().await {
         Ok(value) => value,
@@ -212,7 +204,7 @@ async fn set_starred_tab_route(headers: axum::http::HeaderMap, Json(request): Js
             "source": source,
         }))).into_response(),
     };
-    let persisted = caduceus_config_set("tabs.starred", serde_json::Value::String(next.starred.clone()));
+    let persisted = caduceus_config_set(&headers, "tabs.starred", serde_json::Value::String(next.starred.clone()));
     if !persisted.ok {
         return caduceus_config_failure_response(persisted);
     }
@@ -231,12 +223,8 @@ struct TabVisibilityRequest {
 }
 
 async fn tab_visibility_route(headers: axum::http::HeaderMap, Json(request): Json<TabVisibilityRequest>) -> impl IntoResponse {
-    if session_from_headers(&headers) != Session::Admin {
-        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
-            "schema": "coronatio.tabs.visibility.refusal.v1",
-            "success": false,
-            "error": "admin-session-required",
-        }))).into_response();
+    if let Some(refusal) = mutation_context_refusal(&headers) {
+        return caduceus_config_failure_response(mutation_refusal_readback("/api/v1/config/set", refusal));
     }
     let tab = normalize_tab_id(&request.tab.or(request.tab_id).or(request.id).unwrap_or_default());
     let visible = request.visible.or(request.visibility).unwrap_or(true);
@@ -246,12 +234,12 @@ async fn tab_visibility_route(headers: axum::http::HeaderMap, Json(request): Jso
     };
     let next = iris::apply_tab_visibility(&facts, &tab, visible);
     let visibility_path = format!("tabs.{tab}.visibility.tab");
-    let persisted = caduceus_config_set(&visibility_path, serde_json::Value::Bool(visible));
+    let persisted = caduceus_config_set(&headers, &visibility_path, serde_json::Value::Bool(visible));
     if !persisted.ok {
         return caduceus_config_failure_response(persisted);
     }
     if next.starred != facts.starred {
-        let starred = caduceus_config_set("tabs.starred", serde_json::Value::String(next.starred.clone()));
+        let starred = caduceus_config_set(&headers, "tabs.starred", serde_json::Value::String(next.starred.clone()));
         if !starred.ok {
             return caduceus_config_failure_response(starred);
         }
@@ -447,7 +435,7 @@ fn iris_facts_from_homeserver_value(value: &serde_json::Value) -> IrisFacts {
 }
 
 fn caduceus_config_failure_response(readback: CaduceusHttpReadback) -> Response {
-    let status = if readback.status == 0 { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::BAD_GATEWAY };
+    let status = mutation_response_status(&readback);
     (status, Json(serde_json::json!({
         "success": false,
         "firstMissingSignal": readback.first_missing_signal,

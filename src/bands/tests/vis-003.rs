@@ -2,7 +2,7 @@
         std::fs::write(
             path,
             serde_json::json!({
-                "global": { "admin": { "pin": "1234" }, "theme": { "name": "light" } },
+                "global": { "theme": { "name": "light" } },
                 "tabs": {
                     "starred": "stats",
                     "stats": {
@@ -43,19 +43,33 @@
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("vis-003-write-app")) });
 
+        let mark = crate::caduceus_access::test_fixture::mark();
         let guest = router
             .clone()
             .oneshot(Request::builder().method("PUT").uri("/api/tabs/elements").header("content-type", "application/json").body(Body::from(r#"{"tabId":"stats","elementId":"process-usage","visibility":false}"#)).unwrap())
             .await
             .unwrap();
+        assert_eq!(guest.status(), StatusCode::FORBIDDEN);
+        let guest_body = String::from_utf8(axum::body::to_bytes(guest.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(guest_body.contains("data-first-missing-signal=\"caduceus-access-origin-refused\""));
+        assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
+
+        let mark = crate::caduceus_access::test_fixture::mark();
+        let guest = router
+            .clone()
+            .oneshot(successor_session_request(Request::builder().method("PUT").uri("/api/tabs/elements").header("content-type", "application/json").body(Body::from(r#"{"tabId":"stats","elementId":"process-usage","visibility":false}"#)).unwrap(), false))
+            .await
+            .unwrap();
         assert_eq!(guest.status(), StatusCode::UNAUTHORIZED);
         let guest_body = String::from_utf8(axum::body::to_bytes(guest.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        assert!(guest_body.contains("data-element-visibility-refusal=\"admin-session-required\""));
+        assert!(guest_body.contains("data-first-missing-signal=\"caduceus-access-session-required\""));
+        assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
 
-        let token = authorize_test_admin_token();
         let response = router
             .clone()
-            .oneshot(Request::builder().method("PUT").uri("/api/tabs/elements").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tabId":"stats","elementId":"process-usage","visibility":false}"#)).unwrap())
+            .oneshot(successor_admin_request(
+                Request::builder().method("PUT").uri("/api/tabs/elements").header("content-type", "application/json").body(Body::from(r#"{"tabId":"stats","elementId":"process-usage","visibility":false}"#)).unwrap(),
+            ))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -82,7 +96,6 @@
         let config = temp.join("homeserver.json");
         vis_003_fixture_config(&config);
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
-        let token = authorize_test_admin_token();
         let router = app(AppState { tab_root: Arc::new(test_tab_root("vis-003-fragments-app")) });
 
         let stats_guest = router.clone().oneshot(Request::builder().uri("/api/stats/elements").body(Body::empty()).unwrap()).await.unwrap();
@@ -92,7 +105,7 @@
         assert!(!stats_guest.contains(r#"data-stat-element-id="network-chart""#), "{stats_guest}");
         assert!(!stats_guest.contains(r#"data-stat-element-id="network""#), "{stats_guest}");
 
-        let stats_admin = router.clone().oneshot(Request::builder().uri("/api/stats/elements").header("X-Admin-Token", token.as_str()).body(Body::empty()).unwrap()).await.unwrap();
+        let stats_admin = router.clone().oneshot(successor_admin_request(Request::builder().uri("/api/stats/elements").body(Body::empty()).unwrap())).await.unwrap();
         let stats_admin = String::from_utf8(axum::body::to_bytes(stats_admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(stats_admin.contains(r#"data-stat-element-id="network-chart" data-visible="false""#), "{stats_admin}");
         assert!(stats_admin.contains(r#"data-stat-visibility-toggle="network-chart" data-visible="false""#), "{stats_admin}");
@@ -109,7 +122,7 @@
         assert!(portals_guest.contains(r#"data-portal-name="Home""#), "{portals_guest}");
         assert!(!portals_guest.contains(r#"data-portal-name="Jellyfin""#), "{portals_guest}");
 
-        let portals_admin = router.clone().oneshot(Request::builder().uri("/api/portals/elements").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
+        let portals_admin = router.clone().oneshot(successor_admin_request(Request::builder().uri("/api/portals/elements").body(Body::empty()).unwrap())).await.unwrap();
         let portals_admin = String::from_utf8(axum::body::to_bytes(portals_admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(portals_admin.contains(r#"data-portal-name="Jellyfin""#), "{portals_admin}");
         assert!(portals_admin.contains(r#"data-portal-visibility-toggle="Jellyfin" data-visible="false""#), "{portals_admin}");
@@ -118,15 +131,30 @@
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn admin_ping_reports_live_session_authority() {
-        let router = app(AppState { tab_root: Arc::new(test_tab_root("admin-ping-app")) });
-        let guest = router.clone().oneshot(Request::builder().uri("/api/admin/ping").body(Body::empty()).unwrap()).await.unwrap();
+    async fn session_proof_projection_reports_guest_and_admin_authority() {
+        let guest = caduceus_session_prove_route(axum::http::HeaderMap::new()).await;
+        assert_eq!(guest.status(), StatusCode::FORBIDDEN);
         let guest: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(guest.into_body(), usize::MAX).await.unwrap()).unwrap();
-        assert_eq!(guest["authenticated"], false);
+        assert_eq!(guest["admin"], false);
+        assert_eq!(guest["firstMissingSignal"], "caduceus-access-origin-refused");
 
-        let admin = router.oneshot(Request::builder().uri("/api/admin/ping").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap();
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("session-prove-projection-app")) });
+        let guest = router
+            .clone()
+            .oneshot(successor_session_request(Request::builder().method("POST").uri("/api/session/prove").body(Body::empty()).unwrap(), false))
+            .await.unwrap();
+        assert_eq!(guest.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(guest.headers().get(header::SET_COOKIE).and_then(|value| value.to_str().ok()), Some("caduceus_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0"));
+        let guest: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(guest.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(guest["admin"], false);
+        assert_eq!(guest["firstMissingSignal"], "caduceus-access-session-required");
+
+        let admin = router
+            .oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/session/prove").body(Body::empty()).unwrap()))
+            .await.unwrap();
         let admin: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(admin.into_body(), usize::MAX).await.unwrap()).unwrap();
-        assert_eq!(admin["authenticated"], true);
+        assert_eq!(admin["admin"], true);
+        assert_eq!(admin["schema"], "coronatio.caduceus.session.projection.v1");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -140,20 +168,20 @@
         let config = temp.join("homeserver.json");
         vis_003_fixture_config(&config);
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
-        let token = authorize_test_admin_token();
         let response = app(AppState {
             tab_root: Arc::new(test_tab_root("portals-visibility-app")),
         })
         .oneshot(
-            Request::builder()
+            successor_admin_request(
+                Request::builder()
                 .method("PUT")
                 .uri("/api/tabs/elements")
-                .header("X-Admin-Token", token)
                 .header("content-type", "application/json")
                 .body(Body::from(
                     r#"{"tabId":"portals","elementId":"Home","visibility":false}"#,
                 ))
                 .unwrap(),
+            ),
         )
         .await
         .unwrap();

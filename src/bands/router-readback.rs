@@ -302,211 +302,134 @@ fn extract_pane_inner_html(shell: &str, tab_id: &str) -> Option<String> {
     None
 }
 
-#[derive(Default)]
-struct LockoutState {
-    failed_attempts: u32,
-    locked_until_ms: u128,
+fn session_from_headers(headers: &axum::http::HeaderMap) -> Session {
+    let Some(ticket) = crate::caduceus_access::session_ticket_from_cookie(headers) else { return Session::Guest; };
+    crate::caduceus_access::CaduceusAccessClient::default().session_prove(&ticket).receipt.ok.then_some(Session::Admin).unwrap_or(Session::Guest)
 }
 
-#[derive(Default)]
-struct SessionMembrane {
-    tokens: HashSet<String>,
-    lockouts: BTreeMap<String, LockoutState>,
+const CADUCEUS_SESSION_BODY_MAX: usize = 4 * 1024;
+
+fn session_projection(call: crate::caduceus_access::AccessCall) -> serde_json::Value {
+    serde_json::json!({"schema":"coronatio.caduceus.session.projection.v1","ok":call.receipt.ok,"admin":call.receipt.ok,"firstMissingSignal":call.receipt.code})
 }
 
-static SESSION_MEMBRANE: OnceLock<Mutex<SessionMembrane>> = OnceLock::new();
-
-fn session_membrane() -> &'static Mutex<SessionMembrane> {
-    SESSION_MEMBRANE.get_or_init(|| Mutex::new(SessionMembrane::default()))
+fn guest_session_projection(signal: &str) -> serde_json::Value {
+    serde_json::json!({"schema":"coronatio.caduceus.session.projection.v1","ok":false,"admin":false,"firstMissingSignal":crate::caduceus_access::safe_access_code(signal)})
 }
 
-fn now_ms() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()
-}
-
-fn lockout_ms(attempt: u32) -> u128 {
-    let exponent = attempt.saturating_sub(1).min(8);
-    (1000u128.saturating_mul(1u128 << exponent)).min(5 * 60 * 1000)
-}
-
-fn mint_admin_token() -> String {
-    let uuid = uuid::Uuid::new_v4();
-    let mut random = [0u8; 32];
-    if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
-        let _ = file.read_exact(&mut random);
+fn session_response(status: StatusCode, projection: serde_json::Value, clear_cookie: bool) -> Response {
+    let mut response = (status, Json(projection)).into_response();
+    if clear_cookie {
+        if let Ok(cookie) = HeaderValue::from_str(&crate::caduceus_access::clear_session_cookie()) {
+            response.headers_mut().insert(header::SET_COOKIE, cookie);
+        }
     }
-    let random_hex = random.iter().fold(String::with_capacity(random.len() * 2), |mut out, byte| {
-        let _ = std::fmt::Write::write_fmt(&mut out, format_args!("{byte:02x}"));
-        out
-    });
-    format!("coronatio-admin-session-{uuid}-{random_hex}")
+    response
 }
 
-fn token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+fn json_content_type(headers: &axum::http::HeaderMap) -> bool {
     headers
-        .get("x-admin-token")
+        .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
+        .is_some_and(|value| value.eq_ignore_ascii_case("application/json") || value.to_ascii_lowercase().ends_with("+json"))
 }
 
-fn admin_token_authorized(token: &str) -> bool {
-    session_membrane()
-        .lock()
-        .map(|store| store.tokens.contains(token))
-        .unwrap_or(false)
+fn mint_failure_status(call: &crate::caduceus_access::AccessCall) -> StatusCode {
+    if call.receipt.ok { StatusCode::OK }
+    else if call.receipt.code == "caduceus-access-refused" { StatusCode::UNAUTHORIZED }
+    else { StatusCode::SERVICE_UNAVAILABLE }
 }
 
+async fn caduceus_session_mint_route(headers: axum::http::HeaderMap, body: axum::body::Bytes) -> Response {
+    if !crate::caduceus_access::same_origin_state_change(&headers) {
+        return session_response(StatusCode::FORBIDDEN, guest_session_projection("caduceus-access-origin-refused"), false);
+    }
+    if !json_content_type(&headers) || body.len() > CADUCEUS_SESSION_BODY_MAX {
+        return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-request-invalid"), false);
+    }
+    let Ok(body) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-request-invalid"), false);
+    };
+    let Some(pin) = body.get("pin").and_then(serde_json::Value::as_str).filter(|pin| !pin.is_empty() && pin.len() <= 256) else {
+        return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-pin-required"), false);
+    };
+    let call = crate::caduceus_access::CaduceusAccessClient::default().session_mint(pin);
+    let status = mint_failure_status(&call);
+    let mut response = session_response(status, session_projection(call.clone()), false);
+    if let Some(ticket) = call.take_ticket() {
+        if let Ok(cookie) = HeaderValue::from_str(&crate::caduceus_access::session_cookie(&ticket)) {
+            response.headers_mut().insert(header::SET_COOKIE, cookie);
+        }
+    }
+    response
+}
+
+async fn caduceus_session_prove_route(headers: axum::http::HeaderMap) -> Response {
+    caduceus_session_prove_with_client(headers, crate::caduceus_access::CaduceusAccessClient::default()).await
+}
+
+async fn caduceus_session_prove_with_client(
+    headers: axum::http::HeaderMap,
+    client: crate::caduceus_access::CaduceusAccessClient,
+) -> Response {
+    if !crate::caduceus_access::same_origin_state_change(&headers) {
+        return session_response(StatusCode::FORBIDDEN, guest_session_projection("caduceus-access-origin-refused"), false);
+    }
+    let Some(ticket) = crate::caduceus_access::session_ticket_from_cookie(&headers) else {
+        return session_response(StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-access-session-required"), true);
+    };
+    let call = client.session_prove(&ticket);
+    if call.receipt.ok {
+        session_response(StatusCode::OK, session_projection(call), false)
+    } else {
+        let projection = session_projection(call);
+        let _ = client.session_clear(&ticket);
+        session_response(StatusCode::UNAUTHORIZED, projection, true)
+    }
+}
+
+async fn caduceus_session_clear_route(headers: axum::http::HeaderMap) -> Response {
+    if !crate::caduceus_access::same_origin_state_change(&headers) {
+        return session_response(StatusCode::FORBIDDEN, guest_session_projection("caduceus-access-origin-refused"), false);
+    }
+    let Some(ticket) = crate::caduceus_access::session_ticket_from_cookie(&headers) else {
+        return session_response(StatusCode::OK, serde_json::json!({"schema":"coronatio.caduceus.session.projection.v1","ok":true,"admin":false,"firstMissingSignal":"none"}), true);
+    };
+    let call = crate::caduceus_access::CaduceusAccessClient::default().session_clear(&ticket);
+    let status = if call.receipt.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
+    session_response(status, session_projection(call), true)
+}
 
 #[cfg(test)]
-fn authorize_test_admin_token() -> String {
-    let token = mint_admin_token();
-    session_membrane().lock().unwrap().tokens.insert(token.clone());
-    token
-}
+mod caduceus_session_prove_walls {
+    use super::*;
 
-fn session_from_headers(headers: &axum::http::HeaderMap) -> Session {
-    token_from_headers(headers)
-        .filter(|token| admin_token_authorized(token))
-        .map(|_| Session::Admin)
-        .unwrap_or(Session::Guest)
-}
-
-async fn homeserver_validate_pin_route(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
-    let supplied = body
-        .get("pin")
-        .or_else(|| body.get("password"))
-        .map(|value| value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string().trim_matches('"').to_string()))
-        .unwrap_or_default();
-    let configured = configured_admin_pin();
-    let source = configured
-        .as_ref()
-        .map(|(path, _)| format!("{} global.admin.pin", path.display()))
-        .unwrap_or_else(|| {
-            homeserver_pin_config_candidates()
-                .into_iter()
-                .map(|path| path.display().to_string())
-                .collect::<Vec<_>>()
-                .join(" | ")
-        });
-    let now = now_ms();
-    let valid = configured.as_ref().map(|(_, pin)| pin == &supplied).unwrap_or(false);
-    if !valid {
-        let store = session_membrane().lock().unwrap();
-        if let Some(lockout) = store.lockouts.get(&source) {
-            if lockout.locked_until_ms > now {
-                let remaining_ms = lockout.locked_until_ms - now;
-                return (StatusCode::TOO_MANY_REQUESTS, Json(serde_json::json!({
-                "schema": "coronatio.homeserver.auth.pin.v1",
-                "success": false,
-                "verified": false,
-                "valid": false,
-                "locked": true,
-                "remainingMs": remaining_ms,
-                "remainingSeconds": ((remaining_ms + 999) / 1000),
-                "source": source,
-                "firstMissingSignal": "pin-lockout-active"
-                }))).into_response();
-            }
-        }
+    #[tokio::test]
+    async fn cross_origin_prove_with_valid_ticket_is_redacted_and_never_proves_or_clears() {
+        let mark = crate::caduceus_access::test_fixture::mark();
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("caduceus_session=caduceus-test-session-ticket"),
+        );
+        let response = caduceus_session_prove_with_client(
+            headers,
+            crate::caduceus_access::CaduceusAccessClient::default(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = String::from_utf8(
+            axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(body.contains("caduceus-access-origin-refused"));
+        assert!(!body.contains("caduceus-test-session-ticket"));
+        assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
     }
-    if valid {
-        let token = mint_admin_token();
-        let mut store = session_membrane().lock().unwrap();
-        store.lockouts.remove(&source);
-        store.tokens.insert(token.clone());
-        return (StatusCode::OK, Json(serde_json::json!({
-            "schema": "coronatio.homeserver.auth.pin.v1",
-            "success": true,
-            "verified": true,
-            "valid": true,
-            "token": token,
-            "expiresIn": 1800,
-            "source": source,
-            "firstMissingSignal": "none"
-        }))).into_response();
-    }
-    let mut store = session_membrane().lock().unwrap();
-    let lockout = store.lockouts.entry(source.clone()).or_default();
-    lockout.failed_attempts = lockout.failed_attempts.saturating_add(1);
-    let delay = lockout_ms(lockout.failed_attempts);
-    lockout.locked_until_ms = now.saturating_add(delay);
-    (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
-        "schema": "coronatio.homeserver.auth.pin.v1",
-        "success": false,
-        "verified": false,
-        "valid": false,
-        "locked": true,
-        "remainingMs": delay,
-        "remainingSeconds": ((delay + 999) / 1000),
-        "attempts": lockout.failed_attempts,
-        "source": source,
-        "firstMissingSignal": if configured.is_some() { "pin-mismatch" } else { "homeserver-config-pin-missing" }
-    }))).into_response()
-}
-
-async fn homeserver_logout_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    if let Some(token) = token_from_headers(&headers) {
-        if let Ok(mut store) = session_membrane().lock() {
-            store.tokens.remove(&token);
-        }
-    }
-    Json(serde_json::json!({
-        "schema": "coronatio.homeserver.auth.logout.v1",
-        "success": true,
-        "ok": true,
-        "message": "session cleared by server"
-    }))
-}
-
-
-async fn homeserver_admin_ping_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    let authenticated = session_from_headers(&headers) == Session::Admin;
-    Json(serde_json::json!({
-        "schema": "coronatio.homeserver.admin.ping.v1",
-        "success": true,
-        "ok": true,
-        "authenticated": authenticated
-    }))
-}
-
-
-
-fn homeserver_pin_config_candidates() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    if let Ok(path) = env::var("CORONATIO_HOMESERVER_JSON") {
-        paths.push(PathBuf::from(path));
-    }
-    paths.push(PathBuf::from("/etc/homeserver/config.json"));
-    paths.push(PathBuf::from("/etc/homeserver.json"));
-    paths.push(PathBuf::from("/var/www/homeserver/src/config/homeserver.json"));
-    paths.push(PathBuf::from("/etc/homeserver.factory"));
-    paths
-}
-
-fn configured_admin_pin() -> Option<(PathBuf, String)> {
-    for path in homeserver_pin_config_candidates() {
-        let text = match std::fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(_) => continue,
-        };
-        let value: serde_json::Value = match serde_json::from_str(&text) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        if let Some(pin_value) = value
-            .get("global")
-            .and_then(|global| global.get("admin"))
-            .and_then(|admin| admin.get("pin"))
-        {
-            let pin = pin_value
-                .as_str()
-                .map(str::to_string)
-                .unwrap_or_else(|| pin_value.to_string().trim_matches('"').to_string());
-            return Some((path, pin));
-        }
-    }
-    None
 }
 

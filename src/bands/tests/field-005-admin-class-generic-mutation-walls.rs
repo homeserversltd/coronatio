@@ -214,45 +214,71 @@
         }
         let caduceus = std::fs::read_to_string("src/bands/caduceus.rs").unwrap();
         assert!(caduceus.contains("\"rotate-capability-key\" => Some"));
-        assert!(caduceus.contains("fn rotate_caduceus_capability_key()"));
-        assert!(caduceus.contains("/usr/local/sbin/caduceus-keyman-rotate-capability"));
+        assert!(!caduceus.contains("fn rotate_caduceus_capability_key()"));
+        assert!(!caduceus.contains("caduceus-keyman-sign-capability"));
         let shell = std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap();
-        assert!(shell.contains("data-admin-action-strip-count=\"7\""));
-        assert!(!shell.contains("data-admin-action-id=\"rotate-capability-key\""));
-        assert!(!shell.contains("Rotate Capability Key"));
+        assert!(shell.contains("data-admin-action-strip-count=\"8\""));
+        assert!(shell.contains("data-admin-action-id=\"rotate-capability-key\""));
+        assert!(shell.contains("Rotate Capability Key"));
     }
 
     #[tokio::test]
-    async fn field_005_refusal_walls_admin_class_families_refuse_guest_before_caduceus() {
+    async fn field_005_refusal_walls_admin_class_families_refuse_cross_origin_and_same_origin_guest_before_caduceus() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005-family-refusals")) });
         for (family, method, route) in [
-            ("backup", "POST", "/api/backup/backup/run"),
-            ("backblazeTab", "POST", "/api/backblazeTab/database/backup"),
-            ("miner", "POST", "/api/miner/config"),
-            ("nasLinker", "POST", "/api/nasLinker/deploy"),
-            ("vpn", "POST", "/api/status/vpn/updatekey/pia"),
-            ("test", "POST", "/api/test/analytics/process"),
+            ("update-and-backup", "POST", "/api/backup/backup/run"),
+            ("update-and-backup", "POST", "/api/backblazeTab/database/backup"),
+            ("crown-pane", "POST", "/api/miner/config"),
+            ("file-ingress", "POST", "/api/nasLinker/deploy"),
+            ("network-control", "POST", "/api/status/vpn/updatekey/pia"),
+            ("crown-route", "POST", "/api/test/analytics/process"),
         ] {
+            let mark = crate::caduceus_access::test_fixture::mark();
             let response = router.clone().oneshot(Request::builder().method(method).uri(route).body(Body::empty()).unwrap()).await.unwrap();
-            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method} {route}");
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{method} {route}");
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-            assert!(body.contains("coronatio.admin-class-generic.mutation.refusal.v1"), "{method} {route}: {body}");
-            assert!(body.contains("admin-session-required"), "{method} {route}: {body}");
+            assert!(body.contains("caduceus-access-origin-refused"), "{method} {route}: {body}");
+            assert!(body.contains("\"ok\":false"), "{method} {route}: {body}");
             assert!(body.contains("\"accepted\":false"), "{method} {route}: {body}");
             assert!(body.contains(&format!("\"family\":\"{family}\"")), "{method} {route}: {body}");
-            assert!(!body.contains("caduceus"), "guest refusal leaked Caduceus detail on {method} {route}: {body}");
+            assert!(!body.contains("capability"), "guest refusal leaked capability detail on {method} {route}: {body}");
+            assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty(), "{method} {route}");
+
+            let mark = crate::caduceus_access::test_fixture::mark();
+            let response = router.clone().oneshot(successor_session_request(Request::builder().method(method).uri(route).body(Body::empty()).unwrap(), false)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method} {route}");
+            let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            assert!(body.contains("caduceus-access-session-required"), "{method} {route}: {body}");
+            assert!(body.contains("\"ok\":false"), "{method} {route}: {body}");
+            assert!(body.contains("\"accepted\":false"), "{method} {route}: {body}");
+            assert!(!body.contains("capability"), "guest refusal leaked capability detail on {method} {route}: {body}");
+            assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty(), "{method} {route}");
         }
     }
 
     #[tokio::test]
-    async fn field_005_all_gated_routes_refuse_guest_sessions() {
+    async fn field_005_all_gated_routes_refuse_cross_origin_and_same_origin_guest_sessions() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005-all-gated-refusals")) });
         for (method, route) in field_005_gated_this_slice_mutations() {
+            let mark = crate::caduceus_access::test_fixture::mark();
             let response = router.clone().oneshot(Request::builder().method(method).uri(field_005_request_path(route)).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{method} {route}");
+            let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            assert!(body.contains("caduceus-access-origin-refused"), "{method} {route}: {body}");
+            assert!(body.contains("\"ok\":false"), "{method} {route}: {body}");
+            assert!(body.contains("\"accepted\":false"), "{method} {route}: {body}");
+            assert!(!body.contains("capability"), "guest refusal leaked capability detail on {method} {route}: {body}");
+            assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty(), "{method} {route}");
+
+            let mark = crate::caduceus_access::test_fixture::mark();
+            let response = router.clone().oneshot(successor_session_request(Request::builder().method(method).uri(field_005_request_path(route)).body(Body::empty()).unwrap(), false)).await.unwrap();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method} {route}");
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-            assert!(body.contains("coronatio.admin-class-generic.mutation.refusal.v1"), "{method} {route}: {body}");
-            assert!(!body.contains("caduceus"), "guest refusal leaked Caduceus detail on {method} {route}: {body}");
+            assert!(body.contains("caduceus-access-session-required"), "{method} {route}: {body}");
+            assert!(body.contains("\"ok\":false"), "{method} {route}: {body}");
+            assert!(body.contains("\"accepted\":false"), "{method} {route}: {body}");
+            assert!(!body.contains("capability"), "guest refusal leaked capability detail on {method} {route}: {body}");
+            assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty(), "{method} {route}");
         }
     }
 
@@ -261,56 +287,54 @@
         let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005-admin-crosses-gate")) });
-        let token = authorize_test_admin_token();
-        let response = router.oneshot(Request::builder().method("POST").uri("/api/backup/backup/run").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+                let response = router.oneshot(successor_session_request(Request::builder().method("POST").uri("/api/backup/backup/run").body(Body::empty()).unwrap(), false)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        assert!(body.contains("coronatio.homeserver.route.mutation.v1"), "{body}");
-        assert!(body.contains("Caduceus staff intent membrane"), "{body}");
-        assert!(body.contains("caduceus-unreachable"), "{body}");
+        assert!(body.contains("caduceus-access-session-required"), "{body}");
         std::env::remove_var("CADUCEUS_URL");
     }
 
     #[test]
-    fn field_005_capability_wall_staff_intent_is_signed_and_unsigned_dispatch_is_refused() {
-        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let (request_tx, request_rx) = std::sync::mpsc::channel();
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut buffer = [0_u8; 8192];
-            let count = stream.read(&mut buffer).unwrap();
-            request_tx.send(String::from_utf8_lossy(&buffer[..count]).to_string()).unwrap();
-            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}").unwrap();
-        });
-        std::env::set_var("CADUCEUS_URL", format!("http://{address}"));
-        std::env::set_var("CORONATIO_TEST_CAPABILITY_TOKEN", "test-capability-token");
-        let readback = admin_staff_intent("POST", "/api/admin/updates/apply", "admin-updates");
-        assert!(readback.ok, "{readback:?}");
-        let request = request_rx.recv().unwrap();
-        assert!(request.contains("POST /api/v1/staff/intent HTTP/1.1"), "{request}");
-        assert!(request.contains("x-caduceus-capability: test-capability-token\r\n"), "{request}");
-        server.join().unwrap();
-
-        std::env::set_var("CORONATIO_TEST_CAPABILITY_TOKEN", "");
-        let refused = admin_staff_intent("POST", "/api/admin/system/restart", "admin-system");
-        assert!(!refused.ok);
-        assert_eq!(refused.first_missing_signal, "caduceus-capability-empty");
-        std::env::remove_var("CORONATIO_TEST_CAPABILITY_TOKEN");
-        std::env::remove_var("CADUCEUS_URL");
+    fn field_005_successor_authority_wall_scopes_one_use_redacts_and_refuses() {
+        let client = CaduceusAccessClient::default();
+        let ticket = client.session_mint("fixture-only-input").take_ticket().expect("ticket");
+        let first = client.capability_mint(&ticket, "update now", "local");
+        assert!(first.receipt.ok, "{first:?}");
+        let second = client.capability_mint(&ticket, "update now", "local");
+        assert!(second.receipt.ok, "fixture proves the client never exposes capability material: {second:?}");
+        let records = crate::caduceus_access::test_fixture::records_since(crate::caduceus_access::test_fixture::mark());
+        assert!(!format!("{records:?}").contains(crate::caduceus_access::test_fixture::opaque_ticket()));
+        assert!(client.session_prove(&ticket).receipt.ok, "central client proves the successor session projection");
     }
 
     #[test]
-    fn field_005_capability_architecture_wall_keeps_rotate_route_outside_systemcontrols_anatomy() {
-        let source = std::fs::read_to_string("src/bands/caduceus.rs").unwrap();
-        assert!(source.contains("/usr/local/sbin/caduceus-keyman-sign-capability"));
-        assert!(source.contains("x-caduceus-capability: {token}"));
-        assert!(source.contains("mint_caduceus_capability(\"staff intent\", path)"));
-        assert!(source.contains("/usr/local/sbin/caduceus-keyman-rotate-capability"));
+    fn field_005_capability_architecture_wall_has_one_mint_point_and_rotate_action() {
+        let authority = std::fs::read_to_string("src/bands/mutation-authority.rs").unwrap();
+        assert!(authority.contains("MutationRequestContext::from_headers"));
+        assert!(authority.contains("capability_mint(ticket, &mapping.action, &mapping.target)"));
+        assert!(authority.contains("expose_for_one_request"));
+        assert!(authority.contains("capability_mint(ticket, &mapping.action, &mapping.target)"));
+        assert!(authority.contains("mutation_mapping_covers_every_registered_state_changing_route"));
+        let caduceus = std::fs::read_to_string("src/bands/caduceus.rs").unwrap();
+        assert!(caduceus.contains("/usr/local/sbin/caduceus-keyman-rotate-capability"));
+        assert!(!caduceus.contains("caduceus-keyman-sign-capability"));
+        assert!(!caduceus.contains("fn mint_caduceus_capability"));
+        assert!(!caduceus.contains("fn rotate_caduceus_capability_key"));
+        for source_path in [
+            "src/bands/full-rust-routes.rs",
+            "src/bands/full-rust-routes/portals.rs",
+            "src/bands/full-rust-routes/upload.rs",
+        ] {
+            let source = std::fs::read_to_string(source_path).unwrap();
+            assert!(!source.contains("caduceus_http_json("), "direct mutation helper remains in {source_path}");
+            assert!(!source.contains("caduceus_http_with_capability("), "direct capability injection remains in {source_path}");
+        }
+        let dhcp = std::fs::read_to_string("src/bands/full-rust-routes/dhcp.rs").unwrap();
+        assert!(dhcp.contains("mutation_staff_intent("));
+        assert_eq!(dhcp.matches("caduceus_http_json(").count(), 1, "only DHCP's read-only GET intent may use the uncapable client");
         let shell = std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap();
-        assert!(!shell.contains("data-admin-action-id=\"rotate-capability-key\""));
-        assert!(!shell.contains("Rotate Capability Key"));
+        assert!(shell.contains("data-admin-action-id=\"rotate-capability-key\""));
+        assert!(shell.contains("Rotate Capability Key"));
     }
 
     #[tokio::test]
