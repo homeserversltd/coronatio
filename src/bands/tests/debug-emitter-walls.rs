@@ -87,6 +87,9 @@ async fn debug_emit_route_forwards_unsigned_hyalos_reflect_with_trimmed_payload(
                         "adminToken": "do-not-forward",
                         "pin": "1234",
                         "headers": {"x-caduceus-capability": "nope"},
+                        "payload": {"secret": "do-not-forward"},
+                        "nested": {"body": "do-not-forward", "requestBody": "do-not-forward", "connectionString": "do-not-forward", "snapshot": "do-not-forward"},
+                        "array": [{"localStorage": "do-not-forward"}, {"safeNested": "survives"}],
                         "marks": [{"mark": "admission-trigger"}]
                     }
                 }).to_string()))
@@ -98,8 +101,8 @@ async fn debug_emit_route_forwards_unsigned_hyalos_reflect_with_trimmed_payload(
     handle.join().unwrap();
     std::env::remove_var("CADUCEUS_BASE_URL");
     let request = captured.lock().unwrap().clone();
-    assert!(request.starts_with("POST /api/v1/hyalos/reflect HTTP/1.1"), "{request}");
-    assert!(!request.to_ascii_lowercase().contains("x-caduceus-capability:"), "debug reflect must be unsigned: {request}");
+    assert!(request.starts_with("POST /api/v1/hyalos/reflect HTTP/1.1"), "debug reflect must use the Hyalos route");
+    assert!(!request.to_ascii_lowercase().contains("x-caduceus-capability:"), "debug reflect must be unsigned");
     let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
     let body: serde_json::Value = serde_json::from_str(body).expect("forwarded json body");
     assert_eq!(body["organ"], "coronatio");
@@ -109,9 +112,17 @@ async fn debug_emit_route_forwards_unsigned_hyalos_reflect_with_trimmed_payload(
     assert_eq!(body["correlation_id"], "boot-123");
     assert_eq!(body["attributes_redacted"]["phase"], "seated");
     assert_eq!(body["attributes_redacted"]["marks"][0]["mark"], "admission-trigger");
+    assert_eq!(body["attributes_redacted"]["array"][1]["safeNested"], "survives");
     assert!(body["attributes_redacted"].get("adminToken").is_none());
     assert!(body["attributes_redacted"].get("pin").is_none());
     assert!(body["attributes_redacted"].get("headers").is_none());
+    assert!(body["attributes_redacted"].get("payload").is_none());
+    assert!(body["attributes_redacted"]["nested"].get("body").is_none());
+    assert!(body["attributes_redacted"]["nested"].get("requestBody").is_none());
+    assert!(body["attributes_redacted"]["nested"].get("connectionString").is_none());
+    assert!(body["attributes_redacted"]["nested"].get("snapshot").is_none());
+    assert!(body["attributes_redacted"]["array"][0].get("localStorage").is_none());
+    assert!(!body.to_string().contains("do-not-forward"), "forwarded payload must not retain sentinel values");
 }
 
 #[tokio::test]
