@@ -16,6 +16,25 @@ fn crown_debug_emitter_is_runtime_gated_and_inert_when_disabled() {
 }
 
 #[test]
+fn crown_diagnostics_request_and_layout_producers_are_bounded_and_non_recursive() {
+    let chrome = crown_chrome_js();
+    assert!(chrome.contains("installCrownRequestDiagnostics(crownDebug)"));
+    assert!(chrome.contains("installCrownLayoutDiagnostics(crownDebug)"));
+    for phase in ["htmx:beforeRequest", "htmx:afterRequest", "htmx:responseError", "htmx:sendError", "htmx:beforeSwap", "htmx:afterSwap"] {
+        assert!(chrome.contains(phase), "missing HTMX diagnostics phase {phase}");
+    }
+    assert!(chrome.contains("crownDebug.enabled('crown-requests')"));
+    assert!(chrome.contains("crownDebug.enabled('crown-layout')"));
+    assert!(chrome.contains("url.origin === window.location.origin && url.pathname !== '/api/debug/emit'"));
+    assert!(chrome.contains("['paint', 'layout-shift', 'longtask'].forEach(observe)"));
+    assert!(chrome.contains("entryType: type"));
+    assert!(chrome.contains("hadRecentInput = Boolean(entry.hadRecentInput)"));
+    assert!(chrome.contains("attrs.value = Math.max(0, Number(entry.value || 0))"));
+    assert!(!chrome.contains("entry.sources"), "layout diagnostics must not emit DOM attribution");
+    assert!(chrome.contains("const attrs = { phase, pathname: path };"));
+}
+
+#[test]
 fn immortal_floor_uses_crown_debug_as_first_consumer_without_new_machine_state() {
     let chrome = crown_chrome_js();
     assert_eq!(chrome.matches("const immortalFloorStates = Object.freeze(['BootFloor', 'Seated', 'GuestRevolution', 'BareFloor']);").count(), 1);

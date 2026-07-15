@@ -389,12 +389,48 @@ fn shell_document_2() -> &'static str {
       function clean(value, depth = 0) { if (value === null || value === undefined) return value; if (depth > 4) return '[trimmed]'; if (typeof value === 'string') return value.length > 512 ? value.slice(0, 512) + '…' : value; if (typeof value === 'number' || typeof value === 'boolean') return value; if (Array.isArray(value)) return value.slice(0, 32).map(item => clean(item, depth + 1)); if (typeof value === 'object') { const out = {}; Object.keys(value).slice(0, 48).forEach(key => { const lower = key.toLowerCase(); if (/(token|pin|password|secret|capability|connection|string)/.test(lower) || lower === 'headers' || lower.includes('localstorage') || lower.includes('dom') || lower.includes('payload')) return; out[key] = clean(value[key], depth + 1); }); return out; } return String(value); }
       function debugId() { return window.crypto?.randomUUID ? window.crypto.randomUUID() : 'dbg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
       function now() { return Math.round(performance.now()); }
-      function emit(kind, event, attrs = {}) { if (!enabled(kind)) return false; try { fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, event, correlationId: attrs?.correlationId || attrs?.bootId || attrs?.runId, attributes: clean(attrs) }), keepalive: true }).catch(() => {}); return true; } catch (_) { return false; } }
+      function emit(kind, event, attrs = {}) { if (!enabled(kind)) return false; try { window.fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, event, correlationId: attrs?.correlationId || attrs?.bootId || attrs?.runId, attributes: clean(attrs) }), keepalive: true }).catch(() => {}); return true; } catch (_) { return false; } }
       function begin(kind, attrs = {}) { if (!enabled(kind)) return null; return { kind, correlationId: attrs.correlationId || attrs.bootId || attrs.runId || debugId(), startedAt: now(), attrs: clean(attrs), marks: [], settled: false }; }
       function mark(handleOrKind, markName, attrs = {}) { if (!handleOrKind) return false; if (typeof handleOrKind === 'string') return emit(handleOrKind, 'mark', Object.assign({ mark: markName, phase: markName }, attrs)); if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false; handleOrKind.marks.push({ mark: markName, phase: attrs.phase || markName, t: now() - handleOrKind.startedAt, attributes: clean(attrs) }); return true; }
       function settle(handleOrKind, ok, attrs = {}) { if (!handleOrKind) return false; if (typeof handleOrKind === 'string') return emit(handleOrKind, ok ? 'settle-ok' : 'settle-fault', Object.assign({ ok }, attrs)); if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false; handleOrKind.settled = true; return emit(handleOrKind.kind, attrs.event || 'settle', Object.assign({}, handleOrKind.attrs, attrs, { ok: Boolean(ok), correlationId: handleOrKind.correlationId, durationMs: now() - handleOrKind.startedAt, marks: handleOrKind.marks })); }
       window.setInterval(refreshControl, 1000); window.addEventListener('DOMContentLoaded', () => { document.querySelectorAll('[data-crown-diagnostic-toggle]').forEach(button => button.addEventListener('click', () => toggle(button.dataset.crownDiagnosticToggle))); refreshControl(); });
       return Object.freeze({ enabled, emit, begin, mark, settle, toggle, families });
+    }
+    function installCrownRequestDiagnostics(crownDebug) {
+      const safePane = value => /^[a-z0-9-]+$/.test(String(value || '')) ? String(value) : undefined;
+      const safePath = value => { try { const url = new URL(String(value || ''), window.location.origin); return url.origin === window.location.origin && url.pathname !== '/api/debug/emit' ? url.pathname : null; } catch (_) { return null; } };
+      const started = new WeakMap();
+      const metadata = (event, phase) => {
+        const detail = event.detail || {}, xhr = detail.xhr, config = detail.requestConfig || {}, path = safePath(config.path || detail.pathInfo?.requestPath || xhr?.responseURL);
+        if (!path) return null;
+        const began = xhr && started.get(xhr), pane = safePane((detail.elt || detail.target || event.target)?.closest?.('[data-view-panel]')?.dataset?.viewPanel);
+        const attrs = { phase, pathname: path };
+        const method = String(config.verb || config.method || '').toUpperCase(); if (/^(GET|POST|PUT|PATCH|DELETE)$/.test(method)) attrs.method = method;
+        if (Number.isInteger(xhr?.status) && xhr.status >= 0) attrs.status = xhr.status;
+        if (began !== undefined) attrs.durationMs = Math.max(0, Math.round(performance.now() - began));
+        if (pane) attrs.pane = pane;
+        return attrs;
+      };
+      const observe = (name, phase) => document.body.addEventListener(name, event => {
+        if (!crownDebug.enabled('crown-requests')) return;
+        const xhr = event.detail?.xhr;
+        if (name === 'htmx:beforeRequest' && xhr) started.set(xhr, performance.now());
+        const attrs = metadata(event, phase); if (attrs) crownDebug.emit('crown-requests', 'htmx', attrs);
+        if ((name === 'htmx:afterRequest' || name === 'htmx:responseError' || name === 'htmx:sendError') && xhr) started.delete(xhr);
+      });
+      observe('htmx:beforeRequest', 'before-request'); observe('htmx:afterRequest', 'after-request'); observe('htmx:responseError', 'response-error'); observe('htmx:sendError', 'send-error'); observe('htmx:beforeSwap', 'before-swap'); observe('htmx:afterSwap', 'after-swap');
+    }
+    function installCrownLayoutDiagnostics(crownDebug) {
+      if (!window.PerformanceObserver) return;
+      const observe = type => { try { new PerformanceObserver(list => {
+        if (!crownDebug.enabled('crown-layout')) return;
+        list.getEntries().forEach(entry => {
+          const attrs = { entryType: type, name: String(entry.name || type).slice(0, 96), duration: Math.max(0, Number(entry.duration || 0)), phase: type };
+          if (type === 'layout-shift') { attrs.value = Math.max(0, Number(entry.value || 0)); attrs.hadRecentInput = Boolean(entry.hadRecentInput); }
+          crownDebug.emit('crown-layout', 'performance-entry', attrs);
+        });
+      }).observe({ type, buffered: true }); } catch (_) {} };
+      ['paint', 'layout-shift', 'longtask'].forEach(observe);
     }
     function renderThemeChoices() {
       if (!themeChoiceRow) return;

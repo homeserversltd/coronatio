@@ -62,10 +62,10 @@ async function main() {
   const version = await eventually('chromium CDP', async () => { const r = await fetch(`http://127.0.0.1:${debugPort}/json/version`); return r.ok ? r.json() : false; });
   const target = await fetch(`http://127.0.0.1:${debugPort}/json/new?about:blank`, { method: 'PUT' }).then(r => r.json());
   const cdp = new Cdp(target.webSocketDebuggerUrl); await cdp.open();
-  const routes = []; cdp.on('Network.requestWillBeSent', event => routes.push(new URL(event.request.url).pathname));
+  const routes = [], debugEmits = []; cdp.on('Network.requestWillBeSent', event => { const pathname = new URL(event.request.url).pathname; routes.push(pathname); if (pathname === '/api/debug/emit') debugEmits.push(event.request.postData || ''); });
   await Promise.all(['Page.enable', 'Runtime.enable', 'Network.enable', 'Performance.enable'].map(method => cdp.send(method)));
   try { await cdp.send('PerformanceTimeline.enable', { eventTypes: ['layout-shift', 'longtask'] }); } catch (_) {}
-  await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { window.__butteryMetrics = { longtasks: 0, layoutShifts: 0, shiftValue: 0 }; try { new PerformanceObserver(list => { for (const e of list.getEntries()) window.__butteryMetrics.longtasks++; }).observe({ type: 'longtask', buffered: true }); new PerformanceObserver(list => { for (const e of list.getEntries()) if (!e.hadRecentInput) { window.__butteryMetrics.layoutShifts++; window.__butteryMetrics.shiftValue += e.value || 0; } }).observe({ type: 'layout-shift', buffered: true }); } catch (_) {} })();` });
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { window.__butteryMetrics = { longtasks: 0, layoutShifts: 0, shiftValue: 0 }; window.__butteryObserverCallbacks = []; const NativePerformanceObserver = window.PerformanceObserver; if (NativePerformanceObserver) window.PerformanceObserver = class { constructor(callback) { this.callback = callback; this.native = new NativePerformanceObserver(callback); } observe(options) { window.__butteryObserverCallbacks.push({ type: options.type, callback: this.callback }); return this.native.observe(options); } disconnect() { return this.native.disconnect(); } takeRecords() { return this.native.takeRecords(); } }; try { new PerformanceObserver(list => { for (const e of list.getEntries()) window.__butteryMetrics.longtasks++; }).observe({ type: 'longtask', buffered: true }); new PerformanceObserver(list => { for (const e of list.getEntries()) if (!e.hadRecentInput) { window.__butteryMetrics.layoutShifts++; window.__butteryMetrics.shiftValue += e.value || 0; } }).observe({ type: 'layout-shift', buffered: true }); } catch (_) {} })();` });
   routes.length = 0;
   await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/` });
   await eventually('initial portals seated', () => cdp.eval(`document.documentElement.dataset.immortalFloorState === 'Seated' && window.getImmortalFloorState?.() === 'Seated' && document.querySelectorAll('[data-portals-grid] [data-portal-card]').length === 4`));
@@ -74,11 +74,18 @@ async function main() {
   summary.counts.initialPortalsCurrentness = initial.filter(p => p === '/api/portals/currentness').length;
   assert('initial_portals_one_owner', summary.counts.initialPortalsElements === 1, JSON.stringify(initial));
   assert('initial_portals_currentness_cadence_lawful', summary.counts.initialPortalsCurrentness === 1, JSON.stringify(initial));
-  const diagnostics = await cdp.eval(`(() => { const controls = [...document.querySelectorAll('[data-crown-diagnostic-toggle]')]; controls.find(x => x.dataset.crownDiagnosticToggle === 'layout')?.click(); const enabled = JSON.parse(localStorage.getItem('coronatioDiagnostics')).enabled.includes('layout'); localStorage.setItem('coronatioDiagnostics', JSON.stringify({ enabled:['layout'], expiresAt: Date.now() - 1 })); return { sections: controls.map(x => x.dataset.crownDiagnosticToggle), enabled, expired: !window.crownDebug.enabled('crown-layout') }; })()`);
-  assert('diagnostics_sections', diagnostics.sections.length === 6 && diagnostics.sections.includes('layout'), JSON.stringify(diagnostics));
-  assert('diagnostics_ttl_expiry', diagnostics.enabled && diagnostics.expired, JSON.stringify(diagnostics));
+  const diagnostics = await cdp.eval(`(() => { const controls = [...document.querySelectorAll('[data-crown-diagnostic-toggle]')]; controls.find(x => x.dataset.crownDiagnosticToggle === 'requests')?.click(); controls.find(x => x.dataset.crownDiagnosticToggle === 'layout')?.click(); const enabled = JSON.parse(localStorage.getItem('coronatioDiagnostics')).enabled; return { sections: controls.map(x => x.dataset.crownDiagnosticToggle), requests: enabled.includes('requests'), layout: enabled.includes('layout') }; })()`);
+  assert('diagnostics_sections', diagnostics.sections.length === 6 && diagnostics.sections.includes('layout') && diagnostics.sections.includes('requests'), JSON.stringify(diagnostics));
+  assert('diagnostics_sections_enabled', diagnostics.requests && diagnostics.layout, JSON.stringify(diagnostics));
+  await sleep(120); debugEmits.length = 0;
+  const syntheticLayout = await cdp.eval(`(() => { const nativeFetch = window.fetch.bind(window); const emits = []; window.fetch = (input, init = {}) => { if (String(input).includes('/api/debug/emit')) emits.push(init.body || ''); return nativeFetch(input, init); }; for (const observer of window.__butteryObserverCallbacks.filter(observer => ['paint', 'layout-shift', 'longtask'].includes(observer.type))) { const entry = observer.type === 'layout-shift' ? { name: 'layout-shift', duration: 0, value: 0.02, hadRecentInput: false } : { name: observer.type === 'paint' ? 'first-contentful-paint' : 'self', duration: 12.5 }; observer.callback({ getEntries: () => [entry] }); } return { observers: window.__butteryObserverCallbacks.map(observer => observer.type), enabled: window.crownDebug.enabled('crown-layout'), emits }; })()`);
+  summary.metrics.syntheticLayout = { observers: syntheticLayout.observers, emitCount: syntheticLayout.emits.length, enabled: syntheticLayout.enabled };
+  const layoutEvents = syntheticLayout.emits.map(raw => { try { return JSON.parse(raw); } catch (_) { return null; } }).filter(event => event?.kind === 'crown-layout');
+  assert('layout_observer_installation', ['layout-shift', 'longtask'].every(type => syntheticLayout.observers.includes(type)), JSON.stringify(syntheticLayout.observers));
+  assert('layout_bounded_schema', layoutEvents.every(event => event.event === 'performance-entry' && event.attributes && !('sources' in event.attributes) && !('attribution' in event.attributes)) && layoutEvents.some(event => event.attributes.entryType === 'layout-shift' && event.attributes.hadRecentInput === false && Number(event.attributes.value) === 0.02) && layoutEvents.some(event => event.attributes.entryType === 'longtask' && Number(event.attributes.duration) === 12.5), JSON.stringify(layoutEvents));
   const redaction = await cdp.eval(`fetch('/api/debug/emit', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({kind:'crown-layout', event:'browser-proof', attributes:{pin:'1234', adminToken:'do-not-leak', headers:'redact', phase:'seated'}}) }).then(async r => ({ status:r.status, body:await r.text() }))`);
   assert('diagnostics_redaction', !redaction.body.includes('do-not-leak') && !redaction.body.includes('"pin":"1234"'), JSON.stringify(redaction));
+  debugEmits.length = 0;
   routes.length = 0;
   await sleep(3_100);
   const idle = routes.filter(p => p === '/api/portals/elements' || p === '/api/portals/currentness');
@@ -100,6 +107,11 @@ async function main() {
     assert(`cross_${from}_to_${to}_source_matches`, result.before.guest[0] === from && result.after.guest[0] === to, JSON.stringify(result));
     assert(`cross_${from}_to_${to}_elements_lawful`, counts.elements === (to === 'portals' ? 1 : 0), JSON.stringify(counts));
     assert(`cross_${from}_to_${to}_currentness_lawful`, counts.currentness === (to === 'portals' ? 1 : 0), JSON.stringify(counts));
+    if (from === 'portals' && to === 'test') {
+      await eventually('production request diagnostics', () => debugEmits.some(raw => { try { const event = JSON.parse(raw); return event.kind === 'crown-requests' && event.attributes?.phase === 'before-request' && event.attributes?.pathname === '/admit/test'; } catch (_) { return false; } }));
+      const requestEvents = debugEmits.map(raw => { try { return JSON.parse(raw); } catch (_) { return null; } }).filter(event => event?.kind === 'crown-requests');
+      assert('request_phase_reaches_debug_emit_without_recursion', requestEvents.some(event => event.attributes?.phase === 'before-request' && event.attributes?.pathname === '/admit/test' && event.attributes?.method === 'GET') && requestEvents.every(event => event.attributes?.pathname !== '/api/debug/emit'), JSON.stringify(requestEvents));
+    }
     return result;
   };
   const first = await cross('portals', 'test');
@@ -108,6 +120,11 @@ async function main() {
   await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   await cross('portals', 'test'); await cross('test', 'portals');
   assert('reduced_motion_settles', await cdp.eval(`matchMedia('(prefers-reduced-motion: reduce)').matches && window.getImmortalFloorState() === 'Seated'`));
+  await sleep(120);
+  debugEmits.length = 0;
+  const ttlExpired = await cdp.eval(`(() => { localStorage.setItem('coronatioDiagnostics', JSON.stringify({ enabled: ['requests', 'layout'], expiresAt: Date.now() - 1 })); const observer = window.__butteryObserverCallbacks.find(observer => observer.type === 'paint'); observer?.callback({ getEntries: () => [{ name: 'first-paint', duration: 1 }] }); return !window.crownDebug.enabled('crown-layout') && !window.crownDebug.enabled('crown-requests'); })()`);
+  await sleep(120);
+  assert('diagnostics_ttl_expiry_stops_emissions', ttlExpired && debugEmits.length === 0, JSON.stringify(debugEmits));
   summary.counts.crossings = crossings;
   summary.metrics = await cdp.eval(`window.__butteryMetrics`);
   assert('longtask_telemetry_honest', Number.isInteger(Number(summary.metrics.longtasks)) && Number(summary.metrics.longtasks) >= 0, JSON.stringify(summary.metrics));

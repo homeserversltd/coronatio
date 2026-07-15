@@ -628,7 +628,7 @@ fn shell_document_3() -> &'static str {
         if (pulseStream && pulseStream.readyState === EventSource.CLOSED) reconnectPulseStream();
       });
     }
-    const crownDebug = installCrownDebugEmitter(); window.crownDebug = crownDebug; const immortalFloorStates = Object.freeze(['BootFloor', 'Seated', 'GuestRevolution', 'BareFloor']);
+    const crownDebug = installCrownDebugEmitter(); window.crownDebug = crownDebug; installCrownRequestDiagnostics(crownDebug); installCrownLayoutDiagnostics(crownDebug); const immortalFloorStates = Object.freeze(['BootFloor', 'Seated', 'GuestRevolution', 'BareFloor']);
     const immortalFloor = (() => {
       let state = 'BootFloor'; let generation = 0; let activeGuest = null;
       let crossingGuest = null;
