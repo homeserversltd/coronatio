@@ -58,7 +58,8 @@
         assert!(document.contains("const statuses = ['up', 'down', 'partial', 'unknown']"));
         assert!(document.contains("if (current !== next)"));
         assert!(document.contains("card.classList.remove(...statuses)"));
-        assert!(document.contains("if (active === 'portals') { hydratePortals(); refreshPortalCurrentness(); }"));
-        assert!(document.contains("document.visibilityState !== 'visible'"));
-        assert!(!document.contains("setInterval(refreshPortalCurrentness"));
+        assert!(document.contains("function startPortalCurrentnessCadence()"));
+        assert!(document.contains("window.setInterval(() => { if (viewportFamilyAdmitted('portals')) refreshPortalCurrentness(); else stopPortalCurrentnessCadence(); }, 5000)"));
+        assert!(document.contains("if (active === 'portals') startPortalCurrentnessCadence();"));
+        assert!(!document.contains("portals-refresh'))"));
     }

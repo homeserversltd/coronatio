@@ -48,7 +48,7 @@ pub(crate) fn subscribe_core_stream(session: Session, lease: Duration) -> (Strin
         }
         if state.index >= catalog().len() { tokio::time::sleep(Duration::from_secs(1)).await; state.index = 0; }
         let entry = catalog()[state.index]; state.index += 1;
-        let payload = match entry.collector.and_then(|collector| Some(collector(state.session))) {
+        let payload = match entry.collector.map(|collector| collector(state.session)) {
             Some(Ok(value)) => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"snapshot","snapshot":value}),
             Some(Err(error)) => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":error}),
             None => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":"collector absent"}),

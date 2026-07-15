@@ -10,7 +10,7 @@ fn crown_debug_emitter_is_runtime_gated_and_inert_when_disabled() {
     assert!(chrome.contains("if (!enabled(kind)) return null;"), "begin must not allocate ids/rings while disabled");
     assert!(chrome.contains("if (!enabled(kind)) return false;"), "emit must not fetch while disabled");
     assert!(chrome.contains("fetch(endpoint"));
-    assert!(chrome.contains("const endpoint = '/api/debug/emit';"));
+    assert!(chrome.contains("const endpoint = '/api/debug/emit', ttlMs"));
     assert!(!chrome.contains("/api/v1/hyalos/"), "client shell must never call Hyalos directly");
     assert!(!chrome.contains("channel.jsonl"), "client shell must never write or name channel jsonl");
 }

@@ -56,6 +56,7 @@ fn monitor_topic_laws() -> Vec<MonitorTopicLaw> {
     ]
 }
 
+#[allow(clippy::too_many_arguments)]
 fn monitor_topic(
     topic: &str,
     source_monitor: &str,
@@ -317,14 +318,14 @@ fn stats_snapshot() -> StatsSnapshot {
 fn stats_resources() -> StatsResources {
     let load = std::fs::read_to_string("/proc/loadavg")
         .ok()
-        .and_then(|raw| {
+        .map(|raw| {
             let mut parts = raw.split_whitespace();
-            Some(StatsLoad {
+            StatsLoad {
                 one: parts.next().and_then(|value| value.parse().ok()),
                 five: parts.next().and_then(|value| value.parse().ok()),
                 fifteen: parts.next().and_then(|value| value.parse().ok()),
                 cpu_temperature_celsius: read_cpu_temperature_celsius(),
-            })
+            }
         })
         .unwrap_or(StatsLoad {
             one: None,

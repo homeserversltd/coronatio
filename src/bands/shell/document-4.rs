@@ -73,7 +73,7 @@ fn shell_document_4() -> &'static str {
       if (target instanceof Element && (target.matches('[data-upload-tree]') || target.closest('[data-upload-tree]'))) syncUploadTreeSelection();
       if (target instanceof Element && (target.matches('[data-portals-grid]') || target.closest('[data-portals-grid]'))) {
         const grid = target.matches('[data-portals-grid]') ? target : target.closest('[data-portals-grid]');
-        if (grid) { bindPortalFragmentControls(grid); refreshPortalCurrentness(); }
+        if (grid) bindPortalFragmentControls(grid);
       }
       applyAdminDomState();
     });
@@ -603,7 +603,7 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       const response = await fetch(route, { headers, cache: 'no-store' });
       if (!response.ok) return;
       target.innerHTML = await response.text();
-      if (tabId === 'portals') { bindPortalFragmentControls(target); refreshPortalCurrentness(); }
+      if (tabId === 'portals') bindPortalFragmentControls(target);
       if (tabId === 'stats') hydrateStats();
       applyAdminDomState();
     }
@@ -625,29 +625,27 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
         const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
         if (!target) return;
         target.innerHTML = html;
-        if (tabId === 'portals') { bindPortalFragmentControls(target); refreshPortalCurrentness(); }
+        if (tabId === 'portals') bindPortalFragmentControls(target);
         if (tabId === 'stats') hydrateStats();
         applyAdminDomState();
       } catch (_) {
         showCoronatioToast(`Failed to toggle visibility for ${elementId}`, 'error');
       }
     }
+    let portalHydrationInFlight = null;
     async function hydratePortals() {
-      const grid = document.querySelector('[data-portals-grid]');
-      if (!grid) return;
-      try {
-        // HTMX is the lawful layer-1 pull of the homeserver.json portal mirror.
-        if (window.htmx && grid.getAttribute('hx-get')) {
-          const token = localStorage.getItem('coronatioAdminToken');
-          if (token) grid.setAttribute('hx-headers', JSON.stringify({ 'X-Admin-Token': token }));
-          window.htmx.trigger(grid, 'portals-refresh');
-          if (!grid.querySelector('[data-portal-card], [data-portal-element]')) await refreshElementFragment('portals');
-        } else {
+      if (portalHydrationInFlight) return portalHydrationInFlight;
+      portalHydrationInFlight = (async () => {
+        const grid = document.querySelector('[data-portals-grid]');
+        if (!grid) return;
+        try {
+          // One owner performs the fragment pull. HTMX afterSwap only binds controls.
           await refreshElementFragment('portals');
+        } catch (_) {
+          grid.innerHTML = '<article class="portal-card error portal-error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>' + renderAddPortalCard();
         }
-      } catch (error) {
-        grid.innerHTML = '<article class="portal-card error portal-error"><h2>Portals unavailable</h2><p>homeserver.json could not be read.</p></article>' + renderAddPortalCard();
-      }
+      })().finally(() => { portalHydrationInFlight = null; });
+      return portalHydrationInFlight;
     }
     async function hydrateFavoriteManifest() {
       try {

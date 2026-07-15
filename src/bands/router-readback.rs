@@ -135,7 +135,7 @@ async fn load_tab_manifests(tab_root: &PathBuf) -> Result<Vec<TabManifest>, std:
 }
 
 async fn load_tab_manifest(
-    tab_root: &PathBuf,
+    tab_root: &std::path::Path,
     tab_id: &str,
 ) -> Result<Option<TabManifest>, std::io::Error> {
     let manifest_path = tab_root.join(tab_id).join("tab.json");
@@ -326,7 +326,10 @@ fn mint_admin_token() -> String {
     if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
         let _ = file.read_exact(&mut random);
     }
-    let random_hex = random.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let random_hex = random.iter().fold(String::with_capacity(random.len() * 2), |mut out, byte| {
+        let _ = std::fmt::Write::write_fmt(&mut out, format_args!("{byte:02x}"));
+        out
+    });
     format!("coronatio-admin-session-{uuid}-{random_hex}")
 }
 
