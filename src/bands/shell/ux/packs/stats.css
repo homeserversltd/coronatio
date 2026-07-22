@@ -916,3 +916,14 @@
 .io-chart-legend, .custom-legend { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; color: var(--text); font-size: .85rem; padding: 8px; }
 .io-chart-legend span, .custom-legend span { color: var(--text); }
 
+/* UXPORT-008 chart grammar final fold: Chart.js is permitted substrate; OG marks are law. */
+.chart-container,
+.coronatio-chart-canvas { height: 200px !important; }
+.cpu-chart,
+.network-speed-chart,
+.disk-io-chart .chart-container { min-height: 200px; }
+@media (max-width: 480px) {
+  .disk-io-chart .chart-container,
+  .disk-io-chart .coronatio-chart-canvas { height: 250px !important; min-height: 250px; }
+}
+

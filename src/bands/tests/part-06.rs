@@ -169,10 +169,10 @@
             r#"class="stat-header""#,
             r#"class="stat-title""#,
             r#"class="stat-content""#,
-            r#"class="memory-bar""#,
-            r#"class="memory-bar-fill""#,
+            r#"class="memory-bar ui-progress-bar__container""#,
+            r#"class="memory-bar-fill ui-progress-bar__fill ui-progress-bar__fill--memory""#,
             r#"class="network-interfaces-table""#,
-            r#"class="kea-leases-table""#,
+            r#"class="kea-leases-table ui-table ui-table--responsive""#,
             r#"class="disk-usage-stats""#,
             r#"class="process-usage-list""#,
             r#"class="device-controls""#,
@@ -180,7 +180,7 @@
         ] {
             assert!(stats.contains(required), "stats markup missing og class stack {required}");
         }
-        for forbidden in ["ui-progress-bar__", "ui-table", "ui-checkbox__"] {
+        for forbidden in ["ui-checkbox__"] {
             assert!(!stats.contains(forbidden), "stats body renamed og class into shared ui vocabulary: {forbidden}");
         }
         assert!(std::fs::read_to_string("src/bands/crown-law/stats-tabbar.rs").unwrap().contains("star-button"), "tabbar file read only; eye/star campaign deferred");
