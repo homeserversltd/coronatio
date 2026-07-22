@@ -253,7 +253,7 @@ fn shell_document_2() -> &'static str {
       </div>
     </section>
   </main>
-  <div class="coronatio-toast-stack" data-coronatio-toast-stack aria-live="polite" aria-atomic="false"></div>
+  <div class="toast-container coronatio-toast-stack" data-coronatio-toast-stack aria-live="polite" aria-atomic="false"></div>
   <script>
     const appRoot = document.querySelector('[data-product="Coronatio"]');
     const tabBar = document.querySelector('[role="tablist"]');

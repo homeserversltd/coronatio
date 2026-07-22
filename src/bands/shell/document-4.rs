@@ -513,14 +513,6 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
     }
     function openPortalModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
     function closePortalModals() { document.querySelectorAll('[data-add-portal-modal], [data-service-status-modal]').forEach(modal => { modal.hidden = true; }); }
-    function showCoronatioToast(message, variant = 'info') {
-      const stack = document.querySelector('[data-coronatio-toast-stack]');
-      if (!stack || !message) return;
-      const toast = document.createElement('div');
-      Object.assign(toast, { className: `coronatio-toast coronatio-toast--${variant}`, textContent: message });
-      toast.setAttribute('role', variant === 'error' ? 'alert' : 'status'); toast.addEventListener('click', () => toast.remove());
-      stack.appendChild(toast); window.setTimeout(() => toast.remove(), 3000);
-    }
     function showPortalServiceStatus(results) {
       const modal = document.querySelector('[data-service-status-modal]'); const content = modal?.querySelector('[data-service-status-content]');
       if (content) content.textContent = results.map(result => {
@@ -697,6 +689,10 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       button.textContent = running ? 'Stop demo' : (button.dataset.animationPlay === '' && (target.matches('.motion-progress, .motion-spinner')) ? 'Start demo' : 'Play');
     }
     document.body.addEventListener('click', event => {
+      const toastSpawn = event.target.closest('[data-coronatio-toast-spawn]');
+      if (toastSpawn) { showCoronatioToast(toastSpawn.dataset.toastMessage || 'Notification', toastSpawn.dataset.toastVariant || 'info'); return; }
+      const toastDismiss = event.target.closest('[data-coronatio-toast]');
+      if (toastDismiss) { dismissCoronatioToast(toastDismiss); return; }
       const catalogEye = event.target.closest('[data-ui-visibility-toggle]');
       if (catalogEye) { event.preventDefault(); const visible = catalogEye.dataset.visible !== 'true'; catalogEye.dataset.visible = String(visible); catalogEye.setAttribute('aria-pressed', String(visible)); catalogEye.classList.toggle('ui-visibility-toggle--visible', visible); catalogEye.classList.toggle('ui-visibility-toggle--hidden', !visible); const icon = catalogEye.querySelector('i'); if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash'; const specimen = catalogEye.closest('[data-visibility-specimen]'); if (specimen) { specimen.dataset.visible = String(visible); const label = specimen.querySelector('[data-visibility-state-label]'); if (label) label.textContent = visible ? 'Visible' : 'Dimmed hidden'; } return; }
       const stillness = event.target.closest('[data-motion-stillness]');
@@ -735,6 +731,20 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       if (modalClose) return closeUxModalDemo();
       const backdrop = event.target.closest('[data-ux-modal-demo-backdrop]');
       if (backdrop && event.target === backdrop) return closeUxModalDemo();
+    });
+    document.body.addEventListener('mouseenter', event => {
+      const toast = event.target.closest?.('[data-coronatio-toast]'); if (!toast || toast.classList.contains('toast-exit')) return;
+      const elapsed = Date.now() - Number(toast.dataset.toastStartedAt || Date.now());
+      toast.dataset.toastRemaining = String(Math.max(0, Number(toast.dataset.toastRemaining || 3000) - elapsed));
+      window.clearTimeout(Number(toast.dataset.toastTimer || 0));
+    }, true);
+    document.body.addEventListener('mouseleave', event => {
+      const toast = event.target.closest?.('[data-coronatio-toast]');
+      if (toast && !toast.classList.contains('toast-exit')) startCoronatioToastTimer(toast, Number(toast.dataset.toastRemaining || 0));
+    }, true);
+    document.body.addEventListener('animationend', event => {
+      const toast = event.target.closest?.('[data-coronatio-toast]');
+      if (toast && toast.classList.contains('toast-exit') && event.animationName === 'toast-slide-out') toast.remove();
     });
     document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm);
     document.body.addEventListener('input', event => {
