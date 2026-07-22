@@ -95,13 +95,13 @@ fn shell_document_2() -> &'static str {
               <div class="key-manager-content">
                 <div class="key-manager-left">
                   <div class="security-status">
-                    <div class="status-item"><span class="status-icon secure">🛡</span><div class="status-details"><p>This is the key to your vault. When you boot your HOMESERVER and visit home.arpa, this is what unlocks your encrypted storage system - just like unlocking your smartphone. Your /vault partition contains the sensitive keys stored on the device. Unlock the vault and everything HOMESERVER specifically stores is accessible. This is the device's master key.<button type="button" class="action-button info-button" aria-label="View Full Guide &amp; Critical Warnings"><span>ⓘ</span> View Full Guide &amp; Critical Warnings</button></p></div></div>
+                    <div class="status-item"><span class="status-icon secure">🛡</span><div class="status-details"><p>This is the key to your vault. When you boot your HOMESERVER and visit home.arpa, this is what unlocks your encrypted storage system - just like unlocking your smartphone. Your /vault partition contains the sensitive keys stored on the device. Unlock the vault and everything HOMESERVER specifically stores is accessible. This is the device's master key.<button type="button" class="action-button info-button" data-manager-open="key-guide" aria-label="View Full Guide &amp; Critical Warnings"><span>ⓘ</span> View Full Guide &amp; Critical Warnings</button></p></div></div>
                   </div>
                 </div>
                 <div class="key-manager-right"><div class="key-actions">
-                  <button type="button" class="action-button create-button" aria-disabled="true"><span>+ Create New Key</span></button>
-                  <button type="button" class="action-button update-button" aria-disabled="true"><span>⟳ Update Key on Drive</span></button>
-                  <button type="button" class="action-button admin-password-button" aria-disabled="true"><span>🔒 Admin Password</span></button>
+                  <button type="button" class="action-button create-button" data-manager-open="create-key"><span>+ Create New Key</span></button>
+                  <button type="button" class="action-button update-button" data-manager-open="update-key"><span>⟳ Update Key on Drive</span></button>
+                  <button type="button" class="action-button admin-password-button" data-manager-open="admin-password"><span>🔒 Admin Password</span></button>
                 </div></div>
               </div>
             </div>
@@ -113,19 +113,20 @@ fn shell_document_2() -> &'static str {
                 <div class="disk-column"><h4>Available Devices</h4><div class="disk-list" data-admin-devices-readback="/api/services/data">__ADMIN_AVAILABLE_DEVICES__</div></div>
                 <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list" data-admin-mounts-readback="/api/services/data">__ADMIN_MOUNT_DESTINATIONS__</div></div>
               </div>
-              <div class="disk-actions">
-                <button type="button" class="action-button format" aria-disabled="true">Format</button>
-                <button type="button" class="action-button encrypt" aria-disabled="true">Encrypt</button>
-                <button type="button" class="action-button assign-primary" aria-disabled="true">Assign as primary NAS</button>
-                <button type="button" class="action-button assign-backup" aria-disabled="true">Assign as NAS Backup</button>
-                <button type="button" class="action-button unassign-nas" aria-disabled="true">Unassign drive</button>
-                <button type="button" class="action-button import-nas" aria-disabled="true">Import to NAS</button>
-                <button type="button" class="action-button permissions" aria-disabled="true">Setup NAS</button>
-                <button type="button" class="action-button unlock" aria-disabled="true">Unlock</button>
-                <button type="button" class="action-button mount" aria-disabled="true">Mount</button>
-                <button type="button" class="action-button unmount" aria-disabled="true">Unmount</button>
-                <button type="button" class="action-button sync" aria-disabled="true">Sync Now</button>
-                <button type="button" class="action-button auto-sync" aria-disabled="true">Auto Sync</button>
+              <div class="disk-actions" data-disk-actions-state="no-selection" aria-live="polite">
+                <p class="manager-action-reading" data-disk-action-reading>Select a device or mount destination to inspect its available actions.</p>
+                <button type="button" class="action-button format" data-disk-action="format" disabled title="Select an eligible device first">Format</button>
+                <button type="button" class="action-button encrypt" data-disk-action="encrypt" disabled title="Select an eligible device first">Encrypt</button>
+                <button type="button" class="action-button assign-primary" data-disk-action="assign-primary" disabled title="Select an eligible device first">Assign as primary NAS</button>
+                <button type="button" class="action-button assign-backup" data-disk-action="assign-backup" disabled title="Select an eligible device first">Assign as NAS Backup</button>
+                <button type="button" class="action-button unassign-nas" data-disk-action="unassign" disabled title="Select an eligible device first">Unassign drive</button>
+                <button type="button" class="action-button import-nas" data-disk-action="import" disabled title="Select an eligible device first">Import to NAS</button>
+                <button type="button" class="action-button permissions" data-disk-action="setup-nas" disabled title="Select an eligible device first">Setup NAS</button>
+                <button type="button" class="action-button unlock" data-disk-action="unlock" disabled title="Select an eligible device first">Unlock</button>
+                <button type="button" class="action-button mount" data-disk-action="mount" disabled title="Select an eligible device first">Mount</button>
+                <button type="button" class="action-button unmount" data-disk-action="unmount" disabled title="Select an eligible device first">Unmount</button>
+                <button type="button" class="action-button sync" data-disk-action="sync" disabled title="Select an eligible device first">Sync Now</button>
+                <button type="button" class="action-button auto-sync" data-disk-action="auto-sync" disabled title="Select an eligible device first">Auto Sync</button>
               </div>
             </div>
           </section>

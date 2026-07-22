@@ -47,6 +47,15 @@
         assert_eq!(admin.matches("ui-toggle ui-toggle--medium toggle-switch").count(), 3);
         assert_eq!(admin.matches("ui-toggle__input").count(), 3);
         assert_eq!(admin.matches("ui-toggle__slider toggle-slider").count(), 3);
+        for marker in [
+            "data-manager-open=\"create-key\"", "data-manager-open=\"update-key\"", "data-manager-open=\"admin-password\"",
+            "data-disk-actions-state=\"no-selection\"", "data-disk-action=\"format\"", "data-disk-action=\"auto-sync\"",
+        ] {
+            assert!(admin.contains(marker), "admin manager continuation marker missing: {marker}");
+        }
+        assert!(!admin.contains("/admit/admin/action/create-key"));
+        assert!(!admin.contains("/admit/admin/action/format"));
+        assert!(admin.contains("disabled title=\"Select an eligible device first\""));
         assert!(admin.contains("hx-confirm=\"Restart HOMESERVER now?"));
         assert!(admin.contains("hx-confirm=\"Shut down HOMESERVER now?"));
         assert!(admin.contains("hx-confirm=\"Restart Website now?"));
