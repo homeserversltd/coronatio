@@ -176,12 +176,12 @@ fn shell_document_2() -> &'static str {
                 <button type="button" class="admin-button set-default-button" data-admin-only data-admin-viewport="upload" data-upload-set-default title="Set as Default Directory (Admin)">📌 Default</button>
                 <button type="button" class="admin-button blacklist-button" data-admin-only data-admin-viewport="upload" data-upload-blacklist title="Manage Blacklist (Admin)">🚫 Blacklist</button>
                 <button type="button" class="admin-button upload-history-button" data-admin-only data-admin-viewport="upload" data-upload-history title="View Upload History (Admin)">📜 History</button>
-                <button type="button" class="toggle-pin-button" data-admin-only data-admin-viewport="upload" data-upload-pin-toggle title="Enable PIN requirement for uploads (Currently Off)" aria-label="Toggle PIN requirement (currently disabled)"></button>
+                <button type="button" class="toggle-pin-button" data-admin-only data-admin-viewport="upload" data-upload-pin-toggle title="Enable PIN requirement for uploads (Currently Off)" aria-label="Toggle PIN requirement (currently disabled)"><span class="loading-spinner" data-upload-pin-spinner hidden role="progressbar" aria-label="Saving PIN requirement"></span></button>
               </div>
               <div class="directory-breadcrumb-container">
-                <div class="breadcrumb-navigation" data-upload-breadcrumbs><span class="breadcrumb-item current" data-path="/mnt/nas">nas</span></div>
+                <div class="breadcrumb-navigation" data-upload-breadcrumbs><button type="button" class="breadcrumb-item current" data-upload-breadcrumb-path="/mnt/nas" aria-current="page">nas</button></div>
               </div>
-              <div class="directory-loading-initial" data-upload-directory-loading hidden>Loading directory tree…</div>
+              <div class="directory-loading-initial" data-upload-directory-loading hidden><span class="loading-spinner large" role="progressbar" aria-label="Loading directory tree"></span></div>
               <div class="directory-tree-container" data-upload-tree role="tree">__UPLOAD_TREE_FRAGMENT__</div>
             </div>
             <div class="file-upload-section" data-upload-regular="file-ingress" data-upload-file-section>
@@ -189,22 +189,24 @@ fn shell_document_2() -> &'static str {
               <button type="button" data-upload-submit disabled>Upload Selected Files</button>
             </div>
           </div>
-          <div class="modal-backdrop" data-upload-history-backdrop data-upload-history-modal aria-hidden="true">
-            <section class="modal modal-window" role="dialog" aria-modal="true" aria-labelledby="upload-history-title">
-              <div class="modal-titlebar"><span id="upload-history-title">Upload History</span><button type="button" class="close-button" data-upload-modal-close aria-label="Close"><i class="fas fa-times"></i></button></div>
-              <div class="upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="clear-history-button" data-upload-clear-history disabled>Clear History</button></div>
+          <div class="modal-overlay" data-upload-history-backdrop data-upload-history-modal aria-hidden="true" hidden>
+            <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-history-title">
+              <button type="button" class="modal-close" data-upload-modal-close aria-label="Close modal">×</button><h2 class="modal-title" id="upload-history-title">Upload History</h2>
+              <div class="modal-content upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="clear-history-button" data-upload-clear-history disabled>Clear History</button></div>
             </section>
           </div>
-          <div class="modal-backdrop" data-upload-blacklist-backdrop data-upload-blacklist-modal aria-hidden="true">
-            <section class="modal modal-window" role="dialog" aria-modal="true" aria-labelledby="upload-blacklist-title">
-              <div class="modal-titlebar"><span id="upload-blacklist-title">Manage Blacklist</span><button type="button" class="close-button" data-upload-modal-close aria-label="Close"><i class="fas fa-times"></i></button></div>
-              <div class="blacklist-manager"><div class="blacklist-entries" data-upload-blacklist-entries></div><div class="blacklist-controls"><form class="add-entry" data-upload-blacklist-form><input type="text" class="entry-input" placeholder="Enter path to blacklist" data-upload-blacklist-input><button type="button" class="add-button" data-upload-blacklist-add>New</button></form><button type="button" class="submit-button" data-upload-blacklist-submit>Submit</button></div></div>
+          <div class="modal-overlay" data-upload-blacklist-backdrop data-upload-blacklist-modal aria-hidden="true" hidden>
+            <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-blacklist-title">
+              <button type="button" class="modal-close" data-upload-modal-close aria-label="Close modal">×</button><h2 class="modal-title" id="upload-blacklist-title">Manage Blacklist</h2>
+              <div class="modal-content"><div class="blacklist-manager"><div class="blacklist-entries" data-upload-blacklist-entries></div><div class="blacklist-controls"><form class="add-entry" data-upload-blacklist-form><input type="text" class="entry-input" placeholder="Enter path to blacklist" data-upload-blacklist-input><button type="button" class="add-button" data-upload-blacklist-add>New</button></form><button type="button" class="submit-button" data-upload-blacklist-submit>Submit</button></div></div></div>
             </section>
           </div>
-          <div class="modal-window" data-upload-pin-modal hidden>
-            <div class="modal-titlebar">Admin PIN Required</div>
-            <form class="pin-modal-form" data-upload-pin-form><p>Please enter the admin PIN to proceed with the upload.</p><input type="text" name="username" autocomplete="username" style="position:absolute;left:-9999px;opacity:0" tabindex="-1" aria-hidden="true"><input type="password" placeholder="Admin PIN" class="pin-input" autocomplete="new-password" data-upload-pin-input></form>
-            <div class="modal-actions"><button type="button" class="secondary" data-upload-pin-cancel>Cancel</button><button type="button" data-upload-pin-confirm>Confirm</button></div>
+          <div class="modal-overlay" data-upload-pin-backdrop data-upload-pin-modal aria-hidden="true" hidden>
+            <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-pin-title">
+              <button type="button" class="modal-close" data-upload-pin-cancel aria-label="Close modal">×</button><h2 class="modal-title" id="upload-pin-title">Admin PIN Required</h2>
+              <div class="modal-content"><form class="pin-modal-form" data-upload-pin-form><p>Please enter the admin PIN to proceed with the upload.</p><input type="text" name="username" autocomplete="username" style="position:absolute;left:-9999px;opacity:0" tabindex="-1" aria-hidden="true"><input type="password" placeholder="Admin PIN" class="pin-input" autocomplete="new-password" data-upload-pin-input></form></div>
+              <div class="modal-buttons"><button type="button" class="secondary" data-upload-pin-cancel>Cancel</button><button type="button" data-upload-pin-confirm>Confirm</button></div>
+            </section>
           </div>
           <pre class="readout admin-quarry-note" id="upload-readout" data-upload-receipt-readout>Upload Caduceus receipts are diagnostic evidence, not the visible progress UI.</pre>
         </div>

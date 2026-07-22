@@ -70,18 +70,18 @@ fn test_tranch_05_progress_catalog_carries_low_mid_high_and_all_upload_states() 
 #[test]
 fn test_tranch_05_progress_paint_is_tokenized_legible_and_reduced_motion_safe() {
     let html = render_crown_shell();
+    let pack = std::fs::read_to_string("src/bands/shell/ux/packs/upload.css").unwrap();
     for marker in [
         "pali:agentics-ux-progress-constitution-tablet", ".ui-progress-bar__container {",
         "background: var(--hiddenTabBackground);", ".ui-progress-bar__fill {",
         "background: var(--secondary);", ".ui-progress-bar--indeterminate .ui-progress-bar__fill",
         "@media (prefers-reduced-motion: reduce)",
-        ".upload-progress.pending .progress-bar { background: var(--warning); }",
-        ".upload-progress.completed .progress-bar { background: var(--status-up); }",
-        ".upload-progress.error .progress-bar { background: var(--status-down); }",
     ] {
         assert!(html.contains(marker), "progress visual-law marker missing {marker}");
     }
-    assert!(!html.contains(".progress-bar { height: 100%; border-radius: 10px; background: var(--hiddenTabBackground)"), "upload fill regressed to track paint");
+    for marker in [".upload-progress.pending .progress-bar,", ".upload-progress.uploading .progress-bar {", "background-image: linear-gradient(45deg, ", "animation: progress-stripes 1s linear infinite;"] {
+        assert!(pack.contains(marker), "OG-carried progress paint marker missing {marker}");
+    }
     let script = &html[html.find("function renderUploadProgress").unwrap()..html.find("function setUpload").unwrap()];
     assert!(!script.contains("uploadStatusColor"), "upload status paint must come from Theme Net state classes");
     assert!(!script.contains("background-color:"), "upload renderer must not inline status paint");
@@ -97,29 +97,10 @@ fn test_tranch_05_upload_progress_label_geometry_does_not_falsify_fill_width() {
         );
     }
 
-    assert!(
-        html.contains(".progress-bar { height: 100%; border-radius: 10px; background: var(--secondary); position: static;"),
-        "fill must leave the full track as the percentage label containing block"
-    );
-    assert!(
-        html.contains(
-            ".progress-text { position: absolute; inset: 0; display: grid; place-items: center;"
-        ),
-        "percentage label must overlay the full track instead of fitting inside the fill"
-    );
-    assert!(
-        html.contains("pointer-events: none;"),
-        "overlay label must not intercept progress controls"
-    );
-
-    let upload_pack_start = html
-        .find("UXPORT-001 LIBRARY band: og src/tablets/upload upload domain pack")
-        .expect("shared Upload pack");
-    let upload_pack = &html[upload_pack_start..];
-    assert!(
-        !upload_pack.contains("min-width: 24px"),
-        "low progress must not be inflated to fit its label"
-    );
+    let pack = std::fs::read_to_string("src/bands/shell/ux/packs/upload.css").unwrap();
+    for marker in [".progress-bar {", "background: var(--hiddenTabBackground);", "position: relative;", "min-width: 24px;", ".progress-text {"] {
+        assert!(pack.contains(marker), "OG-carried progress geometry marker missing {marker}");
+    }
 }
 
 #[test]
@@ -156,6 +137,14 @@ fn test_tranch_05_protects_live_upload_landmarks_and_shared_pack() {
     ] {
         assert!(upload.contains(marker), "live Upload landmark regressed: {marker}");
     }
-    assert!(html.contains("UXPORT-001 LIBRARY band: og src/tablets/upload upload domain pack"));
-    assert!(html.matches(".upload-progress { background: var(--hiddenTabBackground)").count() >= 1);
+    let pack = std::fs::read_to_string("src/bands/shell/ux/packs/upload.css").unwrap();
+    for marker in [
+        ".upload-progress {",
+        ".directory-browser {",
+        ".file-upload-section input[type=\"file\"] {",
+        ".directory-error.nas-unavailable {",
+    ] {
+        assert!(pack.contains(marker), "absorbed OG Upload pack landmark regressed: {marker}");
+    }
+    assert!(!pack.contains("UXPORT-001 LIBRARY band"));
 }

@@ -7,9 +7,9 @@ fn shell_document_4() -> &'static str {
       } catch (error) { el.textContent = 'fetch failed: ' + error; }
     }
     document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET'))); const uploadState = { currentPath: '/mnt/nas', selectedFiles: [], activeUploads: new Map(), pinRequired: false, uploading: false, blacklist: [], history: [] };
-    const uploadFileInput = document.querySelector('[data-upload-file]'); const uploadSubmit = document.querySelector('[data-upload-submit]');
-    const uploadProgressList = document.querySelector('[data-upload-progress-list]'); const uploadBreadcrumbs = document.querySelector('[data-upload-breadcrumbs]');
-    const uploadReadout = document.getElementById('upload-readout'); function uploadFormatSize(bytes) {
+    const uploadFileInput = () => document.querySelector('[data-upload-file]'); const uploadSubmit = () => document.querySelector('[data-upload-submit]');
+    const uploadProgressList = () => document.querySelector('[data-upload-progress-list]'); const uploadBreadcrumbs = () => document.querySelector('[data-upload-breadcrumbs]');
+    const uploadReadout = () => document.getElementById('upload-readout'); function uploadFormatSize(bytes) {
       const units = ['B', 'KB', 'MB', 'GB']; let size = Number(bytes || 0);
       let unit = 0; while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
       return size.toFixed(1) + ' ' + units[unit]; }
@@ -17,17 +17,16 @@ fn shell_document_4() -> &'static str {
       if (status === 'pending') return '⏳'; if (status === 'uploading') return '📤';
       if (status === 'completed') return '✅'; if (status === 'error') return '❌';
       return '❓'; }
-
     function renderUploadProgress() {
-      if (!uploadProgressList) return;
+      const progressList = uploadProgressList();
+      if (!progressList) return;
       const uploads = Array.from(uploadState.activeUploads.values());
-      uploadProgressList.hidden = uploads.length === 0;
-      uploadProgressList.innerHTML = uploads.map(upload => `
+      progressList.hidden = uploads.length === 0;
+      progressList.innerHTML = uploads.map(upload => `
         <div class="upload-progress ${upload.status}" data-upload-progress="${upload.filename}">
           <div class="upload-header"><span class="status-icon">${uploadStatusIcon(upload.status)}</span><span class="filename">${upload.filename}</span><button type="button" class="remove-button" data-upload-remove="${upload.filename}" aria-label="Remove upload">×</button></div>
           <div class="progress-section"><div class="progress-bar-container" role="progressbar" aria-label="${upload.filename}: ${upload.status}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${upload.progress.toFixed(1)}"><div class="progress-bar" style="width:${upload.progress}%"><span class="progress-text">${upload.progress.toFixed(1)}%</span></div></div><div class="upload-stats"><span class="size">${uploadFormatSize(upload.uploaded)} / ${uploadFormatSize(upload.total)}</span><span class="speed">${upload.speed ? uploadFormatSize(upload.speed) + '/s' : upload.status}</span></div>${upload.error ? `<div class="error-message" role="alert">${upload.error}</div>` : ''}</div>
         </div>`).join('');
-      uploadProgressList.querySelectorAll('[data-upload-remove]').forEach(button => button.addEventListener('click', () => { uploadState.activeUploads.delete(button.dataset.uploadRemove); renderUploadProgress(); }));
     }
     function setUpload(filename, update) {
       const current = uploadState.activeUploads.get(filename) || { filename, progress: 0, speed: 0, uploaded: 0, total: 0, status: 'pending' };
@@ -35,8 +34,9 @@ fn shell_document_4() -> &'static str {
       renderUploadProgress();
     }
     function setUploadSelection() {
-      uploadState.selectedFiles = Array.from(uploadFileInput?.files || []);
-      if (uploadSubmit) uploadSubmit.disabled = uploadState.selectedFiles.length === 0 || uploadState.uploading;
+      uploadState.selectedFiles = Array.from(uploadFileInput()?.files || []);
+      const submit = uploadSubmit();
+      if (submit) submit.disabled = uploadState.selectedFiles.length === 0 || uploadState.uploading;
       const display = document.querySelector('[data-upload-file-display]');
       if (display) {
         const label = uploadState.selectedFiles.length ? uploadState.selectedFiles.map(file => file.name).join(', ') : 'No files selected';
@@ -48,12 +48,14 @@ fn shell_document_4() -> &'static str {
       return document.querySelector('[data-upload-current-path]')?.value || uploadState.currentPath || '/mnt/nas';
     }
     function renderUploadBreadcrumbs(path) {
-      if (!uploadBreadcrumbs) return;
-      const parts = String(path || '/mnt/nas').split('/').filter(Boolean).slice(1);
-      let current = '/mnt/nas';
-      const crumbs = [{ name: 'nas', path: '/mnt/nas' }];
-      parts.slice(1).forEach(part => { current += '/' + part; crumbs.push({ name: part, path: current }); });
-      uploadBreadcrumbs.innerHTML = crumbs.map((crumb, index) => `<span class="breadcrumb-item ${crumb.path === path ? 'current' : ''}" data-path="${crumb.path}">${crumb.name}</span>${index < crumbs.length - 1 ? '<span class="breadcrumb-separator"> / </span>' : ''}`).join('');
+      const breadcrumbs = uploadBreadcrumbs();
+      if (!breadcrumbs) return;
+      const selectedPath = String(path || '/mnt/nas').replace(/\/+$/, '') || '/mnt/nas';
+      const nasRoot = '/mnt/nas'; const treeRoot = document.querySelector('[data-upload-tree] [data-directory-path]')?.dataset.directoryPath || nasRoot; const selectedRoot = selectedPath.startsWith(nasRoot) ? nasRoot : treeRoot;
+      const crumbs = [{ name: 'nas', path: nasRoot }]; let current = selectedRoot;
+      if (selectedRoot !== nasRoot) crumbs.push({ name: selectedRoot.split('/').filter(Boolean).pop() || 'nas', path: selectedRoot });
+      selectedPath.slice(selectedRoot.length).split('/').filter(Boolean).forEach(part => { current += '/' + part; crumbs.push({ name: part, path: current }); });
+      breadcrumbs.innerHTML = crumbs.map((crumb, index) => `<button type="button" class="breadcrumb-item ${crumb.path === selectedPath ? 'current' : ''}" data-upload-breadcrumb-path="${crumb.path}" aria-current="${crumb.path === selectedPath ? 'page' : 'false'}">${crumb.name}</button>${index < crumbs.length - 1 ? '<span class="breadcrumb-separator" aria-hidden="true"> / </span>' : ''}`).join('');
     }
     function syncUploadTreeSelection() {
       const activeUploadTree = document.querySelector('[data-upload-tree]');
@@ -92,7 +94,7 @@ fn shell_document_4() -> &'static str {
           }
         };
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) { setUpload(file.name, { progress: 100, uploaded: file.size, total: file.size, status: 'completed' }); if (uploadReadout) uploadReadout.textContent = xhr.responseText; resolve(); }
+          if (xhr.status >= 200 && xhr.status < 300) { setUpload(file.name, { progress: 100, uploaded: file.size, total: file.size, status: 'completed' }); const readout = uploadReadout(); if (readout) readout.textContent = xhr.responseText; resolve(); }
           else { let msg = 'Upload failed with status ' + xhr.status; try { const body = JSON.parse(xhr.responseText); if (body.error) msg = body.error; } catch (_) {} setUpload(file.name, { status: 'error', error: msg }); reject(new Error(msg)); }
         };
         xhr.onerror = () => { const msg = 'Network error occurred during upload'; setUpload(file.name, { status: 'error', error: msg }); reject(new Error(msg)); };
@@ -100,24 +102,29 @@ fn shell_document_4() -> &'static str {
         xhr.send(form);
       });
     }
-    async function uploadSelectedFiles() {
-      if (!uploadState.selectedFiles.length) return;
+    async function uploadSelectedFiles(pinVerified = false) {
+      if (!uploadState.selectedFiles.length) { showCoronatioToast('No files selected for upload', 'error'); return; }
+      if (uploadState.pinRequired && !pinVerified) { openUploadModal('[data-upload-pin-modal]'); document.querySelector('[data-upload-pin-input]')?.focus(); return; }
       uploadState.uploading = true;
-      if (uploadSubmit) { uploadSubmit.disabled = true; uploadSubmit.textContent = 'Uploading...'; }
+      const submit = uploadSubmit();
+      if (submit) { submit.disabled = true; submit.textContent = 'Uploading...'; }
       let success = 0;
       let failed = 0;
       for (const file of uploadState.selectedFiles) {
         try { await uploadOneFile(file); success += 1; }
-        catch (_) { failed += 1; }
+        catch (error) { failed += 1; showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error'); }
       }
       uploadState.uploading = false;
-      if (uploadSubmit) { uploadSubmit.textContent = 'Upload Selected Files'; uploadSubmit.disabled = uploadState.selectedFiles.length === 0; }
-      if (uploadReadout) uploadReadout.textContent = failed ? `Uploaded ${success} file(s), ${failed} failed` : `Successfully uploaded ${success} file(s)`;
+      const submitAfterUpload = uploadSubmit();
+      if (submitAfterUpload) { submitAfterUpload.textContent = 'Upload Selected Files'; submitAfterUpload.disabled = uploadState.selectedFiles.length === 0; }
+      const summary = failed ? `Uploaded ${success} file(s), ${failed} failed` : `Successfully uploaded ${success} file(s)`;
+      const readout = uploadReadout();
+      if (readout) readout.textContent = summary;
+      if (success && failed) showCoronatioToast(summary, 'warning'); else if (success) showCoronatioToast(summary, 'success');
     }
     function uploadAdminHeaders(json = false) { const token = localStorage.getItem('coronatioAdminToken'); return { ...(json ? { 'content-type': 'application/json' } : {}), ...(token ? { 'X-Admin-Token': token } : {}) }; }
-    function openUploadModal(selector) { const modal = document.querySelector(selector); if (modal) { modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); } }
-    function closeUploadModal(modal) { if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); } }
-    document.querySelectorAll('[data-upload-history-backdrop], [data-upload-blacklist-backdrop]').forEach(backdrop => { backdrop.addEventListener('click', event => { if (event.target === backdrop) closeUploadModal(backdrop); }); backdrop.querySelector('[data-upload-modal-close]')?.addEventListener('click', () => closeUploadModal(backdrop)); });
+    function openUploadModal(selector) { const modal = document.querySelector(selector); if (modal) { modal.hidden = false; modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); } }
+    function closeUploadModal(modal) { if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); modal.hidden = true; } }
     async function refreshUploadHistory() {
       const modal = document.querySelector('[data-upload-history-modal]'), list = modal?.querySelector('.upload-history-list'), empty = modal?.querySelector('.uploadHistoryModal'), clear = modal?.querySelector('[data-upload-clear-history]');
       try { const data = await fetch('/api/upload/history', { headers: uploadAdminHeaders() }).then(r => r.json()); uploadState.history = data.history || []; } catch (_) { uploadState.history = []; }
@@ -129,43 +136,37 @@ fn shell_document_4() -> &'static str {
       const entries = document.querySelector('[data-upload-blacklist-entries]');
       try { const data = await fetch('/api/upload/blacklist/list', { headers: uploadAdminHeaders() }).then(r => r.json()); uploadState.blacklist = data.blacklist || []; } catch (_) { uploadState.blacklist = []; }
       if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join('');
-      entries?.querySelectorAll('[data-blacklist-remove]').forEach(button => button.addEventListener('click', () => { uploadState.blacklist.splice(Number(button.dataset.blacklistRemove), 1); refreshUploadBlacklistDomOnly(); }));
     }
     function refreshUploadBlacklistDomOnly() { const entries = document.querySelector('[data-upload-blacklist-entries]'); if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join(''); }
-    uploadFileInput?.addEventListener('change', setUploadSelection);
-    uploadSubmit?.addEventListener('click', uploadSelectedFiles);
-    document.querySelector('[data-upload-refresh]')?.addEventListener('click', () => { window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(uploadCurrentPath()), { target: '[data-upload-tree]', swap: 'innerHTML' }); });
-    async function postUploadDirectoryAction(url, successMessage) {
-      try {
-        const response = await fetch(url, { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !(data.success ?? data.ok)) throw new Error(data.message || data.error || data.firstMissingSignal || `Request failed with status ${response.status}`);
-        showCoronatioToast(successMessage, 'success');
-        return data;
-      } catch (error) {
-        showCoronatioToast(error?.message || 'Request failed', 'error');
-        return null;
-      }
-    }
-    document.querySelector('[data-upload-force-allow]')?.addEventListener('click', async () => { if (!confirm(`WARNING: This will override security settings for ${uploadState.currentPath}. 
-Only continue if you understand the risks.`)) return; await postUploadDirectoryAction('/api/upload/force-permissions', 'Directory permissions updated successfully'); });
-    document.querySelector('[data-upload-set-default]')?.addEventListener('click', () => postUploadDirectoryAction('/api/upload/default-directory', 'Default directory updated successfully'));
-    document.querySelector('[data-upload-history]')?.addEventListener('click', async () => { openUploadModal('[data-upload-history-modal]'); await refreshUploadHistory(); });
-    document.querySelector('[data-upload-blacklist]')?.addEventListener('click', async () => { openUploadModal('[data-upload-blacklist-modal]'); await refreshUploadBlacklist(); });
-    document.querySelector('[data-upload-blacklist-add]')?.addEventListener('click', () => { const input = document.querySelector('[data-upload-blacklist-input]'); const next = input?.value?.trim(); if (!next || uploadState.blacklist.includes(next)) return; uploadState.blacklist.push(next); input.value = ''; refreshUploadBlacklistDomOnly(); });
-    document.querySelector('[data-upload-blacklist-submit]')?.addEventListener('click', () => fetch('/api/upload/blacklist/update', { method: 'PUT', headers: uploadAdminHeaders(true), body: JSON.stringify({ blacklist: uploadState.blacklist }) }).then(() => window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(uploadCurrentPath()), { target: '[data-upload-tree]', swap: 'innerHTML' })));
-    document.querySelector('[data-upload-clear-history]')?.addEventListener('click', () => fetch('/api/upload/history/clear', { method: 'POST', headers: uploadAdminHeaders() }).then(refreshUploadHistory));
-    document.querySelector('[data-upload-pin-toggle]')?.addEventListener('click', async event => { uploadState.pinRequired = !uploadState.pinRequired; event.currentTarget.classList.toggle('active', uploadState.pinRequired); event.currentTarget.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); await fetch('/api/upload/pin-required-status', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); });
-    fetch('/api/upload/pin-required-status', { headers: uploadAdminHeaders() }).then(r => r.json()).then(data => { uploadState.pinRequired = !!data.isPinRequired; const b = document.querySelector('[data-upload-pin-toggle]'); b?.classList.toggle('active', uploadState.pinRequired); }).catch(() => {});
-    syncUploadTreeSelection();
-    let uptimeBaseSeconds = null;
-    let uptimeBaseStamp = 0;
-    function secondsFromUptimeText(text) {
+    async function verifyUploadPin() { const input = document.querySelector('[data-upload-pin-input]'); const pin = input?.value || ''; if (!pin) { showCoronatioToast('PIN cannot be empty.', 'error'); input?.focus(); return; } try { const response = await fetch('/api/verifyPin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin }) }); const data = await response.json().catch(() => ({})); if (!response.ok || !data.verified) throw new Error(data.error || data.firstMissingSignal || 'Invalid PIN or verification failed.'); if (data.token) localStorage.setItem('coronatioAdminToken', data.token); input.value = ''; closeUploadModal(document.querySelector('[data-upload-pin-modal]')); showCoronatioToast('PIN Verified.', 'success'); await uploadSelectedFiles(true); } catch (error) { showCoronatioToast(error?.message || 'Invalid PIN or verification failed.', 'error'); } }
+    function refreshUploadTree(path = uploadCurrentPath()) { window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(path), { target: '[data-upload-tree]', swap: 'innerHTML' }); }
+    async function postUploadDirectoryAction(url, successMessage) { try { const response = await fetch(url, { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }); const data = await response.json().catch(() => ({})); if (!response.ok || !(data.success ?? data.ok)) throw new Error(data.message || data.error || data.firstMissingSignal || `Request failed with status ${response.status}`); showCoronatioToast(successMessage, 'success'); return data; } catch (error) { showCoronatioToast(error?.message || 'Request failed', 'error'); return null; } }
+    async function toggleUploadPin(toggle) { uploadState.pinRequired = !uploadState.pinRequired; toggle.classList.toggle('active', uploadState.pinRequired); toggle.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); toggle.setAttribute('aria-busy', 'true'); toggle.querySelector('[data-upload-pin-spinner]')?.removeAttribute('hidden'); try { await fetch('/api/upload/pin-required-status', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); } finally { toggle.removeAttribute('aria-busy'); toggle.querySelector('[data-upload-pin-spinner]')?.setAttribute('hidden', ''); } }
+    document.body.addEventListener('change', event => { if (event.target.matches('[data-upload-file]')) setUploadSelection(); });
+    document.body.addEventListener('submit', event => { if (event.target.matches('[data-upload-pin-form]')) { event.preventDefault(); verifyUploadPin(); } if (event.target.matches('[data-upload-blacklist-form]')) { event.preventDefault(); event.target.querySelector('[data-upload-blacklist-add]')?.click(); } });
+    document.body.addEventListener('click', async event => { const target = event.target instanceof Element ? event.target : null; if (!target) return;
+      const modal = target.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]'); if (modal && target === modal) { closeUploadModal(modal); return; }
+      const control = target.closest('[data-upload-remove], [data-blacklist-remove], [data-upload-breadcrumb-path], [data-upload-modal-close], [data-upload-pin-cancel], [data-upload-submit], [data-upload-pin-confirm], [data-upload-refresh], [data-upload-force-allow], [data-upload-set-default], [data-upload-history], [data-upload-blacklist], [data-upload-blacklist-add], [data-upload-blacklist-submit], [data-upload-clear-history], [data-upload-pin-toggle]'); if (!control) return;
+      if (control.matches('[data-upload-remove]')) { uploadState.activeUploads.delete(control.dataset.uploadRemove); renderUploadProgress(); return; }
+      if (control.matches('[data-blacklist-remove]')) { uploadState.blacklist.splice(Number(control.dataset.blacklistRemove), 1); refreshUploadBlacklistDomOnly(); return; }
+      if (control.matches('[data-upload-breadcrumb-path]')) { uploadState.currentPath = control.dataset.uploadBreadcrumbPath || '/mnt/nas'; const field = document.querySelector('[data-upload-current-path]'); if (field) field.value = uploadState.currentPath; renderUploadBreadcrumbs(uploadState.currentPath); refreshUploadTree(uploadState.currentPath); return; }
+      if (control.matches('[data-upload-modal-close], [data-upload-pin-cancel]')) { closeUploadModal(control.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]')); return; }
+      if (control.matches('[data-upload-submit]')) { await uploadSelectedFiles(); return; }
+      if (control.matches('[data-upload-pin-confirm]')) { await verifyUploadPin(); return; }
+      if (control.matches('[data-upload-refresh]')) { refreshUploadTree(); return; }
+      if (control.matches('[data-upload-force-allow]')) { if (confirm(`WARNING: This will override security settings for ${uploadState.currentPath}. \nOnly continue if you understand the risks.`)) await postUploadDirectoryAction('/api/upload/force-permissions', 'Directory permissions updated successfully'); return; }
+      if (control.matches('[data-upload-set-default]')) { await postUploadDirectoryAction('/api/upload/default-directory', 'Default directory updated successfully'); return; }
+      if (control.matches('[data-upload-history]')) { openUploadModal('[data-upload-history-modal]'); await refreshUploadHistory(); return; }
+      if (control.matches('[data-upload-blacklist]')) { openUploadModal('[data-upload-blacklist-modal]'); await refreshUploadBlacklist(); return; }
+      if (control.matches('[data-upload-blacklist-add]')) { const input = document.querySelector('[data-upload-blacklist-input]'); const next = input?.value?.trim(); if (next && !uploadState.blacklist.includes(next)) { uploadState.blacklist.push(next); input.value = ''; refreshUploadBlacklistDomOnly(); } return; }
+      if (control.matches('[data-upload-blacklist-submit]')) { await fetch('/api/upload/blacklist/update', { method: 'PUT', headers: uploadAdminHeaders(true), body: JSON.stringify({ blacklist: uploadState.blacklist }) }); refreshUploadTree(); return; }
+      if (control.matches('[data-upload-clear-history]')) { await fetch('/api/upload/history/clear', { method: 'POST', headers: uploadAdminHeaders() }); await refreshUploadHistory(); return; }
+      if (control.matches('[data-upload-pin-toggle]')) await toggleUploadPin(control); });
+    fetch('/api/upload/pin-required-status', { headers: uploadAdminHeaders() }).then(r => r.json()).then(data => { uploadState.pinRequired = !!data.isPinRequired; const b = document.querySelector('[data-upload-pin-toggle]'); b?.classList.toggle('active', uploadState.pinRequired); }).catch(() => {}); syncUploadTreeSelection();
+    let uptimeBaseSeconds = null; let uptimeBaseStamp = 0; function secondsFromUptimeText(text) {
       const raw = String(text || '');
-      const days = Number((raw.match(/(\d+)d/) || [0, 0])[1]);
-      const hours = Number((raw.match(/(\d+)h/) || [0, 0])[1]);
-      const minutes = Number((raw.match(/(\d+)m/) || [0, 0])[1]);
-      const seconds = Number((raw.match(/(\d+)s/) || [0, 0])[1]);
+      const days = Number((raw.match(/(\d+)d/) || [0, 0])[1]); const hours = Number((raw.match(/(\d+)h/) || [0, 0])[1]);
+      const minutes = Number((raw.match(/(\d+)m/) || [0, 0])[1]); const seconds = Number((raw.match(/(\d+)s/) || [0, 0])[1]);
       const total = days * 86400 + hours * 3600 + minutes * 60 + seconds;
       return total > 0 ? total : null;
     }
@@ -182,15 +183,13 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       parts.push(seconds + 's');
       return parts.join(' ');
     }
-    function tickUptime() {
-      const uptime = document.querySelector('[data-uptime-indicator]');
+    function tickUptime() { const uptime = document.querySelector('[data-uptime-indicator]');
       if (!uptime || uptimeBaseSeconds === null) return;
       const elapsed = Math.floor((Date.now() - uptimeBaseStamp) / 1000);
       uptime.textContent = formatUptimeSeconds(uptimeBaseSeconds + elapsed);
       uptime.dataset.uptimeIncludesSeconds = 'true';
     }
-    async function hydrateUptime() {
-      const uptime = document.querySelector('[data-uptime-indicator]');
+    async function hydrateUptime() { const uptime = document.querySelector('[data-uptime-indicator]');
       if (!uptime) return;
       try {
         const data = await fetch('/api/uptime').then(r => r.json()).catch(() => null);
