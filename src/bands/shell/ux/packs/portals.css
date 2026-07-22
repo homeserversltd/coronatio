@@ -28,6 +28,9 @@
   border: 1px solid var(--border);
 }
 
+/* Live portal cards keep their stable outer trigger, while their face owns every moving paint layer. */
+.portal-card[data-portal-card] { border-color: transparent; }
+
 .portal-card-face {
   pointer-events: none;
   flex: 1;
@@ -43,10 +46,26 @@
   transition-timing-function: var(--motion-hover-raise-easing);
 }
 
-.portal-element:is(:hover, :focus-within) > .portal-card > .portal-card-face,
-.portal-card:is(:hover, :focus-within) > .portal-card-face {
+.portal-card[data-portal-card] > .portal-card-face {
+  margin: -1px;
+  border: 1px solid var(--border);
+}
+
+.portal-card[data-portal-card].up { --portal-card-status: var(--statusUp); }
+.portal-card[data-portal-card].down { --portal-card-status: var(--statusDown); }
+.portal-card[data-portal-card].partial { --portal-card-status: var(--statusPartial); }
+.portal-card[data-portal-card].unknown { --portal-card-status: var(--statusUnknown); }
+
+.portal-card[data-portal-card].up > .portal-card-face,
+.portal-card[data-portal-card].down > .portal-card-face,
+.portal-card[data-portal-card].partial > .portal-card-face,
+.portal-card[data-portal-card].unknown > .portal-card-face { border-color: var(--portal-card-status); }
+
+.portal-element:is(:hover, :focus-within) > .portal-card[data-portal-card] > .portal-card-face,
+.portal-card[data-portal-card]:is(:hover, :focus-within) > .portal-card-face {
   transform: var(--motion-hover-raise-transform);
-  box-shadow: var(--motion-hover-raise-shadow);
+  background: color-mix(in srgb, var(--background) 92%, white);
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--portal-card-status, var(--border)) 32%, transparent), 0 2px 8px color-mix(in srgb, var(--portal-card-status, var(--border)) 16%, transparent);
 }
 
 .portal-card-face :is(button, a, input, select, textarea) { pointer-events: auto; }
@@ -162,11 +181,11 @@
 
 }
 
-/* Existing status styles preserved (og PortalCard.css) */
-.portal-card.up { border-color: var(--statusUp); }
-.portal-card.down { border-color: var(--statusDown); }
-.portal-card.partial { border-color: var(--statusPartial); }
-.portal-card.unknown { border-color: var(--statusUnknown); }
+/* Currentness keeps status classes on the stable trigger; the face alone paints their perimeter. */
+.portal-card.up > .portal-card-face { border-color: var(--statusUp); }
+.portal-card.down > .portal-card-face { border-color: var(--statusDown); }
+.portal-card.partial > .portal-card-face { border-color: var(--statusPartial); }
+.portal-card.unknown > .portal-card-face { border-color: var(--statusUnknown); }
 
 .service-status-modal pre {
   background: var(--background-alt);
