@@ -754,8 +754,9 @@
         }
         assert!(shell.contains(r#"hx-get="/admit/admin/action/view-logs""#));
         assert!(shell.contains(r#"data-admin-action-result data-og-affordance="toast-mapped-to-result-strip""#));
-        assert!(shell.contains("hx-confirm=\"Double Click to Restart"));
-        assert!(shell.contains("hx-confirm=\"Double Click to Shut Down"));
+        assert!(shell.contains("hx-confirm=\"Restart HOMESERVER now?"));
+        assert!(shell.contains("hx-confirm=\"Shut down HOMESERVER now?"));
+        assert!(shell.contains("hx-confirm=\"Restart Website now?"));
         let chrome = crown_chrome_js();
         assert!(chrome.contains("htmx:configRequest"));
         assert!(chrome.contains("X-Admin-Token"));
@@ -768,4 +769,7 @@
         assert!(!chrome.contains("fetch('/api/admin/hard-drive-test/start'"));
         assert!(!chrome.contains("fetch('/api/admin/system/restart'"));
         assert!(!chrome.contains("fetch('/api/admin/system/shutdown'"));
+        assert!(chrome.contains("data-admin-toggle-spinner"));
+        assert!(chrome.contains("change initiated; state re-read."));
+        assert!(chrome.contains("target.replaceChildren(); // OG result grammar"));
     }
