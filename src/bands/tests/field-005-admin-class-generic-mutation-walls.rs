@@ -217,9 +217,9 @@
         assert!(caduceus.contains("fn rotate_caduceus_capability_key()"));
         assert!(caduceus.contains("/usr/local/sbin/caduceus-keyman-rotate-capability"));
         let shell = std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap();
-        assert!(shell.contains("data-admin-action-strip-count=\"8\""));
-        assert!(shell.contains("data-admin-action-id=\"rotate-capability-key\""));
-        assert!(shell.contains("Rotate Capability Key"));
+        assert!(shell.contains("data-admin-action-strip-count=\"7\""));
+        assert!(!shell.contains("data-admin-action-id=\"rotate-capability-key\""));
+        assert!(!shell.contains("Rotate Capability Key"));
     }
 
     #[tokio::test]
@@ -302,15 +302,15 @@
     }
 
     #[test]
-    fn field_005_capability_architecture_wall_has_one_mint_point_and_rotate_action() {
+    fn field_005_capability_architecture_wall_keeps_rotate_route_outside_systemcontrols_anatomy() {
         let source = std::fs::read_to_string("src/bands/caduceus.rs").unwrap();
         assert!(source.contains("/usr/local/sbin/caduceus-keyman-sign-capability"));
         assert!(source.contains("x-caduceus-capability: {token}"));
         assert!(source.contains("mint_caduceus_capability(\"staff intent\", path)"));
         assert!(source.contains("/usr/local/sbin/caduceus-keyman-rotate-capability"));
         let shell = std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap();
-        assert!(shell.contains("data-admin-action-id=\"rotate-capability-key\""));
-        assert!(shell.contains("Rotate Capability Key"));
+        assert!(!shell.contains("data-admin-action-id=\"rotate-capability-key\""));
+        assert!(!shell.contains("Rotate Capability Key"));
     }
 
     #[tokio::test]

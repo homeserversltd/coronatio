@@ -1,4 +1,13 @@
 /*
+UX-MIGRATION-SLICE-09A SYSTEMCONTROLS PACK ABSORPTION.
+Provenance: og src/tablets/admin/components/SystemControls.tsx + SystemControls.css;
+og styles/common/ui/_button.css + _toggle.css, composed through the served library.
+Scope: SystemControls command row and three service-toggle cards only; KeyManager and DiskManager
+remain carried pack bytes, not adopted markup or flows in this slice.
+Token fold: OG --primary -> Crown --primary; --primaryHover -> --primaryHover;
+--border -> --border; --text -> --text; --success/--warning/--error -> same-named theme tokens.
+*/
+/*
 UXPORT-005 LIBRARY band: og src/tablets/admin admin domain pack.
 Governing law: THE OLD LOOK, REPRESENTED IN THE NEW UX LIBRARY.
 Og truth read: src/tablets/admin/index.tsx; components/SystemControls.tsx + SystemControls.css; components/KeyManager.tsx + KeyManager.css; components/DiskManager.tsx + DiskManager.css.
@@ -499,6 +508,29 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
     min-width: 100%; /* Full width on mobile */
   }
 } 
+/* UX-MIGRATION-SLICE-09A library composition guard: the OG aliases remain for provenance, while
+   the shared Toggle owns its nested switch geometry. */
+.admin-tablet .ui-toggle.toggle-switch {
+  width: auto;
+  height: auto;
+}
+.admin-tablet .ui-toggle .ui-toggle__input {
+  position: absolute;
+  width: 46px;
+  height: 24px;
+  opacity: 0;
+}
+.admin-tablet .ui-toggle .ui-toggle__slider {
+  position: relative;
+  inset: auto;
+  width: 46px;
+  height: 24px;
+}
+.system-controls-btn.ui-button {
+  min-width: 180px;
+  width: 180px;
+}
+
 /* END OG src/tablets/admin/components/SystemControls.css */
 
 /* BEGIN OG src/tablets/admin/components/KeyManager.css */

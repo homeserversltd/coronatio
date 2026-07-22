@@ -7,7 +7,7 @@
 
         for class in [
             "admin-tablet", "system-controls-container", "system-controls",
-            "system-controls-btn", "system-service-controls", "ssh-controls",
+            "system-service-controls", "ssh-controls",
             "ssh-control", "ssh-status", "ssh-toggle", "samba-control",
             "samba-status", "samba-toggle", "key-manager", "key-manager-content",
             "key-manager-left", "security-status", "status-item", "status-details",
@@ -17,11 +17,18 @@
         ] {
             assert!(admin.contains(&format!("class=\"{class}")), "missing og admin class: {class}");
         }
-        assert_eq!(admin.matches("class=\"system-controls-btn\"").count(), 8);
+        assert_eq!(admin.matches("data-admin-action-id=").count(), 7);
+        assert!(admin.contains("data-admin-action-strip=\"wrapped-row\""));
+        assert!(admin.contains("data-admin-action-strip-count=\"7\""));
+        assert!(!admin.contains("Rotate Capability Key"));
+        for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "view-logs", "install-certificate"] {
+            assert!(admin.contains(&format!("data-admin-action-id=\"{action}\"")), "missing SystemControls action {action}");
+        }
+        assert_eq!(admin.matches("ui-button--medium system-controls-btn").count(), 7);
         assert_eq!(admin.matches("class=\"disk-column\"").count(), 2);
         assert_eq!(admin.matches("class=\"action-button ").count(), 16);
         for label in [
-            "Hard Drive Test", "Rotate Capability Key", "Restart Website", "Install Certificate",
+            "Hard Drive Test", "Update", "Restart", "Shutdown", "Restart Website", "View Logs", "Install Certificate",
             "View Full Guide &amp; Critical Warnings", "+ Create New Key",
             "⟳ Update Key on Drive", "🔒 Admin Password", "Format", "Encrypt",
             "Assign as primary NAS", "Assign as NAS Backup", "Unassign drive",
@@ -37,8 +44,12 @@
         for label in ["SSH Password Authentication", "SSH Service", "Samba File Sharing"] {
             assert!(admin.contains(&format!("<h3>{label}</h3>")), "missing static service heading: {label}");
         }
-        assert_eq!(admin.matches("class=\"toggle-switch\"").count(), 3);
-        assert_eq!(admin.matches("class=\"toggle-slider\"").count(), 3);
+        assert_eq!(admin.matches("ui-toggle ui-toggle--medium toggle-switch").count(), 3);
+        assert_eq!(admin.matches("ui-toggle__input").count(), 3);
+        assert_eq!(admin.matches("ui-toggle__slider toggle-slider").count(), 3);
+        assert!(admin.contains("hx-confirm=\"Restart HOMESERVER now?"));
+        assert!(admin.contains("hx-confirm=\"Shut down HOMESERVER now?"));
+        assert!(admin.contains("hx-confirm=\"Restart Website now?"));
         assert!(admin.find("class=\"system-service-controls\"").unwrap()
             < admin.find("<div class=\"update-status-container\" data-admin-action-result").unwrap());
         assert!(!admin.contains("__ADMIN_SSH_PASSWORD_CARD__"));
