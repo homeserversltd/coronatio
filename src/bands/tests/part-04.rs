@@ -523,6 +523,10 @@
         assert!(shell.contains("'X-Admin-Token': token"));
         assert!(shell.contains("const header = `=== ${result.service || 'service'} ===`"));
         assert!(shell.contains("function showCoronatioToast(message, variant = 'info')"));
+        assert!(shell.contains("function dismissCoronatioToast(toast)"));
+        assert!(shell.contains("data-coronatio-toast-spawn"));
+        assert!(shell.contains("data-coronatio-toast"));
+        assert!(shell.contains("toast-exit"));
         assert!(shell.contains("showCoronatioToast(result.message || `Successfully ${action}ed ${service}`, 'success')"));
         assert!(shell.contains("⚠️ Service Inactive/Failed:\\n"));
         assert!(!shell.contains("JSON.stringify(results)"));

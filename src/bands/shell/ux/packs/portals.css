@@ -718,32 +718,6 @@
 [data-admin-mode="false"] [data-portal-element][data-visible="false"] { display: none !important; }
 [data-admin-mode="true"] [data-portal-element][data-visible="false"] { display: block; opacity: .7; }
 
-.coronatio-toast-stack {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 2000;
-  display: flex;
-  width: min(24rem, calc(100vw - 2rem));
-  flex-direction: column;
-  gap: 0.5rem;
-  pointer-events: none;
-}
-
-.coronatio-toast {
-  padding: 0.8rem 1rem;
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--primary);
-  border-radius: 8px;
-  background: var(--background-alt);
-  color: var(--text);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-  pointer-events: auto;
-  cursor: pointer;
-}
-
-.coronatio-toast--success { border-left-color: var(--statusUp); }
-.coronatio-toast--error { border-left-color: var(--statusDown); }
 
 /* UXPORT-004 loading/empty/error shells use og portal-card vocabulary without generic card helper. */
 .portal-loading, .portal-empty, .portal-error { align-items: center; text-align: center; justify-content: center; }
