@@ -612,8 +612,23 @@
         assert_eq!(shell.matches("data-category-chip=").count(), 21);
         assert_eq!(shell.matches("data-og-category-section=").count(), 21);
         let spinner_css = std::fs::read_to_string("src/bands/shell/ux/library/_loading-spinner.css").unwrap();
-        assert!(spinner_css.contains("og src/components/LoadingSpinner/LoadingSpinner.css"));
-        for class in [".loading-spinner--small", ".loading-spinner--medium", ".loading-spinner--large", ".loading-spinner-view--full", ".loading-spinner-view--frame"] { assert!(spinner_css.contains(class), "spinner grammar missing {class}"); }
+        assert!(spinner_css.contains("og src/components/LoadingSpinner/loadingSpinner.css"));
+        for marker in [
+            ".loading-spinner {",
+            ".loading-spinner.small {",
+            ".loading-spinner.medium {",
+            ".loading-spinner.large {",
+            "border-width: 2px;",
+            "border-width: 3px;",
+            "border-width: 4px;",
+            "animation: spin 1s linear infinite;",
+            "@keyframes spin",
+        ] {
+            assert!(spinner_css.contains(marker), "spinner og grammar missing {marker}");
+        }
+        for invented in ["loading-spinner--", "loading-spinner-view", "loading-spinner-inline", "prefers-reduced-motion", "color-mix", "loading-spinner-rotate"] {
+            assert!(!spinner_css.contains(invented), "spinner mirror invents {invented}");
+        }
         assert!(!shell.contains("data-test-panel=\"theme-values\""));
         assert!(!shell.contains("Mini Theme Token Lab"));
         assert!(!shell.contains("data-theme-token-lab=\"true\""));

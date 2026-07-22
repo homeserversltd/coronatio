@@ -1,46 +1,30 @@
-/* LIBRARY band: og src/components/LoadingSpinner/LoadingSpinner.css
- * One primitive; pane loading views compose this spinner with their local frame and copy.
- */
+/* LIBRARY band: og src/components/LoadingSpinner/loadingSpinner.css */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 .loading-spinner {
-  --loading-spinner-size: 1rem;
-  width: var(--loading-spinner-size);
-  height: var(--loading-spinner-size);
   display: inline-block;
-  flex: 0 0 auto;
-  border: max(2px, calc(var(--loading-spinner-size) / 7)) solid color-mix(in srgb, var(--secondary) 28%, transparent);
-  border-top-color: var(--secondary);
+  border-style: solid;
+  border-width: 2px;
   border-radius: 50%;
-  animation: loading-spinner-rotate .8s linear infinite;
+  animation: spin 1s linear infinite;
 }
 
-.loading-spinner--small { --loading-spinner-size: 1rem; }
-.loading-spinner--medium { --loading-spinner-size: 2rem; }
-.loading-spinner--large { --loading-spinner-size: 3rem; }
-
-.loading-spinner--inline { vertical-align: -0.18em; margin-inline-end: .45rem; }
-
-.loading-spinner-view {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: .75rem;
-  min-height: 12rem;
-  padding: 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--hiddenTabBackground);
-  color: var(--text);
-  text-align: center;
+/* Size variants */
+.loading-spinner.small {
+  border-width: 2px;
 }
 
-.loading-spinner-view--full { min-height: 18rem; }
-.loading-spinner-view--frame { min-height: 10rem; }
-.loading-spinner-view__message { margin: 0; }
-.loading-spinner-inline { display: inline-flex; align-items: center; }
-
-@keyframes loading-spinner-rotate { to { transform: rotate(360deg); } }
-
-@media (prefers-reduced-motion: reduce) {
-  .loading-spinner { animation-duration: 2.4s; }
+.loading-spinner.medium {
+  border-width: 3px;
 }
+
+.loading-spinner.large {
+  border-width: 4px;
+} 
