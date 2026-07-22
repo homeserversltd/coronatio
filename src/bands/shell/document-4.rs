@@ -305,8 +305,8 @@ fn shell_document_4() -> &'static str {
       statsCharts.cpu = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets: [
-          lineDataset('CPU Usage', cpuData, '#4A5568', 'y-cpu'),
-          lineDataset('Temperature', tempData, '#90cff3', 'y-temp')
+          lineDataset('CPU Usage', cpuData, themeCssColor('--secondary', '#4A5568'), 'y-cpu'),
+          lineDataset('Temperature', tempData, themeCssColor('--accent', '#90cff3'), 'y-temp')
         ] },
         options: Object.assign(chartCommonOptions(), {
           plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + Number(context.parsed.y || 0).toFixed(1) + (context.dataset.yAxisID === 'y-temp' ? '°C' : '%')), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
@@ -325,8 +325,8 @@ fn shell_document_4() -> &'static str {
       statsCharts.network = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets: [
-          lineDataset('Download Speed', downloadData, '#4A5568', 'y'),
-          lineDataset('Upload Speed', uploadData, '#90cff3', 'y-right')
+          lineDataset('Download Speed', downloadData, themeCssColor('--secondary', '#4A5568'), 'y'),
+          lineDataset('Upload Speed', uploadData, themeCssColor('--accent', '#90cff3'), 'y-right')
         ] },
         options: Object.assign(chartCommonOptions(), {
           plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + fmtBytes(context.parsed.y) + '/s'), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
@@ -351,10 +351,10 @@ fn shell_document_4() -> &'static str {
         type: 'line',
         data: { labels, datasets },
         options: Object.assign(chartCommonOptions(), {
-          plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { label: context => context.dataset.label + ': ' + Number(context.parsed.y || 0).toFixed(2) + ' MB/s' } } },
+          plugins: { legend: { display: false }, tooltip: chartTooltip(context => context.dataset.label + ': ' + fmtBytes(context.parsed.y || 0) + '/s') },
           scales: {
-            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6, callback: value => labels[value] || value } },
-            y: { ticks: { callback: value => Number(value).toFixed(2) } }
+            x: { ticks: chartTicks('--hiddenTabText', value => labels[value] || value), grid: { display: false } },
+            y: { beginAtZero: true, suggestedMin: 0, suggestedMax: Math.max(1, ...datasets.flatMap(dataset => dataset.data)) * 1.1, ticks: chartTicks('--hiddenTabText', value => fmtBytes(value) + '/s'), grid: chartGrid() }
           }
         })
       });
@@ -397,21 +397,21 @@ fn shell_document_4() -> &'static str {
         const name = diskDisplayName(device), readName = `read-${name}`, writeName = `write-${name}`, readChecked = checked.has(readName) ? checked.get(readName) : true, writeChecked = checked.has(writeName) ? checked.get(writeName) : true;
         return `<div class="device-control" data-io-device="${escapeHtml(name)}"><div class="device-name">${escapeHtml(name)}</div><div class="device-checkboxes"><label class="drive-checkbox"><input type="checkbox" name="${escapeHtml(readName)}" value="${escapeHtml(name)}" ${readChecked ? 'checked' : ''}>Read</label><label class="drive-checkbox"><input type="checkbox" name="${escapeHtml(writeName)}" value="${escapeHtml(name)}" ${writeChecked ? 'checked' : ''}>Write</label></div></div>`;
       }).join('') || '<div class="io-loading"><p>Loading disk I/O data...</p></div>';
-      const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
+      const colors = ['--secondary', '--accent', '--warning', '--success', '--error'];
       const datasets = devices.flatMap((device, index) => {
         const key = device.device || device.mount;
         const name = diskDisplayName(device);
         const series = statsChartState.ioSeries[key] || { read: [0], write: [0] };
-        const color = colors[index % colors.length];
+        const color = themeCssColor(colors[index % colors.length], '#4A5568');
         return [
-          { label: `${name} Read`, data: series.read.map(value => Number(value || 0) / (1024 * 1024)), borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0 },
-          { label: `${name} Write`, data: series.write.map(value => Number(value || 0) / (1024 * 1024)), borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: [5, 5], fill: false, pointRadius: 0 }
-        ];
+          { label: `${name} Read`, data: series.read, borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4 },
+          { label: `${name} Write`, data: series.write, borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: [3, 3], fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4 }
+        ].filter(dataset => checked.get(`${dataset.label.endsWith(' Read') ? 'read' : 'write'}-${name}`) !== false);
       });
       const ctx = document.getElementById('io-chart');
       if (ctx && window.Chart) createIOChart(ctx, statsChartState.labels, datasets);
       const legend = document.getElementById('io-chart-legend');
-      if (legend) legend.innerHTML = [...new Set(datasets.map(dataset => dataset.label.split(' ')[0]))].map(name => `<span>${name} Read · Write</span>`).join('');
+      if (legend) legend.innerHTML = datasets.map(dataset => `<span data-io-series="${escapeHtml(dataset.label)}">${escapeHtml(dataset.label)}</span>`).join('');
     }
     function renderMemory(data) {
       const memory = data.resources?.memory || {};
@@ -439,7 +439,7 @@ fn shell_document_4() -> &'static str {
       }).join('') || '<div class="disk-usage-loading"><p>Loading disk usage data...</p></div>';
     }
     function renderKeaLeases(data, notes = {}) {
-      const tbody = document.querySelector('[data-kea-leases]'); if (!tbody) return; if (data.keaLeases && !data.leases) { tbody.innerHTML = '<tr><td colspan="4">No Kea leases available.</td></tr>'; return; }
+      const tbody = document.querySelector('[data-kea-leases]'); if (!tbody) return; if (data.keaLeases && !data.leases) { tbody.innerHTML = '<tr><td colspan="4">No Kea leases found.</td></tr>'; return; }
       const leases = data.leases || []; tbody.innerHTML = leases.length ? leases.map(lease => {
         const mac = String(lease.mac || ''), note = notes[mac] ?? notes[mac.toLowerCase()] ?? '', pencil = headerState.isAdmin ? `<button type="button" class="edit-note-button" data-edit-note-button data-mac="${escapeHtml(mac)}" data-note="${escapeHtml(note)}" title="Edit device note" aria-label="Edit note for ${escapeHtml(mac)}"><i class="fas fa-pencil-alt" aria-hidden="true"></i></button>` : ''; return `<tr><td class="device-note-cell" data-label="Note:"><span class="note-text" data-note-text data-mac="${escapeHtml(mac)}">${escapeHtml(note)}</span>${pencil}</td><td data-label="Hostname:">${escapeHtml(lease.hostname || 'N/A')}</td><td data-label="IP:">${escapeHtml(lease.ip || '')}</td><td data-label="MAC:" title="${escapeHtml(mac)}">${escapeHtml(mac)}</td></tr>`;
       }).join('') : '<tr><td colspan="4">No Kea leases found.</td></tr>';
@@ -470,7 +470,7 @@ fn shell_document_4() -> &'static str {
         const headers = statsSessionHeaders(); // Owned chrome: fetch('/api/stats') + fetch('/api/network/notes'), session/no-store.
         const [statsResponse, notesResponse] = await Promise.all([fetch('/api/stats', { headers, cache: 'no-store' }), fetch('/api/network/notes', { headers, cache: 'no-store' })]); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
         const data = await statsResponse.json(), notes = notesResponse.ok ? normalizeNetworkNotes(await notesResponse.json()) : {}, label = formatChartTime(); pushChartPoint(label, data); renderCpuChart(data); renderNetwork(data); renderDiskIo(data); renderMemory(data); renderDiskUsage(data); renderKeaLeases(data, notes); renderProcesses(data);
-      } catch (error) { const target = document.querySelector('[data-process-usage-list]'); if (target) target.innerHTML = '<div class="process-usage-empty"><p>' + escapeHtml(String(error)) + '</p></div>'; }
+      } catch (_) { /* OG has no Stats-family error face; retain the last truthful frame. */ }
       finally { statsHydrationInFlight = false; }
     }
     function escapeHtml(value) {
@@ -754,12 +754,12 @@ fn shell_document_4() -> &'static str {
       if (time) { const out = document.querySelector('[data-ui-time-output]'); if (out) out.textContent = time.value; }
     });
     document.body.addEventListener('change', event => {
+      if (event.target.closest('[data-device-controls] input[type="checkbox"]')) { hydrateStats(); return; }
       const box = event.target.closest('.file-input, .ui-file-input');
       if (box && event.target.matches('input[type="file"]')) { const names = Array.from(event.target.files || []).map(file => file.name); const text = names.length ? names.join(', ') : 'No files selected'; const label = box.querySelector('[data-file-input-label]'); if (label) { if ('value' in label) label.value = text; else label.textContent = text; } const item = box.closest('.showcase-item'); const state = item?.querySelector('[data-test-file-state]'); const submit = item?.querySelector('[data-test-file-submit]'); if (state) state.textContent = text; if (submit) submit.disabled = names.length === 0; }
       const domainFile = event.target.closest('[data-test-domain-file]');
       if (domainFile) { const section = domainFile.closest('[data-test-domain-file-section]'); const names = Array.from(domainFile.files || []).map(file => file.name); const readback = section?.querySelector('[data-test-domain-file-name]'); const submit = section?.querySelector('[data-test-domain-submit]'); if (readback) readback.textContent = names.length ? names.join(', ') : 'No files selected'; if (submit) submit.disabled = names.length === 0; }
-    });
-    let uxModalDemoOpener = null;
+    }); let uxModalDemoOpener = null;
     document.body.addEventListener('keydown', event => {
       const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
       if (event.key === 'Escape' && backdrop?.getAttribute('aria-hidden') === 'false') { event.preventDefault(); closeUxModalDemo(); }
