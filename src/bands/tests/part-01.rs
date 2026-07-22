@@ -544,9 +544,28 @@
             "data-ux-modal-open=\"small\"",
             "data-ux-modal-open=\"medium\"",
             "data-ux-modal-open=\"fullscreen\"",
+            "data-ux-modal-open=\"inspect\"",
+            "data-ux-modal-open=\"run\"",
+            "data-interaction-result=\"modal-open\"",
+            "class=\"modal-overlay\"",
+            "class=\"modal-title\"",
+            "class=\"modal-content\"",
+            "class=\"modal-close\"",
+            "function openUxModalDemo(kind, opener)",
+            "document.body.addEventListener('keydown'",
+            "requestAnimationFrame(() => win.querySelector('[data-ux-modal-close]')?.focus())",
         ] {
             assert!(shell.contains(marker), "missing og Test marker: {marker}");
         }
+        assert!(!shell.contains("Small modal"));
+        assert!(!shell.contains("Compact confirm or short choice."));
+        let modal_css = std::fs::read_to_string("src/bands/shell/ux/library/_modal.css").unwrap();
+        let visibility_css = std::fs::read_to_string("src/bands/shell/ux/library/_visibility-toggle.css").unwrap();
+        assert!(modal_css.contains("og src/components/Modal/Modal.css"));
+        assert!(modal_css.contains(".modal-overlay"));
+        assert!(modal_css.contains(".modal-close"));
+        assert!(modal_css.contains("Coronatio compatibility aliases migrated"));
+        assert!(!visibility_css.contains(".ui-modal-backdrop"));
         let categories = [
             ("buttons", "Buttons"),
             ("toggles", "Toggles"),

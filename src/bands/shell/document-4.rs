@@ -730,7 +730,7 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       const expand = event.target.closest('[data-test-card-expand]');
       if (expand) { const expanded = expand.closest('.test-card')?.querySelector('.test-card-expanded'); if (expanded) { expanded.hidden = !expanded.hidden; expand.textContent = expanded.hidden ? '+' : '−'; } return; }
       const modalOpen = event.target.closest('[data-ux-modal-open]');
-      if (modalOpen) return openUxModalDemo(modalOpen.dataset.uxModalOpen);
+      if (modalOpen) return openUxModalDemo(modalOpen.dataset.uxModalOpen, modalOpen);
       const modalClose = event.target.closest('[data-ux-modal-close]');
       if (modalClose) return closeUxModalDemo();
       const backdrop = event.target.closest('[data-ux-modal-demo-backdrop]');
@@ -749,29 +749,42 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
       const domainFile = event.target.closest('[data-test-domain-file]');
       if (domainFile) { const section = domainFile.closest('[data-test-domain-file-section]'); const names = Array.from(domainFile.files || []).map(file => file.name); const readback = section?.querySelector('[data-test-domain-file-name]'); const submit = section?.querySelector('[data-test-domain-submit]'); if (readback) readback.textContent = names.length ? names.join(', ') : 'No files selected'; if (submit) submit.disabled = names.length === 0; }
     });
-    function openUxModalDemo(size) {
+    let uxModalDemoOpener = null;
+    document.body.addEventListener('keydown', event => {
+      const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
+      if (event.key === 'Escape' && backdrop?.getAttribute('aria-hidden') === 'false') { event.preventDefault(); closeUxModalDemo(); }
+    });
+    function openUxModalDemo(kind, opener) {
       const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
       const win = document.querySelector('[data-ux-modal-demo-window]');
       const title = document.querySelector('[data-ux-modal-demo-title]');
       const body = document.querySelector('[data-ux-modal-demo-body]');
       if (!backdrop || !win || !title || !body) return;
-      const copy = {
-        small: ['Small modal', 'Compact confirmation or short choice.'],
-        medium: ['Medium modal', 'Regular dialog body for settings, details, and ordinary decisions.'],
-        fullscreen: ['Fullscreen modal', 'Full-screen workflow surface for focused multi-step work.']
-      }[size] || ['Medium modal', 'Regular dialog body.'];
+      const specimen = {
+        small: { size: 'small', title: 'Small confirmation', body: 'A compact confirmation or short choice.' },
+        medium: { size: 'medium', title: 'Medium dialog', body: 'Regular dialog body for settings, details, and ordinary decisions.' },
+        fullscreen: { size: 'fullscreen', title: 'Fullscreen workflow', body: 'Full-screen workflow surface for focused multi-step work.' },
+        inspect: { size: 'medium', title: 'Data Generator inspection', body: 'Service inspection opens as a modal result.' },
+        run: { size: 'medium', title: 'Run Health Monitor', body: 'Run confirmation opens as a modal result.' }
+      }[kind] || { size: 'medium', title: 'Medium dialog', body: 'Regular dialog body.' };
+      uxModalDemoOpener = opener instanceof HTMLElement ? opener : document.activeElement;
       win.classList.remove('small', 'medium', 'fullscreen');
-      win.classList.add(size === 'small' || size === 'fullscreen' ? size : 'medium');
-      title.textContent = copy[0];
-      body.textContent = copy[1];
+      win.classList.add(specimen.size);
+      title.textContent = specimen.title;
+      body.textContent = specimen.body;
       backdrop.classList.add('open');
       backdrop.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('modal-open');
+      requestAnimationFrame(() => win.querySelector('[data-ux-modal-close]')?.focus());
     }
     function closeUxModalDemo() {
       const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
       if (!backdrop) return;
       backdrop.classList.remove('open');
       backdrop.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
+      const opener = uxModalDemoOpener; uxModalDemoOpener = null;
+      if (opener instanceof HTMLElement && document.contains(opener)) opener.focus();
     }
 "####
 }
