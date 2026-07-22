@@ -11,8 +11,27 @@ fn dhcp_pane_replaces_stub_with_native_tablet_controls() {
         "data-dhcp-add-form",
         "data-dhcp-boundary",
         "data-dhcp-anonymize",
+        "ui-toggle__input",
+        "ui-button ui-button--primary",
+        "ui-input ui-input--medium",
+        "ui-badge ui-badge--success",
+        "loading-spinner medium",
+        "data-dhcp-modal-backdrop",
+        "data-admin-viewport=\"dhcp\"",
     ] {
         assert!(dhcp.contains(required), "DHCP pane missing {required}");
+    }
+    for retired in [
+        "dhcp-action-button",
+        "anonymize-toggle-input",
+        "mac-input",
+        "ip-input",
+        "pinned-badge",
+    ] {
+        assert!(
+            !dhcp.contains(retired),
+            "DHCP pane retains legacy control {retired}"
+        );
     }
 }
 
@@ -24,7 +43,8 @@ fn dhcp_pack_is_absorbed_and_served_by_the_shell() {
         ".dhcp-info-banner",
         ".dhcp-list-item",
         ".reservation-slider",
-        ".anonymize-toggle-input",
+        ".dhcp-banner--loading",
+        "og color-literal → author-face token fold",
     ] {
         assert!(pack.contains(selector), "DHCP pack missing {selector}");
     }
@@ -45,7 +65,13 @@ fn dhcp_client_is_composed_into_served_crown_chrome() {
 
 #[test]
 fn dhcp_client_declares_admin_family_and_hydrates_only_when_active_visible() {
-    let client = [include_str!("../shell/dhcp-client.rs"), include_str!("../shell/document-3.rs"), include_str!("../shell/document-4.rs"), include_str!("../shell/document-4-tail.rs")].join("\n");
+    let client = [
+        include_str!("../shell/dhcp-client.rs"),
+        include_str!("../shell/document-3.rs"),
+        include_str!("../shell/document-4.rs"),
+        include_str!("../shell/document-4-tail.rs"),
+    ]
+    .join("\n");
     for required in [
         "hydrateDhcp()",
         "'/api/dhcp/leases'",
@@ -58,6 +84,16 @@ fn dhcp_client_declares_admin_family_and_hydrates_only_when_active_visible() {
         "viewportFamilyAdmitted('dhcp')",
         "authClass: 'admin'",
         "document.visibilityState !== 'visible'",
+        "showCoronatioToast(successMessage, 'success')",
+        "showCoronatioToast(failure?.message || 'DHCP request failed', 'error')",
+        "openDhcpModal('Remove reservation'",
+        "openDhcpModal('Edit reserved address'",
+        "data-dhcp-boundary-min",
+        "data-dhcp-boundary-max",
+        "Delegated DHCP bindings survive pane swaps (Upload cure)",
+        "document.body.addEventListener('input'",
+        "document.addEventListener('click'",
+        "}, true);",
     ] {
         assert!(client.contains(required), "DHCP client missing {required}");
     }

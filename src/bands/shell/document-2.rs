@@ -219,37 +219,44 @@ fn shell_document_2() -> &'static str {
       </section>
       __TEST__
       <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" role="tabpanel" aria-label="DHCP">
-        <div class="dhcp-tablet" data-dhcp-tablet>
+        <div class="dhcp-tablet" data-dhcp-tablet data-admin-only="true" data-admin-viewport="dhcp">
           <div class="dhcp-info-banner" data-dhcp-info-banner aria-live="polite">
-            <span class="dhcp-info-item">Homeserver: <span class="dhcp-info-value" data-dhcp-homeserver>192.168.123.1</span></span><span class="dhcp-info-separator">|</span>
-            <span class="dhcp-info-item">Reservations: <span class="dhcp-info-value" data-dhcp-reservations-count>—</span></span><span class="dhcp-info-separator">|</span>
-            <span class="dhcp-info-item">Hosts: <span class="dhcp-info-value" data-dhcp-hosts-count>—</span></span><span class="dhcp-info-separator">|</span>
+            <span class="dhcp-info-item">Homeserver: <span class="dhcp-info-value" data-dhcp-homeserver>192.168.123.1</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
+            <span class="dhcp-info-item">Reservations: <span class="dhcp-info-value" data-dhcp-reservations-count>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
+            <span class="dhcp-info-item">Hosts: <span class="dhcp-info-value" data-dhcp-hosts-count>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
             <span class="dhcp-info-item">Leases: <span class="dhcp-info-value" data-dhcp-leases-count>—</span></span>
           </div>
           <div class="dhcp-button-row">
-            <button type="button" class="dhcp-action-button" data-dhcp-refresh>Refresh</button>
-            <div class="anonymize-toggle-container"><label class="anonymize-toggle-label"><input type="checkbox" class="anonymize-toggle-input" data-dhcp-anonymize><span class="anonymize-toggle-slider"></span><span class="anonymize-toggle-text">Anonymize</span></label></div>
+            <button type="button" class="ui-button ui-button--secondary ui-button--small" data-dhcp-refresh>Refresh</button>
+            <label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__switch"><input type="checkbox" class="ui-toggle__input" data-dhcp-anonymize><span class="ui-toggle__slider"></span></span><span class="ui-toggle__label">Anonymize</span></label>
             <div class="reservation-slider" data-dhcp-boundary-control>
-              <label for="dhcp-reservation-boundary">Reserved addresses: <strong data-dhcp-boundary-value>—</strong></label>
+              <label for="dhcp-reservation-boundary">Reserved addresses: <strong class="dhcp-boundary-value" data-dhcp-boundary-value>—</strong> <span class="dhcp-boundary-value" data-dhcp-boundary-min>—</span>–<span class="dhcp-boundary-value" data-dhcp-boundary-max>—</span></label>
               <input id="dhcp-reservation-boundary" class="ui-slider" type="range" min="0" max="249" value="0" data-dhcp-boundary>
-              <button type="button" class="dhcp-action-button" data-dhcp-boundary-save>Apply</button>
+              <button type="button" class="ui-button ui-button--primary ui-button--small" data-dhcp-boundary-save>Apply</button>
             </div>
           </div>
           <div class="dhcp-tablet-content">
-            <div class="error-banner" data-dhcp-error hidden></div>
-            <div class="loading-banner" data-dhcp-loading>Loading DHCP devices…</div>
+            <div class="dhcp-banner dhcp-banner--error" data-dhcp-error role="alert" hidden></div>
+            <div class="dhcp-banner dhcp-banner--loading" data-dhcp-loading aria-live="polite"><span class="loading-spinner medium" role="progressbar" aria-label="Loading DHCP devices"></span><span>Loading DHCP devices…</span></div>
             <div class="dhcp-list" data-dhcp-list>
               <form class="dhcp-list-item pinned add-reservation-row" data-dhcp-add-form>
                 <div class="dhcp-list-item-content"><div class="dhcp-list-item-main"><div class="dhcp-list-item-info">
-                  <label class="dhcp-list-item-mac"><span class="info-label">MAC Address:</span><input type="text" name="mac" class="mac-input" placeholder="aa:bb:cc:dd:ee:ff" required></label>
-                  <label class="dhcp-list-item-ip"><span class="info-label">IP Address:</span><input type="text" name="ip" class="ip-input" placeholder="Automatic from reserved range"></label>
-                  <label class="dhcp-list-item-hostname"><span class="info-label">Name:</span><input type="text" name="hostname" class="hostname-input" placeholder="Device name"></label>
-                </div><div class="dhcp-list-item-badge"><span class="pinned-badge">New</span></div></div><div class="dhcp-list-item-actions"><button type="submit" class="add-reservation-button">Add Reservation</button></div></div>
+                  <label class="dhcp-list-item-mac"><span class="info-label">MAC Address:</span><input type="text" name="mac" class="ui-input ui-input--medium" placeholder="aa:bb:cc:dd:ee:ff" required></label>
+                  <label class="dhcp-list-item-ip"><span class="info-label">IP Address:</span><input type="text" name="ip" class="ui-input ui-input--medium" placeholder="Automatic from reserved range"></label>
+                  <label class="dhcp-list-item-hostname"><span class="info-label">Name:</span><input type="text" name="hostname" class="ui-input ui-input--medium" placeholder="Device name"></label>
+                </div><div class="dhcp-list-item-badge"><span class="ui-badge ui-badge--success ui-badge--small">New</span></div></div><div class="dhcp-list-item-actions"><button type="submit" class="ui-button ui-button--success ui-button--small">Add Reservation</button></div></div>
               </form>
               <div class="dhcp-empty-state" data-dhcp-empty hidden><p>No DHCP leases or reservations found.</p></div>
               <div data-dhcp-items></div>
             </div>
           </div>
+        </div>
+        <div class="ui-modal-backdrop" data-dhcp-modal-backdrop aria-hidden="true">
+          <section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="dhcp-modal-title">
+            <h2 id="dhcp-modal-title" data-dhcp-modal-title>DHCP</h2>
+            <div data-dhcp-modal-body></div>
+            <div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dhcp-modal-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-dhcp-modal-confirm>Confirm</button></div>
+          </section>
         </div>
       </section>
       </div>
