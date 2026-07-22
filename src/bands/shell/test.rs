@@ -1,4 +1,4 @@
-const OG_TESTTAB_CATEGORIES: [(&str, &str); 20] = [
+const OG_TESTTAB_CATEGORIES: [(&str, &str); 21] = [
     ("buttons", "Buttons"),
     ("toggles", "Toggles"),
     ("tabs", "Tabs"),
@@ -15,6 +15,7 @@ const OG_TESTTAB_CATEGORIES: [(&str, &str); 20] = [
     ("textbox", "Text Box"),
     ("upload-components", "Upload Components"),
     ("progress-bar", "Progress Bar"),
+    ("loading-spinner", "Loading / Spinner"),
     ("table", "Table"),
     ("collapsible", "Collapsible"),
     ("modals", "Modals"),
@@ -126,6 +127,15 @@ $ serve -s build</pre></div><div class="showcase-item"><h4>With Placeholder</h4>
         <article class="upload-progress completed"><div class="upload-header"><i class="fas fa-check status-icon" aria-hidden="true"></i><span class="filename">photos.zip</span></div><div class="progress-section"><div class="progress-bar-container" role="progressbar" aria-label="Completed upload" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div class="progress-bar" style="width:100%"><span class="progress-text">100%</span></div></div><div class="upload-stats"><span class="size">80 MB / 80 MB</span><span>Completed</span></div></div></article>
         <article class="upload-progress error"><div class="upload-header"><i class="fas fa-times status-icon" aria-hidden="true"></i><span class="filename">blocked.exe</span></div><div class="progress-section"><div class="progress-bar-container" role="progressbar" aria-label="Failed upload" aria-valuemin="0" aria-valuemax="100" aria-valuenow="18"><div class="progress-bar" style="width:18%"><span class="progress-text">18%</span></div></div><div class="upload-stats"><span class="size">18 MB / 100 MB</span><span>Error</span></div><div class="error-message" role="alert">File type is not accepted</div></div></article>
       </div>
+    "#, false));
+    panels.push(section("loading-spinner", "Loading / Spinner", r#"
+      <p>Og <code>LoadingSpinner</code> is one primitive; full-tablet, in-frame, and inline loading are compositions of its size plus local layout.</p>
+      <div class="showcase-grid" data-loading-spinner-catalog data-catalog-specimen="loading-spinner">
+        <article class="showcase-item"><h4>Size variants</h4><div class="showcase-row"><div class="loading-spinner small" role="progressbar" aria-label="Small loading spinner"></div><div class="loading-spinner medium" role="progressbar" aria-label="Medium loading spinner"></div><div class="loading-spinner large" role="progressbar" aria-label="Large loading spinner"></div></div></article>
+        <article class="showcase-item"><h4>Inline and button</h4><p><span>Loading a compact result…</span> <span class="loading-spinner small" role="progressbar" aria-label="Loading"></span></p><button type="button" class="ui-button ui-button--primary" aria-busy="true">Saving <span class="loading-spinner small" aria-hidden="true"></span></button></article>
+        <article class="showcase-item"><h4>Live loading frame</h4><button type="button" class="ui-button ui-button--secondary" data-loading-spinner-toggle aria-pressed="true">Show loaded state</button><p data-loading-spinner-result aria-live="polite">Loading state active</p><div class="network-loading" data-loading-spinner-frame data-loading-spinner-state="loading"><div class="loading-spinner medium" role="progressbar" aria-label="Loading network data"></div><p>Loading network data...</p></div></article>
+      </div>
+      <h4>Stats full-tablet composition</h4><div class="stats-loading" data-loading-spinner-full-view><div class="loading-spinner large" role="progressbar" aria-label="Connecting to server"></div><div class="loading-message">Connecting to server...</div></div>
     "#, false));
     panels.push(section("table", "Table", r#"<div class="showcase-item"><h4>Service Table</h4><div class="ui-table-container"><table class="ui-table"><thead><tr><th>Name</th><th>Status</th><th>Version</th><th>Action</th></tr></thead><tbody><tr><td>Data Generator</td><td><span class="ui-badge ui-badge--success">active</span></td><td>1.0.0</td><td><button type="button" class="ui-button ui-button--small" data-ux-modal-open="inspect" data-interaction-result="modal-open">Inspect</button></td></tr><tr><td>Health Monitor</td><td><span class="ui-badge ui-badge--success">active</span></td><td>1.0.0</td><td><button type="button" class="ui-button ui-button--small" data-ux-modal-open="run" data-interaction-result="modal-open">Run</button></td></tr></tbody></table></div></div>"#, false));
     panels.push(section("collapsible", "Collapsible", r#"<div class="showcase-grid"><details class="collapsible"><summary>Open details</summary><p>Composable details content.</p></details><details class="collapsible" open><summary>Open by default</summary><pre>receipt: test.component.collapsible.v1</pre></details><details class="collapsible" data-ui-collapsible><summary>Interactive collapsible</summary><p>Click summary to open or close.</p></details></div>"#, false));

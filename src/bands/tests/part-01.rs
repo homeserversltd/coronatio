@@ -560,6 +560,15 @@
             "data-toast-variant=\"success\"",
             "data-toast-variant=\"warning\"",
             "data-toast-variant=\"error\"",
+            "data-category-chip=\"loading-spinner\"",
+            "id=\"showcase-loading-spinner\"",
+            "data-loading-spinner-catalog",
+            "data-loading-spinner-toggle",
+            "data-loading-spinner-frame",
+            "data-loading-spinner-full-view",
+            "Connecting to server...",
+            "Loading network data...",
+            "const loadingToggle = event.target.closest('[data-loading-spinner-toggle]')",
         ] {
             assert!(shell.contains(marker), "missing og Test marker: {marker}");
         }
@@ -589,6 +598,7 @@
             ("textbox", "Text Box"),
             ("upload-components", "Upload Components"),
             ("progress-bar", "Progress Bar"),
+            ("loading-spinner", "Loading / Spinner"),
             ("table", "Table"),
             ("collapsible", "Collapsible"),
             ("modals", "Modals"),
@@ -599,8 +609,26 @@
             assert!(shell.contains(&format!("id=\"showcase-{}\"", id)), "missing category section {id}");
             assert!(shell.contains(title), "missing category title {title}");
         }
-        assert_eq!(shell.matches("data-category-chip=").count(), 20);
-        assert_eq!(shell.matches("data-og-category-section=").count(), 20);
+        assert_eq!(shell.matches("data-category-chip=").count(), 21);
+        assert_eq!(shell.matches("data-og-category-section=").count(), 21);
+        let spinner_css = std::fs::read_to_string("src/bands/shell/ux/library/_loading-spinner.css").unwrap();
+        assert!(spinner_css.contains("og src/components/LoadingSpinner/loadingSpinner.css"));
+        for marker in [
+            ".loading-spinner {",
+            ".loading-spinner.small {",
+            ".loading-spinner.medium {",
+            ".loading-spinner.large {",
+            "border-width: 2px;",
+            "border-width: 3px;",
+            "border-width: 4px;",
+            "animation: spin 1s linear infinite;",
+            "@keyframes spin",
+        ] {
+            assert!(spinner_css.contains(marker), "spinner og grammar missing {marker}");
+        }
+        for invented in ["loading-spinner--", "loading-spinner-view", "loading-spinner-inline", "prefers-reduced-motion", "color-mix", "loading-spinner-rotate"] {
+            assert!(!spinner_css.contains(invented), "spinner mirror invents {invented}");
+        }
         assert!(!shell.contains("data-test-panel=\"theme-values\""));
         assert!(!shell.contains("Mini Theme Token Lab"));
         assert!(!shell.contains("data-theme-token-lab=\"true\""));
