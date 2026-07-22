@@ -395,8 +395,10 @@ fn render_admin_available_devices_html() -> String {
         let lock_class = if device.encrypted { "unlocked" } else { "available" };
         let lock_icon = if device.encrypted { "🔓" } else { "▣" };
         format!(
-            "<div class=\"disk-item selected available{}\"><span class=\"lock-icon\">{lock_icon}</span><span class=\"disk-icon\">▣</span><div class=\"disk-info\"><div class=\"disk-name\">{}{role}</div>{mount}<div class=\"disk-details\">{} - {}{encrypted_label}</div><div class=\"disk-space-usage\"><strong>Space:</strong> {}</div>{mapper}<div class=\"encryption-status {lock_class}\">{lock_icon} {} <span class=\"filesystem-label\">({})</span></div></div></div>",
+            "<button type=\"button\" class=\"disk-item available{}\" data-disk-select=\"device\" data-disk-device=\"{}\" data-disk-locked=\"{}\"><span class=\"lock-icon\">{lock_icon}</span><span class=\"disk-icon\">▣</span><div class=\"disk-info\"><div class=\"disk-name\">{}{role}</div>{mount}<div class=\"disk-details\">{} - {}{encrypted_label}</div><div class=\"disk-space-usage\"><strong>Space:</strong> {}</div>{mapper}<div class=\"encryption-status {lock_class}\">{lock_icon} {} <span class=\"filesystem-label\">({})</span></div></div></button>",
             if device.role.is_some() { " nas-compatible" } else { "" },
+            html_escape(&device.device),
+            if device.encrypted { "false" } else { "true" },
             html_escape(&device.name),
             format_admin_bytes(device.total_bytes),
             html_escape(&fs.to_uppercase()),
