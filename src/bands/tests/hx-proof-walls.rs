@@ -30,6 +30,7 @@
             ("/api/status/internet/speedtest", "PIN/session chrome speedtest action"),
             ("/api/themes", "PIN/session chrome theme bootstrap"),
             ("/api/validatePin", "PIN/session chrome"),
+            ("/api/verifyPin", "upload PIN-gated submission verification"),
             ("/api/set_starred_tab", "PIN/session chrome favorite mutation"),
             ("/api/tabs/visibility", "PIN/session chrome visibility mutation"),
             ("/api/tabs/elements", "PIN/session chrome element visibility mutation"),
