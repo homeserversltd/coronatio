@@ -691,8 +691,8 @@ Only continue if you understand the risks.`)) return; await postUploadDirectoryA
     document.body.addEventListener('click', event => {
       const toastSpawn = event.target.closest('[data-coronatio-toast-spawn]');
       if (toastSpawn) { showCoronatioToast(toastSpawn.dataset.toastMessage || 'Notification', toastSpawn.dataset.toastVariant || 'info'); return; }
-      const toastDismiss = event.target.closest('[data-coronatio-toast]');
-      if (toastDismiss) { dismissCoronatioToast(toastDismiss); return; }
+      const toastDismiss = event.target.closest('[data-coronatio-toast]'); const loadingToggle = event.target.closest('[data-loading-spinner-toggle]');
+      if (toastDismiss) { dismissCoronatioToast(toastDismiss); return; } if (loadingToggle) return toggleLoadingSpinnerDemo(loadingToggle);
       const catalogEye = event.target.closest('[data-ui-visibility-toggle]');
       if (catalogEye) { event.preventDefault(); const visible = catalogEye.dataset.visible !== 'true'; catalogEye.dataset.visible = String(visible); catalogEye.setAttribute('aria-pressed', String(visible)); catalogEye.classList.toggle('ui-visibility-toggle--visible', visible); catalogEye.classList.toggle('ui-visibility-toggle--hidden', !visible); const icon = catalogEye.querySelector('i'); if (icon) icon.className = visible ? 'fas fa-eye' : 'fas fa-eye-slash'; const specimen = catalogEye.closest('[data-visibility-specimen]'); if (specimen) { specimen.dataset.visible = String(visible); const label = specimen.querySelector('[data-visibility-state-label]'); if (label) label.textContent = visible ? 'Visible' : 'Dimmed hidden'; } return; }
       const stillness = event.target.closest('[data-motion-stillness]');

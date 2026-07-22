@@ -25,6 +25,10 @@ fn shell_document_4_tail() -> &'static str {
       const text = document.createElement('span'); text.className = 'toast-message'; text.textContent = String(message);
       toast.append(icon, text); stack.appendChild(toast); startCoronatioToastTimer(toast, 3000);
     }
+    function toggleLoadingSpinnerDemo(loadingToggle) {
+      const specimen = loadingToggle.closest('[data-loading-spinner-catalog]'); const frame = specimen?.querySelector('[data-loading-spinner-frame]'); const result = specimen?.querySelector('[data-loading-spinner-result]'); if (!frame || !result) return;
+      const loading = frame.dataset.loadingSpinnerState !== 'loaded'; frame.dataset.loadingSpinnerState = loading ? 'loaded' : 'loading'; loadingToggle.setAttribute('aria-pressed', String(!loading)); loadingToggle.textContent = loading ? 'Show loading state' : 'Show loaded state'; result.textContent = loading ? 'Loaded state active' : 'Loading state active'; frame.innerHTML = loading ? '<p class="loading-spinner-view__message"><strong>Network data ready</strong></p>' : '<span class="loading-spinner loading-spinner--medium" role="status" aria-label="Loading network data"></span><p class="loading-spinner-view__message">Loading network data...</p>';
+    }
     function hydrateThemeTruth() {
       const target = document.querySelector('[data-theme-token-readout]');
       if (!target) return;
