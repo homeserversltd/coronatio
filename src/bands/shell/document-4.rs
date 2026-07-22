@@ -481,19 +481,22 @@ fn shell_document_4() -> &'static str {
       if (!factoryPortalNamesPromise) factoryPortalNamesPromise = fetch('/api/portals/factory', { cache: 'no-store' }).then(response => response.ok ? response.json() : Promise.reject(new Error(`Factory portals unavailable (${response.status})`))).then(payload => new Set(payload.factoryPortals || [])).catch(error => { factoryPortalNamesPromise = undefined; throw error; });
       return factoryPortalNamesPromise;
     }
+    function setPortalFormError(form, field, message) { const input = form.elements[field], node = form.querySelector(`[data-portal-error-for="${field}"]`); if (input) input.classList.toggle('error', Boolean(message)); if (node) { node.textContent = message || ''; node.hidden = !message; } }
     async function submitPortalForm(event) {
       event.preventDefault(); const form = event.currentTarget, type = form.elements.type.value;
       const name = form.elements.name.value.trim(), description = form.elements.description.value.trim();
       const servicesText = form.elements.services.value.trim(), port = Number.parseInt(form.elements.port.value, 10), localURL = form.elements.localURL.value.trim();
-      let error = !name ? 'Portal name is required' : !description ? 'Description is required' : ''; if (!error && type !== 'link' && !servicesText) error = 'At least one service is required'; if (!error && type !== 'link' && (!Number.isInteger(port) || port < 1 || port > 65535)) error = 'Port must be a valid number between 1 and 65535';
-      if (!error && !localURL) error = 'Local URL is required'; else if (!error && !/^https?:\/\//.test(localURL)) error = 'Local URL must start with http:// or https://';
-      if (error) { showCoronatioToast(error, 'error'); return; }
+      const errors = { name: !name ? 'Portal name is required' : '', description: !description ? 'Description is required' : '', services: type !== 'link' && !servicesText ? 'At least one service is required' : '', port: type !== 'link' && (!Number.isInteger(port) || port < 1 || port > 65535) ? 'Port must be a valid number between 1 and 65535' : '', localURL: !localURL ? 'Local URL is required' : (!/^https?:\/\//.test(localURL) ? 'Local URL must start with http:// or https://' : '') };
+      Object.entries(errors).forEach(([field, message]) => setPortalFormError(form, field, message));
+      if (Object.values(errors).some(Boolean)) return;
       const portal = { name, description, type, localURL, services: type === 'link' ? [] : servicesText.split(',').map(service => service.trim()).filter(Boolean) }; if (type !== 'link') portal.port = port;
       const token = localStorage.getItem('coronatioAdminToken');
+      const submit = form.querySelector('[type="submit"]'); if (submit) { submit.disabled = true; submit.setAttribute('aria-busy', 'true'); submit.innerHTML = '<span class="loading-spinner small" aria-hidden="true"></span> Creating...'; }
       try {
         const response = await fetch('/api/portals', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) }, body: JSON.stringify(portal) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Create failed (${response.status})`); }
         form.reset(); closePortalModals(); await refreshElementFragment('portals'); showCoronatioToast(`Portal "${name}" created successfully`, 'success');
       } catch (error) { showCoronatioToast(error.message || 'Failed to create portal', 'error'); }
+      finally { if (submit) { submit.disabled = false; submit.removeAttribute('aria-busy'); submit.innerHTML = '<i class="fas fa-plus"></i> Create Portal'; } }
     }
     async function deletePortal(event) {
       event.preventDefault(); event.stopPropagation(); const name = event.currentTarget.dataset.portalName || event.currentTarget.dataset.deletePortal; if (!headerState.isAdmin || !name) return;
@@ -713,7 +716,7 @@ fn shell_document_4() -> &'static str {
       const portalBackdrop = event.target.closest('[data-add-portal-modal], [data-service-status-modal]');
       if (portalBackdrop && event.target === portalBackdrop) { closePortalModals(); return; }
       const copyStatus = event.target.closest('[data-service-status-copy]');
-      if (copyStatus) { navigator.clipboard?.writeText(document.querySelector('[data-service-status-content]')?.textContent || ''); return; }
+      if (copyStatus) { navigator.clipboard?.writeText(document.querySelector('[data-service-status-content]')?.textContent || ''); showCoronatioToast('Status copied to clipboard', 'success'); return; }
       const fileButton = event.target.closest('[data-upload-file-button]');
       if (fileButton) { uploadFileInput?.click(); return; }
       const health = event.target.closest('[data-test-health-check]');
@@ -740,12 +743,10 @@ fn shell_document_4() -> &'static str {
     document.body.addEventListener('mouseleave', event => {
       const toast = event.target.closest?.('[data-coronatio-toast]');
       if (toast && !toast.classList.contains('toast-exit')) startCoronatioToastTimer(toast, Number(toast.dataset.toastRemaining || 0));
-    }, true);
-    document.body.addEventListener('animationend', event => {
+    }, true); document.body.addEventListener('animationend', event => {
       const toast = event.target.closest?.('[data-coronatio-toast]');
       if (toast && toast.classList.contains('toast-exit') && event.animationName === 'toast-slide-out') toast.remove();
-    });
-    document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm);
+    }); document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm);
     document.body.addEventListener('input', event => {
       const slider = event.target.closest('[data-ui-slider]');
       if (slider) { const out = slider.closest('.showcase-item')?.querySelector('[data-slider-value]'); if (out) out.textContent = slider.value; return; }

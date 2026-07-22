@@ -266,8 +266,12 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
     let destination = html_escape(if destination_raw.trim().is_empty() { &portal.local_url } else { &destination_raw });
     let status = derive_portal_currentness(portal);
     let services = html_escape(&serde_json::to_string(&portal.services).unwrap_or_else(|_| "[]".to_string()));
-    let admin_controls = if session == Session::Admin && portal.r#type != "link" {
+    // Quarry: only systemd portals expose direct service controls. Script portals
+    // remain plainly actionable only through their system restart notice.
+    let admin_controls = if session == Session::Admin && portal.r#type == "systemd" {
         format!(r#"<div class="admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="{}"><div class="admin-controls-row"><button data-service-action="start" title="Start service">Start</button><button data-service-action="stop" title="Stop service">Stop</button><button data-service-action="restart" title="Restart service">Restart</button></div><div class="admin-controls-row"><button data-service-action="enable" title="Enable service at boot">Enable</button><button data-service-action="disable" title="Disable service at boot">Disable</button><button data-service-action="status" title="Check service status">Status</button></div></div>"#, services)
+    } else if session == Session::Admin && portal.r#type == "script" {
+        r#"<div class="admin-controls script-management-notice" data-admin-only data-admin-viewport="portals"><span class="script-notice-text" title="System restart required for changes to take effect. Script-managed services are controlled through system scripts rather than direct service commands.">Script-managed Service — system restart required</span></div>"#.to_string()
     } else { String::new() };
     let delete = if session == Session::Admin && !factory_portals.iter().any(|factory| factory == element_id) {
         format!(r#"<button type="button" class="delete-portal-button" data-admin-only data-admin-viewport="portals" data-portal-delete data-portal-name="{}" title="Delete portal" aria-label="Delete {}"><i class="fas fa-trash" aria-hidden="true"></i></button>"#, name, name)
