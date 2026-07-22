@@ -37,6 +37,21 @@
         packs
     }
 
+    fn css_without_comments(css: &str) -> String {
+        let mut uncommented = String::with_capacity(css.len());
+        let mut tail = css;
+        while let Some(start) = tail.find("/*") {
+            uncommented.push_str(&tail[..start]);
+            let after_start = &tail[start + 2..];
+            let Some(end) = after_start.find("*/") else {
+                return uncommented;
+            };
+            tail = &after_start[end + 2..];
+        }
+        uncommented.push_str(tail);
+        uncommented
+    }
+
     #[test]
     fn theme_net_author_face_wall_allowlist_is_machine_readable_and_rebound_by_shell() {
         let names = author_face_names();
@@ -71,6 +86,7 @@
     #[test]
     fn theme_net_author_face_wall_packs_have_no_hex_or_colored_rgba_paint() {
         for (path, css) in pack_css() {
+            let css = css_without_comments(&css);
             let bytes = css.as_bytes();
             for index in 0..bytes.len() {
                 if bytes[index] == b'#' {
