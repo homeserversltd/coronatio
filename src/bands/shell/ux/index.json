@@ -23,6 +23,7 @@
     "library/_tabs.css",
     "library/_text-box.css",
     "library/_time-picker.css",
+    "library/_toast.css",
     "library/_toggle.css",
     "library/_visibility-toggle.css",
     "packs/upload.css",

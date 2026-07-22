@@ -554,6 +554,12 @@
             "function openUxModalDemo(kind, opener)",
             "document.body.addEventListener('keydown'",
             "requestAnimationFrame(() => win.querySelector('[data-ux-modal-close]')?.focus())",
+            "data-toast-catalog",
+            "data-coronatio-toast-spawn",
+            "data-toast-variant=\"info\"",
+            "data-toast-variant=\"success\"",
+            "data-toast-variant=\"warning\"",
+            "data-toast-variant=\"error\"",
         ] {
             assert!(shell.contains(marker), "missing og Test marker: {marker}");
         }
@@ -586,14 +592,15 @@
             ("table", "Table"),
             ("collapsible", "Collapsible"),
             ("modals", "Modals"),
+            ("toasts", "Toasts / Notifications"),
         ];
         for (id, title) in categories {
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", id)), "missing category chip {id}");
             assert!(shell.contains(&format!("id=\"showcase-{}\"", id)), "missing category section {id}");
             assert!(shell.contains(title), "missing category title {title}");
         }
-        assert_eq!(shell.matches("data-category-chip=").count(), 19);
-        assert_eq!(shell.matches("data-og-category-section=").count(), 19);
+        assert_eq!(shell.matches("data-category-chip=").count(), 20);
+        assert_eq!(shell.matches("data-og-category-section=").count(), 20);
         assert!(!shell.contains("data-test-panel=\"theme-values\""));
         assert!(!shell.contains("Mini Theme Token Lab"));
         assert!(!shell.contains("data-theme-token-lab=\"true\""));

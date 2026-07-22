@@ -1,4 +1,4 @@
-const OG_TESTTAB_CATEGORIES: [(&str, &str); 19] = [
+const OG_TESTTAB_CATEGORIES: [(&str, &str); 20] = [
     ("buttons", "Buttons"),
     ("toggles", "Toggles"),
     ("tabs", "Tabs"),
@@ -18,6 +18,7 @@ const OG_TESTTAB_CATEGORIES: [(&str, &str); 19] = [
     ("table", "Table"),
     ("collapsible", "Collapsible"),
     ("modals", "Modals"),
+    ("toasts", "Toasts / Notifications"),
 ];
 
 fn render_category_chip_grid() -> String {
@@ -66,6 +67,13 @@ fn render_component_showcase() -> String {
     panels.push(section("badges", "Badges", r#"<div class="showcase-grid"><div class="showcase-item"><h4>Badge Variants</h4><div class="showcase-row"><span class="ui-badge ui-badge--primary">Primary</span><span class="ui-badge ui-badge--secondary">Secondary</span><span class="ui-badge ui-badge--success">Success</span><span class="ui-badge ui-badge--warning">Warning</span><span class="ui-badge ui-badge--danger">Danger</span><span class="ui-badge ui-badge--info">Info</span></div></div><div class="showcase-item"><h4>Badge Sizes</h4><span class="ui-badge ui-badge--small">Small</span><span class="ui-badge ui-badge--medium">Medium</span><span class="ui-badge ui-badge--large">Large</span></div><div class="showcase-item"><h4>Badge Usage Examples</h4><div>Status: <span class="ui-badge ui-badge--success">Online</span></div><div>Count: <span class="ui-badge ui-badge--primary">42</span></div><div>Alert: <span class="ui-badge ui-badge--danger">Critical</span></div></div></div>"#, false));
     panels.push(section("checkboxes", "Checkboxes", r#"<div class="showcase-grid"><div class="showcase-item"><h4>Basic Checkboxes</h4><label class="ui-checkbox"><input type="checkbox" checked data-ui-checkbox>Checked checkbox</label><label class="ui-checkbox"><input type="checkbox" data-ui-checkbox>Unchecked checkbox</label><label class="ui-checkbox"><input type="checkbox" checked data-ui-checkbox>Another checked</label></div><div class="showcase-item"><h4>Checkbox Sizes</h4><label class="ui-checkbox ui-checkbox--small"><input type="checkbox" checked>Small checkbox</label><label class="ui-checkbox ui-checkbox--medium"><input type="checkbox">Medium checkbox</label><label class="ui-checkbox ui-checkbox--large"><input type="checkbox" checked>Large checkbox</label></div><div class="showcase-item"><h4>Disabled Checkboxes</h4><label class="ui-checkbox"><input type="checkbox" disabled>Disabled unchecked</label><label class="ui-checkbox"><input type="checkbox" checked disabled>Disabled checked</label></div><div class="showcase-item"><h4>Stats Tab Style (Grouped)</h4><div class="device-control"><span class="device-name">nas</span><label class="drive-checkbox"><input type="checkbox" checked>Read</label><label class="drive-checkbox"><input type="checkbox">Write</label></div></div></div>"#, false));
     panels.push(section("utilities", "Utility Components", r#"<div class="showcase-grid"><div class="showcase-item"><h4>Plus Button</h4><button class="plus-button plus-button--small">+</button><button class="plus-button plus-button--medium">+</button><button class="plus-button plus-button--large">+</button><button class="plus-button" disabled>+</button></div><div class="showcase-item"><h4>Editable Field</h4><span class="editable-field" contenteditable="true">Click to edit this text</span><span class="editable-field editable-field--empty" contenteditable="true">Empty field - click to edit</span><span class="editable-field editable-field--disabled">Disabled field</span></div></div>"#, false));
+    panels.push(section("toasts", "Toasts / Notifications", r#"
+      <p>Og <code>Toast</code> feedback grammar: spawn a result, keep multiple results stacked, hover to pause its lifetime, and click a result to dismiss it.</p>
+      <div class="showcase-grid" data-toast-catalog data-catalog-specimen="toast-notifications">
+        <article class="showcase-item"><h4>Variant controls</h4><div class="showcase-row"><button type="button" class="ui-button ui-button--primary" data-coronatio-toast-spawn data-toast-variant="info" data-toast-message="Information notification">Spawn info</button><button type="button" class="ui-button ui-button--success" data-coronatio-toast-spawn data-toast-variant="success" data-toast-message="Settings saved">Spawn success</button><button type="button" class="ui-button ui-button--warning" data-coronatio-toast-spawn data-toast-variant="warning" data-toast-message="Review this appliance setting">Spawn warning</button><button type="button" class="ui-button ui-button--danger" data-coronatio-toast-spawn data-toast-variant="error" data-toast-message="The requested action failed">Spawn error</button></div></article>
+        <article class="showcase-item"><h4>Stack and dismissal</h4><p>Each result lasts three seconds unless hovered. Click a result to dismiss it through the og exit animation.</p><button type="button" class="ui-button ui-button--secondary" data-coronatio-toast-spawn data-toast-variant="info" data-toast-message="Stack item">Spawn another stack item</button></article>
+      </div>
+    "#, false));
     panels.push(section("visibility-system", "Visibility System", r#"
       <p>Click each eye to compare the visible and hidden presentation.</p>
       <div class="showcase-grid visibility-system-catalog" data-visibility-system-catalog>
