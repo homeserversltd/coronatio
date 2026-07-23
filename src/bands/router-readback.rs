@@ -355,7 +355,11 @@ async fn caduceus_session_mint_route(headers: axum::http::HeaderMap, body: axum:
     let Some(pin) = body.get("pin").and_then(serde_json::Value::as_str).filter(|pin| !pin.is_empty() && pin.len() <= 256) else {
         return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-pin-required"), false);
     };
-    let call = crate::caduceus_access::CaduceusAccessClient::default().session_mint(pin);
+    let call = if let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) {
+        crate::caduceus_access::CaduceusAccessClient::default().session_mint_for_document(pin, &document)
+    } else {
+        crate::caduceus_access::CaduceusAccessClient::default().session_mint(pin)
+    };
     let status = mint_failure_status(&call);
     let mut response = session_response(status, session_projection(call.clone()), false);
     if let Some(ticket) = call.take_ticket() {
@@ -380,7 +384,11 @@ async fn caduceus_session_prove_with_client(
     let Some(ticket) = crate::caduceus_access::session_ticket_from_cookie(&headers) else {
         return session_response(StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-access-session-required"), true);
     };
-    let call = client.session_prove(&ticket);
+    let call = if let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) {
+        client.session_prove_for_document(&ticket, &document)
+    } else {
+        client.session_prove(&ticket)
+    };
     if call.receipt.ok {
         session_response(StatusCode::OK, session_projection(call), false)
     } else {

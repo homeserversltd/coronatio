@@ -43,8 +43,14 @@ impl CaduceusAccessClient {
     #[cfg(test)]
     pub(crate) fn test_base(&self) -> &str { &self.base }
 
-    pub(crate) fn session_mint(&self, pin: &str) -> AccessCall {
-        self.call(AccessOperation::SessionMint, serde_json::json!({"pin": pin}))
+    pub(crate) fn session_mint_for_document(&self, pin: &str, document: &str) -> AccessCall {
+        self.call(AccessOperation::SessionMint, serde_json::json!({"pin": pin, "document": document}))
+    }
+
+    pub(crate) fn session_mint(&self, pin: &str) -> AccessCall { self.call(AccessOperation::SessionMint, serde_json::json!({"pin": pin})) }
+
+    pub(crate) fn session_prove_for_document(&self, ticket: &SessionTicket, document: &str) -> AccessCall {
+        self.call(AccessOperation::SessionProve, serde_json::json!({"ticket": ticket.expose_for_transport(), "document": document}))
     }
 
     pub(crate) fn session_prove(&self, ticket: &SessionTicket) -> AccessCall {
@@ -53,6 +59,10 @@ impl CaduceusAccessClient {
 
     pub(crate) fn session_clear(&self, ticket: &SessionTicket) -> AccessCall {
         self.call(AccessOperation::SessionClear, serde_json::json!({"ticket": ticket.expose_for_transport()}))
+    }
+
+    pub(crate) fn capability_mint_for_document(&self, ticket: &SessionTicket, action: &str, target: &str, document: &str) -> AccessCall {
+        self.call(AccessOperation::CapabilityMint, serde_json::json!({"ticket": ticket.expose_for_transport(), "action": action, "target": target, "document": document}))
     }
 
     pub(crate) fn capability_mint(&self, ticket: &SessionTicket, action: &str, target: &str) -> AccessCall {
@@ -254,6 +264,12 @@ pub(crate) fn session_ticket_from_cookie(headers: &axum::http::HeaderMap) -> Opt
         let (name, value) = pair.split_once('=')?;
         (name == CADUCEUS_SESSION_COOKIE).then(|| SessionTicket::parse(value)).flatten()
     })
+}
+
+pub(crate) fn document_incarnation_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers.get("x-caduceus-document").and_then(|value| value.to_str().ok()).map(str::trim)
+        .filter(|value| !value.is_empty() && value.len() <= 128 && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')))
+        .map(ToOwned::to_owned)
 }
 
 pub(crate) fn same_origin_state_change(headers: &axum::http::HeaderMap) -> bool {

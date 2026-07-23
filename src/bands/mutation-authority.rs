@@ -1,10 +1,7 @@
 // Single successor authority and actuator seam for all Coronatio state changes.
 // Browser callers provide only same-origin request context and the opaque Caduceus
 // session cookie. A one-use capability exists only during the one downstream call.
-use crate::caduceus_access::{
-    safe_access_code, same_origin_state_change, session_ticket_from_cookie, CapabilityTicket,
-    CaduceusAccessClient, SessionTicket,
-};
+use crate::caduceus_access::{safe_access_code, same_origin_state_change, session_ticket_from_cookie, CapabilityTicket, CaduceusAccessClient, SessionTicket};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MutationActionTarget {

@@ -1,5 +1,12 @@
 fn shell_document_3() -> &'static str {
-    r####"        const coronatioFetch = window.fetch.bind(window); window.fetch = (input, init = {}) => coronatioFetch(input, { ...init, credentials: 'same-origin' });
+    r####"        const documentIncarnation = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9._-]/g, '');
+    let inactivityHeadless = false;
+    const coronatioFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+      const headers = new Headers(init.headers || {});
+      headers.set('X-Caduceus-Document', documentIncarnation);
+      return coronatioFetch(input, { ...init, headers, credentials: 'same-origin' });
+    };
         button.dataset.themeChoice = name;
         button.textContent = themeLabel(name);
         button.addEventListener('click', () => {
@@ -71,13 +78,8 @@ fn shell_document_3() -> &'static str {
       }
     }
     async function bootstrapAdminMode() {
-      try {
-        const response = await fetch('/api/session/prove', { method: 'POST', cache: 'no-store' });
-        const result = await response.json().catch(() => ({}));
-        setAdminMode(response.ok && result.admin === true);
-      } catch (_) {
-        setAdminMode(false);
-      }
+      // A document is always born GUEST. No cookie, refresh, or prior document may restore attendance.
+      setAdminMode(false);
     }
     function openPinModal(mode) {
       modalMode = mode;
@@ -436,7 +438,26 @@ fn shell_document_3() -> &'static str {
       modalMessage.textContent = '';
       closePinModal();
     });
-    let pulseStream = null;
+    function enterInactivityHeadless() {
+      if (inactivityHeadless) return;
+      inactivityHeadless = true;
+      if (headerState.isAdmin) { headerState.isAdmin = false; saveHeaderState(); applyAdminDomState(); }
+      [pulseStream, coreStream].forEach(stream => { try { stream?.close(); } catch (_) {} });
+      pulseStream = null; coreStream = null;
+      document.documentElement.dataset.connectionState = 'headless';
+      const notice = document.querySelector('[data-crown-headless-notice]') || document.createElement('p');
+      notice.dataset.crownHeadlessNotice = 'true';
+      notice.textContent = 'You have been disconnected due to inactivity.';
+      notice.setAttribute('role', 'status');
+      if (!notice.parentNode) document.querySelector('[data-product="Coronatio"]')?.prepend(notice);
+    }
+    let lastEligibleActivity = Date.now();
+    const activityEvents = ['scroll', 'touchstart', 'pointerdown'];
+    activityEvents.forEach(type => document.addEventListener(type, () => { lastEligibleActivity = Date.now(); }, { passive: true }));
+    document.addEventListener('click', event => {
+      if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL'].includes(event.target?.tagName)) lastEligibleActivity = Date.now();
+    }, { passive: true });
+    window.setInterval(() => { if (Date.now() - lastEligibleActivity >= 15 * 60 * 1000) enterInactivityHeadless(); }, 60 * 1000);
     let pulseRenewTimer = null;
     let pulseStreamId = null;
     let coreStream = null;
