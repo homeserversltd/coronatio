@@ -216,13 +216,6 @@
             "class=\"add-portal-icon\"",
             "class=\"add-portal-title\"",
             "class=\"add-portal-description\"",
-            "class=\"portal-modal-overlay\"",
-            "class=\"portal-modal-content\"",
-            "class=\"add-portal-modal\"",
-            "class=\"portal-form\"",
-            "class=\"service-status-modal\"",
-            "class=\"service-status-content\"",
-            "class=\"copy-button\"",
         ] {
             let haystack = if required.contains("add-portal") { html.as_str() } else { portals };
             assert!(haystack.contains(required), "portals markup missing og class stack {required}");
@@ -234,6 +227,13 @@
         assert!(!portals.contains("aria-disabled=\"true\""));
         assert!(html.contains("submitPortalForm"));
         assert!(html.contains("deletePortal"));
+        for selector in [
+            "class=\"portal-modal-overlay\" data-add-portal-modal",
+            "class=\"portal-modal-overlay\" data-service-status-modal",
+        ] {
+            let modal = html.find(selector).unwrap();
+            assert!(modal > html.find("</main>").unwrap(), "portal modal must be outside the transformed Immortal Floor: {selector}");
+        }
     }
 
     #[test]
