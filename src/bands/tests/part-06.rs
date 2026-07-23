@@ -39,7 +39,7 @@
     }
 
     #[test]
-    fn portals_hover_lift_reflects_motion_tranch_01() {
+    fn portals_hover_uses_a_native_surface_treatment() {
         let html = render_crown_shell();
         let lab_css = std::fs::read_to_string("src/bands/shell/ux/packs/test-animations.css").unwrap();
         let portals_css = std::fs::read_to_string("src/bands/shell/ux/packs/portals.css").unwrap();
@@ -59,33 +59,20 @@
             "--motion-hover-raise-easing",
         ] {
             assert!(lab_css.contains(token), "Animation Lab does not define {token}");
-            assert!(portals_css.contains(&format!("var({token})")), "Portals does not consume {token}");
         }
 
         assert!(lab_css.contains(".motion-card-stage:is(:hover, :focus-visible) .motion-card-face"));
         assert!(portals_css.contains(".portal-element:is(:hover, :focus-within) > .portal-card > .portal-card-face"));
-        assert!(portals_css.contains("MOTION-TRANCH-01 => MOTION-ATOM(transform, box-shadow) => MOTION-COMPOSE(stable-stage raise) => MOTION-REFLECT(Portals cards)"));
         assert!(portals_css.contains("@media (prefers-reduced-motion: reduce)"));
         assert!(portals_css.contains("transition-duration: .001ms !important"));
-        let lift_start = portals_css.find("IndraNet reflection: MOTION-TRANCH-01").unwrap();
-        let lift_end = portals_css.find(".portal-card-header").unwrap();
-        let lift_path = &portals_css[lift_start..lift_end];
-        assert!(!lift_path.contains("transition: all"));
-        assert!(!lift_path.contains("animation:"));
-        assert!(!lift_path.contains("infinite"));
-        assert!(!lift_path.contains("translateZ"));
-        assert!(lift_path.contains("transition-property: transform, box-shadow"));
-        assert!(lift_path.contains("transform: var(--motion-hover-raise-transform)"));
-        assert!(lift_path.contains(".portal-card-face"));
-        assert!(lift_path.contains("pointer-events: none"));
-        let lab_hover_start = lab_css.find(".motion-card-stage:is(:hover, :focus-visible) .motion-card-face").unwrap();
-        let lab_hover_end = lab_css[lab_hover_start..].find(".motion-toggle").unwrap() + lab_hover_start;
-        let lab_hover_path = &lab_css[lab_hover_start..lab_hover_end];
-        for path in [lift_path, lab_hover_path] {
-            assert!(!path.contains("border-color"), "MOTION-TRANCH-01 hover emphasis steals status border authority");
-            assert!(path.contains("box-shadow"), "MOTION-TRANCH-01 hover raise must retain depth evidence");
-        }
-        assert!(lab_hover_path.contains("transform: var(--motion-hover-raise-transform)"));
+        let hover_start = portals_css.find(".portal-element:is(:hover, :focus-within) > .portal-card > .portal-card-face").unwrap();
+        let hover_end = portals_css[hover_start..].find(".portal-card-face :is(").unwrap() + hover_start;
+        let hover_path = &portals_css[hover_start..hover_end];
+        assert!(portals_css.contains("transition-property: background-color"));
+        assert!(portals_css.contains("--portal-card-hover-background"));
+        assert!(!hover_path.contains("border-color"), "portal hover steals status border authority");
+        assert!(!hover_path.contains("transform"), "portal hover must not move the card face");
+        assert!(hover_path.contains("background-color"));
         assert!(lab_css.contains(".motion-card-face { pointer-events: none"));
         assert!(!portals_css.contains(".portal-card:hover .portal-icon"));
         assert!(!portals_css.contains(".add-portal-card:hover .add-portal-icon"));

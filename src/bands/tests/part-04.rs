@@ -541,8 +541,8 @@
         assert!(!card_rule.contains("transition-property: border-color"));
         assert!(!card_rule.contains("transition-duration"));
         let face_rule = &portals_css[portals_css.find(".portal-card-face {").unwrap()..portals_css.find(".portal-element:is(:hover, :focus-within)").unwrap()];
-        assert!(face_rule.contains("transition-property: transform, box-shadow"));
-        assert!(face_rule.contains("transition-duration: var(--motion-hover-raise-duration)"));
+        assert!(face_rule.contains("transition-property: background-color"));
+        assert!(face_rule.contains("transition-duration: var(--portal-card-hover-duration)"));
         assert!(!card_rule.contains("background-color"));
         assert!(!portals_css.contains(".portal-card:hover::before"));
         assert!(!portals_css.contains("animation: infinite"));
@@ -550,8 +550,8 @@
         let emphasized_rule_end = portals_css[emphasized_rule_start..].find(".portal-card-header").unwrap() + emphasized_rule_start;
         let emphasized_rule = &portals_css[emphasized_rule_start..emphasized_rule_end];
         assert!(!emphasized_rule.contains("border-color"), "portal hover steals status border authority");
-        assert!(emphasized_rule.contains("box-shadow"), "portal hover omits stable-stage depth shadow");
-        assert!(emphasized_rule.contains("transform: var(--motion-hover-raise-transform)"));
+        assert!(emphasized_rule.contains("background-color: var(--portal-card-hover-background)"));
+        assert!(!emphasized_rule.contains("transform"), "portal hover must not move the card face");
         assert!(portals_css.contains(".portal-card-face {\n  pointer-events: none;"));
         let fragment = include_str!("../crown-law/element-fragments.rs");
         assert!(fragment.contains("<div class=\"portal-card-face\"><div class=\"portal-card-header\">"));
