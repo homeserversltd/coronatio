@@ -551,11 +551,8 @@
         }
         let succeeded = body["success"].as_bool().expect("boolean success");
         assert!(body["active"].is_boolean(), "active must remain a projection boolean: {body}");
-        if succeeded {
-            assert_eq!(body["output"], "none");
-        } else {
-            assert_eq!(body["output"], "caduceus-test-capability-required");
-        }
+        assert!(succeeded, "attendance fixture must admit the authorized service action: {body}");
+        assert_eq!(body["output"], "none");
     }
 
     #[tokio::test]

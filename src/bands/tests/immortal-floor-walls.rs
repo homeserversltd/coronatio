@@ -37,7 +37,7 @@ fn immortal_floor_admits_before_reveal_and_faults_honestly() {
 fn immortal_floor_motion_uses_three_stable_floors_and_reduced_motion_settles() {
     let css = shell_ux_css();
     assert!(css.contains(".immortal-floor-underlay, .immortal-floor-admission-frame, .immortal-floor-guest-slot { grid-area: 1 / 1"));
-    assert!(css.contains(".immortal-floor-underlay { z-index: 0; background: #000;"));
+    assert!(css.contains(".immortal-floor-underlay { z-index: 0; background: var(--background);"));
     assert!(css.contains(".immortal-floor-admission-frame { z-index: 3;"));
     assert!(css.contains("pointer-events: none"));
     assert!(css.contains("contain: layout paint"));

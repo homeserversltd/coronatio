@@ -20,7 +20,7 @@ fn uxport_008_stats_adoption_walls_keep_og_grammar_and_truthful_absence() {
         "borderDash: [3, 3]",
         "pointRadius: 0",
         "pointHoverRadius: 0",
-        "animation: { duration: 0 }",
+        "animation: { duration: 250 }",
         "labels.length > 60",
         "checked.get(`${dataset.label.endsWith(' Read') ? 'read' : 'write'}-${name}`) !== false",
         "No Kea leases found.",

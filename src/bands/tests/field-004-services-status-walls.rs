@@ -150,7 +150,7 @@
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("coronatio.services.mutation.refusal.v1"), "{body}");
-        assert!(body.contains("caduceus-access-session-required"), "{body}");
+        assert!(body.contains("caduceus-attendance-required"), "{body}");
         assert!(body.contains("\"accepted\":false"), "{body}");
         assert!(body.contains("\"method\":\"POST\""), "{body}");
         assert!(body.contains("\"path\":\"/api/service/control\""), "{body}");

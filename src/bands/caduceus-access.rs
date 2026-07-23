@@ -20,6 +20,8 @@ impl CaduceusAccessClient {
     pub(crate) fn attendance_validate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Validate, serde_json::json!({"attendance":attendance.expose(),"document":document})) }
     pub(crate) fn attendance_invalidate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Invalidate, serde_json::json!({"attendance":attendance.expose(),"document":document})) }
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
+        #[cfg(test)]
+        if self.base == test_fixture::base() { return test_fixture::attendance_call(operation, &body); }
         let encoded = match serde_json::to_vec(&body) { Ok(v) if v.len() <= 4096 => v, _ => return AttendanceCall::refused(operation, 0, "caduceus-attendance-request-invalid") };
         let Some(authority) = access_authority(&self.base) else { return AttendanceCall::refused(operation, 0, "caduceus-attendance-base-invalid") };
         let mut stream = match TcpStream::connect_timeout(&authority, self.timeout) { Ok(s) => s, Err(_) => return AttendanceCall::refused(operation, 0, "caduceus-attendance-unavailable") };
@@ -51,4 +53,18 @@ pub(crate) fn document_incarnation_from_headers(headers:&axum::http::HeaderMap)-
 pub(crate) fn attendance_from_headers(headers:&axum::http::HeaderMap)->Option<AttendanceProof>{headers.get("x-caduceus-attendance").and_then(|v|v.to_str().ok()).and_then(AttendanceProof::parse)}
 pub(crate) fn same_origin_state_change(headers:&axum::http::HeaderMap)->bool{let Some(host)=forwarded_first(headers,"x-forwarded-host").or_else(||headers.get(header::HOST).and_then(|v|v.to_str().ok()))else{return false};let proto=forwarded_first(headers,"x-forwarded-proto").unwrap_or("https");let Some(origin)=headers.get(header::ORIGIN).and_then(|v|v.to_str().ok())else{return false};proto.eq_ignore_ascii_case("https")&&matches!(host.trim().to_ascii_lowercase().as_str(),"home.arpa"|"home.arpa:443")&&matches!(origin.trim().to_ascii_lowercase().as_str(),"https://home.arpa"|"https://home.arpa:443")}
 fn forwarded_first<'a>(headers:&'a axum::http::HeaderMap,name:&str)->Option<&'a str>{headers.get(name)?.to_str().ok()?.split(',').next().map(str::trim).filter(|v|!v.is_empty())}
-#[cfg(test)] pub(crate) mod test_fixture { use super::*; pub(crate) fn base()->String{"http://127.0.0.1:9".to_string()} }
+#[cfg(test)]
+pub(crate) mod test_fixture {
+    use super::*;
+    pub(crate) fn base() -> String { "http://127.0.0.1:9".to_string() }
+    pub(super) fn attendance_call(operation: AttendanceOperation, body: &serde_json::Value) -> AttendanceCall {
+        let document = body.get("document").and_then(|v| v.as_str());
+        let attendance = body.get("attendance").and_then(|v| v.as_str());
+        let valid = document == Some("test-document") && match operation {
+            AttendanceOperation::Open => body.get("pin").and_then(|v| v.as_str()).is_some_and(|pin| !pin.is_empty()),
+            AttendanceOperation::Validate | AttendanceOperation::Invalidate => attendance == Some("test-attendance"),
+        };
+        if !valid { return AttendanceCall::refused(operation, 401, "caduceus-attendance-refused"); }
+        AttendanceCall { receipt: AttendanceReceipt { operation: operation.name(), ok: true, status: 200, code: "none".to_string() }, proof: operation.returns_proof().then(|| AttendanceProof("test-attendance".to_string())) }
+    }
+}

@@ -295,9 +295,9 @@
         let chrome = crown_chrome_js();
         let lifecycle_connect = chrome.find("if (active === 'stats') { hydrateStats(); connectPulseStream(); }").expect("stats stream must enter through viewport lifecycle admission");
         for declaration in [
-            "\n    let pulseStream = null;",
-            "\n    let pulseRenewTimer = null;",
-            "\n    let pulseStreamId = null;",
+            "let pulseStream = null;",
+            "let pulseRenewTimer = null;",
+            "let pulseStreamId = null;",
         ] {
             let declaration_offset = chrome.find(declaration).unwrap_or_else(|| panic!("missing pulse rider state declaration: {declaration}"));
             assert!(

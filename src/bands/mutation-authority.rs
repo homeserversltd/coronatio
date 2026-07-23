@@ -245,11 +245,11 @@ mod mutation_authority_tests {
         let authority = MutationAuthority { access: CaduceusAccessClient::new("http://127.0.0.1:9") };
         let mapping = MutationActionTarget::caduceus("caduceus.update.now", "/api/v1/update/now");
         for context in [
-            MutationRequestContext { same_origin: false, session: SessionTicket::parse("opaque-session") },
-            MutationRequestContext { same_origin: true, session: None },
+            MutationRequestContext { same_origin: false, document: Some("test-document".to_string()), attendance: AttendanceProof::parse("test-attendance") },
+            MutationRequestContext { same_origin: true, document: Some("test-document".to_string()), attendance: None },
         ] {
             let refusal = authority.authorize(&context, mapping.clone()).unwrap_err();
-            assert!(!refusal.code.contains("opaque-session"));
+            assert!(!refusal.code.contains("test-attendance"));
             assert!(refusal.code.contains("refused") || refusal.code.contains("required"));
         }
     }
@@ -261,7 +261,7 @@ mod mutation_authority_tests {
         headers.insert(axum::http::header::ORIGIN, axum::http::HeaderValue::from_static("https://evil.example"));
         let context = MutationRequestContext::from_headers(&headers);
         assert!(!context.same_origin);
-        assert!(context.session.is_none());
+        assert!(context.attendance.is_none());
         assert!(mutation_context_refusal(&headers).is_some());
         assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
     }
@@ -270,9 +270,9 @@ mod mutation_authority_tests {
     fn central_mutation_status_classifies_refusal_and_fault_signals() {
         for (signal, expected) in [
             ("caduceus-access-origin-refused", axum::http::StatusCode::FORBIDDEN),
-            ("caduceus-access-session-required", axum::http::StatusCode::UNAUTHORIZED),
-            ("caduceus-capability-refused", axum::http::StatusCode::UNAUTHORIZED),
-            ("caduceus-capability-required", axum::http::StatusCode::UNAUTHORIZED),
+            ("caduceus-attendance-required", axum::http::StatusCode::UNAUTHORIZED),
+            ("caduceus-attendance-refused", axum::http::StatusCode::UNAUTHORIZED),
+            ("caduceus-attendance-invalid", axum::http::StatusCode::UNAUTHORIZED),
             ("caduceus-access-unavailable", axum::http::StatusCode::SERVICE_UNAVAILABLE),
             ("caduceus-access-malformed-response", axum::http::StatusCode::SERVICE_UNAVAILABLE),
             ("caduceus-loopback-required", axum::http::StatusCode::SERVICE_UNAVAILABLE),

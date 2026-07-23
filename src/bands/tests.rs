@@ -23,7 +23,13 @@ mod tests {
         request
     }
 
-    fn successor_session_request(request: Request<Body>, _admin: bool) -> Request<Body> { successor_admin_request(request) }
+    fn successor_session_request(mut request: Request<Body>, admin: bool) -> Request<Body> {
+        request.headers_mut().insert("host", "home.arpa".parse().unwrap());
+        request.headers_mut().insert("origin", "https://home.arpa".parse().unwrap());
+        request.headers_mut().insert("x-caduceus-document", "test-document".parse().unwrap());
+        if admin { request.headers_mut().insert("x-caduceus-attendance", "test-attendance".parse().unwrap()); }
+        request
+    }
 
     include!("tests/part-01.rs");
 

@@ -464,6 +464,7 @@ fn shell_document_3() -> &'static str {
       if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL'].includes(event.target?.tagName)) lastEligibleActivity = Date.now();
     }, { passive: true });
     window.setInterval(() => { if (Date.now() - lastEligibleActivity >= 15 * 60 * 1000) enterInactivityHeadless(); }, 60 * 1000);
+    let pulseStream = null;
     let pulseRenewTimer = null;
     let pulseStreamId = null;
     let coreStream = null;

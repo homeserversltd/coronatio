@@ -216,7 +216,7 @@
             html_response_has_csp(&response, route);
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
             assert!(body.contains("data-admin-membrane-refusal=\"true\""), "{route}: {body}");
-            assert!(body.contains("caduceus-access-session-required"), "{route}: {body}");
+            assert!(body.contains("caduceus-attendance-required"), "{route}: {body}");
         }
         std::env::remove_var("CORONATIO_SSHD_CONFIG_FIXTURE");
 

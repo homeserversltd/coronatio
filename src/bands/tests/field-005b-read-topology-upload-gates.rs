@@ -246,7 +246,7 @@
             let response = router.clone().oneshot(successor_session_request(Request::builder().method(method).uri(route).body(Body::empty()).unwrap(), false)).await.unwrap();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method} {route}");
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-            assert!(body.contains("caduceus-access-session-required"), "{method} {route}: {body}");
+            assert!(body.contains("caduceus-attendance-required"), "{method} {route}: {body}");
             assert!(body.contains("\"ok\":false"), "{method} {route}: {body}");
             assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty(), "{method} {route}");
         }

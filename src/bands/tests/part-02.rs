@@ -190,7 +190,7 @@
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        assert!(body.contains("caduceus-access-session-required"));
+        assert!(body.contains("caduceus-attendance-required"));
         assert!(body.contains("\"ok\":false"));
         assert!(body.contains("\"accepted\":false"));
         assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
