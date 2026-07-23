@@ -140,10 +140,10 @@ fn caduceus_loopback_refusal(path: &str) -> CaduceusHttpReadback {
 }
 
 fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
-    caduceus_http_with_capability(method, path, None)
+    caduceus_http_with_attendance(method, path, None)
 }
 
-fn caduceus_http_with_capability(method: &str, path: &str, capability: Option<&str>) -> CaduceusHttpReadback {
+fn caduceus_http_with_attendance(method: &str, path: &str, attendance: Option<&crate::caduceus_access::AttendanceProof>) -> CaduceusHttpReadback {
     let Some(authority) = caduceus_authority() else {
         return caduceus_loopback_refusal(path);
     };
@@ -161,11 +161,11 @@ fn caduceus_http_with_capability(method: &str, path: &str, capability: Option<&s
     };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
-    let capability_header = capability
-        .map(|token| format!("x-caduceus-capability: {token}\r\n"))
+    let attendance_header = attendance
+            .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
         .unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n{capability_header}Content-Length: 0\r\n\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n{attendance_header}Content-Length: 0\r\n\r\n"
     );
     if let Err(_err) = stream.write_all(request.as_bytes()) {
         return CaduceusHttpReadback {
@@ -224,12 +224,12 @@ fn caduceus_http_json(
     method: &str,
     path: &str,
     body: serde_json::Value,
-    capability: Option<&str>,
+    attendance: Option<&crate::caduceus_access::AttendanceProof>,
 ) -> CaduceusHttpReadback {
-    caduceus_http_json_with_capability(method, path, body, capability)
+    caduceus_http_json_with_attendance(method, path, body, attendance)
 }
 
-fn caduceus_http_json_with_capability(method: &str, path: &str, body: serde_json::Value, capability: Option<&str>) -> CaduceusHttpReadback {
+fn caduceus_http_json_with_attendance(method: &str, path: &str, body: serde_json::Value, attendance: Option<&crate::caduceus_access::AttendanceProof>) -> CaduceusHttpReadback {
     let Some(authority) = caduceus_authority() else {
         return caduceus_loopback_refusal(path);
     };
@@ -248,11 +248,11 @@ fn caduceus_http_json_with_capability(method: &str, path: &str, body: serde_json
     let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
     let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-    let capability_header = capability
-        .map(|token| format!("x-caduceus-capability: {token}\r\n"))
+    let attendance_header = attendance
+            .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
         .unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\n{capability_header}Content-Length: {}\r\n\r\n{}",
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\n{attendance_header}Content-Length: {}\r\n\r\n{}",
         body_text.len(), body_text
     );
     if let Err(_err) = stream.write_all(request.as_bytes()) {

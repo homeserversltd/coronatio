@@ -303,27 +303,23 @@ fn extract_pane_inner_html(shell: &str, tab_id: &str) -> Option<String> {
 }
 
 fn session_from_headers(headers: &axum::http::HeaderMap) -> Session {
-    let Some(ticket) = crate::caduceus_access::session_ticket_from_cookie(headers) else { return Session::Guest; };
-    crate::caduceus_access::CaduceusAccessClient::default().session_prove(&ticket).receipt.ok.then_some(Session::Admin).unwrap_or(Session::Guest)
+    let (Some(document), Some(attendance)) = (crate::caduceus_access::document_incarnation_from_headers(headers), crate::caduceus_access::attendance_from_headers(headers)) else { return Session::Guest; };
+    crate::caduceus_access::CaduceusAccessClient::default().attendance_validate(&attendance, &document).receipt.ok.then_some(Session::Admin).unwrap_or(Session::Guest)
 }
 
 const CADUCEUS_SESSION_BODY_MAX: usize = 4 * 1024;
 
-fn session_projection(call: crate::caduceus_access::AccessCall) -> serde_json::Value {
-    serde_json::json!({"schema":"coronatio.caduceus.session.projection.v1","ok":call.receipt.ok,"admin":call.receipt.ok,"firstMissingSignal":call.receipt.code})
+fn session_projection(call: crate::caduceus_access::AttendanceCall) -> serde_json::Value {
+    serde_json::json!({"schema":"coronatio.caduceus.attendance.projection.v1","ok":call.receipt.ok,"admin":call.receipt.ok,"attendance":call.proof.map(|proof| proof.0),"firstMissingSignal":call.receipt.code})
 }
 
 fn guest_session_projection(signal: &str) -> serde_json::Value {
-    serde_json::json!({"schema":"coronatio.caduceus.session.projection.v1","ok":false,"admin":false,"firstMissingSignal":crate::caduceus_access::safe_access_code(signal)})
+    serde_json::json!({"schema":"coronatio.caduceus.attendance.projection.v1","ok":false,"admin":false,"firstMissingSignal":crate::caduceus_access::safe_access_code(signal)})
 }
 
 fn session_response(status: StatusCode, projection: serde_json::Value, clear_cookie: bool) -> Response {
     let mut response = (status, Json(projection)).into_response();
-    if clear_cookie {
-        if let Ok(cookie) = HeaderValue::from_str(&crate::caduceus_access::clear_session_cookie()) {
-            response.headers_mut().insert(header::SET_COOKIE, cookie);
-        }
-    }
+    let _ = clear_cookie;
     response
 }
 
@@ -336,13 +332,13 @@ fn json_content_type(headers: &axum::http::HeaderMap) -> bool {
         .is_some_and(|value| value.eq_ignore_ascii_case("application/json") || value.to_ascii_lowercase().ends_with("+json"))
 }
 
-fn mint_failure_status(call: &crate::caduceus_access::AccessCall) -> StatusCode {
+fn mint_failure_status(call: &crate::caduceus_access::AttendanceCall) -> StatusCode {
     if call.receipt.ok { StatusCode::OK }
     else if call.receipt.code == "caduceus-access-refused" { StatusCode::UNAUTHORIZED }
     else { StatusCode::SERVICE_UNAVAILABLE }
 }
 
-async fn caduceus_session_mint_route(headers: axum::http::HeaderMap, body: axum::body::Bytes) -> Response {
+async fn caduceus_attendance_open_route(headers: axum::http::HeaderMap, body: axum::body::Bytes) -> Response {
     if !crate::caduceus_access::same_origin_state_change(&headers) {
         return session_response(StatusCode::FORBIDDEN, guest_session_projection("caduceus-access-origin-refused"), false);
     }
@@ -355,89 +351,16 @@ async fn caduceus_session_mint_route(headers: axum::http::HeaderMap, body: axum:
     let Some(pin) = body.get("pin").and_then(serde_json::Value::as_str).filter(|pin| !pin.is_empty() && pin.len() <= 256) else {
         return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-pin-required"), false);
     };
-    let call = if let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) {
-        crate::caduceus_access::CaduceusAccessClient::default().session_mint_for_document(pin, &document)
-    } else {
-        crate::caduceus_access::CaduceusAccessClient::default().session_mint(pin)
-    };
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), false); };
+    let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_open(pin, &document);
     let status = mint_failure_status(&call);
-    let mut response = session_response(status, session_projection(call.clone()), false);
-    if let Some(ticket) = call.take_ticket() {
-        if let Ok(cookie) = HeaderValue::from_str(&crate::caduceus_access::session_cookie(&ticket)) {
-            response.headers_mut().insert(header::SET_COOKIE, cookie);
-        }
-    }
-    response
+    session_response(status, session_projection(call), false)
 }
 
-async fn caduceus_session_prove_route(headers: axum::http::HeaderMap) -> Response {
-    caduceus_session_prove_with_client(headers, crate::caduceus_access::CaduceusAccessClient::default()).await
+async fn caduceus_attendance_validate_route(headers: axum::http::HeaderMap) -> Response {
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), false); };
+    let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) else { return session_response(StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-attendance-required"), false); };
+    let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_validate(&attendance, &document);
+    let status = if call.receipt.ok { StatusCode::OK } else { StatusCode::UNAUTHORIZED };
+    session_response(status, session_projection(call), false)
 }
-
-async fn caduceus_session_prove_with_client(
-    headers: axum::http::HeaderMap,
-    client: crate::caduceus_access::CaduceusAccessClient,
-) -> Response {
-    if !crate::caduceus_access::same_origin_state_change(&headers) {
-        return session_response(StatusCode::FORBIDDEN, guest_session_projection("caduceus-access-origin-refused"), false);
-    }
-    let Some(ticket) = crate::caduceus_access::session_ticket_from_cookie(&headers) else {
-        return session_response(StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-access-session-required"), true);
-    };
-    let call = if let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) {
-        client.session_prove_for_document(&ticket, &document)
-    } else {
-        client.session_prove(&ticket)
-    };
-    if call.receipt.ok {
-        session_response(StatusCode::OK, session_projection(call), false)
-    } else {
-        let projection = session_projection(call);
-        let _ = client.session_clear(&ticket);
-        session_response(StatusCode::UNAUTHORIZED, projection, true)
-    }
-}
-
-async fn caduceus_session_clear_route(headers: axum::http::HeaderMap) -> Response {
-    if !crate::caduceus_access::same_origin_state_change(&headers) {
-        return session_response(StatusCode::FORBIDDEN, guest_session_projection("caduceus-access-origin-refused"), false);
-    }
-    let Some(ticket) = crate::caduceus_access::session_ticket_from_cookie(&headers) else {
-        return session_response(StatusCode::OK, serde_json::json!({"schema":"coronatio.caduceus.session.projection.v1","ok":true,"admin":false,"firstMissingSignal":"none"}), true);
-    };
-    let call = crate::caduceus_access::CaduceusAccessClient::default().session_clear(&ticket);
-    let status = if call.receipt.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
-    session_response(status, session_projection(call), true)
-}
-
-#[cfg(test)]
-mod caduceus_session_prove_walls {
-    use super::*;
-
-    #[tokio::test]
-    async fn cross_origin_prove_with_valid_ticket_is_redacted_and_never_proves_or_clears() {
-        let mark = crate::caduceus_access::test_fixture::mark();
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            header::COOKIE,
-            HeaderValue::from_static("caduceus_session=caduceus-test-session-ticket"),
-        );
-        let response = caduceus_session_prove_with_client(
-            headers,
-            crate::caduceus_access::CaduceusAccessClient::default(),
-        )
-        .await;
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        let body = String::from_utf8(
-            axum::body::to_bytes(response.into_body(), usize::MAX)
-                .await
-                .unwrap()
-                .to_vec(),
-        )
-        .unwrap();
-        assert!(body.contains("caduceus-access-origin-refused"));
-        assert!(!body.contains("caduceus-test-session-ticket"));
-        assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
-    }
-}
-

@@ -1,10 +1,12 @@
 fn shell_document_3() -> &'static str {
     r####"        const documentIncarnation = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9._-]/g, '');
     let inactivityHeadless = false;
+    let currentAttendance = null;
     const coronatioFetch = window.fetch.bind(window);
     window.fetch = (input, init = {}) => {
       const headers = new Headers(init.headers || {});
       headers.set('X-Caduceus-Document', documentIncarnation);
+      if (currentAttendance) headers.set('X-Caduceus-Attendance', currentAttendance);
       return coronatioFetch(input, { ...init, headers, credentials: 'same-origin' });
     };
         button.dataset.themeChoice = name;
@@ -70,10 +72,11 @@ fn shell_document_3() -> &'static str {
     }
     async function clearAdminMode() {
       try {
-        await fetch('/api/session/clear', { method: 'POST', cache: 'no-store' });
+        if (currentAttendance) await fetch('/api/attendance/invalidate', { method: 'POST', cache: 'no-store' });
       } catch (_) {
         // Browser projection still becomes guest when the clear route is unavailable.
       } finally {
+        currentAttendance = null;
         setAdminMode(false);
       }
     }
@@ -427,11 +430,13 @@ fn shell_document_3() -> &'static str {
       if (modalMode === 'enter' && !currentPinInput.value) { modalMessage.textContent = 'Enter PIN'; return; }
       if (modalMode === 'enter') {
         try {
-          const response = await fetch('/api/session/mint', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
+          const response = await fetch('/api/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
           const result = await response.json().catch(() => ({}));
-          const explicitPinRefusal = response.status === 401 && result?.firstMissingSignal === 'caduceus-access-refused';
+          const explicitPinRefusal = response.status === 401 && result?.firstMissingSignal === 'caduceus-attendance-refused';
           if (explicitPinRefusal) { modalMessage.textContent = 'Invalid PIN'; return; }
           if (!response.ok || result.admin !== true) { modalMessage.textContent = 'PIN check unavailable'; return; }
+          currentAttendance = typeof result.attendance === 'string' ? result.attendance : null;
+          if (!currentAttendance) { modalMessage.textContent = 'PIN check unavailable'; return; }
         } catch (_) { modalMessage.textContent = 'PIN check unavailable'; return; }
       }
       setAdminMode(true);
@@ -441,6 +446,7 @@ fn shell_document_3() -> &'static str {
     function enterInactivityHeadless() {
       if (inactivityHeadless) return;
       inactivityHeadless = true;
+      currentAttendance = null;
       if (headerState.isAdmin) { headerState.isAdmin = false; saveHeaderState(); applyAdminDomState(); }
       [pulseStream, coreStream].forEach(stream => { try { stream?.close(); } catch (_) {} });
       pulseStream = null; coreStream = null;

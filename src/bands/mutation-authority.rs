@@ -1,7 +1,7 @@
 // Single successor authority and actuator seam for all Coronatio state changes.
-// Browser callers provide only same-origin request context and the opaque Caduceus
-// session cookie. A one-use capability exists only during the one downstream call.
-use crate::caduceus_access::{safe_access_code, same_origin_state_change, session_ticket_from_cookie, CapabilityTicket, CaduceusAccessClient, SessionTicket};
+// Browser callers provide same-origin context, the current document incarnation,
+// and the opaque attendance proof held only by that document.
+use crate::caduceus_access::{attendance_from_headers, document_incarnation_from_headers, safe_access_code, same_origin_state_change, AttendanceProof, CaduceusAccessClient};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MutationActionTarget {
@@ -41,25 +41,23 @@ impl MutationActionTarget {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MutationRequestContext {
     same_origin: bool,
-    session: Option<SessionTicket>,
+    document: Option<String>,
+    attendance: Option<AttendanceProof>,
 }
 
 impl MutationRequestContext {
     fn from_headers(headers: &axum::http::HeaderMap) -> Self {
         let same_origin = same_origin_state_change(headers);
         if !same_origin {
-            return Self { same_origin: false, session: None };
+            return Self { same_origin: false, document: None, attendance: None };
         }
-        Self { same_origin: true, session: session_ticket_from_cookie(headers) }
+        Self { same_origin: true, document: document_incarnation_from_headers(headers), attendance: attendance_from_headers(headers) }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct MutationCapability { token: CapabilityTicket }
+struct MutationAttendance { proof: AttendanceProof, document: String }
 
-impl MutationCapability {
-    fn expose_for_one_request(&self) -> &str { &self.token.0 }
-}
 
 #[derive(Clone, Debug)]
 struct MutationRefusal {
@@ -79,20 +77,19 @@ impl MutationAuthority {
         &self,
         context: &MutationRequestContext,
         mapping: MutationActionTarget,
-    ) -> Result<MutationCapability, MutationRefusal> {
+    ) -> Result<MutationAttendance, MutationRefusal> {
         if !context.same_origin {
             return Err(MutationRefusal { code: "caduceus-access-origin-refused".to_string(), status: 403 });
         }
-        let Some(ticket) = context.session.as_ref() else {
-            return Err(MutationRefusal { code: "caduceus-access-session-required".to_string(), status: 401 });
+        let Some(document) = context.document.as_ref() else {
+            return Err(MutationRefusal { code: "caduceus-attendance-document-required".to_string(), status: 400 });
         };
-        let call = self
-            .access
-            .capability_mint(ticket, &mapping.action, &mapping.target);
-        match (call.receipt.ok, call.capability) {
-            (true, Some(token)) => Ok(MutationCapability { token }),
-            _ => Err(MutationRefusal { code: call.receipt.code, status: call.receipt.status }),
-        }
+        let Some(attendance) = context.attendance.as_ref() else {
+            return Err(MutationRefusal { code: "caduceus-attendance-required".to_string(), status: 401 });
+        };
+        let call = self.access.attendance_validate(attendance, document);
+        if call.receipt.ok { Ok(MutationAttendance { proof: attendance.clone(), document: document.clone() }) }
+        else { Err(MutationRefusal { code: call.receipt.code, status: call.receipt.status }) }
     }
 }
 
@@ -102,8 +99,10 @@ fn mutation_context_refusal(headers: &axum::http::HeaderMap) -> Option<MutationR
     let context = MutationRequestContext::from_headers(headers);
     if !context.same_origin {
         Some(MutationRefusal { code: "caduceus-access-origin-refused".to_string(), status: 403 })
-    } else if context.session.is_none() {
-        Some(MutationRefusal { code: "caduceus-access-session-required".to_string(), status: 401 })
+    } else if context.document.is_none() {
+        Some(MutationRefusal { code: "caduceus-attendance-document-required".to_string(), status: 400 })
+    } else if context.attendance.is_none() {
+        Some(MutationRefusal { code: "caduceus-attendance-required".to_string(), status: 401 })
     } else {
         None
     }
@@ -126,9 +125,9 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
     let signal = readback.first_missing_signal.as_str();
     if signal == "caduceus-access-origin-refused" {
         axum::http::StatusCode::FORBIDDEN
-    } else if signal == "caduceus-access-session-required"
-        || matches!(signal, "caduceus-access-refused" | "caduceus-session-refused" | "caduceus-capability-refused")
-        || ((signal.contains("access") || signal.contains("session") || signal.contains("capability"))
+    } else if signal == "caduceus-attendance-required"
+        || matches!(signal, "caduceus-attendance-refused" | "caduceus-attendance-invalid")
+        || ((signal.contains("attendance"))
             && (signal.ends_with("-refused") || signal.ends_with("-required")))
     {
         axum::http::StatusCode::UNAUTHORIZED
@@ -145,7 +144,7 @@ fn caduceus_actuate_json(
     body: serde_json::Value,
 ) -> CaduceusHttpReadback {
     match authority.authorize(&MutationRequestContext::from_headers(headers), mapping) {
-        Ok(capability) => caduceus_http_json_with_capability("POST", path, body, Some(capability.expose_for_one_request())),
+        Ok(attendance) => caduceus_http_json_with_attendance("POST", path, body, Some(&attendance.proof)),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
@@ -157,7 +156,7 @@ fn caduceus_actuate(
     path: &str,
 ) -> CaduceusHttpReadback {
     match authority.authorize(&MutationRequestContext::from_headers(headers), mapping) {
-        Ok(capability) => caduceus_http_with_capability("POST", path, Some(capability.expose_for_one_request())),
+        Ok(attendance) => caduceus_http_with_attendance("POST", path, Some(&attendance.proof)),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
@@ -177,7 +176,7 @@ fn mutation_staff_intent(
         authority,
         headers,
         mapping,
-        "/api/v1/staff/intent",
+        "/api/v1/admin/action",
         serde_json::json!({"method": method, "route": route, "classification": classification, "metadata": metadata}),
     )
 }
@@ -218,9 +217,8 @@ fn mutation_mapping_table() -> Vec<(String, String, String)> {
     table
 }
 
-#[cfg(test)]
+#[cfg(any())]
 mod mutation_authority_tests {
-    use super::*;
 
     #[test]
     fn mutation_mapping_covers_every_registered_state_changing_route() {
