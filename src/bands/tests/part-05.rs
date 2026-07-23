@@ -187,6 +187,14 @@
     }
 
     #[test]
+    fn upload_hidden_initial_loader_does_not_leave_a_guest_tree_gap() {
+        let html = render_crown_shell();
+        assert!(html.contains(r#"class="directory-loading-initial" data-upload-directory-loading hidden"#));
+        let pack = std::fs::read_to_string("src/bands/shell/ux/packs/upload.css").unwrap();
+        assert!(pack.contains(".directory-loading-initial[hidden] {\n  display: none;\n}"));
+    }
+
+    #[test]
     fn upload_scaffold_cards_are_obliterated_from_living_viewport() {
         let html = render_crown_shell();
         for forbidden in [
