@@ -37,9 +37,9 @@ fn app(state: AppState) -> Router {
         .route("/api/startup", get(startup_route))
         .route("/api/lanes", get(lane_policy_route))
         .route("/api/fallback", get(fallback_route))
-        .route("/api/attendance/open", post(caduceus_attendance_open_route))
-        .route("/api/attendance/validate", post(caduceus_attendance_validate_route))
-        .route("/api/attendance/invalidate", post(caduceus_attendance_validate_route))
+        .route("/api/v1/attendance/open", post(caduceus_attendance_open_route))
+        .route("/api/v1/attendance/validate", post(caduceus_attendance_validate_route))
+        .route("/api/v1/attendance/invalidate", post(caduceus_attendance_validate_route))
         .route("/api/caduceus/status", get(caduceus_status_route))
         .route("/api/debug/emit", post(debug_emit_route))
         .route(

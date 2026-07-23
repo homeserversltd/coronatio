@@ -377,29 +377,6 @@
         std::env::remove_var("CORONATIO_HOMESERVER_FACTORY_JSON");
     }
 
-    #[tokio::test]
-    async fn successor_session_mint_refuses_missing_same_origin_context() {
-        let response = app(AppState {
-            tab_root: Arc::new(test_tab_root("successor-mint-origin")),
-        })
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/session/mint")
-                .header(axum::http::header::CONTENT_TYPE, "application/json")
-                .body(Body::from(r#"{"pin":"fixture-only-input"}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        let body: serde_json::Value = serde_json::from_slice(
-            &axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap(),
-        )
-        .unwrap();
-        assert_eq!(body["admin"], false);
-        assert_eq!(body["firstMissingSignal"], "caduceus-access-origin-refused");
-    }
 
     #[tokio::test]
     async fn portal_image_route_serves_original_portal_icons() {

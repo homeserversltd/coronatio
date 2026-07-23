@@ -72,7 +72,7 @@ fn shell_document_3() -> &'static str {
     }
     async function clearAdminMode() {
       try {
-        if (currentAttendance) await fetch('/api/attendance/invalidate', { method: 'POST', cache: 'no-store' });
+        if (currentAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', cache: 'no-store' });
       } catch (_) {
         // Browser projection still becomes guest when the clear route is unavailable.
       } finally {
@@ -430,7 +430,7 @@ fn shell_document_3() -> &'static str {
       if (modalMode === 'enter' && !currentPinInput.value) { modalMessage.textContent = 'Enter PIN'; return; }
       if (modalMode === 'enter') {
         try {
-          const response = await fetch('/api/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
+          const response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
           const result = await response.json().catch(() => ({}));
           const explicitPinRefusal = response.status === 401 && result?.firstMissingSignal === 'caduceus-attendance-refused';
           if (explicitPinRefusal) { modalMessage.textContent = 'Invalid PIN'; return; }

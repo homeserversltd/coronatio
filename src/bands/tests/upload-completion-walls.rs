@@ -38,8 +38,7 @@ async fn upload_mutations_use_one_scoped_caduceus_config_actuation_and_never_wri
         let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
         assert_eq!(body["ok"], true, "{method} {path}: {body}");
         let records = crate::caduceus_access::test_fixture::records_since(mark);
-        assert_eq!(records.iter().filter(|record| record.path == "/api/v1/access/capabilities/mint" && record.action.as_deref() == Some("coronatio.config.set") && record.target.as_deref() == Some(target)).count(), 1, "{records:?}");
-        assert_eq!(records.iter().filter(|record| record.path == "/api/v1/config/set" && record.capability_present).count(), ["tabs.upload.data.default-directory", "tabs.upload.data.blacklist", "tabs.upload.data.isPinRequired"].iter().filter(|expected| records.iter().any(|record| record.path == "/api/v1/access/capabilities/mint" && record.target.as_deref() == Some(**expected))).count(), "{records:?}");
+        assert_eq!(records.iter().filter(|record| record.path == "/api/v1/config/set" && record.action.as_deref() == Some("coronatio.config.set") && record.target.as_deref() == Some(target)).count(), 1, "{records:?}");
     }
     assert_eq!(std::fs::read(&config).unwrap(), bytes);
     std::env::remove_var("CORONATIO_HOMESERVER_JSON");

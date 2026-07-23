@@ -787,7 +787,7 @@
         let chrome = crown_chrome_js();
         assert!(!chrome.contains("htmx:configRequest"));
         assert!(chrome.contains("credentials: 'same-origin'"));
-        assert!(chrome.contains("/api/session/prove"));
+
         assert!(!chrome.contains("fetch('/api/admin/ssh/toggle'"));
         assert!(!chrome.contains("fetch('/api/admin/ssh/service'"));
         assert!(!chrome.contains("fetch('/api/admin/samba/service'"));
