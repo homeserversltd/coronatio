@@ -775,7 +775,8 @@ fn shell_document_3() -> &'static str {
         try {
           const response = await fetch('/api/set_starred_tab', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tabName: button.dataset.tabStar }) });
           if (response.ok && tabBar) replaceTabBar(await response.text());
-        } catch (_) {}
+          else { const failure = await response.json().catch(() => ({})); showCoronatioToast('Could not set favorite tab: ' + (failure.firstMissingSignal || failure.error || 'request failed') + '.', 'error'); }
+        } catch (_) { showCoronatioToast('Could not set favorite tab: request failed.', 'error'); }
       }));
       document.querySelectorAll('[data-tab-visibility-toggle]').forEach(button => button.addEventListener('click', async event => {
         event.stopPropagation();

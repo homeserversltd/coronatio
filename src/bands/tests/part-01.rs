@@ -247,6 +247,8 @@
             "if (selectedTab) showPane(selectedTab, { refresh: true })",
             "?active=' + encodeURIComponent(activeTabId)",
             "if (!canStarTab(button.dataset.tabStar)) return;",
+            "Could not set favorite tab: ",
+            "failure.firstMissingSignal || failure.error || 'request failed'",
             "fetch('/api/tab-bar' + activeParam",
             "fetch('/api/tabs/visibility'",
         ] {
