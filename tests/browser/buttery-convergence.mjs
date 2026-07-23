@@ -150,6 +150,39 @@ async function main() {
   const adminFirst = await cross('portals', 'test', 'admin');
   assert('admin_outgoing_guest_retained_until_reveal', adminFirst.before.guest[0] === 'portals' && adminFirst.during.guest[0] === 'portals', JSON.stringify(adminFirst));
   await cross('test', 'portals', 'admin');
+  const statusModalViewport = await cdp.eval(`(() => {
+    const grid = document.querySelector('[data-portals-grid]');
+    const status = grid?.querySelector('[data-service-action="status"]');
+    if (!grid || !status) throw new Error('admin-status-control-missing');
+    grid.style.minHeight = '2800px';
+    window.scrollTo(0, 1200);
+    if (window.scrollY < 200) throw new Error('portals-grid-did-not-scroll');
+    status.click();
+    return true;
+  })()`);
+  const statusModalGeometry = await eventually('status modal centered in scrolled viewport', async () => {
+    const geometry = await cdp.eval(`(() => {
+      const overlay = document.querySelector('[data-service-status-modal]');
+      const content = overlay?.querySelector('.portal-modal-content');
+      if (!overlay || overlay.hidden || !content) return false;
+      const overlayBox = overlay.getBoundingClientRect();
+      const contentBox = content.getBoundingClientRect();
+      return {
+        bodyChild: overlay.parentElement === document.body,
+        scrollY: window.scrollY,
+        overlayTop: overlayBox.top,
+        overlayHeight: overlayBox.height,
+        viewportHeight: window.innerHeight,
+        contentCenterY: contentBox.top + contentBox.height / 2,
+        viewportCenterY: window.innerHeight / 2,
+      };
+    })()`);
+    return geometry?.bodyChild && geometry.scrollY > 200 && Math.abs(geometry.overlayTop) <= 1 && Math.abs(geometry.overlayHeight - geometry.viewportHeight) <= 1 && Math.abs(geometry.contentCenterY - geometry.viewportCenterY) <= 1 ? geometry : false;
+  });
+  assert('status_modal_opens_at_current_scrolled_viewport_center', statusModalViewport && statusModalGeometry.bodyChild && statusModalGeometry.scrollY > 200, JSON.stringify(statusModalGeometry));
+  summary.metrics.statusModalViewport = statusModalGeometry;
+  await sleep(120);
+  await cdp.eval(`window.__butteryMetrics = { longtasks: 0, layoutShifts: 0, shiftValue: 0 }`);
   summary.counts.crossings = crossings;
   summary.metrics.admin = await cdp.eval(`window.__butteryMetrics`);
   assert('admin_longtask_telemetry_honest', Number.isInteger(Number(summary.metrics.admin.longtasks)) && Number(summary.metrics.admin.longtasks) >= 0, JSON.stringify(summary.metrics.admin));
