@@ -1,50 +1,74 @@
 #[test]
-fn upload_config_roundtrip_and_blacklist_filter_use_homeserver_json() {
+fn upload_config_reads_homeserver_json_without_local_mutation() {
     let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
     let root = test_tab_root("upload-config-roundtrip");
     let config = root.join("homeserver.json");
-    std::fs::write(&config, r#"{"tabs":{"upload":{"data":{"blacklist":[],"default-directory":"/mnt/nas","isPinRequired":false}}}}"#).unwrap();
+    let bytes = br#"{"tabs":{"upload":{"data":{"blacklist":["/mnt/nas/blocked"],"default-directory":"/mnt/nas/allowed","isPinRequired":true}}}}"#;
+    std::fs::write(&config, bytes).unwrap();
     std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
     std::env::set_var("CORONATIO_UPLOAD_ROOT", &root);
     std::fs::create_dir_all(root.join("allowed")).unwrap();
     std::fs::create_dir_all(root.join("blocked")).unwrap();
-    update_upload_config("blacklist", serde_json::json!([root.join("blocked").display().to_string()])).unwrap();
-    update_upload_config("default-directory", serde_json::json!("/mnt/nas/allowed")).unwrap();
-    update_upload_config("isPinRequired", serde_json::json!(true)).unwrap();
     let value = upload_config_value();
     assert_eq!(upload_data(&value).unwrap()["default-directory"], "/mnt/nas/allowed");
     assert_eq!(upload_data(&value).unwrap()["isPinRequired"], true);
-    let children = upload_immediate_children(&root, &upload_display_root(&root), &root);
-    assert_eq!(children.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>(), vec!["allowed"]);
+    assert!(upload_path_blacklisted("/mnt/nas/blocked"));
+    assert_eq!(std::fs::read(&config).unwrap(), bytes);
     std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     std::env::remove_var("CORONATIO_UPLOAD_ROOT");
 }
 
 #[tokio::test]
-async fn upload_default_directory_post_accepts_directory_and_returns_og_shape() {
+async fn upload_mutations_use_one_scoped_caduceus_config_actuation_and_never_write_local_json() {
     let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
     let root = test_tab_root("upload-default-directory-post");
     let config = root.join("homeserver.json");
-    std::fs::write(&config, r#"{"tabs":{"upload":{"data":{"default-directory":"/mnt/nas"}}}}"#).unwrap();
+    let bytes = br#"{"tabs":{"upload":{"data":{"default-directory":"/mnt/nas"}}}}"#;
+    std::fs::write(&config, bytes).unwrap();
     std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
-    let response = app(AppState { tab_root: Arc::new(root) })
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/upload/default-directory")
-                .header("X-Admin-Token", authorize_test_admin_token())
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"directory":"/mnt/nas/media"}"#))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(body["success"], true);
-    assert_eq!(body["directory"], "/mnt/nas/media");
-    let stored: serde_json::Value = serde_json::from_slice(&std::fs::read(&config).unwrap()).unwrap();
-    assert_eq!(stored["tabs"]["upload"]["data"]["default-directory"], "/mnt/nas/media");
+    let router = app(AppState { tab_root: Arc::new(root) });
+    let mark = crate::caduceus_access::test_fixture::mark();
+    for (method, path, body, target) in [
+        ("POST", "/api/upload/default-directory", r#"{"directory":"/mnt/nas/media"}"#, "tabs.upload.data.default-directory"),
+        ("PUT", "/api/upload/blacklist/update", r#"{"blacklist":["/mnt/nas/blocked"]}"#, "tabs.upload.data.blacklist"),
+        ("POST", "/api/upload/pin-required-status", r#"{"isPinRequired":true}"#, "tabs.upload.data.isPinRequired"),
+    ] {
+        let response = router.clone().oneshot(successor_admin_request(Request::builder().method(method).uri(path).header("content-type", "application/json").body(Body::from(body)).unwrap())).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{method} {path}");
+        let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(body["ok"], true, "{method} {path}: {body}");
+        let records = crate::caduceus_access::test_fixture::records_since(mark);
+        assert_eq!(records.iter().filter(|record| record.path == "/api/v1/config/set" && record.action.as_deref() == Some("coronatio.config.set") && record.target.as_deref() == Some(target)).count(), 1, "{records:?}");
+    }
+    assert_eq!(std::fs::read(&config).unwrap(), bytes);
+    std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+}
+
+#[tokio::test]
+async fn upload_mutation_refusals_and_downstream_fault_leave_config_bytes_unchanged() {
+    let _hx_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+    let _caduceus_guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+    let root = test_tab_root("upload-mutation-refusal-no-write");
+    let config = root.join("homeserver.json");
+    let bytes = br#"{"tabs":{"upload":{"data":{"default-directory":"/mnt/nas"}}}}"#;
+    std::fs::write(&config, bytes).unwrap();
+    std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
+    let router = app(AppState { tab_root: Arc::new(root) });
+    let mark = crate::caduceus_access::test_fixture::mark();
+    let missing = router.clone().oneshot(Request::builder().method("POST").uri("/api/upload/default-directory").header("content-type", "application/json").body(Body::from(r#"{"directory":"/mnt/nas/media"}"#)).unwrap()).await.unwrap();
+    assert_eq!(missing.status(), StatusCode::FORBIDDEN);
+    let missing_body = String::from_utf8(axum::body::to_bytes(missing.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    assert!(missing_body.contains("caduceus-access-origin-refused"));
+    assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
+    assert_eq!(std::fs::read(&config).unwrap(), bytes);
+    std::env::set_var("CADUCEUS_BASE_URL", "http://127.0.0.1:9");
+    let fault = router.oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/upload/default-directory").header("content-type", "application/json").body(Body::from(r#"{"directory":"/mnt/nas/media"}"#)).unwrap())).await.unwrap();
+    assert_eq!(fault.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let fault_body = String::from_utf8(axum::body::to_bytes(fault.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    assert!(fault_body.contains("caduceus-unreachable"));
+    assert!(!fault_body.contains("\"ok\":true"));
+    assert_eq!(std::fs::read(&config).unwrap(), bytes);
+    std::env::remove_var("CADUCEUS_BASE_URL");
     std::env::remove_var("CORONATIO_HOMESERVER_JSON");
 }
 
@@ -56,13 +80,14 @@ async fn upload_force_permissions_post_accepts_directory_as_caduceus_destination
     std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
     let response = app(AppState { tab_root: Arc::new(test_tab_root("upload-force-permissions-post")) })
         .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/upload/force-permissions")
-                .header("X-Admin-Token", authorize_test_admin_token())
-                .header("content-type", "application/json")
-                .body(Body::from(body.to_string()))
-                .unwrap(),
+            successor_admin_request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/upload/force-permissions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            ),
         )
         .await
         .unwrap();

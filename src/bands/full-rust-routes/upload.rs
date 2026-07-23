@@ -344,17 +344,6 @@ fn upload_root_available(root: &std::path::Path) -> bool {
     std::process::Command::new("mountpoint").args(["-q", root.to_string_lossy().as_ref()]).status().map(|status| status.success()).unwrap_or(false)
 }
 
-fn update_upload_config(key: &str, value: serde_json::Value) -> Result<(), String> {
-    let candidates = homeserver_config_candidates();
-    let (path, mut document) = read_first_json(&candidates)?;
-    let root = document.as_object_mut().ok_or_else(|| "homeserver-config-root-invalid".to_string())?;
-    let tabs = root.entry("tabs").or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| "homeserver-config-tabs-invalid".to_string())?;
-    let upload = tabs.entry("upload").or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| "homeserver-config-upload-invalid".to_string())?;
-    let data = upload.entry("data").or_insert_with(|| serde_json::json!({})).as_object_mut().ok_or_else(|| "homeserver-config-upload-data-invalid".to_string())?;
-    data.insert(key.to_string(), value);
-    let rendered = serde_json::to_string_pretty(&document).map_err(|error| error.to_string())? + "\n";
-    std::fs::write(&path, rendered).map_err(|error| format!("{}: {error}", path.display()))
-}
 
 async fn upload_default_directory_route() -> impl IntoResponse {
     let value = upload_config_value();
@@ -363,9 +352,9 @@ async fn upload_default_directory_route() -> impl IntoResponse {
 }
 
 async fn upload_default_directory_update_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
-    if session_from_headers(&headers) != Session::Admin { return upload_admin_read_refusal_response("/api/upload/default-directory"); }
     let Some(path) = body.get("directory").or_else(|| body.get("path")).or_else(|| body.get("defaultPath")).and_then(serde_json::Value::as_str) else { return (StatusCode::BAD_REQUEST, "default-directory-missing").into_response(); };
-    match update_upload_config("default-directory", serde_json::json!(path)) { Ok(()) => Json(serde_json::json!({"success":true,"directory":path,"ok":true,"defaultPath":path,"firstMissingSignal":"none"})).into_response(), Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response() }
+    let caduceus = caduceus_config_set(&headers, "tabs.upload.data.default-directory", serde_json::json!(path));
+    (if caduceus.ok { StatusCode::OK } else { mutation_response_status(&caduceus) }, Json(serde_json::json!({"success":caduceus.ok,"directory":path,"ok":caduceus.ok,"defaultPath":path,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
 }
 
 async fn upload_blacklist_admin_route(headers: axum::http::HeaderMap) -> Response {
@@ -373,10 +362,11 @@ async fn upload_blacklist_admin_route(headers: axum::http::HeaderMap) -> Respons
     Json(serde_json::json!({"schema":"coronatio.upload.blacklist.v1","ok":true,"blacklist":upload_blacklist(),"firstMissingSignal":"none"})).into_response()
 }
 
-fn upload_blacklist_update(body: serde_json::Value) -> Response {
+fn upload_blacklist_update(headers: &axum::http::HeaderMap, body: serde_json::Value) -> Response {
     let Some(list) = body.get("blacklist").or_else(|| body.get("paths")).and_then(serde_json::Value::as_array) else { return (StatusCode::BAD_REQUEST, "upload-blacklist-missing").into_response(); };
     if list.iter().any(|value| value.as_str().is_none()) { return (StatusCode::BAD_REQUEST, "upload-blacklist-invalid").into_response(); }
-    match update_upload_config("blacklist", serde_json::Value::Array(list.clone())) { Ok(()) => Json(serde_json::json!({"ok":true,"blacklist":list,"firstMissingSignal":"none"})).into_response(), Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response() }
+    let caduceus = caduceus_config_set(headers, "tabs.upload.data.blacklist", serde_json::Value::Array(list.clone()));
+    (if caduceus.ok { StatusCode::OK } else { mutation_response_status(&caduceus) }, Json(serde_json::json!({"ok":caduceus.ok,"blacklist":list,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
 }
 
 async fn upload_pin_required_route() -> impl IntoResponse {
@@ -385,18 +375,26 @@ async fn upload_pin_required_route() -> impl IntoResponse {
     Json(serde_json::json!({"schema":"coronatio.upload.pin_required.v1","ok":true,"isPinRequired":required,"firstMissingSignal":"none"}))
 }
 
-fn upload_pin_required_update(body: serde_json::Value) -> Response {
+fn upload_pin_required_update(headers: &axum::http::HeaderMap, body: serde_json::Value) -> Response {
     let Some(required) = body.get("isPinRequired").or_else(|| body.get("required")).and_then(serde_json::Value::as_bool) else { return (StatusCode::BAD_REQUEST, "upload-pin-required-missing").into_response(); };
-    match update_upload_config("isPinRequired", serde_json::json!(required)) { Ok(()) => Json(serde_json::json!({"ok":true,"isPinRequired":required,"firstMissingSignal":"none"})).into_response(), Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response() }
+    let caduceus = caduceus_config_set(headers, "tabs.upload.data.isPinRequired", serde_json::json!(required));
+    (if caduceus.ok { StatusCode::OK } else { mutation_response_status(&caduceus) }, Json(serde_json::json!({"ok":caduceus.ok,"isPinRequired":required,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
 }
 
 fn upload_force_permissions_destination(body: &serde_json::Value) -> &str {
     body.get("directory").or_else(|| body.get("path")).or_else(|| body.get("destination")).and_then(serde_json::Value::as_str).unwrap_or("/mnt/nas")
 }
 
-fn upload_force_permissions(body: serde_json::Value) -> Response {
+fn upload_force_permissions(headers: &axum::http::HeaderMap, body: serde_json::Value) -> Response {
     let destination = upload_force_permissions_destination(&body);
-    let caduceus = caduceus_http_json("POST", "/api/v1/staff/intent", serde_json::json!({"method":"POST","route":"/api/upload/force-permissions","classification":"force-permissions","metadata":{"destination":destination}}), None);
-    (if caduceus.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE }, Json(serde_json::json!({"success":caduceus.ok,"message":if caduceus.ok { "Permissions updated successfully" } else { "Permissions update failed" },"ok":caduceus.ok,"caduceus":caduceus,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
+    let caduceus = mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
+        "POST",
+        "/api/upload/force-permissions",
+        "force-permissions",
+        serde_json::json!({"destination": destination}),
+    );
+    (if caduceus.ok { StatusCode::OK } else { mutation_response_status(&caduceus) }, Json(serde_json::json!({"success":caduceus.ok,"message":if caduceus.ok { "Permissions updated successfully" } else { "Permissions update failed" },"ok":caduceus.ok,"caduceus":caduceus,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
 }
 

@@ -61,7 +61,7 @@
         assert!(full.contains(".route(\"/api/status/services\", get(homeserver_rust_read_route))"));
         assert!(runtime.contains(".route(\"/api/services/data\", get(service_data_route))"));
         assert!(full.contains(".route(\"/api/service/control\", post(portal_service_control_route))"));
-        assert!(portals.contains("/api/v1/staff/intent"), "service control must remain a real Caduceus staff intent membrane");
+        assert!(portals.contains("mutation_staff_intent("), "service control must use the centralized Caduceus staff-intent authority seam");
         assert_eq!(field_004_service_routes().len(), 3);
     }
 
@@ -94,7 +94,8 @@
     #[test]
     fn field_004_guest_type_purity_wall_cannot_represent_service_identifiers_or_enablement() {
         let value = serde_json::to_value(project_service_data_guest(&maximal_service_data_fixture())).unwrap();
-        let census = json_field_census(&value);
+        let mut census = value.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+        census.sort();
         for denied in ["name", "systemdName", "port", "statusDetails", "isScriptManaged", "needsReboot", "isEnabled", "adminRuntime", "serviceCardSchema", "monitorTopics", "adminFieldLaw"] {
             assert!(!census.iter().any(|field| field == denied), "guest service projection can represent denied field {denied}: {census:?}");
         }
@@ -104,7 +105,7 @@
     #[tokio::test]
     async fn field_004_route_membrane_wall_service_reads_project_or_remain_generic_by_session() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-004-services-reads")) });
-        let generic = router.clone().oneshot(Request::builder().uri("/api/status/services").header("X-Admin-Token", authorize_test_admin_token()).body(Body::empty()).unwrap()).await.unwrap();
+        let generic = router.clone().oneshot(successor_admin_request(Request::builder().uri("/api/status/services").body(Body::empty()).unwrap())).await.unwrap();
         assert_eq!(generic.status(), StatusCode::OK);
         let generic_body = String::from_utf8(axum::body::to_bytes(generic.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(generic_body.contains("coronatio.homeserver.route.read.v1"), "{generic_body}");
@@ -120,8 +121,7 @@
             assert!(!guest_body.contains(denied), "guest /api/services/data leaked {denied}: {guest_body}");
         }
 
-        let token = authorize_test_admin_token();
-        let admin = router.oneshot(Request::builder().uri("/api/services/data").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
+        let admin = router.oneshot(successor_admin_request(Request::builder().uri("/api/services/data").body(Body::empty()).unwrap())).await.unwrap();
         assert_eq!(admin.status(), StatusCode::OK);
         let admin_body = String::from_utf8(axum::body::to_bytes(admin.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         for expected in ["coronatio.service-data.contract.v1", "serviceCardSchema", "systemdName", "isEnabled", "isScriptManaged", "needsReboot", "adminRuntime", "ssh-service", "samba-file-sharing"] {
@@ -131,22 +131,36 @@
     }
 
     #[tokio::test]
-    async fn field_004_mutation_refusal_wall_service_control_refuses_guest_before_caduceus() {
+    async fn field_004_mutation_refusal_wall_service_control_refuses_cross_origin_and_same_origin_guest_before_caduceus() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-004-service-control-guest")) });
-        let response = router.oneshot(Request::builder().method("POST").uri("/api/service/control").header("content-type", "application/json").body(Body::from(r#"{"service":"ssh","action":"restart"}"#)).unwrap()).await.unwrap();
+        let mark = crate::caduceus_access::test_fixture::mark();
+        let response = router.clone().oneshot(Request::builder().method("POST").uri("/api/service/control").header("content-type", "application/json").body(Body::from(r#"{"service":"ssh","action":"restart"}"#)).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains("coronatio.services.mutation.refusal.v1"), "{body}");
+        assert!(body.contains("caduceus-access-origin-refused"), "{body}");
+        assert!(body.contains("\"accepted\":false"), "{body}");
+        assert!(body.contains("\"method\":\"POST\""), "{body}");
+        assert!(body.contains("\"path\":\"/api/service/control\""), "{body}");
+        assert!(!body.contains("systemdService"), "guest refusal leaked service diagnostics: {body}");
+        assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
+
+        let mark = crate::caduceus_access::test_fixture::mark();
+        let response = router.oneshot(successor_session_request(Request::builder().method("POST").uri("/api/service/control").header("content-type", "application/json").body(Body::from(r#"{"service":"ssh","action":"restart"}"#)).unwrap(), false)).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("coronatio.services.mutation.refusal.v1"), "{body}");
-        assert!(body.contains("admin-session-required"), "{body}");
+        assert!(body.contains("caduceus-attendance-required"), "{body}");
         assert!(body.contains("\"accepted\":false"), "{body}");
+        assert!(body.contains("\"method\":\"POST\""), "{body}");
+        assert!(body.contains("\"path\":\"/api/service/control\""), "{body}");
         assert!(!body.contains("systemdService"), "guest refusal leaked service diagnostics: {body}");
+        assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
     }
 
     #[tokio::test]
     async fn field_004_admin_mutation_wall_service_control_crosses_caduceus_after_session_gate() {
         let _env_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
-        std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let config_path = std::env::temp_dir().join(format!("coronatio-portals-allowlist-{}.json", std::process::id()));
         std::fs::write(
             &config_path,
@@ -155,15 +169,12 @@
         .unwrap();
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config_path);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-004-service-control-admin")) });
-        let token = authorize_test_admin_token();
-        let response = router.oneshot(Request::builder().method("POST").uri("/api/service/control").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"service":"ssh","action":"restart"}"#)).unwrap()).await.unwrap();
+        let response = router.oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/service/control").header("content-type", "application/json").body(Body::from(r#"{"service":"ssh","action":"restart"}"#)).unwrap())).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-        assert!(body.contains("\"success\":false"), "{body}");
-        assert!(body.contains("\"message\":"), "{body}");
-        assert!(body.contains("\"output\":\"caduceus-unreachable\""), "{body}");
-        assert!(body.contains("\"active\":false"), "{body}");
-        std::env::remove_var("CADUCEUS_URL");
+        assert!(body.contains("\"success\":true"), "{body}");
+        assert!(body.contains("\"message\":\"Service action completed\""), "{body}");
+        assert!(body.contains("\"output\":"), "{body}");
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
         std::fs::remove_file(config_path).unwrap();
     }
@@ -189,6 +200,6 @@
 
         let source = std::fs::read_to_string("src/bands/full-rust-routes/portals.rs").unwrap();
         let allowlist = source.find("if !portal_service_is_allowlisted").unwrap();
-        let dispatch = source.find("let caduceus = caduceus_http_json").unwrap();
+        let dispatch = source.find("let caduceus = mutation_staff_intent").unwrap();
         assert!(allowlist < dispatch, "portal allow-list must fail closed before Caduceus dispatch");
     }

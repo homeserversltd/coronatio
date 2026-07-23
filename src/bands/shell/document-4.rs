@@ -123,7 +123,7 @@ fn shell_document_4() -> &'static str {
       if (readout) readout.textContent = summary;
       if (success && failed) showCoronatioToast(summary, 'warning'); else if (success) showCoronatioToast(summary, 'success');
     }
-    function uploadAdminHeaders(json = false) { const token = localStorage.getItem('coronatioAdminToken'); return { ...(json ? { 'content-type': 'application/json' } : {}), ...(token ? { 'X-Admin-Token': token } : {}) }; }
+    function uploadAdminHeaders(json = false) { return json ? { 'content-type': 'application/json' } : {}; }
     function openUploadModal(selector) { const modal = document.querySelector(selector); if (modal) { modal.hidden = false; modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); } }
     function closeUploadModal(modal) { if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); modal.hidden = true; } }
     async function refreshUploadHistory() {
@@ -139,7 +139,7 @@ fn shell_document_4() -> &'static str {
       if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join('');
     }
     function refreshUploadBlacklistDomOnly() { const entries = document.querySelector('[data-upload-blacklist-entries]'); if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join(''); }
-    async function verifyUploadPin() { const input = document.querySelector('[data-upload-pin-input]'); const pin = input?.value || ''; if (!pin) { showCoronatioToast('PIN cannot be empty.', 'error'); input?.focus(); return; } try { const response = await fetch('/api/verifyPin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin }) }); const data = await response.json().catch(() => ({})); if (!response.ok || !data.verified) throw new Error(data.error || data.firstMissingSignal || 'Invalid PIN or verification failed.'); if (data.token) localStorage.setItem('coronatioAdminToken', data.token); input.value = ''; closeUploadModal(document.querySelector('[data-upload-pin-modal]')); showCoronatioToast('PIN Verified.', 'success'); await uploadSelectedFiles(true); } catch (error) { showCoronatioToast(error?.message || 'Invalid PIN or verification failed.', 'error'); } }
+    async function verifyUploadPin() { showCoronatioToast('Enter Admin Mode to continue.', 'error'); }
     function refreshUploadTree(path = uploadCurrentPath()) { window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(path), { target: '[data-upload-tree]', swap: 'innerHTML' }); }
     async function postUploadDirectoryAction(url, successMessage) { try { const response = await fetch(url, { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }); const data = await response.json().catch(() => ({})); if (!response.ok || !(data.success ?? data.ok)) throw new Error(data.message || data.error || data.firstMissingSignal || `Request failed with status ${response.status}`); showCoronatioToast(successMessage, 'success'); return data; } catch (error) { showCoronatioToast(error?.message || 'Request failed', 'error'); return null; } }
     async function toggleUploadPin(toggle) { uploadState.pinRequired = !uploadState.pinRequired; toggle.classList.toggle('active', uploadState.pinRequired); toggle.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); toggle.setAttribute('aria-busy', 'true'); toggle.querySelector('[data-upload-pin-spinner]')?.removeAttribute('hidden'); try { await fetch('/api/upload/pin-required-status', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); } finally { toggle.removeAttribute('aria-busy'); toggle.querySelector('[data-upload-pin-spinner]')?.setAttribute('hidden', ''); } }
@@ -493,7 +493,7 @@ fn shell_document_4() -> &'static str {
       try { const response = await fetch('/api/network/notes', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...statsSessionHeaders() }, body: JSON.stringify({ mac, note }) }); if (!response.ok) throw new Error(`Save failed (${response.status})`); document.querySelectorAll('[data-note-text]').forEach(node => { if (node.dataset.mac === mac) node.textContent = note; }); document.querySelectorAll('[data-edit-note-button]').forEach(button => { if (button.dataset.mac === mac) button.dataset.note = note; }); closeNoteModal(); showCoronatioToast('Device note saved', 'success'); }
       catch (error) { if (errorNode) { errorNode.textContent = String(error); errorNode.hidden = false; } }
     }
-    function statsSessionHeaders() { const token = localStorage.getItem('coronatioAdminToken'); return token ? { 'X-Admin-Token': token } : {}; }
+    function statsSessionHeaders() { return {}; }
     function normalizeNetworkNotes(payload) { const notes = payload?.networkNotes || payload?.notes || payload?.data?.networkNotes || payload?.data?.notes || payload; return notes && typeof notes === 'object' && !Array.isArray(notes) ? notes : {}; }
     function renderProcesses(data) {
       const target = document.querySelector('[data-process-usage-list]');
@@ -527,10 +527,10 @@ fn shell_document_4() -> &'static str {
       Object.entries(errors).forEach(([field, message]) => setPortalFormError(form, field, message));
       if (Object.values(errors).some(Boolean)) return;
       const portal = { name, description, type, localURL, services: type === 'link' ? [] : servicesText.split(',').map(service => service.trim()).filter(Boolean) }; if (type !== 'link') portal.port = port;
-      const token = localStorage.getItem('coronatioAdminToken');
+
       const submit = form.querySelector('[type="submit"]'); if (submit) { submit.disabled = true; submit.setAttribute('aria-busy', 'true'); submit.innerHTML = '<span class="loading-spinner small" aria-hidden="true"></span> Creating...'; }
       try {
-        const response = await fetch('/api/portals', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) }, body: JSON.stringify(portal) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Create failed (${response.status})`); }
+        const response = await fetch('/api/portals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(portal) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Create failed (${response.status})`); }
         form.reset(); closePortalModals(); await refreshElementFragment('portals'); showCoronatioToast(`Portal "${name}" created successfully`, 'success');
       } catch (error) { showCoronatioToast(error.message || 'Failed to create portal', 'error'); }
       finally { if (submit) { submit.disabled = false; submit.removeAttribute('aria-busy'); submit.innerHTML = '<i class="fas fa-plus"></i> Create Portal'; } }
@@ -539,8 +539,8 @@ fn shell_document_4() -> &'static str {
       event.preventDefault(); event.stopPropagation(); const name = event.currentTarget.dataset.portalName || event.currentTarget.dataset.deletePortal; if (!headerState.isAdmin || !name) return;
       try {
         const factoryNames = await factoryPortalNames(); if (factoryNames.has(name)) { showCoronatioToast('Factory portals cannot be deleted', 'error'); return; }
-        if (!window.confirm(`Delete portal "${name}"?`)) return; const token = localStorage.getItem('coronatioAdminToken');
-        const response = await fetch(`/api/portals/${encodeURIComponent(name)}`, { method: 'DELETE', headers: token ? { 'X-Admin-Token': token } : {} });
+        if (!window.confirm(`Delete portal "${name}"?`)) return;
+        const response = await fetch(`/api/portals/${encodeURIComponent(name)}`, { method: 'DELETE', headers: {} });
         if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Delete failed (${response.status})`); }
         await refreshElementFragment('portals'); showCoronatioToast(`Portal "${name}" deleted`, 'success');
       } catch (error) { showCoronatioToast(error.message || 'Failed to delete portal', 'error'); }
@@ -576,12 +576,12 @@ fn shell_document_4() -> &'static str {
         return;
       }
       const results = [];
-      const token = localStorage.getItem('coronatioAdminToken');
+
       for (const service of services) {
         try {
           const response = await fetch('/api/service/control', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ service, action })
           });
           const text = await response.text();
@@ -627,8 +627,8 @@ fn shell_document_4() -> &'static str {
     }
     async function refreshElementFragment(tabId) {
       if (tabId === 'stats' && statsCharts.cpu) { hydrateStats(); return; }
-      const token = localStorage.getItem('coronatioAdminToken');
-      const headers = token ? { 'X-Admin-Token': token } : {};
+
+      const headers = {};
       const route = tabId === 'portals' ? '/api/portals/elements' : '/api/stats/elements';
       const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
       if (!target) return;
@@ -641,10 +641,10 @@ fn shell_document_4() -> &'static str {
     }
     async function toggleElementVisibility(tabId, elementId, visible) {
       try {
-        const token = localStorage.getItem('coronatioAdminToken');
+
         const response = await fetch('/api/tabs/elements', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tabId, elementId, visibility: visible })
         });
         const html = await response.text();

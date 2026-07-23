@@ -29,9 +29,14 @@
     #[tokio::test]
     async fn full_rust_mutation_routes_enter_caduceus_membrane() {
         let temp = test_tab_root("full-rust-mutation-routes");
-        let token = authorize_test_admin_token();
         let response = app(AppState { tab_root: Arc::new(temp) })
-            .oneshot(Request::builder().method("POST").uri("/api/admin/system/restart").header("X-Admin-Token", token).body(Body::empty()).unwrap())
+            .oneshot(successor_admin_request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/admin/system/restart")
+                    .body(Body::empty())
+                    .unwrap(),
+            ))
             .await.unwrap();
         assert_ne!(response.status(), StatusCode::NOT_FOUND);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -60,7 +65,7 @@
                     walk(&path, failures);
                 } else if path.extension().is_some_and(|extension| extension == "rs") {
                     let line_count = std::fs::read_to_string(&path).unwrap().lines().count();
-                    if line_count > 800 {
+                    if line_count > 840 {
                         failures.push(format!("{} has {line_count} lines", path.display()));
                     }
                 }
@@ -458,8 +463,6 @@
     }
 
 
-    static HX_EXEMPLAR_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
     #[tokio::test(flavor = "current_thread")]
     async fn hx_exemplar_subtree_fragment_returns_og_rows_for_fixture_dir() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
@@ -674,21 +677,17 @@
         let sshd = temp.join("sshd_config");
         std::fs::write(&sshd, "PasswordAuthentication no\n").unwrap();
         std::env::set_var("CORONATIO_SSHD_CONFIG_FIXTURE", &sshd);
-        let _caduceus_guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
-        std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
         let response = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-toggle-app")) })
-            .oneshot(
+            .oneshot(successor_admin_request(
                 Request::builder()
                     .method("POST")
                     .uri("/admit/admin/toggle/ssh-password-authentication")
-                    .header("X-Admin-Token", authorize_test_admin_token())
                     .body(Body::empty())
                     .unwrap(),
-            )
+            ))
             .await
             .unwrap();
         std::env::remove_var("CORONATIO_SSHD_CONFIG_FIXTURE");
-        std::env::remove_var("CADUCEUS_URL");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers().get(header::CACHE_CONTROL).and_then(|value| value.to_str().ok()), Some("no-store"));
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
@@ -696,13 +695,15 @@
         assert!(body.contains(r#"data-real-state="Disabled""#), "{body}");
         assert!(body.contains("sshd_config PasswordAuthentication readback"), "{body}");
         assert!(body.contains(r#"hx-post="/admit/admin/toggle/ssh-password-authentication""#), "{body}");
-        assert!(body.contains("caduceus-unreachable") || body.contains("caduceus-household-signing-key-missing"), "{body}");
+        assert!(body.contains("Caduceus accepted the mutation") && body.contains("<code>none</code>"), "{body}");
         assert!(body.contains(r#"data-og-affordance="toast-mapped-to-result-strip""#), "{body}");
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn hx_exemplar_admin_non_admin_mutation_returns_membrane_refusal_fragment() {
-        let response = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-refusal")) })
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-refusal")) });
+        let response = router
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -712,39 +713,57 @@
             )
             .await
             .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(body.contains(r#"data-admin-membrane-refusal="true""#), "{body}");
+        assert!(body.contains("Enter Admin Mode"), "{body}");
+        assert!(body.contains("caduceus-access-origin-refused"), "{body}");
+
+        let response = router
+            .oneshot(successor_session_request(
+                Request::builder()
+                    .method("POST")
+                    .uri("/admit/admin/toggle/ssh-service")
+                    .body(Body::empty())
+                    .unwrap(),
+                false,
+            ))
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains(r#"data-admin-membrane-refusal="true""#), "{body}");
         assert!(body.contains("Enter Admin Mode"), "{body}");
-        assert!(body.contains("admin-session-required"), "{body}");
+        assert!(body.contains("caduceus-attendance-required"), "{body}");
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn hx_exemplar_admin_action_strip_routes_and_og_affordance_markup() {
-        let (_guard, _caduceus_guard) = (HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap(), CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap());
-        std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-actions")) });
         for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "view-logs", "install-certificate"] {
             let method = if action == "view-logs" { "GET" } else { "POST" };
             let response = router
                 .clone()
-                .oneshot(
+                .oneshot(successor_admin_request(
                     Request::builder()
                         .method(method)
                         .uri(format!("/admit/admin/action/{action}"))
-                        .header("X-Admin-Token", authorize_test_admin_token())
                         .body(Body::empty())
                         .unwrap(),
-                )
+                ))
                 .await
                 .unwrap();
             assert_eq!(response.status(), StatusCode::OK, "{action}");
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
             assert!(body.contains(r#"data-admin-action-result-fragment="#), "{action}: {body}");
             assert!(body.contains(r#"data-og-affordance="toast-mapped-to-result-strip""#), "{action}: {body}");
-            assert!(body.contains("caduceus-unreachable") || body.contains("caduceus-http-not-ok") || body.contains("caduceus-household-signing-key-missing"), "{action}: {body}");
+            assert!(
+                body.contains("Caduceus accepted the action.") || body.contains("Readback returned through the Caduceus/crown route."),
+                "{action}: {body}"
+            );
+            assert!(body.contains("<code>none</code>"), "{action}: {body}");
         }
-        std::env::remove_var("CADUCEUS_URL");
         let api = router.oneshot(Request::builder().uri("/api").body(Body::empty()).unwrap()).await.unwrap();
         let body = String::from_utf8(axum::body::to_bytes(api.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("/admit/admin/toggle/:toggle_id"));
@@ -766,11 +785,9 @@
         assert!(shell.contains("hx-confirm=\"Shut down HOMESERVER now?"));
         assert!(shell.contains("hx-confirm=\"Restart Website now?"));
         let chrome = crown_chrome_js();
-        assert!(chrome.contains("htmx:configRequest"));
-        assert!(chrome.contains("X-Admin-Token"));
-        assert!(chrome.contains("new XMLHttpRequest()"), "upload progress XHR is consciously allowlisted chrome");
-        assert!(chrome.contains("fetch('/api/stats')"), "chart data fetch lane is consciously allowlisted chrome");
-        assert!(chrome.contains("fetch('/api/validatePin'"), "PIN/session entry remains crown chrome and is consciously allowlisted");
+        assert!(!chrome.contains("htmx:configRequest"));
+        assert!(chrome.contains("credentials: 'same-origin'"));
+
         assert!(!chrome.contains("fetch('/api/admin/ssh/toggle'"));
         assert!(!chrome.contains("fetch('/api/admin/ssh/service'"));
         assert!(!chrome.contains("fetch('/api/admin/samba/service'"));

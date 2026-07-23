@@ -207,9 +207,8 @@
         assert!(guest_body.contains("\"keaLeases\""), "{guest_body}");
         assert!(guest_body.contains("\"currentness\""), "{guest_body}");
 
-        let token = authorize_test_admin_token();
         let admin = router
-            .oneshot(Request::builder().uri("/api/stats").header("X-Admin-Token", token).body(Body::empty()).unwrap())
+            .oneshot(successor_admin_request(Request::builder().uri("/api/stats").body(Body::empty()).unwrap()))
             .await
             .unwrap();
         assert_eq!(admin.status(), StatusCode::OK);
@@ -234,9 +233,8 @@
         }
         assert!(guest_body.contains(r#"data-stat-element-id="network-chart""#), "guest shell keeps projected aggregate network element: {guest_body}");
 
-        let token = authorize_test_admin_token();
         let admin = router
-            .oneshot(Request::builder().uri("/").header("X-Admin-Token", token).body(Body::empty()).unwrap())
+            .oneshot(successor_admin_request(Request::builder().uri("/").body(Body::empty()).unwrap()))
             .await
             .unwrap();
         assert_eq!(admin.status(), StatusCode::OK);
@@ -257,9 +255,9 @@
         assert!(chrome.contains("fetch('/api/stats', { headers, cache: 'no-store' })"));
         let lifecycle_connect = chrome.find("if (active === 'stats') { hydrateStats(); connectPulseStream(); }").expect("stats stream must enter through viewport lifecycle admission");
         for declaration in [
-            "\n    let pulseStream = null;",
-            "\n    let pulseRenewTimer = null;",
-            "\n    let pulseStreamId = null;",
+            "let pulseStream = null;",
+            "let pulseRenewTimer = null;",
+            "let pulseStreamId = null;",
         ] {
             let declaration_offset = chrome.find(declaration).unwrap_or_else(|| panic!("missing pulse rider state declaration: {declaration}"));
             assert!(declaration_offset < lifecycle_connect, "pulse rider declaration must precede lifecycle connect: {declaration}");
@@ -270,4 +268,3 @@
         assert!(chrome.contains("drive.productLabel || drive.name || 'Storage'"));
         assert!(chrome.contains("data.keaLeases && !data.leases"));
     }
-

@@ -203,8 +203,7 @@
     #[tokio::test]
     async fn field_005b_admin_generic_readback_preserves_full_topology_shape() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005b-admin-generic")) });
-        let token = authorize_test_admin_token();
-        let response = router.oneshot(Request::builder().uri("/api/admin/updates/modules/example/status").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
+        let response = router.oneshot(successor_admin_request(Request::builder().uri("/api/admin/updates/modules/example/status").body(Body::empty()).unwrap())).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         for expected in [
@@ -220,18 +219,36 @@
     }
 
     #[tokio::test]
-    async fn field_005b_og_upload_admin_gates_refuse_guests_and_preserve_named_guest_routes() {
+    async fn field_005b_og_upload_admin_mutations_refuse_cross_origin_and_same_origin_guest_sessions_and_preserve_named_guest_routes() {
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005b-upload-gates")) });
         for (method, route) in [
             ("GET", "/api/upload/history"),
-            ("POST", "/api/upload/history/clear"),
             ("GET", "/api/upload/blacklist/list"),
+        ] {
+            let response = router.clone().oneshot(Request::builder().method(method).uri(route).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method} {route}");
+        }
+        for (method, route) in [
+            ("POST", "/api/upload/history/clear"),
             ("PUT", "/api/upload/blacklist/update"),
             ("POST", "/api/upload/force-permissions"),
             ("POST", "/api/upload/pin-required-status"),
         ] {
+            let mark = crate::caduceus_access::test_fixture::mark();
             let response = router.clone().oneshot(Request::builder().method(method).uri(route).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{method} {route}");
+            let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            assert!(body.contains("caduceus-access-origin-refused"), "{method} {route}: {body}");
+            assert!(body.contains("\"ok\":false"), "{method} {route}: {body}");
+            assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty(), "{method} {route}");
+
+            let mark = crate::caduceus_access::test_fixture::mark();
+            let response = router.clone().oneshot(successor_session_request(Request::builder().method(method).uri(route).body(Body::empty()).unwrap(), false)).await.unwrap();
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method} {route}");
+            let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            assert!(body.contains("caduceus-attendance-required"), "{method} {route}: {body}");
+            assert!(body.contains("\"ok\":false"), "{method} {route}: {body}");
+            assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty(), "{method} {route}");
         }
         for (method, route) in [
             ("GET", "/api/files/browse"),
@@ -270,8 +287,7 @@
         });
         std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005b-admin-upload-history")) });
-        let token = authorize_test_admin_token();
-        let response = router.oneshot(Request::builder().uri("/api/upload/history").header("X-Admin-Token", token).body(Body::empty()).unwrap()).await.unwrap();
+        let response = router.oneshot(successor_admin_request(Request::builder().uri("/api/upload/history").body(Body::empty()).unwrap())).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("coronatio.upload.history.v1"), "{body}");

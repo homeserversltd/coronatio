@@ -11,8 +11,17 @@ struct ElementVisibilityRequest {
 }
 
 async fn element_visibility_route(headers: axum::http::HeaderMap, Json(request): Json<ElementVisibilityRequest>) -> impl IntoResponse {
-    if session_from_headers(&headers) != Session::Admin {
-        return element_refusal_fragment("admin-session-required");
+    if let Some(refusal) = mutation_context_refusal(&headers) {
+        let readback = mutation_refusal_readback("/api/v1/config/set", refusal);
+        return (
+            mutation_response_status(&readback),
+            Html(format!(
+                r#"<div data-element-visibility-refusal="persist-failed" data-first-missing-signal="{}">{}</div>"#,
+                html_escape(&readback.first_missing_signal),
+                html_escape(&readback.first_missing_signal)
+            )),
+        )
+            .into_response();
     }
     let tab = normalize_tab_id(&request.tab_id.or(request.tab).unwrap_or_default());
     let element = normalize_element_id_for_tab(&tab, &request.element_id.or(request.element).or(request.id).unwrap_or_default());
@@ -26,9 +35,9 @@ async fn element_visibility_route(headers: axum::http::HeaderMap, Json(request):
     };
     let next = iris::apply_element_visibility(&facts, &tab, &element, visible);
     let path = format!("tabs.{tab}.visibility.elements.{element}");
-    let persisted = caduceus_config_set(&path, serde_json::Value::Bool(visible));
+    let persisted = caduceus_config_set(&headers, &path, serde_json::Value::Bool(visible));
     if !persisted.ok {
-        let status = if persisted.status == 0 { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::BAD_GATEWAY };
+        let status = mutation_response_status(&persisted);
         return (status, Html(format!(r#"<div data-element-visibility-refusal="persist-failed" data-first-missing-signal="{}">{}</div>"#, html_escape(&persisted.first_missing_signal), html_escape(&persisted.first_missing_signal)))).into_response();
     }
     pulse::poke(pulse::PokeTopic::TabsChanged);

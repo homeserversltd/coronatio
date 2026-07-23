@@ -1,5 +1,15 @@
 fn shell_document_3() -> &'static str {
-    r####"        button.dataset.themeChoice = name;
+    r####"        const documentIncarnation = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9._-]/g, '');
+    let inactivityHeadless = false;
+    let currentAttendance = null;
+    const coronatioFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+      const headers = new Headers(init.headers || {});
+      headers.set('X-Caduceus-Document', documentIncarnation);
+      if (currentAttendance) headers.set('X-Caduceus-Attendance', currentAttendance);
+      return coronatioFetch(input, { ...init, headers, credentials: 'same-origin' });
+    };
+        button.dataset.themeChoice = name;
         button.textContent = themeLabel(name);
         button.addEventListener('click', () => {
           headerState.theme = name;
@@ -44,18 +54,15 @@ fn shell_document_3() -> &'static str {
         el.hidden = !headerState.isAdmin;
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
-      if (changePinButton) changePinButton.hidden = !headerState.isAdmin;
+      if (changePinButton) {
+        changePinButton.hidden = true;
+        changePinButton.title = 'PIN changes are unavailable until a successor route is declared.';
+      }
     }
     function setAdminMode(value) {
-      const wasAdmin = headerState.isAdmin;
       const previousActive = currentActiveTabId();
       headerState.isAdmin = Boolean(value);
       saveHeaderState();
-      if (!headerState.isAdmin) {
-        const token = localStorage.getItem('coronatioAdminToken');
-        if (token) fetch('/api/logout', { method: 'POST', headers: { 'X-Admin-Token': token } }).catch(() => {});
-        localStorage.removeItem('coronatioAdminToken');
-      }
       applyAdminDomState();
       refreshTabBar(previousActive).then(selectedTab => {
         applyTabBarVisibility();
@@ -63,29 +70,19 @@ fn shell_document_3() -> &'static str {
         if (selectedTab) showPane(selectedTab, { refresh: true });
       });
     }
-    async function bootstrapAdminMode() {
-      if (!headerState.isAdmin) {
-        applyAdminDomState();
-        return;
-      }
-      const token = localStorage.getItem('coronatioAdminToken');
-      if (!token) {
-        setAdminMode(false);
-        return;
-      }
+    async function clearAdminMode() {
       try {
-        const response = await fetch('/api/admin/ping', { headers: { 'X-Admin-Token': token }, cache: 'no-store' });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result.authenticated) {
-          localStorage.removeItem('coronatioAdminToken');
-          setAdminMode(false);
-          return;
-        }
-        setAdminMode(true);
+        if (currentAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', cache: 'no-store' });
       } catch (_) {
-        localStorage.removeItem('coronatioAdminToken');
+        // Browser projection still becomes guest when the clear route is unavailable.
+      } finally {
+        currentAttendance = null;
         setAdminMode(false);
       }
+    }
+    async function bootstrapAdminMode() {
+      // A document is always born GUEST. No cookie, refresh, or prior document may restore attendance.
+      setAdminMode(false);
     }
     function openPinModal(mode) {
       modalMode = mode;
@@ -420,36 +417,53 @@ fn shell_document_3() -> &'static str {
         if (themeButton) themeButton.title = 'Theme catalog unavailable: ' + error;
       }
     }
-    adminButton?.addEventListener('click', () => {
-      if (headerState.isAdmin) setAdminMode(false);
+    adminButton?.addEventListener('click', async () => {
+      if (headerState.isAdmin) await clearAdminMode();
       else openPinModal('enter');
-    });
-    changePinButton?.addEventListener('click', () => {
-      if (!headerState.isAdmin) { modalMessage.textContent = 'Must be in admin mode to change PIN'; return; }
-      openPinModal('change');
-    });
-    document.body.addEventListener('htmx:configRequest', event => {
-      const token = localStorage.getItem('coronatioAdminToken');
-      if (token) event.detail.headers['X-Admin-Token'] = token;
     });
     document.querySelector('[data-pin-cancel]')?.addEventListener('click', closePinModal);
     document.querySelector('[data-pin-confirm-button]')?.addEventListener('click', async () => {
-      if (modalMode === 'change' && (!changeCurrentPinInput.value || !newPinInput.value || !confirmPinInput.value)) { modalMessage.textContent = 'Please fill in all fields'; return; }
-      if (modalMode === 'change' && newPinInput.value !== confirmPinInput.value) { modalMessage.textContent = 'New PINs do not match'; return; }
+      if (modalMode === 'change') {
+        modalMessage.textContent = 'PIN changes are unavailable until a successor route is declared.';
+        return;
+      }
       if (modalMode === 'enter' && !currentPinInput.value) { modalMessage.textContent = 'Enter PIN'; return; }
       if (modalMode === 'enter') {
         try {
-          const response = await fetch('/api/validatePin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
+          const response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
           const result = await response.json().catch(() => ({}));
-          if (!response.ok || !result.valid) { modalMessage.textContent = 'Invalid PIN'; return; }
-          if (!result.token) { modalMessage.textContent = 'PIN check unavailable'; return; }
-          localStorage.setItem('coronatioAdminToken', result.token);
+          const explicitPinRefusal = response.status === 401 && result?.firstMissingSignal === 'caduceus-attendance-refused';
+          if (explicitPinRefusal) { modalMessage.textContent = 'Invalid PIN'; return; }
+          if (!response.ok || result.admin !== true) { modalMessage.textContent = 'PIN check unavailable'; return; }
+          currentAttendance = typeof result.attendance === 'string' ? result.attendance : null;
+          if (!currentAttendance) { modalMessage.textContent = 'PIN check unavailable'; return; }
         } catch (_) { modalMessage.textContent = 'PIN check unavailable'; return; }
       }
       setAdminMode(true);
-      modalMessage.textContent = modalMode === 'change' ? 'PIN changed successfully' : '';
-      if (modalMode === 'enter') closePinModal();
+      modalMessage.textContent = '';
+      closePinModal();
     });
+    function enterInactivityHeadless() {
+      if (inactivityHeadless) return;
+      inactivityHeadless = true;
+      currentAttendance = null;
+      if (headerState.isAdmin) { headerState.isAdmin = false; saveHeaderState(); applyAdminDomState(); }
+      [pulseStream, coreStream].forEach(stream => { try { stream?.close(); } catch (_) {} });
+      pulseStream = null; coreStream = null;
+      document.documentElement.dataset.connectionState = 'headless';
+      const notice = document.querySelector('[data-crown-headless-notice]') || document.createElement('p');
+      notice.dataset.crownHeadlessNotice = 'true';
+      notice.textContent = 'You have been disconnected due to inactivity.';
+      notice.setAttribute('role', 'status');
+      if (!notice.parentNode) document.querySelector('[data-product="Coronatio"]')?.prepend(notice);
+    }
+    let lastEligibleActivity = Date.now();
+    const activityEvents = ['scroll', 'touchstart', 'pointerdown'];
+    activityEvents.forEach(type => document.addEventListener(type, () => { lastEligibleActivity = Date.now(); }, { passive: true }));
+    document.addEventListener('click', event => {
+      if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL'].includes(event.target?.tagName)) lastEligibleActivity = Date.now();
+    }, { passive: true });
+    window.setInterval(() => { if (Date.now() - lastEligibleActivity >= 15 * 60 * 1000) enterInactivityHeadless(); }, 60 * 1000);
     let pulseStream = null;
     let pulseRenewTimer = null;
     let pulseStreamId = null;
@@ -538,10 +552,8 @@ fn shell_document_3() -> &'static str {
     }
     async function refreshTabBar(activeTabId = currentActiveTabId()) {
       if (!tabBar) return;
-      const token = localStorage.getItem('coronatioAdminToken');
-      const headers = token ? { 'X-Admin-Token': token } : {};
       const activeParam = activeTabId ? '?active=' + encodeURIComponent(activeTabId) : '';
-      const response = await fetch('/api/tab-bar' + activeParam, { headers });
+      const response = await fetch('/api/tab-bar' + activeParam);
       if (!response.ok) return null;
       replaceTabBar(await response.text());
       return currentActiveTabId();
@@ -782,9 +794,8 @@ fn shell_document_3() -> &'static str {
         event.stopPropagation();
         const id = button.dataset.tabVisibilityToggle;
         const visible = button.dataset.visible !== 'true';
-        const token = localStorage.getItem('coronatioAdminToken');
         try {
-          const response = await fetch('/api/tabs/visibility', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) }, body: JSON.stringify({ tab: id, visible }) });
+          const response = await fetch('/api/tabs/visibility', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tab: id, visible }) });
           if (response.ok && tabBar) replaceTabBar(await response.text());
         } catch (_) {}
         const active = tabs.find(tab => tab.getAttribute('aria-selected') === 'true');

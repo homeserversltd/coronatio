@@ -436,58 +436,6 @@
         }
     }
 
-    #[tokio::test]
-    async fn session_route_encodes_admin_and_caduceus_membrane() {
-        let temp = test_tab_root("session-law");
-        let response = app(AppState {
-            tab_root: Arc::new(temp),
-        })
-        .oneshot(
-            Request::builder()
-                .uri("/api/session")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let session: AdminSessionReadback = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(session.schema, "coronatio.admin.session.v1");
-        assert_eq!(session.session_timeout_seconds, 1800);
-        assert_eq!(session.token_header, "X-Admin-Token");
-        let session_value = serde_json::to_value(&session).unwrap();
-        let mut fields = json_field_census(&session_value);
-        fields.sort();
-        assert_eq!(
-            fields,
-            vec![
-                "caduceusMembrane",
-                "caduceusMembrane.caduceusRole",
-                "caduceusMembrane.coronatioRole",
-                "caduceusMembrane.firstMissingSignal",
-                "caduceusMembrane.privilegedMutations",
-                "caduceusMembrane.schema",
-                "keepaliveRoute",
-                "logoutRoute",
-                "pinValidation",
-                "schema",
-                "sessionTimeoutSeconds",
-                "tokenHeader",
-                "tokenPolicy",
-            ]
-        );
-        assert_eq!(
-            session.caduceus_membrane.schema,
-            "coronatio.caduceus.membrane.v1"
-        );
-        assert!(session
-            .caduceus_membrane
-            .privileged_mutations
-            .contains(&"service restart".to_string()));
-    }
 
     #[tokio::test]
     async fn topics_route_replaces_socketio_with_sse_lease_contracts() {
@@ -526,4 +474,3 @@
         assert_eq!(stats.event_route, "/api/stats/pulse");
         assert_eq!(stats.renew_route, "/api/stats/pulse/renew");
     }
-

@@ -8,9 +8,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     env,
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
     path::{Path as FsPath, PathBuf},
     process::Command,
@@ -24,6 +24,12 @@ include!("bands/contracts.rs");
 include!("bands/runtime.rs");
 include!("bands/routes.rs");
 include!("bands/caduceus.rs");
+#[allow(dead_code)]
+mod caduceus_access {
+    use super::*;
+    include!("bands/caduceus-access.rs");
+}
+include!("bands/mutation-authority.rs");
 include!("bands/pulse.rs");
 include!("bands/router-readback.rs");
 include!("bands/full-rust-routes.rs");

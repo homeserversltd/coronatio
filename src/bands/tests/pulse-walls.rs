@@ -179,17 +179,16 @@
         use futures_util::StreamExt;
         let temp = test_tab_root("pulse-002-route-poke");
         let config = temp.join("homeserver.json");
-        vis_002_fixture_config(&config);
+        std::fs::write(&config, "{\"tabs\":{\"portals\":{\"visibility\":{\"tab\":true}}}}").unwrap();
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-002-route-poke-app")) });
-        let token = authorize_test_admin_token();
-        let (_guest_id, mut guest) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
+                let (_guest_id, mut guest) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
         let (_admin_id, mut admin) = pulse::subscribe_stream(Session::Admin, Duration::from_secs(1));
         assert_eq!(guest.next().await.unwrap().event, "pulse.open");
         assert_eq!(admin.next().await.unwrap().event, "pulse.open");
 
         let response = router
-            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap())
+            .oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/tabs/visibility").header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap()))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -210,19 +209,30 @@
         use futures_util::StreamExt;
         let temp = test_tab_root("pulse-002-rejected-no-poke");
         let config = temp.join("homeserver.json");
-        vis_002_fixture_config(&config);
+        std::fs::write(&config, "{\"tabs\":{\"portals\":{\"visibility\":{\"tab\":true}}}}").unwrap();
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-002-rejected-no-poke-app")) });
-        let (_stream_id, mut stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
-        assert_eq!(stream.next().await.unwrap().event, "pulse.open");
+        let (_cross_origin_stream_id, mut cross_origin_stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
+        assert_eq!(cross_origin_stream.next().await.unwrap().event, "pulse.open");
 
         let response = router
+            .clone()
             .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap())
             .await
             .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let cross_origin_frame = tokio::time::timeout(Duration::from_millis(100), cross_origin_stream.next()).await;
+        assert!(cross_origin_frame.is_err(), "cross-origin visibility write emitted a poke");
+
+        let (_guest_stream_id, mut guest_stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
+        assert_eq!(guest_stream.next().await.unwrap().event, "pulse.open");
+        let response = router
+            .oneshot(successor_session_request(Request::builder().method("POST").uri("/api/tabs/visibility").header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap(), false))
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        let frame = tokio::time::timeout(Duration::from_millis(100), stream.next()).await;
-        assert!(frame.is_err(), "unauthorized visibility write emitted a poke");
+        let guest_frame = tokio::time::timeout(Duration::from_millis(100), guest_stream.next()).await;
+        assert!(guest_frame.is_err(), "same-origin guest visibility write emitted a poke");
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
     }
 
@@ -244,13 +254,12 @@
         }).to_string()).unwrap();
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-002-guest-purity-app")) });
-        let token = authorize_test_admin_token();
-        let (_stream_id, mut guest_stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
+                let (_stream_id, mut guest_stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
         assert_eq!(guest_stream.next().await.unwrap().event, "pulse.open");
 
         let response = router
             .clone()
-            .oneshot(Request::builder().method("POST").uri("/api/tabs/visibility").header("X-Admin-Token", token).header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap())
+            .oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/tabs/visibility").header("content-type", "application/json").body(Body::from(r#"{"tab":"portals","visible":true}"#)).unwrap()))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -286,9 +295,9 @@
         let chrome = crown_chrome_js();
         let lifecycle_connect = chrome.find("if (active === 'stats') { hydrateStats(); connectPulseStream(); }").expect("stats stream must enter through viewport lifecycle admission");
         for declaration in [
-            "\n    let pulseStream = null;",
-            "\n    let pulseRenewTimer = null;",
-            "\n    let pulseStreamId = null;",
+            "let pulseStream = null;",
+            "let pulseRenewTimer = null;",
+            "let pulseStreamId = null;",
         ] {
             let declaration_offset = chrome.find(declaration).unwrap_or_else(|| panic!("missing pulse rider state declaration: {declaration}"));
             assert!(

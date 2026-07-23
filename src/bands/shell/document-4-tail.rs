@@ -128,13 +128,13 @@ fn shell_document_4_tail() -> &'static str {
     function hydrateThemeTokenLab() {
       const root = document.documentElement;
       document.querySelectorAll('[data-theme-token-slider]').forEach(slider => {
-        const token = slider.dataset.themeTokenSlider;
+        const themeProperty = slider.dataset.themeTokenSlider;
         const row = slider.closest('[data-theme-token-control]');
         const unit = row?.dataset.themeTokenUnit || '';
-        const output = document.querySelector(`[data-theme-token-output="${token}"]`);
+        const output = document.querySelector(`[data-theme-token-output="${themeProperty}"]`);
         const apply = () => {
           const value = `${slider.value}${unit}`;
-          root.style.setProperty(token, value);
+          root.style.setProperty(themeProperty, value);
           if (output) output.textContent = value;
           row?.setAttribute('data-theme-token-current', value);
         };

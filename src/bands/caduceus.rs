@@ -21,7 +21,7 @@ async fn caduceus_status_route() -> impl IntoResponse {
         Json(serde_json::json!({
             "schema": "coronatio.caduceus.status.v1",
             "ok": ok,
-            "caduceusBase": caduceus_base(),
+            "caduceusBase": caduceus_safe_base_readback(),
             "health": health,
             "update": update,
             "staff": staff,
@@ -31,17 +31,11 @@ async fn caduceus_status_route() -> impl IntoResponse {
 }
 
 async fn caduceus_update_check_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    if !admin_headers_authorized(&headers) {
-        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"ok":false,"firstMissingSignal":"admin-session-required"})));
-    }
-    caduceus_mutation_route("update_check", "/api/v1/update/check", "update check", "local")
+    caduceus_mutation_route(&headers, "update_check", "/api/v1/update/check", "update check", "local")
 }
 
 async fn caduceus_update_now_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    if !admin_headers_authorized(&headers) {
-        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"ok":false,"firstMissingSignal":"admin-session-required"})));
-    }
-    caduceus_mutation_route("update_now", "/api/v1/update/now", "update now", "local")
+    caduceus_mutation_route(&headers, "update_now", "/api/v1/update/now", "update now", "local")
 }
 
 async fn caduceus_receipts_latest_route() -> impl IntoResponse {
@@ -61,30 +55,23 @@ async fn caduceus_receipts_latest_route() -> impl IntoResponse {
     )
 }
 
-fn caduceus_mutation_readback(path: &str, action: &str, target: &str) -> CaduceusHttpReadback {
-    match mint_caduceus_capability(action, target) {
-        Ok(capability) => caduceus_http_with_capability("POST", path, Some(&capability)),
-        Err(signal) => CaduceusHttpReadback {
-            ok: false,
-            status: 0,
-            path: path.to_string(),
-            body: serde_json::json!({"error": signal}),
-            first_missing_signal: signal,
-        },
-    }
+fn caduceus_mutation_readback(headers: &axum::http::HeaderMap, path: &str, action: &str, target: &str) -> CaduceusHttpReadback {
+    caduceus_actuate(
+        &mutation_authority(),
+        &headers,
+        MutationActionTarget::caduceus(action, target),
+        path,
+    )
 }
 
-fn caduceus_mutation_route(route: &str, path: &str, action: &str, target: &str) -> (StatusCode, Json<serde_json::Value>) {
-    let readback = caduceus_mutation_readback(path, action, target);
+fn caduceus_mutation_route(headers: &axum::http::HeaderMap, route: &str, path: &str, action: &str, target: &str) -> (StatusCode, Json<serde_json::Value>) {
+    let readback = caduceus_mutation_readback(headers, path, action, target);
     (
-        if readback.ok {
-            StatusCode::OK
-        } else {
-            StatusCode::SERVICE_UNAVAILABLE
-        },
+        mutation_response_status(&readback),
         Json(serde_json::json!({
             "schema": "coronatio.caduceus.mutation.v1",
             "ok": readback.ok,
+            "accepted": readback.ok,
             "route": route,
             "readback": readback,
             "firstMissingSignal": readback.first_missing_signal
@@ -92,122 +79,15 @@ fn caduceus_mutation_route(route: &str, path: &str, action: &str, target: &str) 
     )
 }
 
-fn caduceus_config_set(path: &str, value: serde_json::Value) -> CaduceusHttpReadback {
-    #[cfg(test)]
-    if env::var("CORONATIO_TEST_CAPABILITY_TOKEN").is_err() {
-        return CaduceusHttpReadback {
-            ok: true,
-            status: 200,
-            path: "/api/v1/config/set".to_string(),
-            body: serde_json::json!({"ok": true, "testPath": path, "testValue": value}),
-            first_missing_signal: "none".to_string(),
-        };
-    }
-    let capability = match mint_caduceus_capability("config set", path) {
-        Ok(capability) => capability,
-        Err(signal) => return CaduceusHttpReadback {
-            ok: false,
-            status: 0,
-            path: "/api/v1/config/set".to_string(),
-            body: serde_json::json!({"error": signal}),
-            first_missing_signal: signal,
-        },
-    };
-    caduceus_http_json(
-        "POST",
-        "/api/v1/config/set",
-        serde_json::json!({"path": path, "value": value}),
-        Some(&capability),
+fn caduceus_config_set(headers: &axum::http::HeaderMap, path: &str, value: serde_json::Value) -> CaduceusHttpReadback {
+    mutation_config_set(
+        &mutation_authority(),
+        &headers,
+        path,
+        value,
     )
 }
 
-#[cfg(test)]
-static KEYMAN_CAPABILITY_MINT_MOCK: OnceLock<Mutex<Option<fn(&str, &str) -> Result<String, String>>>> =
-    OnceLock::new();
-
-fn mint_caduceus_capability(action: &str, target: &str) -> Result<String, String> {
-    if let Ok(token) = env::var("CORONATIO_TEST_CAPABILITY_TOKEN") {
-        let token = token.trim().to_string();
-        return if token.is_empty() {
-            Err("caduceus-capability-empty".to_string())
-        } else {
-            Ok(token)
-        };
-    }
-    #[cfg(test)]
-    {
-        if let Some(mock) = *KEYMAN_CAPABILITY_MINT_MOCK
-            .get_or_init(|| Mutex::new(None))
-            .lock()
-            .map_err(|_| "keyman-capability-mint-mock-poisoned".to_string())?
-        {
-            return mock(action, target);
-        }
-        return Ok(format!("keyman-test-mock::{action}::{target}"));
-    }
-
-    #[cfg(not(test))]
-    {
-        let output = Command::new("/usr/local/sbin/caduceus-keyman-sign-capability")
-        .args([
-            "--actor",
-            "coronatio-admin-session",
-            "--action",
-            action,
-            "--target",
-            target,
-        ])
-        .output()
-        .map_err(|_| "keyman-capability-mint-unavailable".to_string())?;
-        if !output.status.success() {
-            return Err("keyman-capability-mint-refused".to_string());
-        }
-        parse_keyman_capability_stdout(&String::from_utf8_lossy(&output.stdout))
-    }
-}
-
-fn parse_keyman_capability_stdout(stdout: &str) -> Result<String, String> {
-    let json_line = stdout
-        .lines()
-        .rev()
-        .map(str::trim)
-        .find(|line| line.starts_with('{') && line.ends_with('}'));
-    if let Some(readback) =
-        json_line.and_then(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-    {
-        if !readback
-            .get("ok")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(true)
-        {
-            return Err(readback
-                .get("firstMissingSignal")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("keyman-capability-mint-refused")
-                .to_string());
-        }
-        if let Some(capability) = readback
-            .get("capability")
-            .and_then(serde_json::Value::as_str)
-            .filter(|capability| !capability.is_empty())
-        {
-            return Ok(capability.to_string());
-        }
-        return Err("keyman-capability-mint-malformed".to_string());
-    }
-    let token = stdout
-        .lines()
-        .rev()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or("");
-    let token = token.strip_prefix("Bearer ").unwrap_or(token);
-    if token.is_empty() {
-        Err("keyman-capability-mint-malformed".to_string())
-    } else {
-        Ok(token.to_string())
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -220,63 +100,93 @@ struct CaduceusHttpReadback {
 }
 
 fn caduceus_base() -> String {
+    #[cfg(test)]
+    {
+        return env::var("CADUCEUS_BASE_URL")
+            .or_else(|_| env::var("CADUCEUS_URL"))
+            .unwrap_or_else(|_| crate::caduceus_access::test_fixture::base());
+    }
+    #[cfg(not(test))]
     env::var("CADUCEUS_BASE_URL")
         .or_else(|_| env::var("CADUCEUS_URL"))
         .unwrap_or_else(|_| "http://127.0.0.1:3014".to_string())
 }
 
-fn caduceus_authority() -> (String, String) {
-    let base = caduceus_base();
-    let without_scheme = base
-        .strip_prefix("http://")
-        .or_else(|| base.strip_prefix("https://"))
-        .unwrap_or(base.as_str());
-    let authority = without_scheme.trim_end_matches('/').to_string();
-    (base, authority)
+fn caduceus_authority() -> Option<String> {
+    caduceus_authority_from_base(&caduceus_base())
+}
+
+fn caduceus_authority_from_base(base: &str) -> Option<String> {
+    let authority = base.strip_prefix("http://")?;
+    if authority.contains(['/', '?', '#', '@']) {
+        return None;
+    }
+    let address = authority.parse::<SocketAddr>().ok()?;
+    address.ip().is_loopback().then(|| address.to_string())
+}
+
+fn caduceus_safe_base_readback() -> &'static str {
+    if caduceus_authority().is_some() { "caduceus-loopback" } else { "caduceus-loopback-required" }
+}
+
+fn caduceus_loopback_refusal(path: &str) -> CaduceusHttpReadback {
+    CaduceusHttpReadback {
+        ok: false,
+        status: 0,
+        path: path.to_string(),
+        body: serde_json::json!({"error": "caduceus-loopback-required"}),
+        first_missing_signal: "caduceus-loopback-required".to_string(),
+    }
 }
 
 fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
-    caduceus_http_with_capability(method, path, None)
+    caduceus_http_with_attendance(method, path, None)
 }
 
-fn caduceus_http_with_capability(method: &str, path: &str, capability: Option<&str>) -> CaduceusHttpReadback {
-    let (_base, authority) = caduceus_authority();
+fn caduceus_http_with_attendance(method: &str, path: &str, attendance: Option<&crate::caduceus_access::AttendanceProof>) -> CaduceusHttpReadback {
+    let Some(authority) = caduceus_authority() else {
+        return caduceus_loopback_refusal(path);
+    };
+    #[cfg(test)]
+    if authority == "127.0.0.1:9" {
+        return CaduceusHttpReadback { ok: true, status: 200, path: path.to_string(), body: serde_json::json!({"ok": true}), first_missing_signal: "none".to_string() };
+    }
     let mut stream = match TcpStream::connect(&authority) {
         Ok(stream) => stream,
-        Err(err) => {
+        Err(_err) => {
             return CaduceusHttpReadback {
                 ok: false,
                 status: 0,
                 path: path.to_string(),
-                body: serde_json::json!({"error": err.to_string()}),
+                body: serde_json::json!({"error": "caduceus-upstream-failed"}),
                 first_missing_signal: "caduceus-unreachable".to_string(),
             };
         }
     };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
-    let capability_header = capability
-        .map(|token| format!("x-caduceus-capability: {token}\r\n"))
+    let attendance_header = attendance
+            .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
         .unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n{capability_header}Content-Length: 0\r\n\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n{attendance_header}Content-Length: 0\r\n\r\n"
     );
-    if let Err(err) = stream.write_all(request.as_bytes()) {
+    if let Err(_err) = stream.write_all(request.as_bytes()) {
         return CaduceusHttpReadback {
             ok: false,
             status: 0,
             path: path.to_string(),
-            body: serde_json::json!({"error": err.to_string()}),
+            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
             first_missing_signal: "caduceus-write-failed".to_string(),
         };
     }
     let mut response = String::new();
-    if let Err(err) = stream.read_to_string(&mut response) {
+    if let Err(_err) = stream.read_to_string(&mut response) {
         return CaduceusHttpReadback {
             ok: false,
             status: 0,
             path: path.to_string(),
-            body: serde_json::json!({"error": err.to_string()}),
+            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
             first_missing_signal: "caduceus-read-failed".to_string(),
         };
     }
@@ -318,21 +228,27 @@ fn caduceus_http_json(
     method: &str,
     path: &str,
     body: serde_json::Value,
-    capability: Option<&str>,
+    attendance: Option<&crate::caduceus_access::AttendanceProof>,
 ) -> CaduceusHttpReadback {
-    caduceus_http_json_with_capability(method, path, body, capability)
+    caduceus_http_json_with_attendance(method, path, body, attendance)
 }
 
-fn caduceus_http_json_with_capability(method: &str, path: &str, body: serde_json::Value, capability: Option<&str>) -> CaduceusHttpReadback {
-    let (_base, authority) = caduceus_authority();
+fn caduceus_http_json_with_attendance(method: &str, path: &str, body: serde_json::Value, attendance: Option<&crate::caduceus_access::AttendanceProof>) -> CaduceusHttpReadback {
+    let Some(authority) = caduceus_authority() else {
+        return caduceus_loopback_refusal(path);
+    };
+    #[cfg(test)]
+    if authority == "127.0.0.1:9" {
+        return CaduceusHttpReadback { ok: true, status: 200, path: path.to_string(), body: serde_json::json!({"ok": true}), first_missing_signal: "none".to_string() };
+    }
     let mut stream = match TcpStream::connect(&authority) {
         Ok(stream) => stream,
-        Err(err) => {
+        Err(_err) => {
             return CaduceusHttpReadback {
                 ok: false,
                 status: 0,
                 path: path.to_string(),
-                body: serde_json::json!({"error": err.to_string()}),
+                body: serde_json::json!({"error": "caduceus-upstream-failed"}),
                 first_missing_signal: "caduceus-unreachable".to_string(),
             };
         }
@@ -340,29 +256,29 @@ fn caduceus_http_json_with_capability(method: &str, path: &str, body: serde_json
     let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
     let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-    let capability_header = capability
-        .map(|token| format!("x-caduceus-capability: {token}\r\n"))
+    let attendance_header = attendance
+            .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
         .unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\n{capability_header}Content-Length: {}\r\n\r\n{}",
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\n{attendance_header}Content-Length: {}\r\n\r\n{}",
         body_text.len(), body_text
     );
-    if let Err(err) = stream.write_all(request.as_bytes()) {
+    if let Err(_err) = stream.write_all(request.as_bytes()) {
         return CaduceusHttpReadback {
             ok: false,
             status: 0,
             path: path.to_string(),
-            body: serde_json::json!({"error": err.to_string()}),
+            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
             first_missing_signal: "caduceus-write-failed".to_string(),
         };
     }
     let mut response = String::new();
-    if let Err(err) = stream.read_to_string(&mut response) {
+    if let Err(_err) = stream.read_to_string(&mut response) {
         return CaduceusHttpReadback {
             ok: false,
             status: 0,
             path: path.to_string(),
-            body: serde_json::json!({"error": err.to_string()}),
+            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
             first_missing_signal: "caduceus-read-failed".to_string(),
         };
     }
@@ -587,14 +503,12 @@ struct AdminMutationResult {
     first_missing_signal: String,
 }
 
-fn admin_headers_authorized(headers: &axum::http::HeaderMap) -> bool {
-    session_from_headers(headers) == Session::Admin
-}
 
-fn admin_membrane_refusal_fragment(surface: &str) -> String {
+fn admin_membrane_refusal_fragment(surface: &str, first_missing_signal: &str) -> String {
     format!(
-        r#"<div class="update-status-container error" data-admin-membrane-refusal="true" data-og-affordance="toast-mapped-to-result-strip"><strong>Enter Admin Mode</strong><span>{}</span><code>admin-session-required</code></div>"#,
+        r#"<div class="update-status-container error" data-admin-membrane-refusal="true" data-og-affordance="toast-mapped-to-result-strip"><strong>Enter Admin Mode</strong><span>{}</span><code>{}</code></div>"#,
         html_escape(surface),
+        html_escape(first_missing_signal),
     )
 }
 
@@ -628,82 +542,61 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
     }
 }
 
-fn admin_staff_intent(method: &str, path: &str, classification: &str) -> CaduceusHttpReadback {
-    let capability = match mint_caduceus_capability("staff intent", path) {
-        Ok(capability) => capability,
-        Err(signal) => return CaduceusHttpReadback {
-            ok: false,
-            status: 0,
-            path: path.to_string(),
-            body: serde_json::json!({"error": signal}),
-            first_missing_signal: signal,
-        },
-    };
-    caduceus_http_json_with_capability(
-        "POST",
-        "/api/v1/staff/intent",
-        serde_json::json!({
-            "method": method,
-            "route": path,
-            "classification": classification,
-        }),
-        Some(&capability),
+fn admin_staff_intent(headers: &axum::http::HeaderMap, method: &str, path: &str, classification: &str) -> CaduceusHttpReadback {
+    mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
+        method,
+        path,
+        classification,
+        serde_json::json!({}),
     )
 }
 
-fn rotate_caduceus_capability_key() -> CaduceusHttpReadback {
-    match Command::new("/usr/local/sbin/caduceus-keyman-rotate-capability").output() {
-        Ok(output) => {
-            let ok = output.status.success();
-            CaduceusHttpReadback {
-                ok,
-                status: if ok { 200 } else { 503 },
-                path: "/usr/local/sbin/caduceus-keyman-rotate-capability".to_string(),
-                body: serde_json::json!({"stdout": String::from_utf8_lossy(&output.stdout).trim(), "stderr": String::from_utf8_lossy(&output.stderr).trim()}),
-                first_missing_signal: if ok { "none" } else { "caduceus-capability-rotation-failed" }.to_string(),
-            }
-        }
-        Err(err) => CaduceusHttpReadback {
-            ok: false,
-            status: 0,
-            path: "/usr/local/sbin/caduceus-keyman-rotate-capability".to_string(),
-            body: serde_json::json!({"error": err.to_string()}),
-            first_missing_signal: "caduceus-capability-rotator-unavailable".to_string(),
-        },
-    }
-}
 
 async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
-    if !admin_headers_authorized(&headers) {
-        return admin_html_fragment_response(StatusCode::UNAUTHORIZED, admin_membrane_refusal_fragment(&toggle_id));
+    if let Some(refusal) = mutation_context_refusal(&headers) {
+        let readback = mutation_refusal_readback("/api/v1/staff/intent", refusal);
+        return admin_html_fragment_response(
+            mutation_response_status(&readback),
+            admin_membrane_refusal_fragment(&toggle_id, &readback.first_missing_signal),
+        );
     }
     let Some((label, path)) = admin_toggle_target(&toggle_id) else {
-        return admin_html_fragment_response(StatusCode::NOT_FOUND, admin_membrane_refusal_fragment("unknown admin toggle"));
+        return admin_html_fragment_response(
+            StatusCode::NOT_FOUND,
+            admin_membrane_refusal_fragment("unknown admin toggle", "unknown-admin-toggle"),
+        );
     };
-    let readback = admin_staff_intent("POST", path, "admin-service-toggle");
+    let readback = admin_staff_intent(&headers, "POST", path, "admin-service-toggle");
     let result = AdminMutationResult {
         action: toggle_id.clone(),
         title: label.to_string(),
         message: if readback.ok { "Caduceus accepted the mutation; card re-read real state." } else { "Caduceus actuator is not wired or unavailable; card re-read unchanged real state." }.to_string(),
         ok: readback.ok,
-        first_missing_signal: if readback.ok { "none".to_string() } else { readback.first_missing_signal },
+        first_missing_signal: if readback.ok { "none".to_string() } else { readback.first_missing_signal.clone() },
     };
-    admin_html_fragment_response(StatusCode::OK, render_admin_service_card_result_html(&toggle_id, Some(&result)))
+    admin_html_fragment_response(mutation_response_status(&readback), render_admin_service_card_result_html(&toggle_id, Some(&result)))
 }
 
 async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>) -> impl IntoResponse {
-    if !admin_headers_authorized(&headers) {
-        return admin_html_fragment_response(StatusCode::UNAUTHORIZED, admin_membrane_refusal_fragment(&action_id));
+    if let Some(refusal) = mutation_context_refusal(&headers) {
+        let readback = mutation_refusal_readback("/api/v1/staff/intent", refusal);
+        return admin_html_fragment_response(
+            mutation_response_status(&readback),
+            admin_membrane_refusal_fragment(&action_id, &readback.first_missing_signal),
+        );
     }
     let Some((title, method, path, mutation)) = admin_action_target(&action_id) else {
-        return admin_html_fragment_response(StatusCode::NOT_FOUND, admin_membrane_refusal_fragment("unknown admin action"));
+        return admin_html_fragment_response(
+            StatusCode::NOT_FOUND,
+            admin_membrane_refusal_fragment("unknown admin action", "unknown-admin-action"),
+        );
     };
-    let readback = if action_id == "rotate-capability-key" {
-        rotate_caduceus_capability_key()
-    } else if action_id == "update" {
-        caduceus_mutation_readback(path, "update now", "local")
+    let readback = if action_id == "update" {
+        caduceus_mutation_readback(&headers, path, "update now", "local")
     } else if mutation {
-        admin_staff_intent(method, path, homeserver_route_family(path))
+        admin_staff_intent(&headers, method, path, homeserver_route_family(path))
     } else {
         caduceus_http(method, path)
     };
@@ -723,5 +616,29 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
         html_escape(message),
         html_escape(if readback.ok { "none" } else { &readback.first_missing_signal }),
     );
-    admin_html_fragment_response(StatusCode::OK, body)
+    admin_html_fragment_response(if mutation { mutation_response_status(&readback) } else { StatusCode::OK }, body)
+}
+
+#[cfg(test)]
+mod caduceus_loopback_tests {
+    use super::*;
+
+    #[test]
+    fn raw_actuator_accepts_only_literal_loopback_socket_authorities() {
+        for base in ["http://127.0.0.1:3014", "http://[::1]:3014"] {
+            assert!(caduceus_authority_from_base(base).is_some(), "{base}");
+        }
+        for base in [
+            "http://localhost:3014",
+            "http://user@127.0.0.1:3014",
+            "http://127.0.0.1:3014/path",
+            "http://127.0.0.1:3014?query",
+            "http://127.0.0.1:3014#fragment",
+            "https://127.0.0.1:3014",
+            "http://127.0.0.1",
+            "http://192.0.2.1:3014",
+        ] {
+            assert!(caduceus_authority_from_base(base).is_none(), "{base}");
+        }
+    }
 }

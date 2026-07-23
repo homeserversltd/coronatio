@@ -219,7 +219,7 @@ fn full_rust_route_table() -> Router<AppState> {
 }
 
 
-async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
+async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multipart) -> impl IntoResponse {
     let mut filename = "upload.bin".to_string();
     let mut destination = "/mnt/nas".to_string();
     let mut payload = Vec::new();
@@ -278,25 +278,22 @@ async fn upload_file_route(mut multipart: Multipart) -> impl IntoResponse {
     }
     let byte_count = payload.len();
 
-    let caduceus = caduceus_http_json(
+    let caduceus = mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
         "POST",
-        "/api/v1/staff/intent",
+        "/api/files/upload",
+        "file-ingress",
         serde_json::json!({
-            "method": "POST",
-            "route": "/api/files/upload",
-            "classification": "file-ingress",
-            "metadata": {
-                "filename": filename,
-                "bytes": byte_count,
-                "contentType": content_type,
-                "destination": destination,
-                "payload": payload
-            }
+            "filename": filename,
+            "bytes": byte_count,
+            "contentType": content_type,
+            "destination": destination,
+            "payload": payload
         }),
-        None,
     );
     (
-        if caduceus.ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE },
+        if caduceus.ok { StatusCode::OK } else { mutation_response_status(&caduceus) },
         Json(serde_json::json!({
             "schema": "coronatio.upload.submit.v1",
             "ok": caduceus.ok,
@@ -422,24 +419,25 @@ fn format_duration(mut seconds: u64) -> String {
 
 async fn homeserver_rust_read_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_read_response(&headers, method.as_str(), uri.path()) }
 
-async fn homeserver_rust_mutation_route(method: Method, uri: Uri) -> impl IntoResponse { homeserver_mutation_response(method.as_str(), uri.path()) }
+async fn homeserver_rust_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_mutation_response(&headers, method.as_str(), uri.path()) }
 
 async fn admin_class_generic_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri, body: Bytes) -> Response {
-    if session_from_headers(&headers) != Session::Admin { return admin_class_generic_mutation_refusal_response(method.as_str(), uri.path()); }
+    if mutation_context_refusal(&headers).is_some() {
+        return homeserver_mutation_response(&headers, method.as_str(), uri.path());
+    }
     if uri.path() == "/api/upload/history/clear" { return clear_upload_history_route(); }
     if uri.path() == "/api/admin/logs/homeserver/clear" {
         return hyalos_channel_clear_refusal_response("coronatio.admin.logs.homeserver.clear.v1", uri.path());
     }
     let payload = serde_json::from_slice(&body).unwrap_or_else(|_| serde_json::json!({}));
-    if uri.path() == "/api/upload/blacklist/update" { return upload_blacklist_update(payload); }
-    if uri.path() == "/api/upload/pin-required-status" { return upload_pin_required_update(payload); }
-    if uri.path() == "/api/upload/force-permissions" { return upload_force_permissions(payload); }
-    homeserver_mutation_response(method.as_str(), uri.path())
+    if uri.path() == "/api/upload/blacklist/update" { return upload_blacklist_update(&headers, payload); }
+    if uri.path() == "/api/upload/pin-required-status" { return upload_pin_required_update(&headers, payload); }
+    if uri.path() == "/api/upload/force-permissions" { return upload_force_permissions(&headers, payload); }
+    homeserver_mutation_response(&headers, method.as_str(), uri.path())
 }
 
 async fn network_identity_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> Response {
-    if session_from_headers(&headers) != Session::Admin { return network_identity_mutation_refusal_response(method.as_str(), uri.path()); }
-    homeserver_mutation_response(method.as_str(), uri.path())
+    homeserver_mutation_response(&headers, method.as_str(), uri.path())
 }
 
 fn admin_class_generic_mutation_refusal_response(method: &str, path: &str) -> Response {
@@ -484,23 +482,17 @@ include!("full-rust-routes/dhcp.rs");
 
 include!("full-rust-routes/power.rs");
 
-fn homeserver_mutation_response(method: &str, path: &str) -> Response {
-    let caduceus = caduceus_http_json(
-        "POST",
-        "/api/v1/staff/intent",
-        serde_json::json!({
-            "method": method,
-            "route": path,
-            "classification": homeserver_route_family(path),
-        }),
-        None,
+fn homeserver_mutation_response(headers: &axum::http::HeaderMap, method: &str, path: &str) -> Response {
+    let caduceus = mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
+        method,
+        path,
+        homeserver_route_family(path),
+        serde_json::json!({}),
     );
     (
-        if caduceus.ok {
-            StatusCode::ACCEPTED
-        } else {
-            StatusCode::SERVICE_UNAVAILABLE
-        },
+        if caduceus.ok { StatusCode::ACCEPTED } else { mutation_response_status(&caduceus) },
         Json(serde_json::json!({
             "schema": "coronatio.homeserver.route.mutation.v1",
             "ok": caduceus.ok,

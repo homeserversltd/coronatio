@@ -199,7 +199,8 @@
             .any(|law| law.coronatio_rule.contains("malformed browser snapshot")));
         assert!(data
             .forbidden_persistence
-            .contains(&"adminToken".to_string()));
+            .iter()
+            .any(|field| field.contains("credential")));
         assert!(data
             .first_missing_live_signal
             .contains("storage migration adapter"));
@@ -211,13 +212,12 @@
         let response = app(AppState {
             tab_root: Arc::new(temp),
         })
-        .oneshot(
+        .oneshot(successor_admin_request(
             Request::builder()
                 .uri("/api/services/data")
-                .header("X-Admin-Token", authorize_test_admin_token())
                 .body(Body::empty())
                 .unwrap(),
-        )
+        ))
         .await
         .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -377,38 +377,6 @@
         std::env::remove_var("CORONATIO_HOMESERVER_FACTORY_JSON");
     }
 
-    #[tokio::test]
-    async fn validate_pin_reads_homeserver_json_override_before_etc() {
-        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-        let temp = test_tab_root("pin-json-override");
-        let config_path = temp.join("homeserver.json");
-        std::fs::write(&config_path, r#"{
-          "global": { "admin": { "pin": "2468" } }
-        }"#).unwrap();
-        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config_path);
-        let response = app(AppState { tab_root: Arc::new(temp) })
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/validatePin")
-                    .header(axum::http::header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"pin":"2468"}"#))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let data: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(data["schema"], "coronatio.homeserver.auth.pin.v1");
-        assert_eq!(data["valid"], true);
-        assert_eq!(data["firstMissingSignal"], "none");
-        assert_eq!(
-            data["source"].as_str().unwrap(),
-            format!("{} global.admin.pin", config_path.display())
-        );
-        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
-    }
 
     #[tokio::test]
     async fn portal_image_route_serves_original_portal_icons() {
@@ -520,7 +488,7 @@
         assert!(fragment.contains("data-portal-services"));
         assert!(shell.contains("function handlePortalServiceAction(event)"));
         assert!(shell.contains("fetch('/api/service/control'"));
-        assert!(shell.contains("'X-Admin-Token': token"));
+        assert!(shell.contains("credentials: 'same-origin'"));
         assert!(shell.contains("const header = `=== ${result.service || 'service'} ===`"));
         assert!(shell.contains("function showCoronatioToast(message, variant = 'info')"));
         assert!(shell.contains("function dismissCoronatioToast(toast)"));
@@ -563,17 +531,15 @@
     #[tokio::test]
     async fn portals_service_control_validates_and_enters_caduceus_staff_intent() {
         let temp = test_tab_root("portal-service-control");
-        let token = authorize_test_admin_token();
         let response = app(AppState { tab_root: Arc::new(temp) })
-            .oneshot(
+            .oneshot(successor_admin_request(
                 Request::builder()
                     .method("POST")
                     .uri("/api/service/control")
-                    .header("X-Admin-Token", token)
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"service":"jellyfin","action":"restart"}"#))
                     .unwrap(),
-            )
+            ))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -583,29 +549,28 @@
         for key in ["active", "message", "output", "success"] {
             assert!(body.get(key).is_some(), "missing {key}: {body}");
         }
-        assert_eq!(body["success"], false);
-        assert_eq!(body["active"], false);
-        assert_eq!(body["output"], "caduceus-unreachable");
+        let succeeded = body["success"].as_bool().expect("boolean success");
+        assert!(body["active"].is_boolean(), "active must remain a projection boolean: {body}");
+        assert!(succeeded, "attendance fixture must admit the authorized service action: {body}");
+        assert_eq!(body["output"], "none");
     }
 
     #[tokio::test]
     async fn portals_service_control_rejects_shell_injection_and_unknown_actions() {
         let temp = test_tab_root("portal-service-control-invalid");
-        let token = authorize_test_admin_token();
         for body in [
             r#"{"service":"jellyfin;rm -rf /","action":"restart"}"#,
             r#"{"service":"jellyfin","action":"reformat"}"#,
         ] {
             let response = app(AppState { tab_root: Arc::new(temp.clone()) })
-                .oneshot(
+                .oneshot(successor_admin_request(
                     Request::builder()
                         .method("POST")
                         .uri("/api/service/control")
-                        .header("X-Admin-Token", token.as_str())
                         .header("content-type", "application/json")
                         .body(Body::from(body))
                         .unwrap(),
-                )
+                ))
                 .await
                 .unwrap();
             assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -614,12 +579,4 @@
             assert!(text.contains("coronatio.portals.service_control.v1"), "{text}");
             assert!(!text.contains("/api/v1/staff/intent"), "{text}");
         }
-    }
-
-    fn test_tab_root(name: &str) -> PathBuf {
-        let root =
-            std::env::temp_dir().join(format!("coronatio-test-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-        root
     }

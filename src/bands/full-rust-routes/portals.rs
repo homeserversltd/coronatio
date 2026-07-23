@@ -204,9 +204,6 @@ fn extract_portals(value: &serde_json::Value) -> Vec<PortalEntry> {
 
 
 async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(payload): Json<serde_json::Value>) -> Response {
-    if session_from_headers(&headers) != Session::Admin {
-        return services_mutation_refusal_response("POST", "/api/service/control");
-    }
     let service = match payload.get("service").and_then(serde_json::Value::as_str).map(str::trim) {
         Some(service) if is_safe_service_name(service) => service.to_string(),
         _ => {
@@ -242,6 +239,9 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
                 .into_response();
         }
     };
+    if let Some(refusal) = mutation_context_refusal(&headers) {
+        return services_mutation_context_refusal_response("POST", "/api/service/control", refusal);
+    }
     let portals = match read_portals_config() {
         Ok(config) => config.portals,
         Err(signal) => return portal_service_allowlist_refusal_response(&service, signal),
@@ -253,30 +253,31 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
         );
     }
     let systemd_service = if service.ends_with(".service") { service.clone() } else { format!("{service}.service") };
-    let caduceus = caduceus_http_json(
+    let caduceus = mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
         "POST",
-        "/api/v1/staff/intent",
+        "/api/service/control",
+        "portal-service",
         serde_json::json!({
-            "method": "POST",
-            "route": "/api/service/control",
-            "classification": "portal-service",
-            "metadata": {
-                "service": service,
-                "action": action,
-                "systemdService": systemd_service,
-                "source": "coronatio-portals-admin-mode",
-                "originalQuarry": "Flask portals service_control execute_systemctl_command"
-            }
+            "service": service,
+            "action": action,
+            "systemdService": systemd_service,
+            "source": "coronatio-portals-admin-mode",
+            "originalQuarry": "Flask portals service_control execute_systemctl_command"
         }),
-        None,
     );
+    portal_service_mutation_response(caduceus)
+}
+
+fn portal_service_mutation_response(caduceus: CaduceusHttpReadback) -> Response {
     let body = &caduceus.body;
     let success = body.get("success").and_then(serde_json::Value::as_bool).unwrap_or(caduceus.ok);
     let message = body.get("message").and_then(serde_json::Value::as_str).unwrap_or(if success { "Service action completed" } else { "Service action failed" });
     let output = body.get("output").and_then(serde_json::Value::as_str).unwrap_or(caduceus.first_missing_signal.as_str());
     let active = body.get("active").and_then(serde_json::Value::as_bool).unwrap_or(false);
     (
-        StatusCode::OK,
+        if success { StatusCode::OK } else { mutation_response_status(&caduceus) },
         Json(serde_json::json!({
             "success": success,
             "message": message,
@@ -311,9 +312,10 @@ fn portal_service_is_allowlisted(service: &str, portals: &[PortalEntry]) -> bool
     })
 }
 
-fn services_mutation_refusal_response(method: &str, path: &str) -> Response {
+fn services_mutation_context_refusal_response(method: &str, path: &str, refusal: MutationRefusal) -> Response {
+    let signal = safe_access_code(&refusal.code);
     (
-        StatusCode::UNAUTHORIZED,
+        StatusCode::from_u16(refusal.status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
         Json(serde_json::json!({
             "schema": "coronatio.services.mutation.refusal.v1",
             "success": false,
@@ -321,8 +323,8 @@ fn services_mutation_refusal_response(method: &str, path: &str) -> Response {
             "method": method,
             "path": path,
             "family": "portal-service",
-            "error": "admin-session-required",
-            "firstMissingSignal": "admin-session-required"
+            "error": signal,
+            "firstMissingSignal": signal
         })),
     ).into_response()
 }
