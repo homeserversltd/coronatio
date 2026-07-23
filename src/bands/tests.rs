@@ -50,6 +50,7 @@ mod tests {
 
     // Legacy ticket/capability authority tests were retired with Slice D.
     include!("tests/test-tranch-05-upload-bedrock-walls.rs");
+    include!("tests/star-guest-caduceus-walls.rs");
     include!("tests/hyalos-consumer-walls.rs");
     include!("tests/debug-emitter-walls.rs");
 
