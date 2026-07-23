@@ -273,7 +273,7 @@ fn tab_bar_html_response_with_active(session: Session, active: Option<&str>) -> 
     response
 }
 
-fn homeserver_json_path() -> PathBuf {
+pub(crate) fn homeserver_json_path() -> PathBuf {
     if let Ok(path) = env::var("CORONATIO_HOMESERVER_JSON") {
         return PathBuf::from(path);
     }
@@ -291,6 +291,15 @@ fn homeserver_json_path() -> PathBuf {
         }
     }
     PathBuf::from(INSTALLED_HOMESERVER_JSON)
+}
+
+pub(crate) fn load_homeserver_json_sync() -> Result<(String, serde_json::Value), String> {
+    let path = homeserver_json_path();
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|error| format!("homeserver.json unreadable at {}: {}", path.display(), error))?;
+    let value: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|error| format!("homeserver.json invalid at {}: {}", path.display(), error))?;
+    Ok((path.display().to_string(), value))
 }
 
 async fn load_homeserver_json() -> Result<(String, serde_json::Value), String> {

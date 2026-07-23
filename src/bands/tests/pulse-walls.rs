@@ -179,7 +179,7 @@
         use futures_util::StreamExt;
         let temp = test_tab_root("pulse-002-route-poke");
         let config = temp.join("homeserver.json");
-        std::fs::write(&config, "{\"tabs\":{\"portals\":{\"visibility\":{\"tab\":true}}}}").unwrap();
+        std::fs::write(&config, "{\"global\":{\"cors\":{\"allowed_origins\":[\"https://home.arpa\"]}},\"tabs\":{\"portals\":{\"visibility\":{\"tab\":true}}}}").unwrap();
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-002-route-poke-app")) });
                 let (_guest_id, mut guest) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
@@ -209,7 +209,7 @@
         use futures_util::StreamExt;
         let temp = test_tab_root("pulse-002-rejected-no-poke");
         let config = temp.join("homeserver.json");
-        std::fs::write(&config, "{\"tabs\":{\"portals\":{\"visibility\":{\"tab\":true}}}}").unwrap();
+        std::fs::write(&config, "{\"global\":{\"cors\":{\"allowed_origins\":[\"https://home.arpa\"]}},\"tabs\":{\"portals\":{\"visibility\":{\"tab\":true}}}}").unwrap();
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
         let router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-002-rejected-no-poke-app")) });
         let (_cross_origin_stream_id, mut cross_origin_stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(1));
@@ -244,7 +244,7 @@
         let temp = test_tab_root("pulse-002-guest-purity");
         let config = temp.join("homeserver.json");
         std::fs::write(&config, serde_json::json!({
-            "global": { "admin": { "pin": "1234" }, "theme": { "name": "light" } },
+            "global": { "admin": { "pin": "1234" }, "theme": { "name": "light" }, "cors": { "allowed_origins": ["https://home.arpa"] } },
             "tabs": {
                 "starred": "stats",
                 "admin": { "config": { "displayName": "ADMIN_ONLY_TAB_MARKER", "isEnabled": true, "adminOnly": true }, "visibility": { "tab": true, "elements": {} } },
