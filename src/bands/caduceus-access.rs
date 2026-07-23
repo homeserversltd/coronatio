@@ -51,8 +51,77 @@ fn access_authority(base:&str)->Option<SocketAddr>{let raw=base.strip_prefix("ht
 fn access_host_header(base:&str)->&str{base.strip_prefix("http://").unwrap_or("127.0.0.1:3014")}
 pub(crate) fn document_incarnation_from_headers(headers:&axum::http::HeaderMap)->Option<String>{headers.get("x-caduceus-document").and_then(|v|v.to_str().ok()).map(str::trim).filter(|v|!v.is_empty()&&v.len()<=128&&v.bytes().all(|b|b.is_ascii_alphanumeric()||matches!(b,b'-'|b'_'|b'.'))).map(ToOwned::to_owned)}
 pub(crate) fn attendance_from_headers(headers:&axum::http::HeaderMap)->Option<AttendanceProof>{headers.get("x-caduceus-attendance").and_then(|v|v.to_str().ok()).and_then(AttendanceProof::parse)}
-pub(crate) fn same_origin_state_change(headers:&axum::http::HeaderMap)->bool{let Some(host)=forwarded_first(headers,"x-forwarded-host").or_else(||headers.get(header::HOST).and_then(|v|v.to_str().ok()))else{return false};let proto=forwarded_first(headers,"x-forwarded-proto").unwrap_or("https");let Some(origin)=headers.get(header::ORIGIN).and_then(|v|v.to_str().ok())else{return false};proto.eq_ignore_ascii_case("https")&&matches!(host.trim().to_ascii_lowercase().as_str(),"home.arpa"|"home.arpa:443")&&matches!(origin.trim().to_ascii_lowercase().as_str(),"https://home.arpa"|"https://home.arpa:443")}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct MutationOriginPolicy { allowed_origins: Vec<BrowserOrigin> }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct BrowserOrigin { scheme: String, host: String, port: u16 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MutationOriginConfigError { HomeserverJson(String), MissingAllowedOrigins, EmptyAllowedOrigins, InvalidAllowedOrigins, InvalidOrigin(String) }
+
+pub(crate) fn mutation_origin_policy_from_homeserver(value: &serde_json::Value) -> Result<MutationOriginPolicy, MutationOriginConfigError> {
+    let origins = value.get("global").and_then(serde_json::Value::as_object).and_then(|global| global.get("cors")).and_then(serde_json::Value::as_object).and_then(|cors| cors.get("allowed_origins")).ok_or(MutationOriginConfigError::MissingAllowedOrigins)?;
+    let origins = origins.as_array().ok_or(MutationOriginConfigError::InvalidAllowedOrigins)?;
+    if origins.is_empty() { return Err(MutationOriginConfigError::EmptyAllowedOrigins); }
+    let allowed_origins = origins.iter().map(|entry| {
+        let raw = entry.as_str().ok_or(MutationOriginConfigError::InvalidAllowedOrigins)?;
+        parse_browser_origin(raw).ok_or_else(|| MutationOriginConfigError::InvalidOrigin(raw.to_string()))
+    }).collect::<Result<Vec<_>, _>>()?;
+    Ok(MutationOriginPolicy { allowed_origins })
+}
+
+pub(crate) fn load_mutation_origin_policy_sync() -> Result<MutationOriginPolicy, MutationOriginConfigError> {
+    let (_, value) = crate::load_homeserver_json_sync().map_err(MutationOriginConfigError::HomeserverJson)?;
+    mutation_origin_policy_from_homeserver(&value)
+}
+
+pub(crate) fn same_origin_state_change_with_policy(headers: &axum::http::HeaderMap, policy: &MutationOriginPolicy) -> bool {
+    let Some(origin) = headers.get(header::ORIGIN).and_then(|value| value.to_str().ok()).and_then(parse_browser_origin) else { return false; };
+    let Some(matched) = policy.allowed_origins.iter().find(|allowed| **allowed == origin) else { return false; };
+    let Some(host) = forwarded_first(headers, "x-forwarded-host").or_else(|| headers.get(header::HOST).and_then(|value| value.to_str().ok())).and_then(parse_host_authority) else { return false; };
+    if host.0 != matched.host || host.1.unwrap_or(matched.port) != matched.port { return false; }
+    match forwarded_first(headers, "x-forwarded-proto") { Some(proto) => proto.eq_ignore_ascii_case(&matched.scheme), None => true }
+}
+
+pub(crate) fn same_origin_state_change(headers: &axum::http::HeaderMap) -> bool {
+    load_mutation_origin_policy_sync().map(|policy| same_origin_state_change_with_policy(headers, &policy)).unwrap_or(false)
+}
+
+fn parse_browser_origin(raw: &str) -> Option<BrowserOrigin> {
+    let url = url::Url::parse(raw.trim()).ok()?;
+    if !matches!(url.scheme(), "http" | "https") || url.cannot_be_a_base() || url.username() != "" || url.password().is_some() || url.path() != "/" || url.query().is_some() || url.fragment().is_some() { return None; }
+    Some(BrowserOrigin { scheme: url.scheme().to_ascii_lowercase(), host: url.host_str()?.to_ascii_lowercase(), port: url.port_or_known_default()? })
+}
+
+fn parse_host_authority(raw: &str) -> Option<(String, Option<u16>)> {
+    let raw = raw.trim();
+    if raw.is_empty() || raw.contains(['/', '?', '#', '@']) { return None; }
+    let url = url::Url::parse(&format!("http://{raw}/")).ok()?;
+    if url.username() != "" || url.password().is_some() || url.path() != "/" || url.query().is_some() || url.fragment().is_some() { return None; }
+    Some((url.host_str()?.to_ascii_lowercase(), url.port()))
+}
+
 fn forwarded_first<'a>(headers:&'a axum::http::HeaderMap,name:&str)->Option<&'a str>{headers.get(name)?.to_str().ok()?.split(',').next().map(str::trim).filter(|v|!v.is_empty())}
+
+#[cfg(test)]
+mod mutation_origin_policy_tests {
+    use super::*;
+    fn policy(origins: serde_json::Value) -> MutationOriginPolicy { mutation_origin_policy_from_homeserver(&serde_json::json!({"global":{"cors":{"allowed_origins":origins}}})).unwrap() }
+    fn headers(origin: &str, host: &str, proto: Option<&str>) -> axum::http::HeaderMap { let mut headers=axum::http::HeaderMap::new(); headers.insert(header::ORIGIN, origin.parse().unwrap()); headers.insert(header::HOST, host.parse().unwrap()); if let Some(proto)=proto { headers.insert("x-forwarded-proto", proto.parse().unwrap()); } headers }
+    #[test]
+    fn configured_origins_require_one_matching_origin_host_proto_tuple() {
+        let policy=policy(serde_json::json!(["https://home.arpa", "http://home.arpa:3013"]));
+        assert!(same_origin_state_change_with_policy(&headers("https://home.arpa:443", "home.arpa", Some("https")), &policy));
+        assert!(same_origin_state_change_with_policy(&headers("http://home.arpa:3013", "home.arpa:3013", None), &policy));
+        assert!(!same_origin_state_change_with_policy(&headers("https://evil.example", "evil.example", Some("https")), &policy));
+        assert!(!same_origin_state_change_with_policy(&headers("https://home.arpa", "evil.example", Some("https")), &policy));
+        assert!(!same_origin_state_change_with_policy(&headers("https://home.arpa", "home.arpa", Some("http")), &policy));
+    }
+    #[test]
+    fn malformed_absent_or_empty_configuration_is_refused() { for value in [serde_json::json!({}), serde_json::json!({"global":{"cors":{"allowed_origins":[]}}}), serde_json::json!({"global":{"cors":{"allowed_origins":["https://home.arpa/path"]}}})] { assert!(mutation_origin_policy_from_homeserver(&value).is_err()); } }
+}
+
 #[cfg(test)]
 pub(crate) mod test_fixture {
     use super::*;
