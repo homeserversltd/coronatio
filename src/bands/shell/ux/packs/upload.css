@@ -1145,7 +1145,13 @@
   align-items: center;
   min-height: 100px; /* Ensure spinner is visible */
   padding: 20px;
-} 
+}
+
+/* `display: flex` overrides the UA's `[hidden]` rule, so preserve the
+ * inactive loader's absence between the breadcrumb and the live tree. */
+.directory-loading-initial[hidden] {
+  display: none;
+}
 
 @media (max-width: 480px) {
   .directory-tree-container {
