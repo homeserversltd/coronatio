@@ -295,14 +295,14 @@ fn shell_document_4() -> &'static str {
         maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         layout: { padding: { left: 10, right: 10, top: 20, bottom: 20 } },
-        animation: { duration: 0 }
+        animation: { duration: 250 }
       };
     }
     function lineDataset(label, data, color, yAxisID) {
       return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4, yAxisID };
     }
     function createCPUChart(ctx, labels, cpuData, tempData) {
-      destroyStatsChart('cpu');
+      if (statsCharts.cpu) return statsCharts.cpu;
       statsCharts.cpu = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets: [
@@ -318,9 +318,10 @@ fn shell_document_4() -> &'static str {
           }
         })
       });
+      return statsCharts.cpu;
     }
     function createNetworkChart(ctx, labels, downloadData, uploadData) {
-      destroyStatsChart('network');
+      if (statsCharts.network) return statsCharts.network;
       const networkMax = Math.max(1, ...downloadData, ...uploadData) * 1.1;
       const networkTicks = { color: themeCssColor('--hiddenTabText', '#4A5568'), maxTicksLimit: 10, autoSkip: true, callback: value => fmtBytes(value) + '/s' };
       statsCharts.network = new Chart(ctx, {
@@ -338,6 +339,7 @@ fn shell_document_4() -> &'static str {
           }
         })
       });
+      return statsCharts.network;
     }
     function diskDisplayName(device) {
       const mount = device.mount || '';
@@ -347,7 +349,7 @@ fn shell_document_4() -> &'static str {
       return mount.replace(/^\/mnt\//, '') || device.device || 'disk';
     }
     function createIOChart(ctx, labels, datasets) {
-      destroyStatsChart('io');
+      if (statsCharts.io) return statsCharts.io;
       statsCharts.io = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets },
@@ -359,10 +361,21 @@ fn shell_document_4() -> &'static str {
           }
         })
       });
+      return statsCharts.io;
     }
     function renderCpuChart(data) {
       const ctx = document.getElementById('cpuChart');
-      if (ctx && window.Chart) createCPUChart(ctx, statsChartState.labels, statsChartState.cpu, statsChartState.temp);
+      if (ctx && window.Chart) {
+        if (statsCharts.cpu && statsCharts.cpu.canvas !== ctx) destroyStatsChart('cpu');
+        const existing = statsCharts.cpu;
+        const chart = createCPUChart(ctx, statsChartState.labels, statsChartState.cpu, statsChartState.temp);
+        if (existing) {
+          chart.data.labels = statsChartState.labels;
+          chart.data.datasets[0].data = statsChartState.cpu;
+          chart.data.datasets[1].data = statsChartState.temp;
+          chart.update();
+        }
+      }
       document.getElementById('load-1min').textContent = metricPercent(loadToPercent(data.resources?.load?.one));
       document.getElementById('load-5min').textContent = metricPercent(loadToPercent(data.resources?.load?.five));
       document.getElementById('load-15min').textContent = metricPercent(loadToPercent(data.resources?.load?.fifteen));
@@ -381,7 +394,20 @@ fn shell_document_4() -> &'static str {
     }
     function renderNetwork(data) {
       const ctx = document.getElementById('networkChart');
-      if (ctx && window.Chart) createNetworkChart(ctx, statsChartState.labels, statsChartState.download, statsChartState.upload);
+      if (ctx && window.Chart) {
+        if (statsCharts.network && statsCharts.network.canvas !== ctx) destroyStatsChart('network');
+        const existing = statsCharts.network;
+        const chart = createNetworkChart(ctx, statsChartState.labels, statsChartState.download, statsChartState.upload);
+        if (existing) {
+          const networkMax = Math.max(1, ...statsChartState.download, ...statsChartState.upload) * 1.1;
+          chart.data.labels = statsChartState.labels;
+          chart.data.datasets[0].data = statsChartState.download;
+          chart.data.datasets[1].data = statsChartState.upload;
+          chart.options.scales.y.max = networkMax;
+          chart.options.scales['y-right'].max = networkMax;
+          chart.update();
+        }
+      }
       const tbody = document.querySelector('[data-network-interfaces]');
       if (!tbody) return;
       const interfaces = data.network?.interfaces;
@@ -410,7 +436,17 @@ fn shell_document_4() -> &'static str {
         ].filter(dataset => checked.get(`${dataset.label.endsWith(' Read') ? 'read' : 'write'}-${name}`) !== false);
       });
       const ctx = document.getElementById('io-chart');
-      if (ctx && window.Chart) createIOChart(ctx, statsChartState.labels, datasets);
+      if (ctx && window.Chart) {
+        if (statsCharts.io && statsCharts.io.canvas !== ctx) destroyStatsChart('io');
+        const existing = statsCharts.io;
+        const chart = createIOChart(ctx, statsChartState.labels, datasets);
+        if (existing) {
+          chart.data.labels = statsChartState.labels;
+          chart.data.datasets.splice(0, chart.data.datasets.length, ...datasets);
+          chart.options.scales.y.suggestedMax = Math.max(1, ...datasets.flatMap(dataset => dataset.data)) * 1.1;
+          chart.update();
+        }
+      }
       const legend = document.getElementById('io-chart-legend');
       if (legend) legend.innerHTML = datasets.map(dataset => `<span data-io-series="${escapeHtml(dataset.label)}">${escapeHtml(dataset.label)}</span>`).join('');
     }
@@ -590,6 +626,7 @@ fn shell_document_4() -> &'static str {
       } catch (_) {}
     }
     async function refreshElementFragment(tabId) {
+      if (tabId === 'stats' && statsCharts.cpu) { hydrateStats(); return; }
       const token = localStorage.getItem('coronatioAdminToken');
       const headers = token ? { 'X-Admin-Token': token } : {};
       const route = tabId === 'portals' ? '/api/portals/elements' : '/api/stats/elements';
