@@ -248,7 +248,7 @@
     }
     .content { flex: 1; display: grid; padding: var(--theme-content-padding); width: 100%; min-height: min(68vh, 48rem); isolation: isolate; contain: layout paint; }
     .immortal-floor-underlay, .immortal-floor-admission-frame, .immortal-floor-guest-slot { grid-area: 1 / 1; min-width: 0; min-height: 100%; }
-    .immortal-floor-underlay { z-index: 0; background: #000; }
+    .immortal-floor-underlay { z-index: 0; background: var(--background); }
     .immortal-floor-admission-frame { z-index: 3; display: grid; place-items: center; opacity: 1; visibility: visible; transition: opacity var(--theme-transition-normal); pointer-events: none; }
     .immortal-floor-underlay-card { display: flex; align-items: center; gap: var(--theme-spacing-md); color: var(--text-secondary); }
     .immortal-floor-underlay-card div { display: grid; gap: var(--theme-spacing-xs); }
