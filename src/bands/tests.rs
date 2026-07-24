@@ -37,6 +37,7 @@ mod tests {
     include!("tests/part-04.rs");
     include!("tests/part-05.rs");
     include!("tests/part-06.rs");
+    include!("tests/starred-tab-route-walls.rs");
     include!("tests/hx-proof-walls.rs");
     include!("tests/iris-walls.rs");
     include!("tests/attendance-projection-walls.rs");
