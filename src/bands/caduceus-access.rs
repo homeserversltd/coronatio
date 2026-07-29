@@ -16,9 +16,9 @@ impl Default for CaduceusAccessClient {
 }
 impl CaduceusAccessClient {
     pub(crate) fn new(base: impl Into<String>) -> Self { Self { base: normalize_access_base(base.into()), timeout: CADUCEUS_ACCESS_TIMEOUT } }
-    pub(crate) fn attendance_open(&self, pin: &str, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Open, serde_json::json!({"pin":pin,"document":document})) }
-    pub(crate) fn attendance_validate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Validate, serde_json::json!({"attendance":attendance.expose(),"document":document})) }
-    pub(crate) fn attendance_invalidate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Invalidate, serde_json::json!({"attendance":attendance.expose(),"document":document})) }
+    pub(crate) fn attendance_open(&self, pin: &str, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Open, serde_json::json!({"pin":pin,"documentId":document,"documentIncarnation":document})) }
+    pub(crate) fn attendance_validate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Validate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
+    pub(crate) fn attendance_invalidate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Invalidate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
         #[cfg(test)]
         if self.base == test_fixture::base() { return test_fixture::attendance_call(operation, &body); }
@@ -40,7 +40,7 @@ impl CaduceusAccessClient {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AttendanceOperation { Open, Validate, Invalidate }
-impl AttendanceOperation { fn name(self)->&'static str { match self { Self::Open=>"attendance.open",Self::Validate=>"attendance.validate",Self::Invalidate=>"attendance.invalidate" } } fn path(self)->&'static str { match self { Self::Open=>"/api/v1/attendance/open",Self::Validate=>"/api/v1/attendance/validate",Self::Invalidate=>"/api/v1/attendance/invalidate" } } fn returns_proof(self)->bool { matches!(self,Self::Open|Self::Validate) } }
+impl AttendanceOperation { fn name(self)->&'static str { match self { Self::Open=>"attendance.open",Self::Validate=>"attendance.validate",Self::Invalidate=>"attendance.invalidate" } } fn path(self)->&'static str { match self { Self::Open=>"/api/v1/attendance/open",Self::Validate=>"/api/v1/attendance/validate",Self::Invalidate=>"/api/v1/attendance/invalidate" } } fn returns_proof(self)->bool { matches!(self,Self::Open) } }
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct AttendanceProof(pub(crate) String);
 impl std::fmt::Debug for AttendanceProof { fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result { f.write_str("AttendanceProof([redacted])") } }
@@ -212,9 +212,10 @@ pub(crate) mod test_fixture {
     use super::*;
     pub(crate) fn base() -> String { "http://127.0.0.1:9".to_string() }
     pub(super) fn attendance_call(operation: AttendanceOperation, body: &serde_json::Value) -> AttendanceCall {
-        let document = body.get("document").and_then(|v| v.as_str());
+        let document_id = body.get("documentId").and_then(|v| v.as_str());
+        let document_incarnation = body.get("documentIncarnation").and_then(|v| v.as_str());
         let attendance = body.get("attendance").and_then(|v| v.as_str());
-        let valid = document == Some("test-document") && match operation {
+        let valid = document_id == Some("test-document") && document_incarnation == Some("test-document") && match operation {
             AttendanceOperation::Open => body.get("pin").and_then(|v| v.as_str()).is_some_and(|pin| !pin.is_empty()),
             AttendanceOperation::Validate | AttendanceOperation::Invalidate => attendance == Some("test-attendance"),
         };

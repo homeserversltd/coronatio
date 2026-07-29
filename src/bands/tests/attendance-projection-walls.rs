@@ -7,6 +7,14 @@ fn slice_d_uses_document_attendance_not_legacy_authority() {
     assert!(access.contains("/api/v1/attendance/open"));
     assert!(access.contains("/api/v1/attendance/validate"));
     assert!(access.contains("/api/v1/attendance/invalidate"));
+    assert!(access.contains("\"documentId\":document"));
+    assert!(access.contains("\"documentIncarnation\":document"));
+    assert!(!access.contains("\"document\":document"));
+    assert!(access.contains("body.get(\"documentId\")"));
+    assert!(access.contains("body.get(\"documentIncarnation\")"));
+    assert!(!access.contains("body.get(\"document\")"));
+    assert!(access.contains("matches!(self,Self::Open)"));
+    assert!(!access.contains("matches!(self,Self::Open|Self::Validate)"));
     assert!(access.contains("x-caduceus-document"));
     assert!(!access.contains("SessionTicket"));
     assert!(!access.contains("CapabilityTicket"));
