@@ -24,10 +24,17 @@ impl CaduceusAccessClient {
         if self.base == test_fixture::base() { return test_fixture::attendance_call(operation, &body); }
         let encoded = match serde_json::to_vec(&body) { Ok(v) if v.len() <= 4096 => v, _ => return AttendanceCall::refused(operation, 0, "caduceus-attendance-request-invalid") };
         let Some(authority) = access_authority(&self.base) else { return AttendanceCall::refused(operation, 0, "caduceus-attendance-base-invalid") };
-        let mut stream = match TcpStream::connect_timeout(&authority, self.timeout) { Ok(s) => s, Err(_) => return AttendanceCall::refused(operation, 0, "caduceus-attendance-unavailable") };
-        if stream.set_read_timeout(Some(self.timeout)).is_err() || stream.set_write_timeout(Some(self.timeout)).is_err() { return AttendanceCall::refused(operation, 0, "caduceus-attendance-unavailable"); }
+        let mut stream = match TcpStream::connect_timeout(&authority, self.timeout) {
+            Ok(stream) => stream,
+            Err(error) => return AttendanceCall::refused(operation, 0, attendance_io_code("connect", &error)),
+        };
+        if stream.set_read_timeout(Some(self.timeout)).is_err() || stream.set_write_timeout(Some(self.timeout)).is_err() {
+            return AttendanceCall::refused(operation, 0, "caduceus-attendance-socket-config-failed");
+        }
         let request = format!("POST {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\n\r\n", operation.path(), access_host_header(&self.base), encoded.len());
-        if stream.write_all(request.as_bytes()).and_then(|_| stream.write_all(&encoded)).is_err() { return AttendanceCall::refused(operation, 0, "caduceus-attendance-unavailable"); }
+        if let Err(error) = stream.write_all(request.as_bytes()).and_then(|_| stream.write_all(&encoded)) {
+            return AttendanceCall::refused(operation, 0, attendance_io_code("write", &error));
+        }
         parse_attendance_response(operation, &mut stream)
     }
 }
@@ -45,7 +52,85 @@ pub(crate) struct AttendanceReceipt { pub(crate) operation:&'static str,pub(crat
 pub(crate) struct AttendanceCall { pub(crate) receipt:AttendanceReceipt,pub(crate) proof:Option<AttendanceProof> }
 impl AttendanceCall { fn refused(op:AttendanceOperation,status:u16,code:&str)->Self{Self{receipt:AttendanceReceipt{operation:op.name(),ok:false,status,code:safe_access_code(code)},proof:None}} pub(crate) fn take_proof(self)->Option<AttendanceProof>{self.proof} }
 pub(crate) fn safe_access_code(value:&str)->String { if value.len()<=100&&value.bytes().all(|b|b.is_ascii_lowercase()||b.is_ascii_digit()||b==b'-'){value.to_string()}else{"caduceus-attendance-refused".to_string()} }
-fn parse_attendance_response(op:AttendanceOperation,stream:&mut TcpStream)->AttendanceCall { let mut reader=BufReader::new(stream); let mut status_line=String::new(); if reader.read_line(&mut status_line).ok().filter(|n|*n>0).is_none(){return AttendanceCall::refused(op,0,"caduceus-attendance-malformed-response");} let status=status_line.split_whitespace().nth(1).and_then(|v|v.parse().ok()).unwrap_or(0); let mut length=None; let mut header_bytes=0; loop { let mut line=String::new(); match reader.read_line(&mut line){Ok(0)|Err(_)=>return AttendanceCall::refused(op,status,"caduceus-attendance-malformed-response"),Ok(_)=>{}} header_bytes+=line.len(); if header_bytes>4096{return AttendanceCall::refused(op,status,"caduceus-attendance-oversized-response")} if line=="\r\n"{break} if let Some((n,v))=line.split_once(':'){if n.eq_ignore_ascii_case("content-length"){length=v.trim().parse().ok();}} } let Some(length)=length else{return AttendanceCall::refused(op,status,"caduceus-attendance-malformed-response")}; if length>CADUCEUS_ACCESS_MAX_RESPONSE{return AttendanceCall::refused(op,status,"caduceus-attendance-oversized-response")}; let mut body=vec![0;length]; if reader.read_exact(&mut body).is_err(){return AttendanceCall::refused(op,status,"caduceus-attendance-malformed-response")} let Ok(value)=serde_json::from_slice::<serde_json::Value>(&body) else{return AttendanceCall::refused(op,status,"caduceus-attendance-malformed-response")}; let Some(obj)=value.as_object() else{return AttendanceCall::refused(op,status,"caduceus-attendance-malformed-response")}; let ok=obj.get("ok").and_then(|v|v.as_bool()).unwrap_or(false); let code=obj.get("code").or_else(||obj.get("firstMissingSignal")).and_then(|v|v.as_str()).unwrap_or(if ok{"none"}else{"caduceus-attendance-refused"}); if status<200||status>=300||!ok{return AttendanceCall::refused(op,status,code)} let proof=if op.returns_proof(){obj.get("attendance").or_else(||obj.get("proof")).and_then(|v|v.as_str()).and_then(AttendanceProof::parse)}else{None}; if op.returns_proof()&&proof.is_none(){return AttendanceCall::refused(op,status,"caduceus-attendance-malformed-response")} AttendanceCall{receipt:AttendanceReceipt{operation:op.name(),ok:true,status,code:"none".to_string()},proof} }
+fn attendance_io_code(stage: &str, error: &std::io::Error) -> &'static str {
+    match error.kind() {
+        std::io::ErrorKind::ConnectionRefused if stage == "connect" => "caduceus-attendance-connect-refused",
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => "caduceus-attendance-timeout",
+        _ if stage == "connect" => "caduceus-attendance-connect-failed",
+        _ => "caduceus-attendance-write-failed",
+    }
+}
+
+fn read_failure_code(error: &std::io::Error) -> &'static str {
+    match error.kind() {
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => "caduceus-attendance-timeout",
+        _ => "caduceus-attendance-bad-receipt",
+    }
+}
+
+fn parse_attendance_response(op: AttendanceOperation, stream: &mut TcpStream) -> AttendanceCall {
+    let mut reader = BufReader::new(stream);
+    let mut status_line = String::new();
+    match reader.read_line(&mut status_line) {
+        Ok(n) if n > 0 => {}
+        Ok(_) => return AttendanceCall::refused(op, 0, "caduceus-attendance-bad-receipt"),
+        Err(error) => return AttendanceCall::refused(op, 0, read_failure_code(&error)),
+    }
+    let status = status_line.split_whitespace().nth(1).and_then(|value| value.parse().ok()).unwrap_or(0);
+    if status == 0 {
+        return AttendanceCall::refused(op, 0, "caduceus-attendance-bad-receipt");
+    }
+    let mut length = None;
+    let mut header_bytes = 0;
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => return AttendanceCall::refused(op, status, "caduceus-attendance-bad-receipt"),
+            Err(error) => return AttendanceCall::refused(op, status, read_failure_code(&error)),
+            Ok(_) => {}
+        }
+        header_bytes += line.len();
+        if header_bytes > 4096 {
+            return AttendanceCall::refused(op, status, "caduceus-attendance-bad-receipt");
+        }
+        if line == "\r\n" {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                length = value.trim().parse().ok();
+            }
+        }
+    }
+    let Some(length) = length else { return AttendanceCall::refused(op, status, "caduceus-attendance-bad-receipt"); };
+    if length > CADUCEUS_ACCESS_MAX_RESPONSE {
+        return AttendanceCall::refused(op, status, "caduceus-attendance-bad-receipt");
+    }
+    let mut body = vec![0; length];
+    if let Err(error) = reader.read_exact(&mut body) {
+        return AttendanceCall::refused(op, status, read_failure_code(&error));
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else { return AttendanceCall::refused(op, status, "caduceus-attendance-bad-receipt"); };
+    let Some(object) = value.as_object() else { return AttendanceCall::refused(op, status, "caduceus-attendance-bad-receipt"); };
+    let ok = object.get("ok").and_then(|value| value.as_bool()).unwrap_or(false);
+    let code = object
+        .get("code")
+        .or_else(|| object.get("firstMissingSignal"))
+        .and_then(|value| value.as_str())
+        .unwrap_or(if ok { "none" } else { "caduceus-attendance-refused" });
+    if status < 200 || status >= 300 || !ok {
+        return AttendanceCall::refused(op, status, code);
+    }
+    let proof = if op.returns_proof() {
+        object.get("attendance").or_else(|| object.get("proof")).and_then(|value| value.as_str()).and_then(AttendanceProof::parse)
+    } else {
+        None
+    };
+    if op.returns_proof() && proof.is_none() {
+        return AttendanceCall::refused(op, status, "caduceus-attendance-bad-receipt");
+    }
+    AttendanceCall { receipt: AttendanceReceipt { operation: op.name(), ok: true, status, code: "none".to_string() }, proof }
+}
 fn normalize_access_base(base:String)->String{base.trim().trim_end_matches('/').to_string()}
 fn access_authority(base:&str)->Option<SocketAddr>{let raw=base.strip_prefix("http://")?;if raw.contains('/') {return None} let address:SocketAddr=raw.parse().ok()?;address.ip().is_loopback().then_some(address)}
 fn access_host_header(base:&str)->&str{base.strip_prefix("http://").unwrap_or("127.0.0.1:3014")}

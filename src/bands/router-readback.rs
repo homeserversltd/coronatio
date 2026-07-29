@@ -332,35 +332,78 @@ fn json_content_type(headers: &axum::http::HeaderMap) -> bool {
         .is_some_and(|value| value.eq_ignore_ascii_case("application/json") || value.to_ascii_lowercase().ends_with("+json"))
 }
 
-fn mint_failure_status(call: &crate::caduceus_access::AttendanceCall) -> StatusCode {
-    if call.receipt.ok { StatusCode::OK }
-    else if call.receipt.code == "caduceus-access-refused" { StatusCode::UNAUTHORIZED }
-    else { StatusCode::SERVICE_UNAVAILABLE }
+fn attendance_failure_status(call: &crate::caduceus_access::AttendanceCall) -> StatusCode {
+    if call.receipt.ok {
+        return StatusCode::OK;
+    }
+    match call.receipt.code.as_str() {
+        "caduceus-access-origin-refused" | "caduceus-attendance-origin-refused" => StatusCode::FORBIDDEN,
+        "caduceus-access-refused"
+        | "caduceus-attendance-refused"
+        | "caduceus-attendance-pin-refused"
+        | "caduceus-attendance-not-current"
+        | "caduceus-attendance-invalid"
+        | "caduceus-attendance-required"
+        | "caduceus-stale-incarnation"
+        | "caduceus-attendance-stale-incarnation" => StatusCode::UNAUTHORIZED,
+        _ => StatusCode::SERVICE_UNAVAILABLE,
+    }
+}
+
+fn attendance_projection_response(
+    headers: &axum::http::HeaderMap,
+    route: &str,
+    status: StatusCode,
+    projection: serde_json::Value,
+    document: Option<&str>,
+) -> Response {
+    let code = projection.get("firstMissingSignal").and_then(serde_json::Value::as_str).unwrap_or("none");
+    let origin = headers.get(header::ORIGIN).and_then(|value| value.to_str().ok());
+    eprintln!("{}", serde_json::json!({
+        "event": "coronatio.attendance.projection",
+        "route": route,
+        "upstreamOutcomeCode": code,
+        "mappedHttpStatus": status.as_u16(),
+        "origin": origin,
+        "documentId": document,
+    }));
+    session_response(status, projection, false)
 }
 
 async fn caduceus_attendance_open_route(headers: axum::http::HeaderMap, body: axum::body::Bytes) -> Response {
+    const ROUTE: &str = "/api/v1/attendance/open";
     if !crate::caduceus_access::same_origin_state_change(&headers) {
-        return session_response(StatusCode::FORBIDDEN, guest_session_projection("caduceus-access-origin-refused"), false);
+        return attendance_projection_response(&headers, ROUTE, StatusCode::FORBIDDEN, guest_session_projection("caduceus-access-origin-refused"), None);
     }
     if !json_content_type(&headers) || body.len() > CADUCEUS_SESSION_BODY_MAX {
-        return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-request-invalid"), false);
+        return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-request-invalid"), None);
     }
     let Ok(body) = serde_json::from_slice::<serde_json::Value>(&body) else {
-        return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-request-invalid"), false);
+        return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-request-invalid"), None);
     };
     let Some(pin) = body.get("pin").and_then(serde_json::Value::as_str).filter(|pin| !pin.is_empty() && pin.len() <= 256) else {
-        return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-pin-required"), false);
+        return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-pin-required"), None);
     };
-    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), false); };
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
     let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_open(pin, &document);
-    let status = mint_failure_status(&call);
-    session_response(status, session_projection(call), false)
+    let status = attendance_failure_status(&call);
+    attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
 }
 
 async fn caduceus_attendance_validate_route(headers: axum::http::HeaderMap) -> Response {
-    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return session_response(StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), false); };
-    let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) else { return session_response(StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-attendance-required"), false); };
+    const ROUTE: &str = "/api/v1/attendance/validate";
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
+    let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-attendance-required"), Some(&document)); };
     let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_validate(&attendance, &document);
-    let status = if call.receipt.ok { StatusCode::OK } else { StatusCode::UNAUTHORIZED };
-    session_response(status, session_projection(call), false)
+    let status = attendance_failure_status(&call);
+    attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
+}
+
+async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) -> Response {
+    const ROUTE: &str = "/api/v1/attendance/invalidate";
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
+    let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-attendance-required"), Some(&document)); };
+    let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_invalidate(&attendance, &document);
+    let status = attendance_failure_status(&call);
+    attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
 }

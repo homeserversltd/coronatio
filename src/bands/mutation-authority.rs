@@ -123,13 +123,19 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
         return axum::http::StatusCode::OK;
     }
     let signal = readback.first_missing_signal.as_str();
-    if signal == "caduceus-access-origin-refused" {
+    if matches!(signal, "caduceus-access-origin-refused" | "caduceus-attendance-origin-refused") {
         axum::http::StatusCode::FORBIDDEN
-    } else if signal == "caduceus-attendance-required"
-        || matches!(signal, "caduceus-attendance-refused" | "caduceus-attendance-invalid")
-        || ((signal.contains("attendance"))
-            && (signal.ends_with("-refused") || signal.ends_with("-required")))
-    {
+    } else if matches!(
+        signal,
+        "caduceus-access-refused"
+            | "caduceus-attendance-refused"
+            | "caduceus-attendance-pin-refused"
+            | "caduceus-attendance-not-current"
+            | "caduceus-attendance-invalid"
+            | "caduceus-attendance-required"
+            | "caduceus-stale-incarnation"
+            | "caduceus-attendance-stale-incarnation"
+    ) {
         axum::http::StatusCode::UNAUTHORIZED
     } else {
         axum::http::StatusCode::SERVICE_UNAVAILABLE
