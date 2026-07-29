@@ -592,14 +592,18 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
 }
 
 async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>) -> impl IntoResponse {
+    let route = format!("/admit/admin/action/{action_id}");
     if let Some(refusal) = mutation_context_refusal(&headers) {
         let readback = mutation_refusal_readback("/api/v1/staff/intent", refusal);
+        log_admin_action_admission(&headers, &route, &readback, mutation_response_status(&readback));
         return admin_html_fragment_response(
             mutation_response_status(&readback),
             admin_membrane_refusal_fragment(&action_id, &readback.first_missing_signal),
         );
     }
     let Some((title, method, path, mutation)) = admin_action_target(&action_id) else {
+        let readback = mutation_refusal_readback("/api/v1/staff/intent", MutationRefusal { code: "unknown-admin-action".to_string(), status: 404 });
+        log_admin_action_admission(&headers, &route, &readback, StatusCode::NOT_FOUND);
         return admin_html_fragment_response(
             StatusCode::NOT_FOUND,
             admin_membrane_refusal_fragment("unknown admin action", "unknown-admin-action"),
@@ -612,6 +616,8 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
     } else {
         caduceus_http(method, path)
     };
+    let status = if mutation { mutation_response_status(&readback) } else { StatusCode::OK };
+    log_admin_action_admission(&headers, &route, &readback, status);
     let class = if readback.ok { "success" } else { "error" };
     let message = if readback.ok {
         if mutation { "Caduceus accepted the action." } else { "Readback returned through the Caduceus/crown route." }
@@ -628,7 +634,20 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
         html_escape(message),
         html_escape(if readback.ok { "none" } else { &readback.first_missing_signal }),
     );
-    admin_html_fragment_response(if mutation { mutation_response_status(&readback) } else { StatusCode::OK }, body)
+    admin_html_fragment_response(status, body)
+}
+
+fn log_admin_action_admission(headers: &axum::http::HeaderMap, route: &str, readback: &CaduceusHttpReadback, status: StatusCode) {
+    let origin = headers.get(header::ORIGIN).and_then(|value| value.to_str().ok());
+    let document = crate::caduceus_access::document_incarnation_from_headers(headers);
+    eprintln!("{}", serde_json::json!({
+        "event": "coronatio.admin-action.admission",
+        "route": route,
+        "upstreamOutcomeCode": if readback.ok { "none" } else { readback.first_missing_signal.as_str() },
+        "mappedHttpStatus": status.as_u16(),
+        "origin": origin,
+        "documentId": document,
+    }));
 }
 
 #[cfg(test)]
