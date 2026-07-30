@@ -467,11 +467,11 @@ fn shell_document_3() -> &'static str {
       if (!notice.parentNode) document.querySelector('[data-product="Coronatio"]')?.prepend(notice);
     }
     let lastEligibleActivity = Date.now();
+    const ATTENDANCE_TOUCH_THROTTLE_MS = 60 * 1000; let lastAttendanceTouch = 0;
+    function recordEligibleActivity() { const now = Date.now(); lastEligibleActivity = now; if (!currentAttendance || inactivityHeadless || now - lastAttendanceTouch < ATTENDANCE_TOUCH_THROTTLE_MS) return; lastAttendanceTouch = now; void fetch('/api/v1/attendance/touch', { method: 'POST', cache: 'no-store' }).catch(() => {}); }
     const activityEvents = ['scroll', 'touchstart', 'pointerdown', 'keydown', 'input'];
-    activityEvents.forEach(type => document.addEventListener(type, () => { lastEligibleActivity = Date.now(); }, { passive: true }));
-    document.addEventListener('click', event => {
-      if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL'].includes(event.target?.tagName)) lastEligibleActivity = Date.now();
-    }, { passive: true });
+    activityEvents.forEach(type => document.addEventListener(type, recordEligibleActivity, { passive: true }));
+    document.addEventListener('click', event => { if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL'].includes(event.target?.tagName)) recordEligibleActivity(); }, { passive: true });
     window.setInterval(() => { if (Date.now() - lastEligibleActivity >= 15 * 60 * 1000) enterInactivityHeadless(); }, 60 * 1000);
     let pulseStream = null;
     let pulseRenewTimer = null;

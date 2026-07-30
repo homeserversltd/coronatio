@@ -400,6 +400,15 @@ async fn caduceus_attendance_validate_route(headers: axum::http::HeaderMap) -> R
     attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
 }
 
+async fn caduceus_attendance_touch_route(headers: axum::http::HeaderMap) -> Response {
+    const ROUTE: &str = "/api/v1/attendance/touch";
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
+    let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-attendance-required"), Some(&document)); };
+    let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_touch(&attendance, &document);
+    let status = attendance_failure_status(&call);
+    attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
+}
+
 async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) -> Response {
     const ROUTE: &str = "/api/v1/attendance/invalidate";
     let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
