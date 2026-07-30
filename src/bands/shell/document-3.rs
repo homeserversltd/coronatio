@@ -64,6 +64,8 @@ fn shell_document_3() -> &'static str {
       headerState.isAdmin = Boolean(value);
       saveHeaderState();
       applyAdminDomState();
+      if (headerState.isAdmin) void upgradeOpenStreams();
+      else void downgradeOpenStreams();
       refreshTabBar(previousActive).then(selectedTab => {
         applyTabBarVisibility();
         refreshElementFragment('stats');
@@ -72,6 +74,7 @@ fn shell_document_3() -> &'static str {
     }
     async function clearAdminMode() {
       try {
+        await downgradeOpenStreams();
         if (currentAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', cache: 'no-store' });
       } catch (_) {
         // Browser projection still becomes guest when the clear route is unavailable.
@@ -449,7 +452,7 @@ fn shell_document_3() -> &'static str {
       currentAttendance = null;
       if (headerState.isAdmin) { headerState.isAdmin = false; saveHeaderState(); applyAdminDomState(); }
       [pulseStream, coreStream].forEach(stream => { try { stream?.close(); } catch (_) {} });
-      pulseStream = null; coreStream = null;
+      pulseStream = null; pulseStreamId = null; coreStream = null; coreStreamId = null;
       document.documentElement.dataset.connectionState = 'headless';
       const notice = document.querySelector('[data-crown-headless-notice]') || document.createElement('p');
       notice.dataset.crownHeadlessNotice = 'true';
@@ -469,6 +472,23 @@ fn shell_document_3() -> &'static str {
     let pulseStreamId = null;
     let coreStream = null;
     let coreRenewTimer = null;
+    let coreStreamId = null;
+    async function setStreamMembership(family, streamId, action) {
+      if (!streamId) return null;
+      return fetch(`/api/${family}/pulse/${action}?streamId=${encodeURIComponent(streamId)}`, { method: 'POST', cache: 'no-store' });
+    }
+    async function upgradeOpenStreams() {
+      const requests = [];
+      if (pulseStreamId) requests.push(setStreamMembership('stats', pulseStreamId, 'upgrade'));
+      if (coreStreamId) requests.push(setStreamMembership('core', coreStreamId, 'upgrade'));
+      return Promise.all(requests);
+    }
+    async function downgradeOpenStreams() {
+      const requests = [];
+      if (pulseStreamId) requests.push(setStreamMembership('stats', pulseStreamId, 'downgrade'));
+      if (coreStreamId) requests.push(setStreamMembership('core', coreStreamId, 'downgrade'));
+      return Promise.all(requests);
+    }
     const coreTopicIds = ['internet.status', 'tailscale.status', 'vpn.status', 'services.status', 'power.status'];
     function applyCoreTopic(topicId, envelope) {
       const data = envelope?.snapshot || {};
@@ -498,13 +518,15 @@ fn shell_document_3() -> &'static str {
       coreStream.addEventListener('core.open', event => {
         let data = {};
         try { data = JSON.parse(event.data || '{}'); } catch (_) {}
+        coreStreamId = data.streamId || event.lastEventId || null;
         scheduleCoreRenewal(data.renewRoute);
+        if (headerState.isAdmin) void setStreamMembership('core', coreStreamId, 'upgrade');
       });
       coreTopicIds.forEach(topicId => coreStream.addEventListener(topicId, event => {
         try { applyCoreTopic(topicId, JSON.parse(event.data || '{}')); } catch (_) {}
       }));
       coreStream.addEventListener('core.expired', () => {
-        coreStream.close(); coreStream = null; window.setTimeout(connectCoreStream, 0);
+        coreStream.close(); coreStream = null; coreStreamId = null; window.setTimeout(connectCoreStream, 0);
       });
     }
     loadThemeCatalog();
@@ -627,6 +649,7 @@ fn shell_document_3() -> &'static str {
         try { data = JSON.parse(event.data || '{}'); } catch (_) {}
         pulseStreamId = data.streamId || event.lastEventId || null;
         schedulePulseRenewal(data.renewRoute || (pulseStreamId ? '/api/stats/pulse/renew?streamId=' + encodeURIComponent(pulseStreamId) : null));
+        if (headerState.isAdmin) void setStreamMembership('stats', pulseStreamId, 'upgrade');
       });
       pulseStream.addEventListener('tabs.changed', () => {
         const active = currentActiveTabId();

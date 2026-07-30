@@ -3,16 +3,31 @@ use futures_util::{stream, StreamExt};
 use std::{collections::HashMap, convert::Infallible, time::Instant};
 
 const CORE_LEASE_SECONDS: u64 = 30;
-static CORE_LEASES: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
-fn core_leases() -> &'static Mutex<HashMap<String, Instant>> { CORE_LEASES.get_or_init(|| Mutex::new(HashMap::new())) }
+static CORE_MEMBERSHIPS: OnceLock<Mutex<HashMap<String, CoreMembership>>> = OnceLock::new();
+fn core_memberships() -> &'static Mutex<HashMap<String, CoreMembership>> { CORE_MEMBERSHIPS.get_or_init(|| Mutex::new(HashMap::new())) }
+
+struct CoreMembership {
+    deadline: Instant,
+    session: Session,
+    document: Option<String>,
+    control_tx: tokio::sync::mpsc::UnboundedSender<CoreControl>,
+}
+
+#[derive(Clone, Copy)]
+enum CoreControl { Set(Session) }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CoreRenewQuery { stream_id: String }
 
-#[derive(Clone)]
-struct CoreStreamState { stream_id: String, session: Session, index: usize, opened: bool }
-impl Drop for CoreStreamState { fn drop(&mut self) { core_leases().lock().unwrap().remove(&self.stream_id); } }
+struct CoreStreamState {
+    stream_id: String,
+    session: Session,
+    control_rx: tokio::sync::mpsc::UnboundedReceiver<CoreControl>,
+    index: usize,
+    opened: bool,
+}
+impl Drop for CoreStreamState { fn drop(&mut self) { core_memberships().lock().unwrap().remove(&self.stream_id); } }
 
 pub(crate) async fn core_pulse_route(headers: axum::http::HeaderMap) -> Response {
     let session = session_from_headers(&headers);
@@ -22,7 +37,10 @@ pub(crate) async fn core_pulse_route(headers: axum::http::HeaderMap) -> Response
         .into_response()
 }
 
-pub(crate) async fn core_pulse_renew_route(Query(query): Query<CoreRenewQuery>) -> Response {
+pub(crate) async fn core_pulse_renew_route(headers: axum::http::HeaderMap, Query(query): Query<CoreRenewQuery>) -> Response {
+    if !validate_core_host_membership(&query.stream_id, &headers) {
+        return core_membership_response(StatusCode::UNAUTHORIZED, &query.stream_id, "attendance-refused");
+    }
     if renew_core_stream(&query.stream_id, Duration::from_secs(CORE_LEASE_SECONDS)) {
         Json(serde_json::json!({"schema":"coronatio.core.events.renewal.v1","streamId":query.stream_id,"status":"renewed","leaseSeconds":CORE_LEASE_SECONDS})).into_response()
     } else {
@@ -30,14 +48,51 @@ pub(crate) async fn core_pulse_renew_route(Query(query): Query<CoreRenewQuery>) 
     }
 }
 
+pub(crate) async fn core_pulse_upgrade_route(headers: axum::http::HeaderMap, Query(query): Query<CoreRenewQuery>) -> Response {
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else {
+        return core_membership_response(StatusCode::BAD_REQUEST, &query.stream_id, "document-required");
+    };
+    if session_from_headers(&headers) != Session::Admin {
+        downgrade_core_stream(&query.stream_id, None);
+        return core_membership_response(StatusCode::UNAUTHORIZED, &query.stream_id, "attendance-refused");
+    }
+    if upgrade_core_stream(&query.stream_id, document) {
+        core_membership_response(StatusCode::OK, &query.stream_id, "upgraded")
+    } else {
+        core_membership_response(StatusCode::NOT_FOUND, &query.stream_id, "unknown-stream")
+    }
+}
+
+pub(crate) async fn core_pulse_downgrade_route(headers: axum::http::HeaderMap, Query(query): Query<CoreRenewQuery>) -> Response {
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else {
+        return core_membership_response(StatusCode::BAD_REQUEST, &query.stream_id, "document-required");
+    };
+    if downgrade_core_stream(&query.stream_id, Some(&document)) {
+        core_membership_response(StatusCode::OK, &query.stream_id, "downgraded")
+    } else {
+        core_membership_response(StatusCode::NOT_FOUND, &query.stream_id, "unknown-stream")
+    }
+}
+
+fn core_membership_response(status: StatusCode, stream_id: &str, membership_status: &str) -> Response {
+    (status, Json(serde_json::json!({"schema":"coronatio.core.events.membership.v1","streamId":stream_id,"status":membership_status}))).into_response()
+}
+
 pub(crate) fn subscribe_core_stream(session: Session, lease: Duration) -> (String, stream::BoxStream<'static, (String, String, String)>) {
     let stream_id = format!("core-{}", uuid::Uuid::new_v4());
-    core_leases().lock().unwrap().insert(stream_id.clone(), Instant::now() + lease);
-    let state = CoreStreamState { stream_id: stream_id.clone(), session, index: 0, opened: false };
+    let (control_tx, control_rx) = tokio::sync::mpsc::unbounded_channel();
+    core_memberships().lock().unwrap().insert(stream_id.clone(), CoreMembership {
+        deadline: Instant::now() + lease,
+        session,
+        document: None,
+        control_tx,
+    });
+    let state = CoreStreamState { stream_id: stream_id.clone(), session, control_rx, index: 0, opened: false };
     let frames = stream::unfold(Some(state), move |state| async move {
         let mut state = state?;
-        if Instant::now() >= core_leases().lock().unwrap().get(&state.stream_id).copied().unwrap_or_else(Instant::now) {
-            let id = state.stream_id.clone(); core_leases().lock().unwrap().remove(&id);
+        while let Ok(CoreControl::Set(session)) = state.control_rx.try_recv() { state.session = session; }
+        if Instant::now() >= core_memberships().lock().unwrap().get(&state.stream_id).map(|membership| membership.deadline).unwrap_or_else(Instant::now) {
+            let id = state.stream_id.clone(); core_memberships().lock().unwrap().remove(&id);
             return Some((("core.expired".into(), id.clone(), serde_json::json!({"streamId":id,"status":"expired"}).to_string()), None));
         }
         if !state.opened {
@@ -47,6 +102,7 @@ pub(crate) fn subscribe_core_stream(session: Session, lease: Duration) -> (Strin
             return Some((("core.open".into(), id, data), Some(state)));
         }
         if state.index >= catalog().len() { tokio::time::sleep(Duration::from_secs(1)).await; state.index = 0; }
+        while let Ok(CoreControl::Set(session)) = state.control_rx.try_recv() { state.session = session; }
         let entry = catalog()[state.index]; state.index += 1;
         let payload = match entry.collector.map(|collector| collector(state.session)) {
             Some(Ok(value)) => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"snapshot","snapshot":value}),
@@ -59,7 +115,43 @@ pub(crate) fn subscribe_core_stream(session: Session, lease: Duration) -> (Strin
 }
 
 pub(crate) fn renew_core_stream(stream_id: &str, lease: Duration) -> bool {
-    if let Some(deadline) = core_leases().lock().unwrap().get_mut(stream_id) { *deadline = Instant::now() + lease; true } else { false }
+    if let Some(membership) = core_memberships().lock().unwrap().get_mut(stream_id) { membership.deadline = Instant::now() + lease; true } else { false }
+}
+
+pub(crate) fn upgrade_core_stream(stream_id: &str, document: String) -> bool {
+    let mut memberships = core_memberships().lock().unwrap();
+    let Some(membership) = memberships.get_mut(stream_id) else { return false; };
+    membership.session = Session::Admin;
+    membership.document = Some(document);
+    membership.control_tx.send(CoreControl::Set(Session::Admin)).is_ok()
+}
+
+pub(crate) fn downgrade_core_stream(stream_id: &str, document: Option<&str>) -> bool {
+    let mut memberships = core_memberships().lock().unwrap();
+    let Some(membership) = memberships.get_mut(stream_id) else { return false; };
+    if document.is_some() && membership.document.as_deref() != document { return false; }
+    membership.session = Session::Guest;
+    membership.document = None;
+    membership.control_tx.send(CoreControl::Set(Session::Guest)).is_ok()
+}
+
+pub(crate) fn downgrade_core_document(document: &str) {
+    let mut memberships = core_memberships().lock().unwrap();
+    for membership in memberships.values_mut().filter(|membership| membership.document.as_deref() == Some(document)) {
+        membership.session = Session::Guest;
+        membership.document = None;
+        let _ = membership.control_tx.send(CoreControl::Set(Session::Guest));
+    }
+}
+
+fn validate_core_host_membership(stream_id: &str, headers: &axum::http::HeaderMap) -> bool {
+    let is_host = core_memberships().lock().unwrap().get(stream_id).is_some_and(|membership| membership.session == Session::Admin);
+    if is_host && session_from_headers(headers) != Session::Admin {
+        downgrade_core_stream(stream_id, None);
+        false
+    } else {
+        true
+    }
 }
 
 pub(crate) fn collect_indicator_topic(topic_id: &str, session: Session) -> Result<serde_json::Value, String> {

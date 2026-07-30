@@ -75,6 +75,48 @@
     }
 
     #[tokio::test]
+    async fn pulse_wall_guest_host_loop_upgrades_and_downgrades_the_same_subscription() {
+        let _guard = pulse_test_lock().lock().await;
+        use futures_util::StreamExt;
+        let (stream_id, mut stream) = pulse::subscribe_stream(Session::Guest, Duration::from_secs(2));
+        assert_eq!(stream.next().await.unwrap().event, "pulse.open");
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("guest-host-loop")) });
+
+        let upgrade = router.clone().oneshot(
+            Request::builder().method("POST")
+                .uri(format!("/api/stats/pulse/upgrade?streamId={stream_id}"))
+                .header("x-caduceus-document", "test-document")
+                .header("x-caduceus-attendance", "test-attendance")
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(upgrade.status(), StatusCode::OK);
+        pulse::poke(pulse::PokeTopic::AdminSystem);
+        let host = tokio::time::timeout(Duration::from_millis(200), stream.next()).await.unwrap().unwrap();
+        assert_eq!(host.event, "admin.system");
+
+        let downgrade = router.clone().oneshot(
+            Request::builder().method("POST")
+                .uri(format!("/api/stats/pulse/downgrade?streamId={stream_id}"))
+                .header("x-caduceus-document", "test-document")
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(downgrade.status(), StatusCode::OK);
+        pulse::poke(pulse::PokeTopic::AdminSystem);
+        assert!(tokio::time::timeout(Duration::from_millis(100), stream.next()).await.is_err());
+        pulse::poke(pulse::PokeTopic::TabsChanged);
+        assert_eq!(tokio::time::timeout(Duration::from_millis(200), stream.next()).await.unwrap().unwrap().event, "tabs.changed");
+
+        let replay = router.oneshot(
+            Request::builder().method("POST")
+                .uri(format!("/api/stats/pulse/upgrade?streamId={stream_id}"))
+                .header("x-caduceus-document", "test-document")
+                .header("x-caduceus-attendance", "dead-attendance")
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
     async fn pulse_wall_poke_frames_never_contain_config_marker_values() {
         let _guard = pulse_test_lock().lock().await;
         use futures_util::StreamExt;
@@ -98,17 +140,33 @@
         use futures_util::StreamExt;
         let (expired_id, mut expired) = pulse::subscribe_stream(Session::Guest, Duration::from_millis(80));
         assert_eq!(expired.next().await.unwrap().event, "pulse.open");
-        let expired_frame = tokio::time::timeout(Duration::from_millis(250), expired.next()).await.unwrap().unwrap();
-        assert_eq!(expired_frame.event, "pulse.expired");
+        let expired_frame = tokio::time::timeout(Duration::from_millis(250), async {
+            loop {
+                let frame = expired.next().await.unwrap();
+                if frame.event == "pulse.expired" { break frame; }
+            }
+        }).await.unwrap();
         assert_eq!(expired_frame.id.as_deref(), Some(expired_id.as_str()));
         assert!(expired.next().await.is_none());
 
         let (renewed_id, mut renewed) = pulse::subscribe_stream(Session::Guest, Duration::from_millis(80));
         assert_eq!(renewed.next().await.unwrap().event, "pulse.open");
         assert!(pulse::renew_stream(&renewed_id, Duration::from_millis(250)));
-        let early = tokio::time::timeout(Duration::from_millis(120), renewed.next()).await;
-        assert!(early.is_err(), "renewed stream expired at the original lease boundary");
-        let renewed_expired = tokio::time::timeout(Duration::from_millis(250), renewed.next()).await.unwrap().unwrap();
+        let early_deadline = tokio::time::Instant::now() + Duration::from_millis(120);
+        loop {
+            match tokio::time::timeout_at(early_deadline, renewed.next()).await {
+                Err(_) => break,
+                Ok(Some(frame)) if frame.event == "pulse.expired" => panic!("renewed stream expired at the original lease boundary"),
+                Ok(Some(_)) => continue,
+                Ok(None) => panic!("renewed stream closed at the original lease boundary"),
+            }
+        }
+        let renewed_expired = tokio::time::timeout(Duration::from_millis(250), async {
+            loop {
+                let frame = renewed.next().await.unwrap();
+                if frame.event == "pulse.expired" { break frame; }
+            }
+        }).await.unwrap();
         assert_eq!(renewed_expired.event, "pulse.expired");
     }
 

@@ -404,6 +404,8 @@ async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) ->
     let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
     let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-attendance-required"), Some(&document)); };
     let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_invalidate(&attendance, &document);
+    pulse::downgrade_document(&document);
+    indicators::downgrade_core_document(&document);
     let status = attendance_failure_status(&call);
     attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
 }

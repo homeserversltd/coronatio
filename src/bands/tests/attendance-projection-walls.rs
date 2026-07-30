@@ -41,6 +41,13 @@ fn browser_attendance_is_memory_only_and_inactivity_is_exact() {
     let shell = include_str!("../shell/document-3.rs");
     assert!(shell.contains("let currentAttendance = null"));
     assert!(shell.contains("/api/v1/attendance/open"));
+    assert!(shell.contains("upgradeOpenStreams"));
+    assert!(shell.contains("downgradeOpenStreams"));
+    assert!(shell.contains("setStreamMembership('stats', pulseStreamId, 'upgrade')"));
+    assert!(shell.contains("setStreamMembership('core', coreStreamId, 'upgrade')"));
+    assert!(shell.contains("/pulse/${action}?streamId=${encodeURIComponent(streamId)}"));
+    assert!(shell.contains("headers.set('X-Caduceus-Attendance', currentAttendance)"));
+    assert!(!shell.contains("attendance=${encodeURIComponent"));
     assert!(shell.contains("15 * 60 * 1000"));
     assert!(shell.contains("You have been disconnected due to inactivity."));
     assert!(!shell.contains("localStorage.setItem('coronatioAdminToken'"));
