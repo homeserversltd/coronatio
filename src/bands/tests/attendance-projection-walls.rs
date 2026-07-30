@@ -47,6 +47,9 @@ fn browser_attendance_is_memory_only_and_inactivity_is_exact() {
     assert!(shell.contains("setStreamMembership('core', coreStreamId, 'upgrade')"));
     assert!(shell.contains("/pulse/${action}?streamId=${encodeURIComponent(streamId)}"));
     assert!(shell.contains("headers.set('X-Caduceus-Attendance', currentAttendance)"));
+    assert!(shell.contains("htmx:configRequest"));
+    assert!(shell.contains("await fetch('/api/v1/attendance/invalidate'"));
+    assert!(shell.contains("'keydown', 'input'"));
     assert!(!shell.contains("attendance=${encodeURIComponent"));
     assert!(shell.contains("15 * 60 * 1000"));
     assert!(shell.contains("You have been disconnected due to inactivity."));

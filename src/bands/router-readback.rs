@@ -232,11 +232,12 @@ async fn faults_route() -> impl IntoResponse {
     })
 }
 
-async fn admit_tab_route(Path(tab_id): Path<String>) -> impl IntoResponse {
+async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<String>) -> impl IntoResponse {
+    let session = session_from_headers(&headers);
     let mut response = if !is_safe_tab_id(&tab_id) {
         fragment_fault(StatusCode::BAD_REQUEST, &tab_id, CartridgeFaultKind::UpstreamError)
     } else if native_crown_panes().into_iter().any(|pane| pane.id == tab_id) {
-        Html(render_og_pane_fragment(&tab_id)).into_response()
+        Html(render_og_pane_fragment(&tab_id, session)).into_response()
     } else {
         fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound)
     };
@@ -255,8 +256,8 @@ fn fragment_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKi
     (status, [("x-coronatio-fault", "cartridge-fragment")], Html(body)).into_response()
 }
 
-fn render_og_pane_fragment(tab_id: &str) -> String {
-    let shell = render_crown_shell();
+fn render_og_pane_fragment(tab_id: &str, session: Session) -> String {
+    let shell = render_crown_shell_for_session(session);
     let fragment = extract_pane_inner_html(&shell, tab_id).unwrap_or_else(|| {
         record_cartridge_fault(tab_id, CartridgeFaultKind::TabNotFound);
         format!(

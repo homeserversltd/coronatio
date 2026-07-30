@@ -9,6 +9,9 @@ fn shell_document_3() -> &'static str {
       if (currentAttendance) headers.set('X-Caduceus-Attendance', currentAttendance);
       return coronatioFetch(input, { ...init, headers, credentials: 'same-origin' });
     };
+    document.addEventListener('htmx:configRequest', event => {
+      event.detail.headers['X-Caduceus-Document'] = documentIncarnation;
+      if (currentAttendance) event.detail.headers['X-Caduceus-Attendance'] = currentAttendance; });
         button.dataset.themeChoice = name;
         button.textContent = themeLabel(name);
         button.addEventListener('click', () => {
@@ -446,9 +449,12 @@ fn shell_document_3() -> &'static str {
       modalMessage.textContent = '';
       closePinModal();
     });
-    function enterInactivityHeadless() {
+    async function enterInactivityHeadless() {
       if (inactivityHeadless) return;
       inactivityHeadless = true;
+      try {
+        if (currentAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', cache: 'no-store' });
+      } catch (_) { /* Browser projection still becomes guest when invalidation is unavailable. */ }
       currentAttendance = null;
       if (headerState.isAdmin) { headerState.isAdmin = false; saveHeaderState(); applyAdminDomState(); }
       [pulseStream, coreStream].forEach(stream => { try { stream?.close(); } catch (_) {} });
@@ -461,7 +467,7 @@ fn shell_document_3() -> &'static str {
       if (!notice.parentNode) document.querySelector('[data-product="Coronatio"]')?.prepend(notice);
     }
     let lastEligibleActivity = Date.now();
-    const activityEvents = ['scroll', 'touchstart', 'pointerdown'];
+    const activityEvents = ['scroll', 'touchstart', 'pointerdown', 'keydown', 'input'];
     activityEvents.forEach(type => document.addEventListener(type, () => { lastEligibleActivity = Date.now(); }, { passive: true }));
     document.addEventListener('click', event => {
       if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL'].includes(event.target?.tagName)) lastEligibleActivity = Date.now();

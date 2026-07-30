@@ -448,7 +448,7 @@
         assert!(shell.contains("data-portals-grid"));
         assert!(shell.contains("data-portals-source=\"/api/portals/elements\""));
         assert!(!shell.contains("data-portals-fragment=\"/api/portals/elements\" hx-get"));
-        let admitted = render_og_pane_fragment("portals");
+        let admitted = render_og_pane_fragment("portals", Session::Guest);
         assert!(admitted.contains("hx-get=\"/api/portals/elements\""));
         assert!(admitted.contains("hx-trigger=\"load\""));
         assert!(!admitted.contains("portals-refresh"));

@@ -386,6 +386,9 @@
         assert!(chrome_body.contains("htmxOrgan.config.allowScriptTags = false"));
         assert!(chrome_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
         assert!(chrome_body.contains("htmx:afterSwap"));
+        assert!(chrome_body.contains("htmx:configRequest"));
+        assert!(chrome_body.contains("event.detail.headers['X-Caduceus-Document'] = documentIncarnation"));
+        assert!(chrome_body.contains("event.detail.headers['X-Caduceus-Attendance'] = currentAttendance"));
         assert!(chrome_body.contains("if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats' && id !== 'portals') reconcileViewportStreamFamily();"));
         assert!(!chrome_body.contains("__INDICATOR_MODAL_REGISTRY__"));
         assert!(chrome_body.contains("const indicatorModalTemplates"));
@@ -445,9 +448,30 @@
             assert_eq!(response.status(), StatusCode::OK, "{pane} admits");
             assert_eq!(response.headers().get(header::CACHE_CONTROL).and_then(|value| value.to_str().ok()), Some("no-store"));
             let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
-            let expected = render_og_pane_fragment(pane);
+            let expected = render_og_pane_fragment(pane, Session::Guest);
             assert_eq!(body, expected, "{pane} fragment is exact og pane body");
         }
+        let admin_stats = router.clone().oneshot(
+            Request::builder()
+                .uri("/admit/stats")
+                .header("x-caduceus-document", "test-document")
+                .header("x-caduceus-attendance", "test-attendance")
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(admin_stats.status(), StatusCode::OK);
+        let admin_stats = String::from_utf8(axum::body::to_bytes(admin_stats.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert_eq!(admin_stats, render_og_pane_fragment("stats", Session::Admin));
+
+        let admin_portals = router.clone().oneshot(
+            Request::builder()
+                .uri("/api/portals/elements")
+                .header("x-caduceus-document", "test-document")
+                .header("x-caduceus-attendance", "test-attendance")
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(admin_portals.status(), StatusCode::OK);
+        let admin_portals = String::from_utf8(axum::body::to_bytes(admin_portals.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(admin_portals.contains("data-add-portal-open"), "attendance-bearing nested portals fragment must project admin: {admin_portals}");
         let missing = router.clone().oneshot(Request::builder().uri("/admit/missing-tab").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
         let fault_body = String::from_utf8(axum::body::to_bytes(missing.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
@@ -785,7 +809,9 @@
         assert!(shell.contains("hx-confirm=\"Shut down HOMESERVER now?"));
         assert!(shell.contains("hx-confirm=\"Restart Website now?"));
         let chrome = crown_chrome_js();
-        assert!(!chrome.contains("htmx:configRequest"));
+        assert!(chrome.contains("htmx:configRequest"));
+        assert!(chrome.contains("event.detail.headers['X-Caduceus-Document'] = documentIncarnation"));
+        assert!(chrome.contains("event.detail.headers['X-Caduceus-Attendance'] = currentAttendance"));
         assert!(chrome.contains("credentials: 'same-origin'"));
 
         assert!(!chrome.contains("fetch('/api/admin/ssh/toggle'"));
