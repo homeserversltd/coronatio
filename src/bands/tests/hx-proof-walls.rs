@@ -30,7 +30,6 @@
             ("/api/status/internet/speedtest", "PIN/session chrome speedtest action"),
             ("/api/themes", "PIN/session chrome theme bootstrap"),
             ("/api/validatePin", "PIN/session chrome"),
-            ("/api/verifyPin", "upload PIN-gated submission verification"),
             ("/api/v1/attendance/open", "current document attendance admission"),
             ("/api/v1/attendance/validate", "current document attendance validation"),
             ("/api/v1/attendance/touch", "current document human-activity attendance touch"),
@@ -145,6 +144,16 @@
         assert!(shell.contains("hx-get=\"/admit/stats\""));
         assert!(shell.contains("hx-get=\"/admit/upload/tree"));
         assert!(shell.contains("hx-post=\"/admit/admin/toggle/ssh-service\""));
+        for required in ["Admin PIN Required", "placeholder=\"Admin PIN\"", "data-upload-pin-message", "xhr.setRequestHeader('X-Caduceus-Document', documentIncarnation)", "xhr.setRequestHeader('X-Caduceus-Attendance', uploadAttendance)", "const uploadAttendance = scopedAttendance || currentAttendance", "showCoronatioToast('PIN Verified.', 'success')", "await uploadSelectedFiles(scopedAttendance)", "'/api/v1/attendance/invalidate'"] {
+            assert!(shell.contains(required), "missing scoped upload attendance marker {required}");
+        }
+        let scoped_start = shell.find("async function verifyUploadPin()").unwrap();
+        let scoped_end = shell[scoped_start..].find("function refreshUploadTree").unwrap() + scoped_start;
+        let scoped = &shell[scoped_start..scoped_end];
+        for forbidden in ["currentAttendance =", "headerState.isAdmin =", "setAdminMode(", "upgradeOpenStreams", "/api/v1/attendance/touch"] {
+            assert!(!scoped.contains(forbidden), "scoped upload PIN flow changed global posture through {forbidden}");
+        }
+        assert!(scoped.find("await uploadSelectedFiles(scopedAttendance)").unwrap() < scoped.find("/api/v1/attendance/invalidate").unwrap(), "scoped attendance must invalidate only after the upload settles");
         std::env::remove_var("CORONATIO_UPLOAD_ROOT");
     }
 
