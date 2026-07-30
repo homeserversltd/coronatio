@@ -265,6 +265,39 @@ fn shell_document_2() -> &'static str {
   </div>
   <div class="toast-container coronatio-toast-stack" data-coronatio-toast-stack aria-live="polite" aria-atomic="false"></div>
   <script>
+    var coronatioAttendanceRuntimeKey = Symbol.for('coronatio.attendance.runtime.v1');
+    var coronatioAttendanceRuntime = globalThis[coronatioAttendanceRuntimeKey];
+    if (!coronatioAttendanceRuntime) {
+      const nativeFetch = window.fetch.bind(window);
+      coronatioAttendanceRuntime = {
+        documentIncarnation: (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9._-]/g, ''),
+        inactivityHeadless: false,
+        currentAttendance: null,
+        lastEligibleActivity: Date.now(),
+        lastAttendanceTouch: 0,
+        fetchDecorationCount: 1,
+        htmxHandlerInstallCount: 0,
+        activityCensusInstallCount: 0,
+      };
+      const decoratedFetch = (input, init = {}) => {
+        const headers = new Headers(init.headers || {});
+        headers.set('X-Caduceus-Document', coronatioAttendanceRuntime.documentIncarnation);
+        if (coronatioAttendanceRuntime.currentAttendance) headers.set('X-Caduceus-Attendance', coronatioAttendanceRuntime.currentAttendance);
+        return nativeFetch(input, { ...init, headers, credentials: 'same-origin' });
+      };
+      Object.defineProperty(decoratedFetch, '__coronatioAttendanceDecoratorDepth', { value: 1 });
+      coronatioAttendanceRuntime.decoratedFetch = decoratedFetch;
+      Object.defineProperty(globalThis, coronatioAttendanceRuntimeKey, { value: coronatioAttendanceRuntime, configurable: false });
+      window.fetch = decoratedFetch;
+    }
+    if (!coronatioAttendanceRuntime.htmxConfigRequestHandler) {
+      coronatioAttendanceRuntime.htmxConfigRequestHandler = event => {
+        event.detail.headers['X-Caduceus-Document'] = coronatioAttendanceRuntime.documentIncarnation;
+        if (coronatioAttendanceRuntime.currentAttendance) event.detail.headers['X-Caduceus-Attendance'] = coronatioAttendanceRuntime.currentAttendance;
+      };
+      document.addEventListener('htmx:configRequest', coronatioAttendanceRuntime.htmxConfigRequestHandler);
+      coronatioAttendanceRuntime.htmxHandlerInstallCount++;
+    }
     const appRoot = document.querySelector('[data-product="Coronatio"]');
     const tabBar = document.querySelector('[role="tablist"]');
     let tabs = [...document.querySelectorAll('[data-pane]')];

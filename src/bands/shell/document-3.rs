@@ -1,18 +1,5 @@
 fn shell_document_3() -> &'static str {
-    r####"        const documentIncarnation = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9._-]/g, '');
-    let inactivityHeadless = false;
-    let currentAttendance = null;
-    const coronatioFetch = window.fetch.bind(window);
-    window.fetch = (input, init = {}) => {
-      const headers = new Headers(init.headers || {});
-      headers.set('X-Caduceus-Document', documentIncarnation);
-      if (currentAttendance) headers.set('X-Caduceus-Attendance', currentAttendance);
-      return coronatioFetch(input, { ...init, headers, credentials: 'same-origin' });
-    };
-    document.addEventListener('htmx:configRequest', event => {
-      event.detail.headers['X-Caduceus-Document'] = documentIncarnation;
-      if (currentAttendance) event.detail.headers['X-Caduceus-Attendance'] = currentAttendance; });
-        button.dataset.themeChoice = name;
+    r####"        button.dataset.themeChoice = name;
         button.textContent = themeLabel(name);
         button.addEventListener('click', () => {
           headerState.theme = name;
@@ -74,11 +61,11 @@ fn shell_document_3() -> &'static str {
     async function clearAdminMode() {
       try {
         await downgradeOpenStreams();
-        if (currentAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', cache: 'no-store' });
+        if (coronatioAttendanceRuntime.currentAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', cache: 'no-store' });
       } catch (_) {
         // Browser projection still becomes guest when the clear route is unavailable.
       } finally {
-        currentAttendance = null;
+        coronatioAttendanceRuntime.currentAttendance = null;
         setAdminMode(false);
       }
     }
@@ -442,8 +429,8 @@ fn shell_document_3() -> &'static str {
           const explicitPinRefusal = response.status === 401 && result?.firstMissingSignal === 'caduceus-attendance-refused';
           if (explicitPinRefusal) { modalMessage.textContent = 'Invalid PIN'; return; }
           if (!response.ok || result.admin !== true) { modalMessage.textContent = 'PIN check unavailable'; return; }
-          currentAttendance = typeof result.attendance === 'string' ? result.attendance : null;
-          if (!currentAttendance) { modalMessage.textContent = 'PIN check unavailable'; return; }
+          coronatioAttendanceRuntime.currentAttendance = typeof result.attendance === 'string' ? result.attendance : null;
+          if (!coronatioAttendanceRuntime.currentAttendance) { modalMessage.textContent = 'PIN check unavailable'; return; }
         } catch (_) { modalMessage.textContent = 'PIN check unavailable'; return; }
       }
       setAdminMode(true);
@@ -451,12 +438,12 @@ fn shell_document_3() -> &'static str {
       closePinModal();
     });
     async function enterInactivityHeadless() {
-      if (inactivityHeadless) return;
-      inactivityHeadless = true;
+      if (coronatioAttendanceRuntime.inactivityHeadless) return;
+      coronatioAttendanceRuntime.inactivityHeadless = true;
       try {
-        if (currentAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', cache: 'no-store' });
+        if (coronatioAttendanceRuntime.currentAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', cache: 'no-store' });
       } catch (_) { /* Browser projection still becomes guest when invalidation is unavailable. */ }
-      currentAttendance = null;
+      coronatioAttendanceRuntime.currentAttendance = null;
       if (headerState.isAdmin) { headerState.isAdmin = false; saveHeaderState(); applyAdminDomState(); }
       [pulseStream, coreStream].forEach(stream => { try { stream?.close(); } catch (_) {} });
       pulseStream = null; pulseStreamId = null; coreStream = null; coreStreamId = null;
@@ -467,13 +454,15 @@ fn shell_document_3() -> &'static str {
       notice.setAttribute('role', 'status');
       if (!notice.parentNode) document.querySelector('[data-product="Coronatio"]')?.prepend(notice);
     }
-    let lastEligibleActivity = Date.now();
-    const ATTENDANCE_TOUCH_THROTTLE_MS = 60 * 1000; let lastAttendanceTouch = 0;
-    function recordEligibleActivity() { const now = Date.now(); lastEligibleActivity = now; if (!currentAttendance || inactivityHeadless || now - lastAttendanceTouch < ATTENDANCE_TOUCH_THROTTLE_MS) return; lastAttendanceTouch = now; void fetch('/api/v1/attendance/touch', { method: 'POST', cache: 'no-store' }).catch(() => {}); }
-    const activityEvents = ['scroll', 'touchstart', 'pointerdown', 'keydown', 'input'];
-    activityEvents.forEach(type => document.addEventListener(type, recordEligibleActivity, { passive: true }));
-    document.addEventListener('click', event => { if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL'].includes(event.target?.tagName)) recordEligibleActivity(); }, { passive: true });
-    window.setInterval(() => { if (Date.now() - lastEligibleActivity >= 15 * 60 * 1000) enterInactivityHeadless(); }, 60 * 1000);
+    if (!coronatioAttendanceRuntime.recordEligibleActivity) {
+      const ATTENDANCE_TOUCH_THROTTLE_MS = 60 * 1000;
+      coronatioAttendanceRuntime.recordEligibleActivity = () => { const now = Date.now(); coronatioAttendanceRuntime.lastEligibleActivity = now; if (!coronatioAttendanceRuntime.currentAttendance || coronatioAttendanceRuntime.inactivityHeadless || now - coronatioAttendanceRuntime.lastAttendanceTouch < ATTENDANCE_TOUCH_THROTTLE_MS) return; coronatioAttendanceRuntime.lastAttendanceTouch = now; void fetch('/api/v1/attendance/touch', { method: 'POST', cache: 'no-store' }).catch(() => {}); };
+      ['scroll', 'touchstart', 'pointerdown', 'keydown', 'input'].forEach(type => document.addEventListener(type, coronatioAttendanceRuntime.recordEligibleActivity, { passive: true }));
+      coronatioAttendanceRuntime.clickActivityHandler = event => { if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL'].includes(event.target?.tagName)) coronatioAttendanceRuntime.recordEligibleActivity(); };
+      document.addEventListener('click', coronatioAttendanceRuntime.clickActivityHandler, { passive: true });
+      coronatioAttendanceRuntime.inactivityInterval = window.setInterval(() => { if (Date.now() - coronatioAttendanceRuntime.lastEligibleActivity >= 15 * 60 * 1000) enterInactivityHeadless(); }, 60 * 1000);
+      coronatioAttendanceRuntime.activityCensusInstallCount++;
+    }
     let pulseStream = null;
     let pulseRenewTimer = null;
     let pulseStreamId = null;

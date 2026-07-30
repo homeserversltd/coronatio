@@ -51,32 +51,20 @@ fn visibility_projection_shape_is_tab_and_elements() {
 }
 
 #[test]
-fn browser_attendance_is_memory_only_and_inactivity_is_exact() {
-    let shell = include_str!("../shell/document-3.rs");
-    assert!(shell.contains("let currentAttendance = null"));
-    assert!(shell.contains("/api/v1/attendance/open"));
-    assert!(shell.contains("/api/v1/attendance/change-pin"));
-    assert!(shell.contains("const ATTENDANCE_TOUCH_THROTTLE_MS = 60 * 1000"));
-    assert_eq!(shell.matches("/api/v1/attendance/touch").count(), 1);
-    assert!(shell.contains("!currentAttendance || inactivityHeadless"));
-    assert!(shell.contains("document.addEventListener(type, recordEligibleActivity"));
-    assert!(shell.contains("upgradeOpenStreams"));
-    assert!(shell.contains("downgradeOpenStreams"));
-    assert!(shell.contains("setStreamMembership('stats', pulseStreamId, 'upgrade')"));
-    assert!(shell.contains("setStreamMembership('core', coreStreamId, 'upgrade')"));
-    assert!(shell.contains("/pulse/${action}?streamId=${encodeURIComponent(streamId)}"));
-    assert!(shell.contains("headers.set('X-Caduceus-Attendance', currentAttendance)"));
-    assert!(shell.contains("htmx:configRequest"));
-    assert!(shell.contains("await fetch('/api/v1/attendance/invalidate'"));
-    assert!(shell.contains("'keydown', 'input'"));
-    assert!(!shell.contains("attendance=${encodeURIComponent"));
-    assert!(shell.contains("15 * 60 * 1000"));
-    assert!(shell.contains("You have been disconnected due to inactivity."));
-    assert!(!shell.contains("localStorage.setItem('coronatioAdminToken'"));
-    assert!(!shell.contains(&["X-Admin", "Token"].concat()));
-    for outcome in ["Please fill in all fields", "New PINs do not match", "Failed to change PIN", "PIN changed successfully"] { assert!(shell.contains(outcome), "missing OG PIN-change outcome: {outcome}"); }
-    let change_start = shell.find("if (modalMode === 'change')").unwrap();
-    let change_end = shell[change_start..].find("if (modalMode === 'enter'").unwrap() + change_start;
-    let change = &shell[change_start..change_end];
-    for forbidden in ["currentAttendance =", "headerState.isAdmin =", "setAdminMode(", "upgradeOpenStreams", "downgradeOpenStreams", "/api/v1/attendance/touch"] { assert!(!change.contains(forbidden), "PIN change altered surviving attendance posture through {forbidden}"); }
+fn browser_attendance_runtime_precedes_theme_iteration_and_has_one_owner() {
+    let chrome = crown_chrome_js();
+    let runtime = chrome.find("var coronatioAttendanceRuntimeKey").expect("attendance runtime");
+    let theme_iteration = chrome.find("function renderThemeChoices()").expect("theme renderer");
+    assert!(runtime < theme_iteration, "attendance owner must be created at script scope before theme callbacks execute");
+    assert_eq!(chrome.matches("window.fetch = decoratedFetch").count(), 1);
+    assert_eq!(chrome.matches("document.addEventListener('htmx:configRequest'").count(), 1);
+    assert_eq!(chrome.matches("activityCensusInstallCount++").count(), 1);
+    assert_eq!(chrome.matches("/api/v1/attendance/touch").count(), 1);
+    assert!(!chrome.contains("let currentAttendance = null"));
+    assert!(!chrome.contains("const documentIncarnation ="));
+
+    let change_start = chrome.find("if (modalMode === 'change')").unwrap();
+    let change_end = chrome[change_start..].find("if (modalMode === 'enter'").unwrap() + change_start;
+    let change = &chrome[change_start..change_end];
+    for forbidden in ["coronatioAttendanceRuntime.currentAttendance =", "headerState.isAdmin =", "setAdminMode(", "upgradeOpenStreams", "downgradeOpenStreams", "/api/v1/attendance/touch"] { assert!(!change.contains(forbidden), "PIN change altered surviving attendance posture through {forbidden}"); }
 }

@@ -397,8 +397,8 @@
         assert!(chrome_body.contains("htmxOrgan.config.selfRequestsOnly = true"));
         assert!(chrome_body.contains("htmx:afterSwap"));
         assert!(chrome_body.contains("htmx:configRequest"));
-        assert!(chrome_body.contains("event.detail.headers['X-Caduceus-Document'] = documentIncarnation"));
-        assert!(chrome_body.contains("event.detail.headers['X-Caduceus-Attendance'] = currentAttendance"));
+        assert!(chrome_body.contains("event.detail.headers['X-Caduceus-Document'] = coronatioAttendanceRuntime.documentIncarnation"));
+        assert!(chrome_body.contains("event.detail.headers['X-Caduceus-Attendance'] = coronatioAttendanceRuntime.currentAttendance"));
         assert!(chrome_body.contains("if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats' && id !== 'portals') reconcileViewportStreamFamily();"));
         assert!(!chrome_body.contains("__INDICATOR_MODAL_REGISTRY__"));
         assert!(chrome_body.contains("const indicatorModalTemplates"));
@@ -820,8 +820,8 @@
         assert!(shell.contains("hx-confirm=\"Restart Website now?"));
         let chrome = crown_chrome_js();
         assert!(chrome.contains("htmx:configRequest"));
-        assert!(chrome.contains("event.detail.headers['X-Caduceus-Document'] = documentIncarnation"));
-        assert!(chrome.contains("event.detail.headers['X-Caduceus-Attendance'] = currentAttendance"));
+        assert!(chrome.contains("event.detail.headers['X-Caduceus-Document'] = coronatioAttendanceRuntime.documentIncarnation"));
+        assert!(chrome.contains("event.detail.headers['X-Caduceus-Attendance'] = coronatioAttendanceRuntime.currentAttendance"));
         assert!(chrome.contains("credentials: 'same-origin'"));
 
         assert!(!chrome.contains("fetch('/api/admin/ssh/toggle'"));

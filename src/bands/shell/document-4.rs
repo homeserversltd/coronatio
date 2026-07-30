@@ -100,7 +100,7 @@ fn shell_document_4() -> &'static str {
         };
         xhr.onerror = () => { const msg = 'Network error occurred during upload'; setUpload(file.name, { status: 'error', error: msg }); reject(new Error(msg)); };
         xhr.open('POST', '/api/files/upload');
-        xhr.setRequestHeader('X-Caduceus-Document', documentIncarnation); const uploadAttendance = scopedAttendance || currentAttendance; if (uploadAttendance) xhr.setRequestHeader('X-Caduceus-Attendance', uploadAttendance);
+        xhr.setRequestHeader('X-Caduceus-Document', coronatioAttendanceRuntime.documentIncarnation); const uploadAttendance = scopedAttendance || coronatioAttendanceRuntime.currentAttendance; if (uploadAttendance) xhr.setRequestHeader('X-Caduceus-Attendance', uploadAttendance);
         xhr.send(form);
       });
     }
