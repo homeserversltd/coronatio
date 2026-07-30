@@ -34,6 +34,7 @@
             ("/api/v1/attendance/open", "current document attendance admission"),
             ("/api/v1/attendance/validate", "current document attendance validation"),
             ("/api/v1/attendance/invalidate", "current document attendance invalidation"),
+            ("/api/${family}/pulse/${action}?streamId=${encodeURIComponent(streamId)}", "current document live stream membership"),
 
             ("/api/set_starred_tab", "PIN/session chrome favorite mutation"),
             ("/api/tabs/visibility", "PIN/session chrome visibility mutation"),

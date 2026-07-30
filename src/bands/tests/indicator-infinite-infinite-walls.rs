@@ -89,6 +89,39 @@
         assert_eq!(response.status(), StatusCode::OK);
     }
 
+    #[tokio::test]
+    async fn core_events_guest_host_loop_changes_projection_on_the_same_stream() {
+        let (stream_id, mut stream) = indicators::subscribe_core_stream(Session::Guest, Duration::from_secs(3));
+        assert_eq!(stream.next().await.unwrap().0, "core.open");
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("core-guest-host")) });
+        let upgrade = router.clone().oneshot(
+            Request::builder().method("POST")
+                .uri(format!("/api/core/pulse/upgrade?streamId={stream_id}"))
+                .header("x-caduceus-document", "test-document")
+                .header("x-caduceus-attendance", "test-attendance")
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(upgrade.status(), StatusCode::OK);
+        let host = loop {
+            let frame = stream.next().await.unwrap();
+            if frame.0 == "internet.status" { break frame; }
+        };
+        assert!(host.2.contains("\"authority\""), "host frame: {}", host.2);
+
+        let downgrade = router.oneshot(
+            Request::builder().method("POST")
+                .uri(format!("/api/core/pulse/downgrade?streamId={stream_id}"))
+                .header("x-caduceus-document", "test-document")
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(downgrade.status(), StatusCode::OK);
+        let guest = loop {
+            let frame = stream.next().await.unwrap();
+            if frame.0 == "internet.status" { break frame; }
+        };
+        assert!(!guest.2.contains("\"authority\""), "guest frame: {}", guest.2);
+    }
+
     #[test]
     fn crown_chrome_mounts_one_persistent_generic_core_eventsource() {
         let chrome = crown_chrome_js();
