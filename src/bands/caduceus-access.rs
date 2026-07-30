@@ -19,6 +19,7 @@ impl CaduceusAccessClient {
     pub(crate) fn attendance_open(&self, pin: &str, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Open, serde_json::json!({"pin":pin,"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_validate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Validate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_touch(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Touch, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
+    pub(crate) fn attendance_change_pin(&self, attendance: &AttendanceProof, document: &str, current_pin: &str, new_pin: &str) -> AttendanceCall { self.call(AttendanceOperation::ChangePin, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document,"currentPin":current_pin,"newPin":new_pin})) }
     pub(crate) fn attendance_invalidate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Invalidate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
         #[cfg(test)]
@@ -40,8 +41,8 @@ impl CaduceusAccessClient {
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AttendanceOperation { Open, Validate, Touch, Invalidate }
-impl AttendanceOperation { fn name(self)->&'static str { match self { Self::Open=>"attendance.open",Self::Validate=>"attendance.validate",Self::Touch=>"attendance.touch",Self::Invalidate=>"attendance.invalidate" } } fn path(self)->&'static str { match self { Self::Open=>"/api/v1/attendance/open",Self::Validate=>"/api/v1/attendance/validate",Self::Touch=>"/api/v1/attendance/touch",Self::Invalidate=>"/api/v1/attendance/invalidate" } } fn returns_proof(self)->bool { matches!(self,Self::Open) } }
+enum AttendanceOperation { Open, Validate, Touch, ChangePin, Invalidate }
+impl AttendanceOperation { fn name(self)->&'static str { match self { Self::Open=>"attendance.open",Self::Validate=>"attendance.validate",Self::Touch=>"attendance.touch",Self::ChangePin=>"attendance.change-pin",Self::Invalidate=>"attendance.invalidate" } } fn path(self)->&'static str { match self { Self::Open=>"/api/v1/attendance/open",Self::Validate=>"/api/v1/attendance/validate",Self::Touch=>"/api/v1/attendance/touch",Self::ChangePin=>"/api/v1/attendance/change-pin",Self::Invalidate=>"/api/v1/attendance/invalidate" } } fn returns_proof(self)->bool { matches!(self,Self::Open) } }
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct AttendanceProof(pub(crate) String);
 impl std::fmt::Debug for AttendanceProof { fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result { f.write_str("AttendanceProof([redacted])") } }
@@ -52,7 +53,7 @@ pub(crate) struct AttendanceReceipt { pub(crate) operation:&'static str,pub(crat
 #[derive(Debug,Clone)]
 pub(crate) struct AttendanceCall { pub(crate) receipt:AttendanceReceipt,pub(crate) proof:Option<AttendanceProof> }
 impl AttendanceCall { fn refused(op:AttendanceOperation,status:u16,code:&str)->Self{Self{receipt:AttendanceReceipt{operation:op.name(),ok:false,status,code:safe_access_code(code)},proof:None}} pub(crate) fn take_proof(self)->Option<AttendanceProof>{self.proof} }
-pub(crate) fn safe_access_code(value:&str)->String { if value.len()<=100&&value.bytes().all(|b|b.is_ascii_lowercase()||b.is_ascii_digit()||b==b'-'){value.to_string()}else{"caduceus-attendance-refused".to_string()} }
+pub(crate) fn safe_access_code(value:&str)->String { if value.len()<=100&&value.bytes().all(|b|b.is_ascii_alphabetic()||b.is_ascii_digit()||b==b'-'){value.to_string()}else{"caduceus-attendance-refused".to_string()} }
 fn attendance_io_code(stage: &str, error: &std::io::Error) -> &'static str {
     match error.kind() {
         std::io::ErrorKind::ConnectionRefused if stage == "connect" => "caduceus-attendance-connect-refused",
@@ -219,6 +220,7 @@ pub(crate) mod test_fixture {
         let valid = document_id == Some("test-document") && document_incarnation == Some("test-document") && match operation {
             AttendanceOperation::Open => body.get("pin").and_then(|v| v.as_str()).is_some_and(|pin| !pin.is_empty()),
             AttendanceOperation::Validate | AttendanceOperation::Touch | AttendanceOperation::Invalidate => attendance == Some("test-attendance"),
+            AttendanceOperation::ChangePin => attendance == Some("test-attendance") && body.get("currentPin").and_then(|v| v.as_str()).is_some_and(|pin| !pin.is_empty()) && body.get("newPin").and_then(|v| v.as_str()).is_some_and(|pin| !pin.is_empty()),
         };
         if !valid { return AttendanceCall::refused(operation, 401, "caduceus-attendance-refused"); }
         AttendanceCall { receipt: AttendanceReceipt { operation: operation.name(), ok: true, status: 200, code: "none".to_string() }, proof: operation.returns_proof().then(|| AttendanceProof("test-attendance".to_string())) }

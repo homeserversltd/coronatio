@@ -409,6 +409,27 @@ async fn caduceus_attendance_touch_route(headers: axum::http::HeaderMap) -> Resp
     attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
 }
 
+async fn caduceus_attendance_change_pin_route(headers: axum::http::HeaderMap, body: axum::body::Bytes) -> Response {
+    const ROUTE: &str = "/api/v1/attendance/change-pin";
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
+    let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-attendance-required"), Some(&document)); };
+    if !json_content_type(&headers) || body.len() > CADUCEUS_SESSION_BODY_MAX {
+        return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-request-invalid"), Some(&document));
+    }
+    let Ok(body) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-request-invalid"), Some(&document));
+    };
+    let Some(current_pin) = body.get("currentPin").and_then(serde_json::Value::as_str).filter(|pin| !pin.is_empty() && pin.len() <= 512) else {
+        return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-currentPin-missing"), Some(&document));
+    };
+    let Some(new_pin) = body.get("newPin").and_then(serde_json::Value::as_str).filter(|pin| !pin.is_empty() && pin.len() <= 512) else {
+        return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-newPin-missing"), Some(&document));
+    };
+    let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_change_pin(&attendance, &document, current_pin, new_pin);
+    let status = attendance_failure_status(&call);
+    attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
+}
+
 async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) -> Response {
     const ROUTE: &str = "/api/v1/attendance/invalidate";
     let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };

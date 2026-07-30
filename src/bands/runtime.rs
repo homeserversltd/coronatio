@@ -40,6 +40,7 @@ fn app(state: AppState) -> Router {
         .route("/api/v1/attendance/open", post(caduceus_attendance_open_route))
         .route("/api/v1/attendance/validate", post(caduceus_attendance_validate_route))
         .route("/api/v1/attendance/touch", post(caduceus_attendance_touch_route))
+        .route("/api/v1/attendance/change-pin", post(caduceus_attendance_change_pin_route))
         .route("/api/v1/attendance/invalidate", post(caduceus_attendance_invalidate_route))
         .route("/api/caduceus/status", get(caduceus_status_route))
         .route("/api/debug/emit", post(debug_emit_route))
