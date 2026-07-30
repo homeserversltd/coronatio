@@ -407,6 +407,8 @@
         assert!(shell.contains(r#"placeholder="Current PIN""#));
         assert!(shell.contains(r#"placeholder="New PIN""#));
         assert!(shell.contains(r#"placeholder="Confirm new PIN""#));
+        assert!(shell.contains("changePinButton?.addEventListener('click', () => openPinModal('change'))"));
+        assert!(!shell.contains("PIN changes are unavailable until a successor route is declared."));
         assert!(shell.contains("coronatio.flask-react-header.v1"));
         assert!(shell.contains("setAdminMode"));
         assert!(shell.contains("applyTheme"));

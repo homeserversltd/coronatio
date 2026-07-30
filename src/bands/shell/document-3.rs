@@ -57,10 +57,6 @@ fn shell_document_3() -> &'static str {
         el.hidden = !headerState.isAdmin;
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
-      if (changePinButton) {
-        changePinButton.hidden = true;
-        changePinButton.title = 'PIN changes are unavailable until a successor route is declared.';
-      }
     }
     function setAdminMode(value) {
       const previousActive = currentActiveTabId();
@@ -103,7 +99,7 @@ fn shell_document_3() -> &'static str {
       modalBackdrop.setAttribute('aria-hidden', 'false');
       (mode === 'change' ? changeCurrentPinInput : currentPinInput).focus();
     }
-    function closePinModal() {
+    function closePinModal() { [currentPinInput, changeCurrentPinInput, newPinInput, confirmPinInput].forEach(input => { input.value = ''; });
       modalBackdrop.classList.remove('open');
       modalBackdrop.setAttribute('aria-hidden', 'true');
     }
@@ -427,11 +423,16 @@ fn shell_document_3() -> &'static str {
       if (headerState.isAdmin) await clearAdminMode();
       else openPinModal('enter');
     });
+    changePinButton?.addEventListener('click', () => openPinModal('change'));
     document.querySelector('[data-pin-cancel]')?.addEventListener('click', closePinModal);
     document.querySelector('[data-pin-confirm-button]')?.addEventListener('click', async () => {
       if (modalMode === 'change') {
-        modalMessage.textContent = 'PIN changes are unavailable until a successor route is declared.';
-        return;
+        if (!changeCurrentPinInput.value || !newPinInput.value || !confirmPinInput.value) { modalMessage.textContent = 'Please fill in all fields'; return; }
+        if (newPinInput.value !== confirmPinInput.value) { modalMessage.textContent = 'New PINs do not match'; return; }
+        try { const response = await fetch('/api/v1/attendance/change-pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ currentPin: changeCurrentPinInput.value, newPin: newPinInput.value }) }); const result = await response.json().catch(() => ({}));
+          if (!response.ok || result.ok !== true) { const returnedError = result?.error || result?.message || (result?.firstMissingSignal !== 'none' ? result?.firstMissingSignal : ''); modalMessage.textContent = returnedError || 'Failed to change PIN'; return; }
+        } catch (_) { modalMessage.textContent = 'Failed to change PIN'; return; }
+        [changeCurrentPinInput, newPinInput, confirmPinInput].forEach(input => { input.value = ''; }); modalMessage.textContent = 'PIN changed successfully'; window.setTimeout(closePinModal, 1000); return;
       }
       if (modalMode === 'enter' && !currentPinInput.value) { modalMessage.textContent = 'Enter PIN'; return; }
       if (modalMode === 'enter') {

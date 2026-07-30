@@ -33,6 +33,7 @@
             ("/api/v1/attendance/open", "current document attendance admission"),
             ("/api/v1/attendance/validate", "current document attendance validation"),
             ("/api/v1/attendance/touch", "current document human-activity attendance touch"),
+            ("/api/v1/attendance/change-pin", "current document attendance PIN change"),
             ("/api/v1/attendance/invalidate", "current document attendance invalidation"),
             ("/api/${family}/pulse/${action}?streamId=${encodeURIComponent(streamId)}", "current document live stream membership"),
 
