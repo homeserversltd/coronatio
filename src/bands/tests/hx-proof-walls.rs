@@ -145,7 +145,7 @@
         assert!(shell.contains("hx-get=\"/admit/stats\""));
         assert!(shell.contains("hx-get=\"/admit/upload/tree"));
         assert!(shell.contains("hx-post=\"/admit/admin/toggle/ssh-service\""));
-        for required in ["Admin PIN Required", "placeholder=\"Admin PIN\"", "data-upload-pin-message", "xhr.setRequestHeader('X-Caduceus-Document', documentIncarnation)", "xhr.setRequestHeader('X-Caduceus-Attendance', uploadAttendance)", "const uploadAttendance = scopedAttendance || currentAttendance", "showCoronatioToast('PIN Verified.', 'success')", "await uploadSelectedFiles(scopedAttendance)", "'/api/v1/attendance/invalidate'"] {
+        for required in ["Admin PIN Required", "placeholder=\"Admin PIN\"", "data-upload-pin-message", "xhr.setRequestHeader('X-Caduceus-Document', coronatioAttendanceRuntime.documentIncarnation)", "xhr.setRequestHeader('X-Caduceus-Attendance', uploadAttendance)", "const uploadAttendance = scopedAttendance || coronatioAttendanceRuntime.currentAttendance", "showCoronatioToast('PIN Verified.', 'success')", "await uploadSelectedFiles(scopedAttendance)", "'/api/v1/attendance/invalidate'"] {
             assert!(shell.contains(required), "missing scoped upload attendance marker {required}");
         }
         let scoped_start = shell.find("async function verifyUploadPin()").unwrap();
