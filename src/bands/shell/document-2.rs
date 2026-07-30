@@ -183,7 +183,7 @@ fn shell_document_2() -> &'static str {
           <div class="modal-overlay" data-upload-pin-backdrop data-upload-pin-modal aria-hidden="true" hidden>
             <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-pin-title">
               <button type="button" class="modal-close" data-upload-pin-cancel aria-label="Close modal">×</button><h2 class="modal-title" id="upload-pin-title">Admin PIN Required</h2>
-              <div class="modal-content"><form class="pin-modal-form" data-upload-pin-form><p>Please enter the admin PIN to proceed with the upload.</p><input type="text" name="username" autocomplete="username" style="position:absolute;left:-9999px;opacity:0" tabindex="-1" aria-hidden="true"><input type="password" placeholder="Admin PIN" class="pin-input" autocomplete="new-password" data-upload-pin-input></form></div>
+              <div class="modal-content"><form class="pin-modal-form" data-upload-pin-form><p>Please enter the admin PIN to proceed with the upload.</p><input type="text" name="username" autocomplete="username" style="position:absolute;left:-9999px;opacity:0" tabindex="-1" aria-hidden="true"><input type="password" placeholder="Admin PIN" aria-label="Admin PIN" class="pin-input" autocomplete="new-password" data-upload-pin-input><p data-upload-pin-message role="alert" aria-live="polite"></p></form></div>
               <div class="modal-buttons"><button type="button" class="secondary" data-upload-pin-cancel>Cancel</button><button type="button" data-upload-pin-confirm>Confirm</button></div>
             </section>
           </div>

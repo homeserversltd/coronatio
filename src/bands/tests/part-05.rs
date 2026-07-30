@@ -96,18 +96,28 @@
 
     #[tokio::test]
     async fn upload_viewport_posts_to_caduceus_route() {
-        let temp = test_tab_root("upload-viewport");
-        std::env::set_var("CORONATIO_UPLOAD_ROOT", &temp);
-        let response = app(AppState { tab_root: Arc::new(temp) })
-            .oneshot(Request::builder().method("POST").uri("/api/files/upload").header("content-type", "multipart/form-data; boundary=X").body(Body::from("--X\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\n/mnt/nas\r\n--X\r\nContent-Disposition: form-data; name=\"file\"; filename=\"proof.txt\"\r\nContent-Type: text/plain\r\n\r\nhello\r\n--X--\r\n")).unwrap())
-            .await.unwrap();
-        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
+        let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let temp = test_tab_root("upload-viewport"); let config = temp.join("homeserver.json"); std::fs::write(&config, r#"{"tabs":{"upload":{"data":{"isPinRequired":false}}}}"#).unwrap();
+        std::env::set_var("CORONATIO_UPLOAD_ROOT", &temp); std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
+        let router = app(AppState { tab_root: Arc::new(temp.clone()) });
+        let upload = || Request::builder().method("POST").uri("/api/files/upload").header("content-type", "multipart/form-data; boundary=X").body(Body::from("--X\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\n/mnt/nas\r\n--X\r\nContent-Disposition: form-data; name=\"file\"; filename=\"proof.txt\"\r\nContent-Type: text/plain\r\n\r\nhello\r\n--X--\r\n")).unwrap();
+        let response = router.clone().oneshot(upload()).await.unwrap();
         assert_ne!(response.status(), StatusCode::NOT_FOUND);
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("coronatio.upload.submit.v1"), "{body}");
         assert!(body.contains("proof.txt"), "{body}");
         assert!(body.contains("Coronatio Rust upload route to Caduceus"), "{body}");
+        std::fs::write(&config, r#"{"tabs":{"upload":{"data":{"isPinRequired":true}}}}"#).unwrap();
+        let refused = router.clone().oneshot(upload()).await.unwrap(); assert_eq!(refused.status(), StatusCode::PRECONDITION_REQUIRED);
+        let refused_body = String::from_utf8(axum::body::to_bytes(refused.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(refused_body.contains("coronatio.upload.pin_required.refusal.v1"), "{refused_body}"); assert!(refused_body.contains("upload-pin-required"), "{refused_body}");
+        let attended = router.oneshot(successor_admin_request(upload())).await.unwrap();
+        assert_ne!(attended.status(), StatusCode::PRECONDITION_REQUIRED);
+        let attended_body = String::from_utf8(axum::body::to_bytes(attended.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        assert!(attended_body.contains("coronatio.upload.submit.v1"), "{attended_body}");
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+        std::env::remove_var("CORONATIO_UPLOAD_ROOT");
     }
 
     #[test]

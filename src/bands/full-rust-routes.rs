@@ -220,6 +220,19 @@ fn full_rust_route_table() -> Router<AppState> {
 
 
 async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multipart) -> impl IntoResponse {
+    if upload_pin_required() && session_from_headers(&headers) != Session::Admin {
+        return (
+            StatusCode::PRECONDITION_REQUIRED,
+            Json(serde_json::json!({
+                "schema": "coronatio.upload.pin_required.refusal.v1",
+                "ok": false,
+                "accepted": false,
+                "error": "upload-pin-required",
+                "firstMissingSignal": "upload-pin-required"
+            })),
+        )
+            .into_response();
+    }
     let mut filename = "upload.bin".to_string();
     let mut destination = "/mnt/nas".to_string();
     let mut payload = Vec::new();

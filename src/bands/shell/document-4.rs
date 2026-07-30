@@ -80,7 +80,7 @@ fn shell_document_4() -> &'static str {
       }
       applyAdminDomState();
     });
-    async function uploadOneFile(file) {
+    async function uploadOneFile(file, scopedAttendance = null) {
       setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending' });
       const form = new FormData();
       form.append('file', file);
@@ -96,28 +96,28 @@ fn shell_document_4() -> &'static str {
         };
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) { setUpload(file.name, { progress: 100, uploaded: file.size, total: file.size, status: 'completed' }); const readout = uploadReadout(); if (readout) readout.textContent = xhr.responseText; resolve(); }
-          else { let msg = 'Upload failed with status ' + xhr.status; try { const body = JSON.parse(xhr.responseText); if (body.error) msg = body.error; } catch (_) {} setUpload(file.name, { status: 'error', error: msg }); reject(new Error(msg)); }
+          else { let msg = 'Upload failed with status ' + xhr.status; let signal = ''; try { const body = JSON.parse(xhr.responseText); signal = body.firstMissingSignal || ''; if (body.error) msg = body.error; } catch (_) {} const error = new Error(msg); if (xhr.status === 428 && signal === 'upload-pin-required') { error.uploadPinRequired = true; reject(error); return; } setUpload(file.name, { status: 'error', error: msg }); reject(error); }
         };
         xhr.onerror = () => { const msg = 'Network error occurred during upload'; setUpload(file.name, { status: 'error', error: msg }); reject(new Error(msg)); };
         xhr.open('POST', '/api/files/upload');
+        xhr.setRequestHeader('X-Caduceus-Document', documentIncarnation); const uploadAttendance = scopedAttendance || currentAttendance; if (uploadAttendance) xhr.setRequestHeader('X-Caduceus-Attendance', uploadAttendance);
         xhr.send(form);
       });
     }
-    async function uploadSelectedFiles(pinVerified = false) {
+    async function uploadSelectedFiles(scopedAttendance = null) {
       if (!uploadState.selectedFiles.length) { showCoronatioToast('No files selected for upload', 'error'); return; }
-      if (uploadState.pinRequired && !pinVerified) { openUploadModal('[data-upload-pin-modal]'); document.querySelector('[data-upload-pin-input]')?.focus(); return; }
+      if (uploadState.pinRequired && !headerState.isAdmin && !scopedAttendance) { openUploadModal('[data-upload-pin-modal]'); document.querySelector('[data-upload-pin-input]')?.focus(); return; }
       uploadState.uploading = true;
       const submit = uploadSubmit();
       if (submit) { submit.disabled = true; submit.textContent = 'Uploading...'; }
-      let success = 0;
-      let failed = 0;
+      let success = 0; let failed = 0; let pinRequired = false;
       for (const file of uploadState.selectedFiles) {
-        try { await uploadOneFile(file); success += 1; }
-        catch (error) { failed += 1; showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error'); }
+        try { await uploadOneFile(file, scopedAttendance); success += 1; }
+        catch (error) { if (error?.uploadPinRequired && !headerState.isAdmin) { pinRequired = true; setUpload(file.name, { status: 'pending', error: '' }); break; } failed += 1; showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error'); }
       }
       uploadState.uploading = false;
       const submitAfterUpload = uploadSubmit();
-      if (submitAfterUpload) { submitAfterUpload.textContent = 'Upload Selected Files'; submitAfterUpload.disabled = uploadState.selectedFiles.length === 0; }
+      if (submitAfterUpload) { submitAfterUpload.textContent = 'Upload Selected Files'; submitAfterUpload.disabled = uploadState.selectedFiles.length === 0; } if (pinRequired) { openUploadModal('[data-upload-pin-modal]'); document.querySelector('[data-upload-pin-input]')?.focus(); return; }
       const summary = failed ? `Uploaded ${success} file(s), ${failed} failed` : `Successfully uploaded ${success} file(s)`;
       const readout = uploadReadout();
       if (readout) readout.textContent = summary;
@@ -125,7 +125,7 @@ fn shell_document_4() -> &'static str {
     }
     function uploadAdminHeaders(json = false) { return json ? { 'content-type': 'application/json' } : {}; }
     function openUploadModal(selector) { const modal = document.querySelector(selector); if (modal) { modal.hidden = false; modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); } }
-    function closeUploadModal(modal) { if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); modal.hidden = true; } }
+    function closeUploadModal(modal) { if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); modal.hidden = true; const pin = modal.querySelector('[data-upload-pin-input]'); if (pin) pin.value = ''; const message = modal.querySelector('[data-upload-pin-message]'); if (message) message.textContent = ''; } }
     async function refreshUploadHistory() {
       const modal = document.querySelector('[data-upload-history-modal]'), list = modal?.querySelector('.upload-history-list'), empty = modal?.querySelector('.uploadHistoryModal'), clear = modal?.querySelector('[data-upload-clear-history]');
       try { const data = await fetch('/api/upload/history', { headers: uploadAdminHeaders() }).then(r => r.json()); uploadState.history = data.history || []; } catch (_) { uploadState.history = []; }
@@ -139,7 +139,7 @@ fn shell_document_4() -> &'static str {
       if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join('');
     }
     function refreshUploadBlacklistDomOnly() { const entries = document.querySelector('[data-upload-blacklist-entries]'); if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join(''); }
-    async function verifyUploadPin() { showCoronatioToast('Enter Admin Mode to continue.', 'error'); }
+    async function verifyUploadPin() { const modal = document.querySelector('[data-upload-pin-modal]'), input = modal?.querySelector('[data-upload-pin-input]'), message = modal?.querySelector('[data-upload-pin-message]'), pin = input?.value?.trim() || ''; if (!pin) { if (message) message.textContent = 'Admin PIN is required.'; input?.focus(); return; } let scopedAttendance = null; try { const response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) }); const result = await response.json().catch(() => ({})); scopedAttendance = response.ok && result.admin === true && typeof result.attendance === 'string' ? result.attendance : null; if (!scopedAttendance) { if (message) message.textContent = response.status === 401 ? 'Invalid PIN' : (result.firstMissingSignal || 'PIN check unavailable'); input?.focus(); return; } showCoronatioToast('PIN Verified.', 'success'); closeUploadModal(modal); await uploadSelectedFiles(scopedAttendance); } catch (_) { if (message) message.textContent = 'PIN check unavailable'; input?.focus(); } finally { if (scopedAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', headers: { 'X-Caduceus-Document': documentIncarnation, 'X-Caduceus-Attendance': scopedAttendance }, cache: 'no-store' }).catch(() => {}); } }
     function refreshUploadTree(path = uploadCurrentPath()) { window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(path), { target: '[data-upload-tree]', swap: 'innerHTML' }); }
     async function postUploadDirectoryAction(url, successMessage) { try { const response = await fetch(url, { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }); const data = await response.json().catch(() => ({})); if (!response.ok || !(data.success ?? data.ok)) throw new Error(data.message || data.error || data.firstMissingSignal || `Request failed with status ${response.status}`); showCoronatioToast(successMessage, 'success'); return data; } catch (error) { showCoronatioToast(error?.message || 'Request failed', 'error'); return null; } }
     async function toggleUploadPin(toggle) { uploadState.pinRequired = !uploadState.pinRequired; toggle.classList.toggle('active', uploadState.pinRequired); toggle.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); toggle.setAttribute('aria-busy', 'true'); toggle.querySelector('[data-upload-pin-spinner]')?.removeAttribute('hidden'); try { await fetch('/api/upload/pin-required-status', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); } finally { toggle.removeAttribute('aria-busy'); toggle.querySelector('[data-upload-pin-spinner]')?.setAttribute('hidden', ''); } }

@@ -328,6 +328,14 @@ fn upload_data(value: &serde_json::Value) -> Option<&serde_json::Value> {
     value.pointer("/tabs/upload/data")
 }
 
+fn upload_pin_required() -> bool {
+    let value = upload_config_value();
+    upload_data(&value)
+        .and_then(|data| data.get("isPinRequired").or_else(|| data.get("pinRequired")))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
 fn upload_blacklist() -> Vec<String> {
     let value = upload_config_value();
     upload_data(&value).and_then(|data| data.get("blacklist")).and_then(serde_json::Value::as_array)
@@ -370,8 +378,7 @@ fn upload_blacklist_update(headers: &axum::http::HeaderMap, body: serde_json::Va
 }
 
 async fn upload_pin_required_route() -> impl IntoResponse {
-    let value = upload_config_value();
-    let required = upload_data(&value).and_then(|data| data.get("isPinRequired").or_else(|| data.get("pinRequired"))).and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let required = upload_pin_required();
     Json(serde_json::json!({"schema":"coronatio.upload.pin_required.v1","ok":true,"isPinRequired":required,"firstMissingSignal":"none"}))
 }
 
