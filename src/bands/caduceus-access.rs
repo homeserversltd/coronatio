@@ -18,6 +18,7 @@ impl CaduceusAccessClient {
     pub(crate) fn new(base: impl Into<String>) -> Self { Self { base: normalize_access_base(base.into()), timeout: CADUCEUS_ACCESS_TIMEOUT } }
     pub(crate) fn attendance_open(&self, pin: &str, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Open, serde_json::json!({"pin":pin,"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_validate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Validate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
+    pub(crate) fn attendance_touch(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Touch, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_invalidate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Invalidate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
         #[cfg(test)]
@@ -39,8 +40,8 @@ impl CaduceusAccessClient {
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AttendanceOperation { Open, Validate, Invalidate }
-impl AttendanceOperation { fn name(self)->&'static str { match self { Self::Open=>"attendance.open",Self::Validate=>"attendance.validate",Self::Invalidate=>"attendance.invalidate" } } fn path(self)->&'static str { match self { Self::Open=>"/api/v1/attendance/open",Self::Validate=>"/api/v1/attendance/validate",Self::Invalidate=>"/api/v1/attendance/invalidate" } } fn returns_proof(self)->bool { matches!(self,Self::Open) } }
+enum AttendanceOperation { Open, Validate, Touch, Invalidate }
+impl AttendanceOperation { fn name(self)->&'static str { match self { Self::Open=>"attendance.open",Self::Validate=>"attendance.validate",Self::Touch=>"attendance.touch",Self::Invalidate=>"attendance.invalidate" } } fn path(self)->&'static str { match self { Self::Open=>"/api/v1/attendance/open",Self::Validate=>"/api/v1/attendance/validate",Self::Touch=>"/api/v1/attendance/touch",Self::Invalidate=>"/api/v1/attendance/invalidate" } } fn returns_proof(self)->bool { matches!(self,Self::Open) } }
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct AttendanceProof(pub(crate) String);
 impl std::fmt::Debug for AttendanceProof { fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result { f.write_str("AttendanceProof([redacted])") } }
@@ -217,7 +218,7 @@ pub(crate) mod test_fixture {
         let attendance = body.get("attendance").and_then(|v| v.as_str());
         let valid = document_id == Some("test-document") && document_incarnation == Some("test-document") && match operation {
             AttendanceOperation::Open => body.get("pin").and_then(|v| v.as_str()).is_some_and(|pin| !pin.is_empty()),
-            AttendanceOperation::Validate | AttendanceOperation::Invalidate => attendance == Some("test-attendance"),
+            AttendanceOperation::Validate | AttendanceOperation::Touch | AttendanceOperation::Invalidate => attendance == Some("test-attendance"),
         };
         if !valid { return AttendanceCall::refused(operation, 401, "caduceus-attendance-refused"); }
         AttendanceCall { receipt: AttendanceReceipt { operation: operation.name(), ok: true, status: 200, code: "none".to_string() }, proof: operation.returns_proof().then(|| AttendanceProof("test-attendance".to_string())) }

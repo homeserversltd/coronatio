@@ -6,6 +6,7 @@ fn slice_d_uses_document_attendance_not_legacy_authority() {
     let runtime = include_str!("../runtime.rs");
     assert!(access.contains("/api/v1/attendance/open"));
     assert!(access.contains("/api/v1/attendance/validate"));
+    assert!(access.contains("/api/v1/attendance/touch"));
     assert!(access.contains("/api/v1/attendance/invalidate"));
     assert!(access.contains("\"documentId\":document"));
     assert!(access.contains("\"documentIncarnation\":document"));
@@ -25,6 +26,7 @@ fn slice_d_uses_document_attendance_not_legacy_authority() {
     assert!(!router.contains("legacy authority route"));
     assert!(runtime.contains("/api/v1/attendance/open"));
     assert!(runtime.contains("/api/v1/attendance/validate"));
+    assert!(runtime.contains("/api/v1/attendance/touch"));
 }
 
 #[test]
@@ -41,6 +43,10 @@ fn browser_attendance_is_memory_only_and_inactivity_is_exact() {
     let shell = include_str!("../shell/document-3.rs");
     assert!(shell.contains("let currentAttendance = null"));
     assert!(shell.contains("/api/v1/attendance/open"));
+    assert!(shell.contains("const ATTENDANCE_TOUCH_THROTTLE_MS = 60 * 1000"));
+    assert_eq!(shell.matches("/api/v1/attendance/touch").count(), 1);
+    assert!(shell.contains("!currentAttendance || inactivityHeadless"));
+    assert!(shell.contains("document.addEventListener(type, recordEligibleActivity"));
     assert!(shell.contains("upgradeOpenStreams"));
     assert!(shell.contains("downgradeOpenStreams"));
     assert!(shell.contains("setStreamMembership('stats', pulseStreamId, 'upgrade')"));
