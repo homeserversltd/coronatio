@@ -102,7 +102,7 @@
             .await
             .unwrap();
         let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp", "unbound"]);
+        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp", "firewall", "unbound"]);
         assert_eq!(root.first_party_panes.len(), PRIMARY_TABS.len());
     }
 
@@ -159,9 +159,16 @@
         assert!(body.contains("data-pane=\"portals\""));
         assert!(body.contains("data-pane=\"upload\""));
         assert!(body.contains("data-pane-panel=\"admin\""));
-        assert!(body.contains("data-pane-panel=\"stats\""));
-        assert!(body.contains("data-pane-panel=\"portals\""));
-        assert!(body.contains("data-pane-panel=\"upload\""));
+        for pane in ["firewall", "unbound"] {
+            assert!(!body.contains(&format!("data-pane-panel=\"{}\"", pane)), "guest must omit protected pane {pane}");
+        }
+        for pane in ["stats", "portals", "upload", "dhcp"] {
+            assert!(body.contains(&format!("data-pane-panel=\"{}\"", pane)));
+        }
+        let admin = render_crown_shell_for_session(Session::Admin);
+        for pane in ["firewall", "unbound"] {
+            assert!(admin.contains(&format!("data-pane-panel=\"{}\"", pane)), "admin must contain protected pane {pane}");
+        }
         assert!(body.contains("function showPane(id, options)"));
         assert!(body.contains("fetch('/api/stats')"));
         assert!(body.contains(r#"class="disk-actions""#));
@@ -178,12 +185,13 @@
     fn native_pane_bodies_are_not_placeholder_cards() {
         let shell = render_crown_shell();
         for pane in PRIMARY_TABS {
-            if pane == "unbound" {
+            if ["firewall", "unbound"].contains(&pane) {
                 continue;
             }
             assert!(shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
         }
         let admin_shell = render_crown_shell_for_session(Session::Admin);
+        assert!(admin_shell.contains("data-pane-panel=\"firewall\""));
         assert!(admin_shell.contains("data-pane-panel=\"unbound\""));
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
@@ -501,6 +509,11 @@
         }
         for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"] {
             assert!(shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
+        }
+        let admin = render_crown_shell_for_session(Session::Admin);
+        for pane in ["firewall", "unbound"] {
+            assert!(!shell.contains(&format!(r#"data-pane-panel="{}""#, pane)), "guest must omit protected pane {pane}");
+            assert!(admin.contains(&format!(r#"data-pane-panel="{}""#, pane)), "admin must contain protected pane {pane}");
         }
         assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));
         assert!(shell.contains("aria-pressed"));

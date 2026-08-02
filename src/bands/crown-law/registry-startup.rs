@@ -89,6 +89,17 @@ fn native_crown_panes() -> Vec<CrownPane> {
             state_route: "/api/panes/dhcp".to_string(),
         },
         CrownPane {
+            id: "firewall".to_string(),
+            title: "Firewall".to_string(),
+            role: "DNS website policy".to_string(),
+            summary: "Admin-only DNS website policy for a selected child device, applied and read back by Caduceus.".to_string(),
+            order: 81,
+            admin_only: true,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#firewall".to_string(),
+            state_route: "/api/panes/firewall".to_string(),
+        },
+        CrownPane {
             id: "unbound".to_string(),
             title: "DNS".to_string(),
             role: "local DNS records".to_string(),

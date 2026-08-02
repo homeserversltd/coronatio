@@ -9,10 +9,16 @@
             !guest.contains(r#"data-tab-id="unbound""#),
             "guest shell must not declare the DNS tab"
         );
-        assert_eq!(guest.matches(r#"id="pane-unbound""#).count(), 1);
-        assert_eq!(guest.matches(r#"data-view-panel="unbound""#).count(), 1);
-        assert_eq!(guest.matches(r#"data-admin-viewport="unbound""#).count(), 1);
-        assert!(guest.contains(r#"data-admin-only="true""#));
+        for forbidden in [
+            r#"id="pane-unbound""#,
+            r#"data-view-panel="unbound""#,
+            r#"data-admin-viewport="unbound""#,
+        ] {
+            assert!(
+                !guest.contains(forbidden),
+                "guest shell must omit protected DNS pane marker {forbidden}"
+            );
+        }
 
         let admin = render_crown_shell_for_session(Session::Admin);
         assert!(admin.contains(r#"data-tab-id="unbound""#));

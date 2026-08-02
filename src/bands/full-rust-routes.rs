@@ -121,6 +121,9 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/dns/records", get(dns_records_get_route).post(dns_records_post_route))
         .route("/api/dns/records/status", post(dns_records_status_post_route))
         .route("/api/dns/records/:name", delete(dns_records_delete_route))
+        .route("/api/firewall/status", get(firewall_read_route))
+        .route("/api/firewall/policies", get(firewall_read_route))
+        .route("/api/firewall/policies/:mac", get(firewall_policy_route).put(firewall_policy_put_route).delete(firewall_policy_delete_route))
         .route("/api/nasLinker/browse", get(homeserver_rust_read_route))
         .route("/api/nasLinker/deploy", post(admin_class_generic_mutation_route))
         .route("/api/nasLinker/delete", delete(admin_class_generic_mutation_route))
@@ -495,6 +498,7 @@ include!("full-rust-routes/read.rs");
 
 include!("full-rust-routes/dhcp.rs");
 include!("full-rust-routes/unbound.rs");
+include!("full-rust-routes/firewall.rs");
 
 include!("full-rust-routes/network-notes.rs");
 
@@ -673,6 +677,9 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/dns/records", &["get", "post"]),
         ("/api/dns/records/status", &["post"]),
         ("/api/dns/records/:name", &["delete"]),
+        ("/api/firewall/status", &["get"]),
+        ("/api/firewall/policies", &["get"]),
+        ("/api/firewall/policies/:mac", &["get", "put", "delete"]),
         ("/api/nasLinker/browse", &["get"]),
         ("/api/nasLinker/deploy", &["post"]),
         ("/api/nasLinker/delete", &["delete"]),

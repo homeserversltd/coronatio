@@ -23,7 +23,7 @@
         assert_eq!(registry.visible_tabs_user, ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"]);
         assert_eq!(
             registry.visible_tabs_admin,
-            ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp", "unbound"]
+            ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp", "firewall", "unbound"]
         );
         assert!(registry
             .validation_rules
@@ -412,8 +412,11 @@
         assert!(shell.contains("appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         assert!(shell.contains("tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         for viewport in ["admin", "stats", "portals", "upload", "test"] {
-            assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing admin viewport {viewport}");
+            assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing viewport {viewport}");
         }
+        assert!(!shell.contains(r#"data-admin-viewport="firewall""#), "guest must omit Firewall viewport");
+        let admin = render_crown_shell_for_session(Session::Admin);
+        assert!(admin.contains(r#"data-admin-viewport="firewall""#), "admin missing Firewall viewport");
         for admin_action in ["Hard Drive Test", "Auto Sync", "Hide CPU Usage & Load", "PIN requirement", "Blacklist"] {
             assert!(shell.contains(admin_action), "missing {admin_action}");
         }
