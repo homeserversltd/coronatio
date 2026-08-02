@@ -5,7 +5,7 @@ struct FirewallPolicyWrite {
     mac: String,
     mode: String,
     sites: Vec<String>,
-    expected_revision: serde_json::Value,
+    expected_revision: String,
     enabled: bool,
     enforcement: String,
 }
@@ -15,7 +15,7 @@ struct FirewallPolicyWrite {
 struct FirewallPolicyDelete {
     schema: String,
     mac: String,
-    expected_revision: serde_json::Value,
+    expected_revision: String,
 }
 
 fn firewall_guest_refusal(path: &str) -> Response {
@@ -70,6 +70,13 @@ fn canonical_firewall_site(raw: &str) -> Option<String> {
     Some(site)
 }
 
+fn canonical_firewall_revision(raw: &str) -> Option<String> {
+    if raw.len() != 64 || !raw.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(raw.to_ascii_lowercase())
+}
+
 fn firewall_policy_request(policy: FirewallPolicyWrite, path_mac: &str) -> Result<serde_json::Value, &'static str> {
     let mac = canonical_firewall_mac(&policy.mac).ok_or("firewall-policy-mac-invalid")?;
     if mac != path_mac {
@@ -79,10 +86,11 @@ fn firewall_policy_request(policy: FirewallPolicyWrite, path_mac: &str) -> Resul
         || policy.mode != "allow-only"
         || policy.enforcement != "dns-policy"
         || policy.sites.len() > 64
-        || policy.expected_revision.is_null()
     {
         return Err("firewall-policy-invalid");
     }
+    let expected_revision = canonical_firewall_revision(&policy.expected_revision)
+        .ok_or("firewall-policy-invalid")?;
     let mut sites = Vec::with_capacity(policy.sites.len());
     for site in policy.sites {
         let site = canonical_firewall_site(&site).ok_or("firewall-policy-site-invalid")?;
@@ -96,7 +104,7 @@ fn firewall_policy_request(policy: FirewallPolicyWrite, path_mac: &str) -> Resul
         "mac": mac,
         "mode": "allow-only",
         "sites": sites,
-        "expectedRevision": policy.expected_revision,
+        "expectedRevision": expected_revision,
         "enabled": policy.enabled,
         "enforcement": "dns-policy"
     }))
@@ -107,13 +115,15 @@ fn firewall_delete_request(policy: FirewallPolicyDelete, path_mac: &str) -> Resu
     if mac != path_mac {
         return Err("firewall-policy-mac-mismatch");
     }
-    if policy.schema != "caduceus.network.firewall.policy.delete.v1" || !policy.expected_revision.is_u64() {
+    if policy.schema != "caduceus.network.firewall.policy.delete.v1" {
         return Err("firewall-policy-delete-invalid");
     }
+    let expected_revision = canonical_firewall_revision(&policy.expected_revision)
+        .ok_or("firewall-policy-delete-invalid")?;
     Ok(serde_json::json!({
         "schema": "caduceus.network.firewall.policy.delete.v1",
         "mac": mac,
-        "expectedRevision": policy.expected_revision,
+        "expectedRevision": expected_revision,
     }))
 }
 

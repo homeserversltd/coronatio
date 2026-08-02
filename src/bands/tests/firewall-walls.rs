@@ -31,22 +31,30 @@ fn firewall_registry_css_and_client_are_composed() {
 
 #[test]
 fn firewall_policy_requests_are_canonical_and_bounded() {
+    let revision = "A1".repeat(32);
     let policy: FirewallPolicyWrite = serde_json::from_value(serde_json::json!({
-        "schema":"caduceus.network.firewall.policy.v1", "mac":"aa-bb-cc-dd-ee-ff", "mode":"allow-only", "sites":["Example.COM."], "expectedRevision":7, "enabled":true, "enforcement":"dns-policy"
+        "schema":"caduceus.network.firewall.policy.v1", "mac":"aa-bb-cc-dd-ee-ff", "mode":"allow-only", "sites":["Example.COM."], "expectedRevision":revision, "enabled":true, "enforcement":"dns-policy"
     })).unwrap();
     let request = firewall_policy_request(policy, "AA:BB:CC:DD:EE:FF").unwrap();
     assert_eq!(request["mac"], "AA:BB:CC:DD:EE:FF");
     assert_eq!(request["sites"], serde_json::json!(["example.com"]));
-    assert_eq!(request["expectedRevision"], 7);
+    assert_eq!(request["expectedRevision"], "a1".repeat(32));
     assert!(canonical_firewall_mac("aa:bb-cc:dd:ee:ff").is_none());
     assert!(canonical_firewall_site("not a hostname").is_none());
     let delete: FirewallPolicyDelete = serde_json::from_value(serde_json::json!({
-        "schema":"caduceus.network.firewall.policy.delete.v1", "mac":"aa-bb-cc-dd-ee-ff", "expectedRevision":7
+        "schema":"caduceus.network.firewall.policy.delete.v1", "mac":"aa-bb-cc-dd-ee-ff", "expectedRevision":revision
     })).unwrap();
     assert_eq!(firewall_delete_request(delete, "AA:BB:CC:DD:EE:FF").unwrap(), serde_json::json!({
-        "schema":"caduceus.network.firewall.policy.delete.v1", "mac":"AA:BB:CC:DD:EE:FF", "expectedRevision":7
+        "schema":"caduceus.network.firewall.policy.delete.v1", "mac":"AA:BB:CC:DD:EE:FF", "expectedRevision":"a1".repeat(32)
     }));
     assert!(serde_json::from_value::<FirewallPolicyDelete>(serde_json::json!({"schema":"caduceus.network.firewall.policy.delete.v1", "mac":"AA:BB:CC:DD:EE:FF", "expectedRevision":7, "enabled":true})).is_err());
+    assert!(serde_json::from_value::<FirewallPolicyWrite>(serde_json::json!({"schema":"caduceus.network.firewall.policy.v1", "mac":"AA:BB:CC:DD:EE:FF", "mode":"allow-only", "sites":[], "expectedRevision":7, "enabled":true, "enforcement":"dns-policy"})).is_err());
+    for malformed in ["", "a1", &"g1".repeat(32), &"a1".repeat(33)] {
+        let policy: FirewallPolicyWrite = serde_json::from_value(serde_json::json!({"schema":"caduceus.network.firewall.policy.v1", "mac":"AA:BB:CC:DD:EE:FF", "mode":"allow-only", "sites":[], "expectedRevision":malformed, "enabled":true, "enforcement":"dns-policy"})).unwrap();
+        assert_eq!(firewall_policy_request(policy, "AA:BB:CC:DD:EE:FF"), Err("firewall-policy-invalid"));
+        let delete: FirewallPolicyDelete = serde_json::from_value(serde_json::json!({"schema":"caduceus.network.firewall.policy.delete.v1", "mac":"AA:BB:CC:DD:EE:FF", "expectedRevision":malformed})).unwrap();
+        assert_eq!(firewall_delete_request(delete, "AA:BB:CC:DD:EE:FF"), Err("firewall-policy-delete-invalid"));
+    }
 }
 
 #[tokio::test]
@@ -80,7 +88,7 @@ async fn firewall_preserves_authoritative_failure_body_status_and_signal() {
 #[test]
 fn firewall_client_refuses_semantic_failures_and_false_positive_enforcement() {
     let client = include_str!("../shell/firewall-client.rs");
-    for required in ["body?.ok === false", "body?.success === false", "body?.accepted === false", "body?.firstMissingSignal", "policy.enabled === true", "receiptMac === mac", "!missing", "Select a device first", "caduceus.network.firewall.policy.delete.v1", "No policy change"] {
+    for required in ["body?.ok === false", "body?.success === false", "body?.accepted === false", "body?.firstMissingSignal", "policy.enabled === true", "receiptMac === mac", "!missing", "Select a device first", "caduceus.network.firewall.policy.delete.v1", "No policy change", "function firewallExpectedRevision", "firewallField(status, 'expectedRevision', 'revision')", "firewallField(status?.readback, 'expectedRevision', 'revision')", "firewallExpectedRevision(policy, firewallState.status || {})"] {
         assert!(client.contains(required), "firewall client missing {required}");
     }
     for stale_success in ["Policy change read back", "Policy removal read back"] {
@@ -139,9 +147,9 @@ async fn firewall_delete_forwards_exact_revision_document_after_authorization() 
         request
     });
     let _base = ScopedEnv::set("CADUCEUS_BASE_URL", format!("http://{address}"));
-    let response = app(AppState { tab_root: Arc::new(root) }).oneshot(successor_admin_request(Request::builder().method("DELETE").uri("/api/firewall/policies/aa-bb-cc-dd-ee-ff").header("content-type", "application/json").body(Body::from(r#"{"schema":"caduceus.network.firewall.policy.delete.v1","mac":"aa-bb-cc-dd-ee-ff","expectedRevision":7}"#)).unwrap())).await.unwrap();
+    let response = app(AppState { tab_root: Arc::new(root) }).oneshot(successor_admin_request(Request::builder().method("DELETE").uri("/api/firewall/policies/aa-bb-cc-dd-ee-ff").header("content-type", "application/json").body(Body::from(r#"{"schema":"caduceus.network.firewall.policy.delete.v1","mac":"aa-bb-cc-dd-ee-ff","expectedRevision":"ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD"}"#)).unwrap())).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let request = witness.join().unwrap();
     assert!(request.starts_with("DELETE /api/v1/network/firewall/policies/AA:BB:CC:DD:EE:FF HTTP/1.1\r\n"));
-    assert!(request.ends_with(r#"{"expectedRevision":7,"mac":"AA:BB:CC:DD:EE:FF","schema":"caduceus.network.firewall.policy.delete.v1"}"#));
+    assert!(request.ends_with(r#"{"expectedRevision":"abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd","mac":"AA:BB:CC:DD:EE:FF","schema":"caduceus.network.firewall.policy.delete.v1"}"#));
 }

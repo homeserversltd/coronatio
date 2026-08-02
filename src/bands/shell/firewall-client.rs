@@ -6,6 +6,8 @@ fn shell_firewall_client() -> &'static str {
     }
     function firewallRows(payload, key) { if (Array.isArray(payload)) return payload; for (const source of [payload?.[key], payload?.data?.[key], payload?.result?.[key], payload?.items]) if (Array.isArray(source)) return source; return []; }
     function firewallField(row, ...names) { for (const name of names) if (row?.[name] !== undefined && row?.[name] !== null) return row[name]; return ''; }
+    function firewallRevision(value) { const revision = typeof value === 'string' ? value : ''; return /^[0-9a-f]{64}$/i.test(revision) ? revision.toLowerCase() : ''; }
+    function firewallExpectedRevision(policy, status) { return firewallRevision(firewallField(policy, 'expectedRevision', 'revision')) || firewallRevision(firewallField(status, 'expectedRevision', 'revision')) || firewallRevision(firewallField(status?.readback, 'expectedRevision', 'revision')); }
     function firewallEnforced(status, policy) {
       const mac = canonicalFirewallMac(firewallField(policy, 'mac', 'macAddress'));
       const receipt = policy?.receipt || status?.receipt || status?.readback || {};
@@ -29,7 +31,7 @@ fn shell_firewall_client() -> &'static str {
       const badge = document.querySelector('[data-firewall-state]'); if (badge) badge.className = `ui-badge ui-badge--small ${enforced ? 'ui-badge--success' : 'ui-badge--info'}`;
       const toggle = document.querySelector('[data-firewall-enabled]'); if (toggle) toggle.checked = enabled;
       const sites = firewallRows(policy || {}, 'sites'); const list = document.querySelector('[data-firewall-sites]'); if (list) list.innerHTML = sites.map(site => `<li><code>${escapeHtml(String(site))}</code><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-remove-site="${escapeHtml(String(site))}">Remove</button></li>`).join('') || '<li>No websites allowed yet.</li>';
-      const revision = firewallField(policy || {}, 'expectedRevision', 'revision'); const editor = document.querySelector('[data-firewall-editor]'); if (editor) editor.dataset.firewallRevision = String(revision ?? '');
+      const revision = firewallExpectedRevision(policy, status); const editor = document.querySelector('[data-firewall-editor]'); if (editor) editor.dataset.firewallRevision = revision;
     }
     async function hydrateFirewall() {
       const tablet = document.querySelector('[data-firewall-tablet]'); if (!tablet || !viewportFamilyAdmitted('firewall')) return;
@@ -41,8 +43,8 @@ fn shell_firewall_client() -> &'static str {
       } catch (failure) { if (error) { error.hidden = false; error.textContent = `DNS website policy unavailable: ${firewallMessage(failure)}`; } }
     }
     async function saveFirewall(remove = false) {
-      const mac = canonicalFirewallMac(firewallState.selectedMac); const policy = firewallPolicy(mac) || {}; const editor = document.querySelector('[data-firewall-editor]'); const revision = firewallField(policy, 'expectedRevision', 'revision') ?? editor?.dataset.firewallRevision; const sites = [...document.querySelectorAll('[data-firewall-sites] code')].map(node => node.textContent);
-      if (!mac || revision === '' || revision === undefined || revision === null) return showCoronatioToast(!mac ? 'Select a device first' : 'Policy revision unavailable; refresh first', 'error');
+      const mac = canonicalFirewallMac(firewallState.selectedMac); const policy = firewallPolicy(mac) || {}; const revision = firewallExpectedRevision(policy, firewallState.status || {}); const sites = [...document.querySelectorAll('[data-firewall-sites] code')].map(node => node.textContent);
+      if (!mac || !revision) return showCoronatioToast(!mac ? 'Select a device first' : 'Policy revision unavailable; refresh first', 'error');
       const payload = { schema: 'caduceus.network.firewall.policy.v1', mac, mode: 'allow-only', sites, expectedRevision: revision, enabled: Boolean(document.querySelector('[data-firewall-enabled]')?.checked), enforcement: 'dns-policy' };
       const removePayload = { schema: 'caduceus.network.firewall.policy.delete.v1', mac, expectedRevision: revision };
       try { firewallState.lastReceipt = await firewallJson(`/api/firewall/policies/${encodeURIComponent(mac)}`, remove ? { method: 'DELETE', body: JSON.stringify(removePayload) } : { method: 'PUT', body: JSON.stringify(payload) }); await hydrateFirewall(); const changed = firewallState.lastReceipt?.changed === true; showCoronatioToast(changed ? (remove ? 'Policy removed' : 'Policy changed') : 'No policy change', 'success'); }
