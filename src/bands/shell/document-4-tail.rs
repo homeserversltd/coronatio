@@ -192,6 +192,7 @@ fn shell_document_4_tail() -> &'static str {
     document.body.addEventListener('click', event => { const manager = event.target.closest('[data-manager-open]'); if (manager) { const kind = manager.dataset.managerOpen; if (kind === 'key-guide') managerGuideModal(); else managerKeyModal(kind); return; } const disk = event.target.closest('[data-disk-select]'); if (disk) diskSelection(disk); });
     __DHCP_CLIENT__
     __UNBOUND_CLIENT__
+    __FIREWALL_CLIENT__
     hydrateFavoriteManifest(); hydrateThemeTruth(); hydrateThemeTokenLab();
     hydrateUptime();
     setInterval(tickUptime, 1000);

@@ -9,7 +9,7 @@ const SHELL_UX_INDEX_JSON: &str = include_str!("ux/index.json");
 const SHELL_UX_README: &str = include_str!("ux/README.md");
 #[allow(dead_code)]
 const SHELL_UX_CHILDREN: &[&str] = &[
-    "shell/base-and-chrome.css", "library/_badge.css", "library/_breadcrumbs.css", "library/_button.css", "library/_calendar.css", "library/_card.css", "library/_checkbox.css", "library/_collapsible.css", "library/_editable-field.css", "library/_file-input.css", "library/_icon-button.css", "library/_input.css", "library/_loading-spinner.css", "library/_modal.css", "library/_plus-button.css", "library/_progress-bar.css", "library/_row-info-tile.css", "library/_select.css", "library/_slider.css", "library/_table.css", "library/_tabs.css", "library/_text-box.css", "library/_time-picker.css", "library/_toast.css", "library/_toggle.css", "library/_visibility-toggle.css", "packs/upload.css", "packs/stats.css", "packs/portals.css", "packs/test-services.css", "packs/test-animations.css", "packs/test-config.css", "packs/test-health.css", "packs/admin.css", "packs/dhcp.css", "packs/unbound.css", "shell/document-2-css.css",
+    "shell/base-and-chrome.css", "library/_badge.css", "library/_breadcrumbs.css", "library/_button.css", "library/_calendar.css", "library/_card.css", "library/_checkbox.css", "library/_collapsible.css", "library/_editable-field.css", "library/_file-input.css", "library/_icon-button.css", "library/_input.css", "library/_loading-spinner.css", "library/_modal.css", "library/_plus-button.css", "library/_progress-bar.css", "library/_row-info-tile.css", "library/_select.css", "library/_slider.css", "library/_table.css", "library/_tabs.css", "library/_text-box.css", "library/_time-picker.css", "library/_toast.css", "library/_toggle.css", "library/_visibility-toggle.css", "packs/upload.css", "packs/stats.css", "packs/portals.css", "packs/test-services.css", "packs/test-animations.css", "packs/test-config.css", "packs/test-health.css", "packs/admin.css", "packs/dhcp.css", "packs/firewall.css", "packs/unbound.css", "shell/document-2-css.css",
 ];
 const SHELL_UX_CONTENTS: &[&str] = &[
     include_str!("ux/shell/base-and-chrome.css"),
@@ -47,6 +47,7 @@ const SHELL_UX_CONTENTS: &[&str] = &[
     include_str!("ux/packs/test-health.css"),
     include_str!("ux/packs/admin.css"),
     include_str!("ux/packs/dhcp.css"),
+    include_str!("ux/packs/firewall.css"),
     include_str!("ux/packs/unbound.css"),
     include_str!("ux/shell/document-2-css.css"),
 ];
@@ -68,7 +69,8 @@ fn crown_chrome_js() -> String {
         &render_indicator_modal_registry(Session::Guest),
     )
     .replace("__DHCP_CLIENT__", shell_dhcp_client())
-    .replace("__UNBOUND_CLIENT__", shell_unbound_client());
+    .replace("__UNBOUND_CLIENT__", shell_unbound_client())
+    .replace("__FIREWALL_CLIENT__", shell_firewall_client());
     extract_between(&raw, "<script>", "</script>").unwrap_or_default()
 }
 
@@ -98,6 +100,31 @@ fn render_crown_shell() -> String {
     render_crown_shell_for_session(Session::Guest)
 }
 
+fn remove_admin_only_pane_from_guest_shell(shell: String, pane: &str) -> String {
+    let marker = format!("<section class=\"pane\" id=\"pane-{pane}\"");
+    let Some(start) = shell.find(&marker) else { return shell; };
+    let mut cursor = start;
+    let mut depth = 0usize;
+    loop {
+        let next_open = shell[cursor..].find("<section").map(|offset| cursor + offset);
+        let next_close = shell[cursor..].find("</section>").map(|offset| cursor + offset);
+        match (next_open, next_close) {
+            (Some(open), Some(close)) if open < close => {
+                depth += 1;
+                cursor = open + "<section".len();
+            }
+            (_, Some(close)) if depth > 0 => {
+                depth -= 1;
+                cursor = close + "</section>".len();
+                if depth == 0 {
+                    return format!("{}{}", &shell[..start], &shell[cursor..]);
+                }
+            }
+            _ => return shell,
+        }
+    }
+}
+
 fn render_crown_shell_for_session(session: Session) -> String {
     let nav = render_plan_tabbar(session);
     let shell = [
@@ -120,6 +147,14 @@ fn render_crown_shell_for_session(session: Session) -> String {
         .replace("__STATS_ELEMENTS_FRAGMENT__", &render_stats_elements_fragment(session))
         .replace("__DHCP_CLIENT__", shell_dhcp_client())
         .replace("__UNBOUND_CLIENT__", shell_unbound_client())
+        .replace("__FIREWALL_CLIENT__", shell_firewall_client())
         .replace("__UNBOUND_PANE__", if session == Session::Admin { DNS_PANE } else { "" });
+    let shell = if session == Session::Guest {
+        ["firewall"]
+            .into_iter()
+            .fold(shell, remove_admin_only_pane_from_guest_shell)
+    } else {
+        shell
+    };
     remove_inline_chrome_script(shell)
 }
