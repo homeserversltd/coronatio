@@ -589,6 +589,8 @@ fn shell_document_3() -> &'static str {
     const viewportStreamFamilies = Object.freeze({
       stats: Object.freeze({ topics: ['stats.system'], snapshotRoutes: ['/api/stats', '/api/network/notes'], eventRoute: '/api/stats/pulse', renewRoute: '/api/stats/pulse/renew', authClass: 'public-enhanced' }),
       dhcp: Object.freeze({ topics: ['admin.dhcp'], snapshotRoutes: ['/api/dhcp/leases', '/api/dhcp/reservations', '/api/dhcp/statistics', '/api/dhcp/pool-boundary'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
+      firewall: Object.freeze({ topics: ['admin.firewall'], snapshotRoutes: ['/api/dhcp/leases', '/api/firewall/policies', '/api/firewall/status'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
+      unbound: Object.freeze({ topics: ['admin.dns'], snapshotRoutes: ['/api/dns/records'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
       portals: Object.freeze({ topics: ['core.services'], snapshotRoutes: ['/api/portals/elements'], eventRoute: null, renewRoute: null, authClass: 'public' })
     });
     function viewportFamilyAdmitted(id) {

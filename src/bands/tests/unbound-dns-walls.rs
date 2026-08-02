@@ -1,15 +1,33 @@
     #[test]
-    fn unbound_registry_and_shell_are_admin_only() {
+    fn unbound_shell_target_survives_guest_to_admin_document_attendance() {
         let tab = native_tab_contracts().into_iter().find(|tab| tab.id == "unbound").unwrap();
         assert_eq!(tab.display_name, "DNS");
         assert!(tab.admin_only);
-        let admin = render_crown_shell_for_session(Session::Admin);
+
         let guest = render_crown_shell_for_session(Session::Guest);
-        for required in ["pane-unbound", "Local DNS", "data-dns-form", "data-dns-records", "data-dns-refresh"] {
+        assert!(
+            !guest.contains(r#"data-tab-id="unbound""#),
+            "guest shell must not declare the DNS tab"
+        );
+        for forbidden in [
+            r#"id="pane-unbound""#,
+            r#"data-view-panel="unbound""#,
+            r#"data-admin-viewport="unbound""#,
+        ] {
+            assert!(
+                !guest.contains(forbidden),
+                "guest shell must omit protected DNS pane marker {forbidden}"
+            );
+        }
+
+        let admin = render_crown_shell_for_session(Session::Admin);
+        assert!(admin.contains(r#"data-tab-id="unbound""#));
+        assert_eq!(admin.matches(r#"id="pane-unbound""#).count(), 1);
+        assert_eq!(admin.matches(r#"data-view-panel="unbound""#).count(), 1);
+        assert_eq!(admin.matches(r#"data-admin-viewport="unbound""#).count(), 1);
+        for required in ["Local DNS", "data-dns-form", "data-dns-records", "data-dns-refresh"] {
             assert!(admin.contains(required), "admin missing {required}");
         }
-        assert!(!guest.contains("id=\"pane-unbound\""));
-        assert!(!guest.contains("data-admin-viewport=\"unbound\""));
     }
 
     #[test]
@@ -21,7 +39,10 @@
         for forbidden in ["setInterval(hydrateDns", "innerHTML", "sudo", "/usr/local/sbin", "/etc/unbound"] {
             assert!(!client.contains(forbidden), "DNS client retained forbidden {forbidden}");
         }
-        assert!(crown_chrome_js().contains("hydrateDns"));
+        let chrome = crown_chrome_js();
+        assert!(chrome.contains("hydrateDns"));
+        assert!(chrome.contains("unbound: Object.freeze({ topics: ['admin.dns'], snapshotRoutes: ['/api/dns/records'], eventRoute: null, renewRoute: null, authClass: 'admin' })"));
+        assert!(chrome.contains("if (!pane || !viewportFamilyAdmitted('unbound') || document.visibilityState !== 'visible') return;"));
     }
 
     #[tokio::test]

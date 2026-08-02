@@ -148,9 +148,9 @@ fn render_crown_shell_for_session(session: Session) -> String {
         .replace("__DHCP_CLIENT__", shell_dhcp_client())
         .replace("__UNBOUND_CLIENT__", shell_unbound_client())
         .replace("__FIREWALL_CLIENT__", shell_firewall_client())
-        .replace("__UNBOUND_PANE__", if session == Session::Admin { DNS_PANE } else { "" });
+        .replace("__UNBOUND_PANE__", DNS_PANE);
     let shell = if session == Session::Guest {
-        ["firewall"]
+        ["unbound", "firewall"]
             .into_iter()
             .fold(shell, remove_admin_only_pane_from_guest_shell)
     } else {

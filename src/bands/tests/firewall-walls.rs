@@ -22,6 +22,7 @@ fn firewall_registry_css_and_client_are_composed() {
     assert!(admin.contains("data-pane-panel=\"firewall\""));
     assert!(!guest.contains("<div class=\"firewall-tablet\""));
     assert!(!guest.contains("data-pane-panel=\"firewall\""));
+    assert!(chrome.contains("firewall: Object.freeze({ topics: ['admin.firewall'], snapshotRoutes: ['/api/dhcp/leases', '/api/firewall/policies', '/api/firewall/status'], eventRoute: null, renewRoute: null, authClass: 'admin' })"));
     assert!(chrome.contains("hydrateFirewall"));
     assert!(chrome.contains("viewportFamilyAdmitted('firewall')"));
     let css = include_str!("../shell/ux/packs/firewall.css");
