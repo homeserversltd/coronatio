@@ -5,6 +5,7 @@
     "runtime",
     "routes",
     "caduceus",
+    "caduceus-binary",
     "router-readback",
     "full-rust-routes",
     "crown-law",

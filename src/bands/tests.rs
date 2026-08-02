@@ -55,6 +55,7 @@ mod tests {
     include!("tests/star-guest-caduceus-walls.rs");
     include!("tests/hyalos-consumer-walls.rs");
     include!("tests/debug-emitter-walls.rs");
+    include!("tests/hestia-bundle-walls.rs");
 
     include!("tests/portals-htmx-mirror-walls.rs");
     include!("tests/portals-currentness-walls.rs");

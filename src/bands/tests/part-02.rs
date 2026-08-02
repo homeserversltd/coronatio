@@ -30,14 +30,15 @@
         ] {
             assert!(admin.contains(&format!("class=\"{class}")), "missing og admin class: {class}");
         }
-        assert_eq!(admin.matches("data-admin-action-id=").count(), 7);
+        assert_eq!(admin.matches("data-admin-action-id=").count(), 6);
         assert!(admin.contains("data-admin-action-strip=\"wrapped-row\""));
         assert!(admin.contains("data-admin-action-strip-count=\"7\""));
         assert!(!admin.contains("Rotate Capability Key"));
-        for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "view-logs", "install-certificate"] {
+        for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "view-logs"] {
             assert!(admin.contains(&format!("data-admin-action-id=\"{action}\"")), "missing SystemControls action {action}");
         }
         assert_eq!(admin.matches("ui-button--medium system-controls-btn").count(), 7);
+        assert_eq!(admin.matches("data-hestia-certificate-open").count(), 1);
         assert_eq!(admin.matches("class=\"disk-column\"").count(), 2);
         assert_eq!(admin.matches("class=\"action-button ").count(), 16);
         for label in [

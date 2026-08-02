@@ -772,7 +772,7 @@
     async fn hx_exemplar_admin_action_strip_routes_and_og_affordance_markup() {
         let _guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let router = app(AppState { tab_root: Arc::new(test_tab_root("hx-admin-actions")) });
-        for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "view-logs", "install-certificate"] {
+        for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "view-logs"] {
             let method = if action == "view-logs" { "GET" } else { "POST" };
             let response = router
                 .clone()
@@ -807,9 +807,11 @@
         for toggle in ["ssh-password-authentication", "ssh-service", "samba-file-sharing"] {
             assert!(shell.contains(&format!(r#"hx-post="/admit/admin/toggle/{toggle}""#)), "missing {toggle}");
         }
-        for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website", "install-certificate"] {
+        for action in ["hard-drive-test", "update", "restart", "shutdown", "restart-website"] {
             assert!(shell.contains(&format!(r#"hx-post="/admit/admin/action/{action}""#)), "missing {action}");
         }
+        assert!(shell.contains("data-hestia-certificate-open"));
+        assert!(!shell.contains(r#"hx-post="/admit/admin/action/install-certificate""#));
         assert!(shell.contains(r#"hx-get="/admit/admin/action/view-logs""#));
         assert!(shell.contains(r#"data-admin-action-result data-og-affordance="toast-mapped-to-result-strip""#));
         assert!(shell.contains("hx-confirm=\"Restart HOMESERVER now?"));

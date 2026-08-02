@@ -549,7 +549,6 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
         "shutdown" => Some(("Shutdown", "POST", "/api/admin/system/shutdown", true)),
         "restart-website" => Some(("Restart Website", "POST", "/api/admin/services/hard-reset", true)),
         "view-logs" => Some(("View Logs", "GET", "/api/admin/logs/homeserver", false)),
-        "install-certificate" => Some(("Install Certificate", "POST", "/api/admin/refresh-root-crt", true)),
         _ => None,
     }
 }

@@ -26,6 +26,7 @@
             "/api/upload/default-directory",
             "/api/upload/pin-required-status",
             "/api/uptime",
+            "/api/admin/download-root-crt",
             "/status/power/usage",
         ]
     }
@@ -41,7 +42,6 @@
         vec![
             "/api/vault/status",
             "/api/admin/logs/homeserver",
-            "/api/admin/download-root-crt",
             "/api/crypto/getKey",
             "/api/admin/updates/check",
             "/api/admin/updates/modules",
@@ -142,8 +142,8 @@
         let og = field_005b_og_admin_gated_get_routes();
         assert_eq!(all.len(), 112, "new GET route entered full-rust-routes.rs and must be FIELD-005b-classified");
         assert_eq!(typed.len(), 12, "typed-projection bucket changed");
-        assert_eq!(generic.len(), 88, "generic-projected-this-slice bucket changed");
-        assert_eq!(real.len(), 10, "real-body-exception bucket changed");
+        assert_eq!(generic.len(), 87, "generic-projected-this-slice bucket changed");
+        assert_eq!(real.len(), 11, "real-body-exception bucket changed");
         assert_eq!(og.len(), 2, "og-admin-gated GET bucket changed");
 
         let mut bucketed = std::collections::BTreeMap::new();

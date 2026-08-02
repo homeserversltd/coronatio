@@ -1535,6 +1535,51 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 .manager-route-state, .manager-action-reading { color: var(--warning); border-left: 3px solid var(--warning); padding-left: .6rem; }
 .manager-warning { color: var(--text); font-size: .9rem; }
 .disk-item[data-disk-select] { width: 100%; text-align: left; cursor: pointer; color: inherit; }
+
+/* Hestia public household trust download, composed in the original admin modal grammar. */
+.hestia-certificate-modal {
+  width: min(100%, 46rem);
+}
+
+.hestia-certificate-modal h2 {
+  margin-bottom: 0.75rem;
+}
+
+.hestia-certificate-modal .modal-body {
+  color: var(--text);
+}
+
+.hestia-certificate-promise {
+  padding: 0.8rem;
+  border-left: 4px solid var(--success);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--success) 10%, var(--background));
+}
+
+.hestia-certificate-modal label {
+  font-weight: 700;
+}
+
+.hestia-certificate-modal select {
+  width: 100%;
+}
+
+.hestia-certificate-modal ol {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 1.4rem;
+}
+
+.hestia-browser-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.hestia-certificate-modal [data-hestia-certificate-download] {
+  text-decoration: none;
+}
 .disk-item[data-disk-select].selected { outline: 2px solid var(--accent); outline-offset: 2px; }
 .disk-actions[data-disk-actions-state="blocked"] [data-disk-action] { opacity: .6; cursor: not-allowed; }
 /* Provenance: OG KeyManager.css/DiskManager.css; token fold --primary,--border,--text,--warning => Crown theme aliases. */

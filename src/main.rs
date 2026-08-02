@@ -24,6 +24,7 @@ include!("bands/contracts.rs");
 include!("bands/runtime.rs");
 include!("bands/routes.rs");
 include!("bands/caduceus.rs");
+include!("bands/caduceus-binary.rs");
 #[allow(dead_code)]
 mod caduceus_access {
     use super::*;
