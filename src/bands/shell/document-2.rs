@@ -238,6 +238,7 @@ fn shell_document_2() -> &'static str {
           </section>
         </div>
       </section>
+      __UNBOUND_PANE__
       </div>
     </section>
   </main>

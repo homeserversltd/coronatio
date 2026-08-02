@@ -88,6 +88,17 @@ fn native_crown_panes() -> Vec<CrownPane> {
             route: "/#dhcp".to_string(),
             state_route: "/api/panes/dhcp".to_string(),
         },
+        CrownPane {
+            id: "unbound".to_string(),
+            title: "DNS".to_string(),
+            role: "local DNS records".to_string(),
+            summary: "Local home.arpa A records through the Caduceus Unbound actuator.".to_string(),
+            order: 90,
+            admin_only: true,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#unbound".to_string(),
+            state_route: "/api/dns/records".to_string(),
+        },
 
     ]
 }
