@@ -118,6 +118,8 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/dhcp/health", get(dhcp_read_route))
         .route("/api/dhcp/statistics", get(dhcp_read_route))
         .route("/api/dhcp/pool-boundary", get(dhcp_read_route).post(dhcp_pool_boundary_route))
+        .route("/api/dns/records", get(dns_records_get_route).post(dns_records_post_route))
+        .route("/api/dns/records/:name", delete(dns_records_delete_route))
         .route("/api/nasLinker/browse", get(homeserver_rust_read_route))
         .route("/api/nasLinker/deploy", post(admin_class_generic_mutation_route))
         .route("/api/nasLinker/delete", delete(admin_class_generic_mutation_route))
@@ -491,6 +493,7 @@ fn admin_class_generic_refusal_family(path: &str) -> &'static str {
 include!("full-rust-routes/read.rs");
 
 include!("full-rust-routes/dhcp.rs");
+include!("full-rust-routes/unbound.rs");
 
 include!("full-rust-routes/network-notes.rs");
 
@@ -666,6 +669,8 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/dhcp/health", &["get"]),
         ("/api/dhcp/statistics", &["get"]),
         ("/api/dhcp/pool-boundary", &["get", "post"]),
+        ("/api/dns/records", &["get", "post"]),
+        ("/api/dns/records/:name", &["delete"]),
         ("/api/nasLinker/browse", &["get"]),
         ("/api/nasLinker/deploy", &["post"]),
         ("/api/nasLinker/delete", &["delete"]),

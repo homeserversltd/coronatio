@@ -618,6 +618,7 @@ fn shell_document_3() -> &'static str {
       if (!viewportFamilyAdmitted(active)) return;
       if (active === 'stats') { hydrateStats(); connectPulseStream(); }
       if (active === 'dhcp') hydrateDhcp();
+      if (active === 'unbound') hydrateDns();
       if (active === 'portals') startPortalCurrentnessCadence();
     }
     function schedulePulseRenewal(renewRoute) {
@@ -728,7 +729,8 @@ fn shell_document_3() -> &'static str {
           });
         }
         try { if (id === 'stats') await bounded(() => hydrateStats(), hydrationTimeoutMs, 'hydration-timeout');
-          else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout'); }
+          else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout');
+          else if (id === 'unbound') await bounded(() => hydrateDns(), hydrationTimeoutMs, 'hydration-timeout'); }
         catch (error) { if ((error?.message || '') === 'hydration-timeout') crownDebug.mark(floorDebugHandle, 'hydration-timeout', { guest: id, phase: 'hydration' }); throw error; }
         if (!pane || pane.dataset.viewportFaulted === 'true') throw new Error('guest-unhealthy');
         return pane;

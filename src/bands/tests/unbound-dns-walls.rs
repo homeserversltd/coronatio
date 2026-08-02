@@ -1,0 +1,52 @@
+    #[test]
+    fn unbound_registry_and_shell_are_admin_only() {
+        let tab = native_tab_contracts().into_iter().find(|tab| tab.id == "unbound").unwrap();
+        assert_eq!(tab.display_name, "DNS");
+        assert!(tab.admin_only);
+        let admin = render_crown_shell_for_session(Session::Admin);
+        let guest = render_crown_shell_for_session(Session::Guest);
+        for required in ["pane-unbound", "Local DNS", "data-dns-form", "data-dns-records", "data-dns-refresh"] {
+            assert!(admin.contains(required), "admin missing {required}");
+        }
+        assert!(!guest.contains("id=\"pane-unbound\""));
+        assert!(!guest.contains("data-admin-viewport=\"unbound\""));
+    }
+
+    #[test]
+    fn unbound_client_is_externalized_delegated_and_safe() {
+        let client = include_str!("../shell/unbound-client.rs");
+        for required in ["hydrateDns", "viewportFamilyAdmitted('unbound')", "document.visibilityState !== 'visible'", "document.body.addEventListener('submit'", "document.body.addEventListener('click'", "textContent", "/api/dns/records"] {
+            assert!(client.contains(required), "DNS client missing {required}");
+        }
+        for forbidden in ["setInterval(hydrateDns", "innerHTML", "sudo", "/usr/local/sbin", "/etc/unbound"] {
+            assert!(!client.contains(forbidden), "DNS client retained forbidden {forbidden}");
+        }
+        assert!(crown_chrome_js().contains("hydrateDns"));
+    }
+
+    #[tokio::test]
+    async fn unbound_guests_refuse_before_caduceus_contact() {
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("unbound-guest-refusal")) });
+        for request in [
+            Request::builder().uri("/api/dns/records").body(Body::empty()).unwrap(),
+            Request::builder().method("POST").uri("/api/dns/records").header("content-type", "application/json").body(Body::from(r#"{"name":"app.home.arpa","address":"192.168.123.2"}"#)).unwrap(),
+            Request::builder().method("DELETE").uri("/api/dns/records/app.home.arpa").body(Body::empty()).unwrap(),
+        ] {
+            let response = router.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+            let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            assert!(body.contains("caduceus-access-origin-refused"), "{body}");
+        }
+    }
+
+    #[test]
+    fn unbound_route_contract_is_bounded_and_receipt_preserving() {
+        let source = std::fs::read_to_string("src/bands/full-rust-routes/unbound.rs").unwrap();
+        for action in [r#"{"action": "status"}"#, "ensure-local-data", "\"action\": \"remove\"", "/api/v1/network/dns"] { assert!(source.contains(action), "missing {action}"); }
+        for forbidden in ["sudo", "/usr/local/sbin", "/etc/unbound", "setInterval", "action_path"] { assert!(!source.contains(forbidden), "forbidden {forbidden}"); }
+        let inventory = full_rust_route_inventory();
+        assert!(inventory.iter().any(|(path, methods)| *path == "/api/dns/records" && *methods == ["get", "post"]));
+        assert!(inventory.iter().any(|(path, methods)| *path == "/api/dns/records/:name" && *methods == ["delete"]));
+        let response = dns_response("/api/dns/records", CaduceusHttpReadback { ok: false, status: 422, path: "/api/v1/network/dns".to_string(), body: serde_json::json!({"ok":false,"firstMissingSignal":"address-private-required","validation":{"address":"private"}}), first_missing_signal: "address-private-required".to_string() });
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }

@@ -191,6 +191,7 @@ fn shell_document_4_tail() -> &'static str {
     function diskSelection(item) { const actions = document.querySelector('[data-disk-actions-state]'); if (!actions) return; document.querySelectorAll('[data-disk-select]').forEach(node => node.classList.toggle('selected', node === item)); const label = item.dataset.diskDevice || item.dataset.diskDestination || 'selection'; actions.dataset.diskActionsState = 'blocked'; actions.querySelector('[data-disk-action-reading]').textContent = `${label} selected. Disk actions are blocked: their og routes exist in quarry but no Crown Caduceus actuator is admitted.`; actions.querySelectorAll('[data-disk-action]').forEach(button => { button.disabled = true; button.title = 'Blocked: no Crown Caduceus route is admitted'; }); }
     document.body.addEventListener('click', event => { const manager = event.target.closest('[data-manager-open]'); if (manager) { const kind = manager.dataset.managerOpen; if (kind === 'key-guide') managerGuideModal(); else managerKeyModal(kind); return; } const disk = event.target.closest('[data-disk-select]'); if (disk) diskSelection(disk); });
     __DHCP_CLIENT__
+    __UNBOUND_CLIENT__
     hydrateFavoriteManifest(); hydrateThemeTruth(); hydrateThemeTokenLab();
     hydrateUptime();
     setInterval(tickUptime, 1000);

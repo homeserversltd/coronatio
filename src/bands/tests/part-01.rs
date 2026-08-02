@@ -102,7 +102,7 @@
             .await
             .unwrap();
         let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"]);
+        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp", "unbound"]);
         assert_eq!(root.first_party_panes.len(), PRIMARY_TABS.len());
     }
 
@@ -178,8 +178,13 @@
     fn native_pane_bodies_are_not_placeholder_cards() {
         let shell = render_crown_shell();
         for pane in PRIMARY_TABS {
+            if pane == "unbound" {
+                continue;
+            }
             assert!(shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
         }
+        let admin_shell = render_crown_shell_for_session(Session::Admin);
+        assert!(admin_shell.contains("data-pane-panel=\"unbound\""));
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
         }
