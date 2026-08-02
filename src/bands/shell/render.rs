@@ -120,6 +120,6 @@ fn render_crown_shell_for_session(session: Session) -> String {
         .replace("__STATS_ELEMENTS_FRAGMENT__", &render_stats_elements_fragment(session))
         .replace("__DHCP_CLIENT__", shell_dhcp_client())
         .replace("__UNBOUND_CLIENT__", shell_unbound_client())
-        .replace("__UNBOUND_PANE__", if session == Session::Admin { DNS_PANE } else { "" });
+        .replace("__UNBOUND_PANE__", DNS_PANE);
     remove_inline_chrome_script(shell)
 }
