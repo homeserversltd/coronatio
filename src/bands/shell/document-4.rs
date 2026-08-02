@@ -51,9 +51,8 @@ fn shell_document_4() -> &'static str {
       const breadcrumbs = uploadBreadcrumbs();
       if (!breadcrumbs) return;
       const selectedPath = String(path || '/mnt/nas').replace(/\/+$/, '') || '/mnt/nas';
-      const nasRoot = '/mnt/nas'; const treeRoot = document.querySelector('[data-upload-tree] [data-directory-path]')?.dataset.directoryPath || nasRoot; const selectedRoot = selectedPath.startsWith(nasRoot) ? nasRoot : treeRoot;
-      const crumbs = [{ name: 'nas', path: nasRoot }]; let current = selectedRoot;
-      if (selectedRoot !== nasRoot) crumbs.push({ name: selectedRoot.split('/').filter(Boolean).pop() || 'nas', path: selectedRoot });
+      const nasRoot = '/mnt/nas'; const treeRoot = document.querySelector('[data-upload-root-path]')?.value || nasRoot; const selectedRoot = selectedPath.startsWith(nasRoot) ? nasRoot : treeRoot;
+      const crumbs = [{ name: 'nas', path: selectedRoot }]; let current = selectedRoot;
       selectedPath.slice(selectedRoot.length).split('/').filter(Boolean).forEach(part => { current += '/' + part; crumbs.push({ name: part, path: current }); });
       if (crumbs.length <= 1) { breadcrumbs.innerHTML = ''; return; }
       breadcrumbs.innerHTML = crumbs.map((crumb, index) => `<button type="button" class="breadcrumb-item ${crumb.path === selectedPath ? 'current' : ''}" data-upload-breadcrumb-path="${crumb.path}" aria-current="${crumb.path === selectedPath ? 'page' : 'false'}">${crumb.name}</button>${index < crumbs.length - 1 ? '<span class="breadcrumb-separator" aria-hidden="true"> / </span>' : ''}`).join('');
