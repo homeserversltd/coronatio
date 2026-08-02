@@ -477,7 +477,7 @@ fn shell_document_4() -> &'static str {
     function renderKeaLeases(data, notes = {}) {
       const tbody = document.querySelector('[data-kea-leases]'); if (!tbody) return; if (data.keaLeases && !data.leases) { tbody.innerHTML = '<tr><td colspan="4">No Kea leases found.</td></tr>'; return; }
       const leases = data.leases || []; tbody.innerHTML = leases.length ? leases.map(lease => {
-        const mac = String(lease.mac || ''), note = notes[mac] ?? notes[mac.toLowerCase()] ?? '', pencil = headerState.isAdmin ? `<button type="button" class="edit-note-button" data-edit-note-button data-mac="${escapeHtml(mac)}" data-note="${escapeHtml(note)}" title="Edit device note" aria-label="Edit note for ${escapeHtml(mac)}"><i class="fas fa-pencil-alt" aria-hidden="true"></i></button>` : ''; return `<tr><td class="device-note-cell" data-label="Note:"><span class="note-text" data-note-text data-mac="${escapeHtml(mac)}">${escapeHtml(note)}</span>${pencil}</td><td data-label="Hostname:">${escapeHtml(lease.hostname || 'N/A')}</td><td data-label="IP:">${escapeHtml(lease.ip || '')}</td><td data-label="MAC:" title="${escapeHtml(mac)}">${escapeHtml(mac)}</td></tr>`;
+        const mac = String(lease.mac || ''), canonicalMac = canonicalNetworkNoteMac(mac), note = canonicalMac ? notes[canonicalMac] ?? '' : '', pencil = headerState.isAdmin ? `<button type="button" class="edit-note-button" data-edit-note-button data-mac="${escapeHtml(mac)}" data-note="${escapeHtml(note)}" title="Edit device note" aria-label="Edit note for ${escapeHtml(mac)}"><i class="fas fa-pencil-alt" aria-hidden="true"></i></button>` : ''; return `<tr><td class="device-note-cell" data-label="Note:"><span class="note-text" data-note-text data-mac="${escapeHtml(mac)}">${escapeHtml(note)}</span>${pencil}</td><td data-label="Hostname:">${escapeHtml(lease.hostname || 'N/A')}</td><td data-label="IP:">${escapeHtml(lease.ip || '')}</td><td data-label="MAC:" title="${escapeHtml(mac)}">${escapeHtml(mac)}</td></tr>`;
       }).join('') : '<tr><td colspan="4">No Kea leases found.</td></tr>';
     }
     function ensureNoteModal() {
@@ -494,6 +494,7 @@ fn shell_document_4() -> &'static str {
     }
     function statsSessionHeaders() { return {}; }
     function normalizeNetworkNotes(payload) { const notes = payload?.networkNotes || payload?.notes || payload?.data?.networkNotes || payload?.data?.notes || payload; return notes && typeof notes === 'object' && !Array.isArray(notes) ? notes : {}; }
+    function canonicalNetworkNoteMac(value) { const raw = String(value ?? ''), match = raw.match(/^([0-9a-f]{2})([:-])(?:[0-9a-f]{2}\2){4}[0-9a-f]{2}$/i); return match ? raw.split(match[2]).map(octet => octet.toUpperCase()).join(':') : null; }
     function renderProcesses(data) {
       const target = document.querySelector('[data-process-usage-list]');
       if (!target) return;

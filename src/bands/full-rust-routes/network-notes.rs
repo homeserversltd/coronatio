@@ -5,6 +5,33 @@ struct NetworkNoteWrite {
     note: String,
 }
 
+fn canonical_network_note_mac(raw: &str) -> Option<String> {
+    let bytes = raw.as_bytes();
+    if bytes.len() != 17 {
+        return None;
+    }
+    let separator = bytes[2];
+    if separator != b':' && separator != b'-' {
+        return None;
+    }
+    let mut canonical = String::with_capacity(17);
+    for octet in 0..6 {
+        let offset = octet * 3;
+        if !bytes[offset].is_ascii_hexdigit() || !bytes[offset + 1].is_ascii_hexdigit() {
+            return None;
+        }
+        if octet > 0 {
+            if bytes[offset - 1] != separator {
+                return None;
+            }
+            canonical.push(':');
+        }
+        canonical.push((bytes[offset] as char).to_ascii_uppercase());
+        canonical.push((bytes[offset + 1] as char).to_ascii_uppercase());
+    }
+    Some(canonical)
+}
+
 async fn network_notes_read_route() -> Response {
     let readback = caduceus_http("GET", "/api/v1/network/notes");
     let notes = readback.body.get("notes").cloned();
@@ -36,8 +63,12 @@ async fn network_notes_read_route() -> Response {
 
 async fn network_notes_write_route(headers: axum::http::HeaderMap, body: Bytes) -> Response {
     let payload: NetworkNoteWrite = match serde_json::from_slice::<NetworkNoteWrite>(&body) {
-        Ok(payload) if !payload.mac.is_empty() => payload,
+        Ok(payload) => payload,
         _ => return network_note_invalid_payload_response(),
+    };
+    let mac = match canonical_network_note_mac(&payload.mac) {
+        Some(mac) => mac,
+        None => return network_note_invalid_payload_response(),
     };
     let authority = mutation_authority();
     let attendance = match authority.authorize(
@@ -47,7 +78,7 @@ async fn network_notes_write_route(headers: axum::http::HeaderMap, body: Bytes) 
         Ok(attendance) => attendance,
         Err(refusal) => return network_note_write_response(mutation_refusal_readback("/api/v1/network/notes", refusal), false),
     };
-    let requested = serde_json::json!({"mac": payload.mac, "note": payload.note});
+    let requested = serde_json::json!({"mac": mac, "note": payload.note});
     let readback = caduceus_http_json_with_attendance_and_document(
         "PUT",
         "/api/v1/network/notes",
