@@ -67,5 +67,6 @@ mod tests {
     include!("tests/theme-net-author-face-walls.rs");
     include!("tests/indicator-infinite-infinite-walls.rs");
     include!("tests/immortal-floor-walls.rs");
+    include!("tests/transaction-health.rs");
 
 }

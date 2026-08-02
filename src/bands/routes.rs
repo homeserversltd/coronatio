@@ -13,23 +13,34 @@ async fn crown_chrome_script_route() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "application/javascript; charset=utf-8")], crown_chrome_js())
 }
 
-const CORONATIO_SOURCE_SHA: &str = match option_env!("CORONATIO_SOURCE_SHA") { Some(value) => value, None => "" };
-const CORONATIO_BUILD_SHA: &str = match option_env!("CORONATIO_BUILD_SHA") { Some(value) => value, None => "" };
+const CORONATIO_SOURCE_SHA: &str = match option_env!("CORONATIO_SOURCE_SHA") {
+    Some(value) => value,
+    None => "",
+};
+const CORONATIO_BUILD_SHA: &str = match option_env!("CORONATIO_BUILD_SHA") {
+    Some(value) => value,
+    None => "",
+};
 
 fn valid_coronatio_sha(value: &str) -> bool {
     value.len() == 40 && value.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-async fn health_route() -> impl IntoResponse {
-    let identity_ok = valid_coronatio_sha(CORONATIO_SOURCE_SHA) && CORONATIO_SOURCE_SHA == CORONATIO_BUILD_SHA;
+fn health_response_for(source_sha: &str, build_sha: &str) -> (StatusCode, serde_json::Value) {
+    let identity_ok = valid_coronatio_sha(source_sha) && source_sha == build_sha;
     let status = if identity_ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
-    (status, Json(serde_json::json!({
+    (status, serde_json::json!({
         "ok": identity_ok,
         "service": "coronatio",
         "schema": "coronatio.health.v1",
-        "source_sha": CORONATIO_SOURCE_SHA,
-        "build_sha": CORONATIO_BUILD_SHA
-    })))
+        "source_sha": source_sha,
+        "build_sha": build_sha,
+    }))
+}
+
+async fn health_route() -> impl IntoResponse {
+    let (status, payload) = health_response_for(CORONATIO_SOURCE_SHA, CORONATIO_BUILD_SHA);
+    (status, Json(payload))
 }
 
 async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
