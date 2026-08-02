@@ -10,6 +10,14 @@ struct FirewallPolicyWrite {
     enforcement: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FirewallPolicyDelete {
+    schema: String,
+    mac: String,
+    expected_revision: serde_json::Value,
+}
+
 fn firewall_guest_refusal(path: &str) -> Response {
     (
         StatusCode::UNAUTHORIZED,
@@ -94,9 +102,26 @@ fn firewall_policy_request(policy: FirewallPolicyWrite, path_mac: &str) -> Resul
     }))
 }
 
+fn firewall_delete_request(policy: FirewallPolicyDelete, path_mac: &str) -> Result<serde_json::Value, &'static str> {
+    let mac = canonical_firewall_mac(&policy.mac).ok_or("firewall-policy-mac-invalid")?;
+    if mac != path_mac {
+        return Err("firewall-policy-mac-mismatch");
+    }
+    if policy.schema != "caduceus.network.firewall.policy.delete.v1" || !policy.expected_revision.is_u64() {
+        return Err("firewall-policy-delete-invalid");
+    }
+    Ok(serde_json::json!({
+        "schema": "caduceus.network.firewall.policy.delete.v1",
+        "mac": mac,
+        "expectedRevision": policy.expected_revision,
+    }))
+}
+
 fn firewall_upstream_response(readback: CaduceusHttpReadback, method: &str, path: &str) -> Response {
-    if readback.ok {
-        return (StatusCode::OK, Json(readback.body)).into_response();
+    if !readback.body.is_null() {
+        let status = StatusCode::from_u16(readback.status)
+            .unwrap_or_else(|_| mutation_response_status(&readback));
+        return (status, Json(readback.body)).into_response();
     }
     (
         mutation_response_status(&readback),
@@ -174,7 +199,11 @@ async fn firewall_policy_put_route(
     )
 }
 
-async fn firewall_policy_delete_route(headers: axum::http::HeaderMap, Path(raw_mac): Path<String>) -> Response {
+async fn firewall_policy_delete_route(
+    headers: axum::http::HeaderMap,
+    Path(raw_mac): Path<String>,
+    payload: Option<Json<FirewallPolicyDelete>>,
+) -> Response {
     let path = format!("/api/firewall/policies/{raw_mac}");
     if session_from_headers(&headers) != Session::Admin {
         return firewall_guest_refusal(&path);
@@ -182,6 +211,10 @@ async fn firewall_policy_delete_route(headers: axum::http::HeaderMap, Path(raw_m
     let mac = match canonical_firewall_mac(&raw_mac) {
         Some(mac) => mac,
         None => return firewall_invalid_payload_response("firewall-policy-mac-invalid"),
+    };
+    let request = match payload.and_then(|Json(policy)| firewall_delete_request(policy, &mac).ok()) {
+        Some(request) => request,
+        None => return firewall_invalid_payload_response("firewall-policy-delete-invalid"),
     };
     let authority = mutation_authority();
     let attendance = match authority.authorize(
@@ -193,7 +226,7 @@ async fn firewall_policy_delete_route(headers: axum::http::HeaderMap, Path(raw_m
     };
     let upstream = format!("/api/v1/network/firewall/policies/{mac}");
     firewall_upstream_response(
-        caduceus_http_json_with_attendance_and_document("DELETE", &upstream, serde_json::json!({"mac": mac}), Some(&attendance.proof), Some(&attendance.document)),
+        caduceus_http_json_with_attendance_and_document("DELETE", &upstream, request, Some(&attendance.proof), Some(&attendance.document)),
         "DELETE",
         &path,
     )

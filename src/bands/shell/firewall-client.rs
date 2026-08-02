@@ -7,14 +7,16 @@ fn shell_firewall_client() -> &'static str {
     function firewallRows(payload, key) { if (Array.isArray(payload)) return payload; for (const source of [payload?.[key], payload?.data?.[key], payload?.result?.[key], payload?.items]) if (Array.isArray(source)) return source; return []; }
     function firewallField(row, ...names) { for (const name of names) if (row?.[name] !== undefined && row?.[name] !== null) return row[name]; return ''; }
     function firewallEnforced(status, policy) {
+      const mac = canonicalFirewallMac(firewallField(policy, 'mac', 'macAddress'));
       const receipt = policy?.receipt || status?.receipt || status?.readback || {};
+      const receiptMac = canonicalFirewallMac(firewallField(receipt, 'mac', 'macAddress', 'policyMac', 'policy_mac'));
       const missing = receipt.firstMissingSignal ?? policy?.firstMissingSignal ?? status?.firstMissingSignal;
-      return !missing && receipt.bindingVerified === true && receipt.nft?.applied === true && receipt.nft?.liveReadback === true && receipt.dns?.required === true && receipt.dns?.validated === true && receipt.dns?.applied === true;
+      return Boolean(policy && policy.enabled === true && mac && receiptMac === mac) && !missing && receipt.bindingVerified === true && receipt.nft?.applied === true && receipt.nft?.liveReadback === true && receipt.dns?.required === true && receipt.dns?.validated === true && receipt.dns?.applied === true;
     }
     function firewallPolicy(mac) { return firewallState.policies.find(policy => canonicalFirewallMac(firewallField(policy, 'mac', 'macAddress')) === mac); }
     function firewallSet(selector, text) { const node = document.querySelector(selector); if (node) node.textContent = text; }
     function firewallMessage(payload) { return payload?.firstMissingSignal || payload?.error || payload?.message || 'Caduceus did not confirm this request'; }
-    async function firewallJson(route, options = {}) { const response = await fetch(route, { cache: 'no-store', headers: options.body ? { 'content-type': 'application/json' } : {}, ...options }); const body = await response.json().catch(() => ({})); if (!response.ok) throw body; return body; }
+    async function firewallJson(route, options = {}) { const response = await fetch(route, { cache: 'no-store', headers: options.body ? { 'content-type': 'application/json' } : {}, ...options }); const body = await response.json().catch(() => ({})); if (!response.ok || body?.ok === false || body?.success === false || body?.accepted === false || body?.firstMissingSignal && body.firstMissingSignal !== 'none') throw body; return body; }
     function renderFirewall() {
       const select = document.querySelector('[data-firewall-device]'); if (!select) return;
       const selected = firewallState.selectedMac || canonicalFirewallMac(select.value) || canonicalFirewallMac(firewallField(firewallState.devices[0], 'mac', 'macAddress', 'hwAddress', 'hw-address'));
@@ -39,9 +41,11 @@ fn shell_firewall_client() -> &'static str {
       } catch (failure) { if (error) { error.hidden = false; error.textContent = `DNS website policy unavailable: ${firewallMessage(failure)}`; } }
     }
     async function saveFirewall(remove = false) {
-      const mac = firewallState.selectedMac; const policy = firewallPolicy(mac) || {}; const editor = document.querySelector('[data-firewall-editor]'); const sites = [...document.querySelectorAll('[data-firewall-sites] code')].map(node => node.textContent);
-      const payload = { schema: 'caduceus.network.firewall.policy.v1', mac, mode: 'allow-only', sites, expectedRevision: firewallField(policy, 'expectedRevision', 'revision') ?? editor?.dataset.firewallRevision, enabled: Boolean(document.querySelector('[data-firewall-enabled]')?.checked), enforcement: 'dns-policy' };
-      try { firewallState.lastReceipt = await firewallJson(`/api/firewall/policies/${encodeURIComponent(mac)}`, remove ? { method: 'DELETE' } : { method: 'PUT', body: JSON.stringify(payload) }); await hydrateFirewall(); showCoronatioToast(remove ? 'Policy removal read back' : 'Policy change read back', 'success'); }
+      const mac = canonicalFirewallMac(firewallState.selectedMac); const policy = firewallPolicy(mac) || {}; const editor = document.querySelector('[data-firewall-editor]'); const revision = firewallField(policy, 'expectedRevision', 'revision') ?? editor?.dataset.firewallRevision; const sites = [...document.querySelectorAll('[data-firewall-sites] code')].map(node => node.textContent);
+      if (!mac || revision === '' || revision === undefined || revision === null) return showCoronatioToast(!mac ? 'Select a device first' : 'Policy revision unavailable; refresh first', 'error');
+      const payload = { schema: 'caduceus.network.firewall.policy.v1', mac, mode: 'allow-only', sites, expectedRevision: revision, enabled: Boolean(document.querySelector('[data-firewall-enabled]')?.checked), enforcement: 'dns-policy' };
+      const removePayload = { schema: 'caduceus.network.firewall.policy.delete.v1', mac, expectedRevision: revision };
+      try { firewallState.lastReceipt = await firewallJson(`/api/firewall/policies/${encodeURIComponent(mac)}`, remove ? { method: 'DELETE', body: JSON.stringify(removePayload) } : { method: 'PUT', body: JSON.stringify(payload) }); await hydrateFirewall(); const changed = firewallState.lastReceipt?.changed === true; showCoronatioToast(changed ? (remove ? 'Policy removed' : 'Policy changed') : 'No policy change', 'success'); }
       catch (failure) { showCoronatioToast(firewallMessage(failure), 'error'); }
     }
     document.body.addEventListener('change', event => { const device = event.target.closest?.('[data-firewall-device]'); if (device) { firewallState.selectedMac = canonicalFirewallMac(device.value); renderFirewall(); } });
