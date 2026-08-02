@@ -104,7 +104,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/status/power/usage", get(homeserver_rust_read_route))
         .route("/api/status/power/usage", get(homeserver_rust_read_route))
         .route("/api/kea-leases", get(homeserver_rust_read_route))
-        .route("/api/network/notes", get(homeserver_rust_read_route).put(network_identity_mutation_route))
+        .route("/api/network/notes", get(network_notes_read_route).put(network_notes_write_route))
         .route("/api/version", get(homeserver_rust_read_route))
         .route("/api/wakeonlan/targets", get(homeserver_rust_read_route).post(network_identity_mutation_route))
         .route("/api/wakeonlan/wake", post(network_identity_mutation_route))
@@ -491,6 +491,8 @@ fn admin_class_generic_refusal_family(path: &str) -> &'static str {
 include!("full-rust-routes/read.rs");
 
 include!("full-rust-routes/dhcp.rs");
+
+include!("full-rust-routes/network-notes.rs");
 
 include!("full-rust-routes/power.rs");
 

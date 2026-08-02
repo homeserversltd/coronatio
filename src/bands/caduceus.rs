@@ -246,6 +246,16 @@ fn caduceus_http_json(
 }
 
 fn caduceus_http_json_with_attendance(method: &str, path: &str, body: serde_json::Value, attendance: Option<&crate::caduceus_access::AttendanceProof>) -> CaduceusHttpReadback {
+    caduceus_http_json_with_attendance_and_document(method, path, body, attendance, None)
+}
+
+fn caduceus_http_json_with_attendance_and_document(
+    method: &str,
+    path: &str,
+    body: serde_json::Value,
+    attendance: Option<&crate::caduceus_access::AttendanceProof>,
+    document: Option<&str>,
+) -> CaduceusHttpReadback {
     let Some(authority) = caduceus_authority() else {
         return caduceus_loopback_refusal(path);
     };
@@ -271,8 +281,11 @@ fn caduceus_http_json_with_attendance(method: &str, path: &str, body: serde_json
     let attendance_header = attendance
             .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
         .unwrap_or_default();
+    let document_header = document
+        .map(|value| format!("x-caduceus-document: {value}\r\n"))
+        .unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\n{attendance_header}Content-Length: {}\r\n\r\n{}",
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\n{document_header}{attendance_header}Content-Length: {}\r\n\r\n{}",
         body_text.len(), body_text
     );
     if let Err(_err) = stream.write_all(request.as_bytes()) {

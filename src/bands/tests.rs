@@ -48,6 +48,7 @@ mod tests {
 
     include!("tests/dhcp-read-walls.rs");
     include!("tests/dhcp-pane-walls.rs");
+    include!("tests/device-note-projection-walls.rs");
 
     // Legacy ticket/capability authority tests were retired with Slice D.
     include!("tests/test-tranch-05-upload-bedrock-walls.rs");
