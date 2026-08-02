@@ -215,7 +215,7 @@ async fn hestia_upstream_absence_and_error_have_safe_public_readback() {
     let secret = b"internal upstream diagnostics must not cross";
     let length = secret.len().to_string();
     let (port, _, handle) = spawn_hestia_mock(hestia_mock_response(
-        "404 Not Found",
+        "403 Forbidden",
         &[("Content-Length", &length)],
         secret,
     ));
@@ -231,7 +231,7 @@ async fn hestia_upstream_absence_and_error_have_safe_public_readback() {
         .unwrap();
     std::env::remove_var("CADUCEUS_BASE_URL");
     handle.join().unwrap();
-    assert_eq!(refused.status(), StatusCode::NOT_FOUND);
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
     let refused_body = String::from_utf8(
         axum::body::to_bytes(refused.into_body(), usize::MAX)
             .await
@@ -241,6 +241,48 @@ async fn hestia_upstream_absence_and_error_have_safe_public_readback() {
     .unwrap();
     assert!(refused_body.contains("caduceus-bundle-refused"));
     assert!(!refused_body.contains("internal upstream diagnostics"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn hestia_proxy_refuses_malformed_success_response() {
+    let _guard = CADUCEUS_ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap();
+    let body = b"not-an-attachment";
+    let length = body.len().to_string();
+    let (port, _, handle) = spawn_hestia_mock(hestia_mock_response(
+        "200 OK",
+        &[
+            ("Content-Type", "application/x-x509-ca-cert"),
+            ("Content-Length", &length),
+        ],
+        body,
+    ));
+    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+    let response = app(AppState {
+        tab_root: Arc::new(test_tab_root("hestia-malformed")),
+    })
+    .oneshot(
+        Request::builder()
+            .uri("/api/admin/download-root-crt?platform=linux")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    std::env::remove_var("CADUCEUS_BASE_URL");
+    handle.join().unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = String::from_utf8(
+        axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(body.contains("caduceus-response-invalid"));
+    assert!(!body.contains("not-an-attachment"));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -256,7 +298,7 @@ async fn hestia_proxy_refuses_oversized_certificate_response() {
             ("Content-Type", "application/x-x509-ca-cert"),
             (
                 "Content-Disposition",
-                "attachment; filename=\"homeserver-house-ca-macos.pem\"",
+                "attachment; filename=\"homeserver-house-ca-macos.crt\"",
             ),
             ("Content-Length", &length),
         ],

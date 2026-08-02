@@ -214,14 +214,32 @@ async fn hestia_bundle_download_route(Query(query): Query<HestiaBundleQuery>) ->
         );
     }
     let expected_disposition = format!("attachment; filename=\"{}\"", platform.filename());
-    let has_type = upstream
+    let content_types: Vec<_> = upstream
         .headers
         .iter()
-        .any(|(name, value)| *name == "content-type" && value == "application/x-x509-ca-cert");
-    let has_disposition = upstream.headers.iter().any(|(name, value)| {
-        *name == "content-disposition" && value == expected_disposition.as_str()
-    });
-    if status != StatusCode::OK || upstream.body.is_empty() || !has_type || !has_disposition {
+        .filter(|(name, _)| *name == "content-type")
+        .collect();
+    let dispositions: Vec<_> = upstream
+        .headers
+        .iter()
+        .filter(|(name, _)| *name == "content-disposition")
+        .collect();
+    let Some((_, content_type)) = content_types.first() else {
+        return hestia_public_failure(StatusCode::BAD_GATEWAY, "caduceus-response-invalid");
+    };
+    let Some((_, disposition)) = dispositions.first() else {
+        return hestia_public_failure(StatusCode::BAD_GATEWAY, "caduceus-response-invalid");
+    };
+    // Do not let duplicate allowlisted headers smuggle an untrusted value into
+    // the browser response. The upstream contract is one exact CA type and one
+    // exact, platform-bound attachment name.
+    if status != StatusCode::OK
+        || upstream.body.is_empty()
+        || content_types.len() != 1
+        || dispositions.len() != 1
+        || *content_type != "application/x-x509-ca-cert"
+        || *disposition != expected_disposition.as_str()
+    {
         return hestia_public_failure(StatusCode::BAD_GATEWAY, "caduceus-response-invalid");
     }
     let mut response = (status, upstream.body).into_response();
