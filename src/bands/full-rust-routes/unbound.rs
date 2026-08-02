@@ -50,6 +50,14 @@ async fn dns_records_get_route(headers: axum::http::HeaderMap) -> Response {
     dns_intent(&headers, "/api/dns/records", serde_json::json!({"action": "status"}))
 }
 
+async fn dns_records_status_post_route(headers: axum::http::HeaderMap) -> Response {
+    dns_intent(
+        &headers,
+        "/api/dns/records/status",
+        serde_json::json!({"action": "status"}),
+    )
+}
+
 async fn dns_records_post_route(
     headers: axum::http::HeaderMap,
     payload: Option<Json<DnsRecordInput>>,

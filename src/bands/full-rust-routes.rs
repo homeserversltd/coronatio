@@ -119,6 +119,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/dhcp/statistics", get(dhcp_read_route))
         .route("/api/dhcp/pool-boundary", get(dhcp_read_route).post(dhcp_pool_boundary_route))
         .route("/api/dns/records", get(dns_records_get_route).post(dns_records_post_route))
+        .route("/api/dns/records/status", post(dns_records_status_post_route))
         .route("/api/dns/records/:name", delete(dns_records_delete_route))
         .route("/api/firewall/status", get(firewall_read_route))
         .route("/api/firewall/policies", get(firewall_read_route))
@@ -674,6 +675,7 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/dhcp/statistics", &["get"]),
         ("/api/dhcp/pool-boundary", &["get", "post"]),
         ("/api/dns/records", &["get", "post"]),
+        ("/api/dns/records/status", &["post"]),
         ("/api/dns/records/:name", &["delete"]),
         ("/api/firewall/status", &["get"]),
         ("/api/firewall/policies", &["get"]),
