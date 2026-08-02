@@ -48,7 +48,13 @@ async fn network_notes_write_route(headers: axum::http::HeaderMap, body: Bytes) 
         Err(refusal) => return network_note_write_response(mutation_refusal_readback("/api/v1/network/notes", refusal), false),
     };
     let requested = serde_json::json!({"mac": payload.mac, "note": payload.note});
-    let readback = caduceus_http_json_with_attendance("PUT", "/api/v1/network/notes", requested.clone(), Some(&attendance.proof));
+    let readback = caduceus_http_json_with_attendance_and_document(
+        "PUT",
+        "/api/v1/network/notes",
+        requested.clone(),
+        Some(&attendance.proof),
+        Some(&attendance.document),
+    );
     let completed = readback.ok
         && readback.status != StatusCode::ACCEPTED.as_u16()
         && readback.body.get("completed").and_then(serde_json::Value::as_bool) == Some(true)
