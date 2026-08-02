@@ -13,8 +13,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/admin/system/update-password", post(admin_class_generic_mutation_route))
         .route("/api/admin/logs/homeserver", get(homeserver_rust_read_route))
         .route("/api/admin/logs/homeserver/clear", post(admin_class_generic_mutation_route))
-        .route("/api/admin/download-root-crt", get(homeserver_rust_read_route))
-        .route("/api/admin/refresh-root-crt", post(admin_class_generic_mutation_route))
+        .route("/api/admin/download-root-crt", get(hestia_bundle_download_route))
         .route("/api/crypto/getKey", get(homeserver_rust_read_route))
         .route("/api/admin/crypto/test", post(admin_class_generic_mutation_route))
         .route("/api/admin/updates/check", get(homeserver_rust_read_route))
@@ -562,7 +561,6 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/admin/logs/homeserver", &["get"]),
         ("/api/admin/logs/homeserver/clear", &["post"]),
         ("/api/admin/download-root-crt", &["get"]),
-        ("/api/admin/refresh-root-crt", &["post"]),
         ("/api/crypto/getKey", &["get"]),
         ("/api/admin/crypto/test", &["post"]),
         ("/api/admin/updates/check", &["get"]),

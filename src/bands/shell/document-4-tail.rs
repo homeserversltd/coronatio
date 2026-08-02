@@ -28,7 +28,7 @@ fn shell_document_4_tail() -> &'static str {
     // UX-MIGRATION-SLICE-09A: delegated so these bindings survive Caduceus HTMX card swaps.
     const adminActionLabels = Object.freeze({
       'hard-drive-test': 'Hard Drive Test', update: 'Update', restart: 'Restart', shutdown: 'Shutdown',
-      'restart-website': 'Restart Website', 'view-logs': 'View Logs', 'install-certificate': 'Install Certificate'
+      'restart-website': 'Restart Website', 'view-logs': 'View Logs'
     });
     function adminActionToast(action, success) {
       const label = adminActionLabels[action] || 'System action';
@@ -142,6 +142,35 @@ fn shell_document_4_tail() -> &'static str {
         apply();
       });
     }
+    const hestiaPlatformDetails = Object.freeze({
+      windows: { label: 'Windows', filename: 'homeserver-house-ca-windows.cer', steps: ['Open the downloaded certificate and choose Install Certificate.', 'Install for the Local Machine, then place it in Trusted Root Certification Authorities.', 'Restart open browsers after the import.'] },
+      android: { label: 'Android', filename: 'homeserver-house-ca-android.crt', steps: ['Open Settings, then Security or Encryption & credentials.', 'Choose Install a certificate, then CA certificate, and select the downloaded file.', 'Android may display a network-monitoring warning for any user-installed CA.'] },
+      chromeos: { label: 'ChromeOS', filename: 'homeserver-house-ca-chromeos.crt', steps: ['Open chrome://settings/certificates and select Authorities.', 'Choose Import, select the downloaded file, and allow it to identify websites.', 'Restart open browser windows after the import.'] },
+      linux: { label: 'Linux', filename: 'homeserver-house-ca-linux.crt', steps: ['Copy the file to /usr/local/share/ca-certificates/.', 'Run sudo update-ca-certificates, then restart open browsers.', 'Firefox can use its own store: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import. Chromium normally uses the system store.'] },
+      macos: { label: 'macOS', filename: 'homeserver-house-ca-macos.crt', steps: ['Open Keychain Access and import the file into the System keychain.', 'Open the certificate, expand Trust, and choose Always Trust.', 'Approve the system prompt, close the certificate, and restart open browsers.'] }
+    });
+    function detectHestiaPlatform() {
+      const value = `${navigator.userAgentData?.platform || ''} ${navigator.platform || ''} ${navigator.userAgent || ''}`.toLowerCase();
+      if (value.includes('android')) return 'android';
+      if (value.includes('cros')) return 'chromeos';
+      if (value.includes('win')) return 'windows';
+      if (value.includes('mac')) return 'macos';
+      return 'linux';
+    }
+    function openHestiaCertificateModal() {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop manager-modal-backdrop hestia-certificate-backdrop';
+      backdrop.dataset.hestiaCertificateModal = '';
+      const options = Object.entries(hestiaPlatformDetails).map(([value, detail]) => `<option value="${value}">${detail.label}</option>`).join('');
+      backdrop.innerHTML = `<section class="modal modal-window manager-modal hestia-certificate-modal" role="dialog" aria-modal="true" aria-labelledby="hestia-certificate-title"><button type="button" class="modal-close" data-hestia-certificate-close aria-label="Close certificate window">×</button><h2 id="hestia-certificate-title">Install Household Certificate</h2><div class="modal-body"><p class="hestia-certificate-promise"><strong>Install once for this household root ring.</strong> Future service certificates beneath it need no new bundle.</p><label for="hestia-certificate-platform">This device</label><select id="hestia-certificate-platform" class="ui-input ui-input--medium" data-hestia-certificate-platform>${options}</select><ol data-hestia-certificate-steps></ol><p class="hestia-browser-note">The file contains public trust material only. Firefox may use its own certificate store; Chromium usually follows the operating system store.</p></div><div class="modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-hestia-certificate-close>Cancel</button><a class="ui-button ui-button--primary ui-button--small" data-hestia-certificate-download>Download Certificate</a></div></section>`;
+      const select = backdrop.querySelector('[data-hestia-certificate-platform]');
+      const download = backdrop.querySelector('[data-hestia-certificate-download]');
+      const steps = backdrop.querySelector('[data-hestia-certificate-steps]');
+      const render = () => { const platform = hestiaPlatformDetails[select.value] ? select.value : 'linux'; const detail = hestiaPlatformDetails[platform]; steps.innerHTML = detail.steps.map(step => `<li>${step}</li>`).join(''); download.href = `/api/admin/download-root-crt?platform=${encodeURIComponent(platform)}`; download.download = detail.filename; };
+      select.value = detectHestiaPlatform(); select.addEventListener('change', render); render();
+      const close = () => backdrop.remove(); backdrop.addEventListener('click', event => { if (event.target === backdrop || event.target.closest('[data-hestia-certificate-close]')) close(); }); document.body.appendChild(backdrop); download.focus();
+    }
+    document.body.addEventListener('click', event => { const certificate = event.target.closest('[data-hestia-certificate-open]'); if (certificate) { event.preventDefault(); openHestiaCertificateModal(); } });
     // UX-MIGRATION-SLICE-09B: Key/Disk manager continuations are dynamic portal dialogs.
     // No KeyManager or DiskManager Caduceus actuator is admitted here: submitting never dispatches.
     function managerModal(kind, title, body, confirmLabel = 'Continue') {
