@@ -23,7 +23,7 @@ fn shell_unbound_client() -> &'static str {
     async function hydrateDns() {
       const pane = document.querySelector('[data-dns-tablet]'); if (!pane || !viewportFamilyAdmitted('unbound') || document.visibilityState !== 'visible') return;
       dnsSet('[data-dns-state]', 'Loading local records…');
-      try { dnsState.records = dnsRecords(await dnsJson('/api/dns/records')); renderDns(); dnsSet('[data-dns-state]', `${dnsState.records.length} local record(s)`); }
+      try { dnsState.records = dnsRecords(await dnsJson('/api/dns/records/status', { method: 'POST', body: JSON.stringify({}) })); renderDns(); dnsSet('[data-dns-state]', `${dnsState.records.length} local record(s)`); }
       catch (failure) { dnsSet('[data-dns-state]', `DNS unavailable: ${failure.message}`); showCoronatioToast(failure.message, 'error'); }
     }
     document.body.addEventListener('submit', async event => {

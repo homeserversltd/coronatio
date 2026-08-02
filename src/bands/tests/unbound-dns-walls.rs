@@ -30,6 +30,7 @@
         for required in ["hydrateDns", "viewportFamilyAdmitted('unbound')", "document.visibilityState !== 'visible'", "document.body.addEventListener('submit'", "document.body.addEventListener('click'", "textContent", "/api/dns/records"] {
             assert!(client.contains(required), "DNS client missing {required}");
         }
+        assert!(client.contains("dnsJson('/api/dns/records/status', { method: 'POST', body: JSON.stringify({}) })"));
         for forbidden in ["setInterval(hydrateDns", "innerHTML", "sudo", "/usr/local/sbin", "/etc/unbound"] {
             assert!(!client.contains(forbidden), "DNS client retained forbidden {forbidden}");
         }
@@ -45,6 +46,7 @@
         for request in [
             Request::builder().uri("/api/dns/records").body(Body::empty()).unwrap(),
             Request::builder().method("POST").uri("/api/dns/records").header("content-type", "application/json").body(Body::from(r#"{"name":"app.home.arpa","address":"192.168.123.2"}"#)).unwrap(),
+            Request::builder().method("POST").uri("/api/dns/records/status").header("content-type", "application/json").body(Body::from("{}")).unwrap(),
             Request::builder().method("DELETE").uri("/api/dns/records/app.home.arpa").body(Body::empty()).unwrap(),
         ] {
             let response = router.clone().oneshot(request).await.unwrap();
@@ -58,9 +60,21 @@
     fn unbound_route_contract_is_bounded_and_receipt_preserving() {
         let source = std::fs::read_to_string("src/bands/full-rust-routes/unbound.rs").unwrap();
         for action in [r#"{"action": "status"}"#, "ensure-local-data", "\"action\": \"remove\"", "/api/v1/network/dns"] { assert!(source.contains(action), "missing {action}"); }
-        for forbidden in ["sudo", "/usr/local/sbin", "/etc/unbound", "setInterval", "action_path"] { assert!(!source.contains(forbidden), "forbidden {forbidden}"); }
+        let status_handler = source
+            .split("async fn dns_records_status_post_route")
+            .nth(1)
+            .and_then(|tail| tail.split("async fn dns_records_post_route").next())
+            .expect("status handler");
+        assert!(status_handler.contains("\"/api/dns/records/status\""));
+        assert!(status_handler.contains("{\"action\": \"status\"}"));
+        for forbidden in ["ensure-local-data", "\"action\": \"remove\""] {
+            assert!(!status_handler.contains(forbidden), "status handler widened to {forbidden}");
+        }
+        assert!(source.contains("mutation_context_refusal(headers)"));
+        for forbidden in ["sudo", "/usr/local/sbin", "/etc/unbound", "setInterval", "action_path", "Referer", "Host", "std::fs", "std::process"] { assert!(!source.contains(forbidden), "forbidden {forbidden}"); }
         let inventory = full_rust_route_inventory();
         assert!(inventory.iter().any(|(path, methods)| *path == "/api/dns/records" && *methods == ["get", "post"]));
+        assert!(inventory.iter().any(|(path, methods)| *path == "/api/dns/records/status" && *methods == ["post"]));
         assert!(inventory.iter().any(|(path, methods)| *path == "/api/dns/records/:name" && *methods == ["delete"]));
         let response = dns_response("/api/dns/records", CaduceusHttpReadback { ok: false, status: 422, path: "/api/v1/network/dns".to_string(), body: serde_json::json!({"ok":false,"firstMissingSignal":"address-private-required","validation":{"address":"private"}}), first_missing_signal: "address-private-required".to_string() });
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
