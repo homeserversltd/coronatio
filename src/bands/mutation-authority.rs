@@ -150,7 +150,13 @@ fn caduceus_actuate_json(
     body: serde_json::Value,
 ) -> CaduceusHttpReadback {
     match authority.authorize(&MutationRequestContext::from_headers(headers), mapping) {
-        Ok(attendance) => caduceus_http_json_with_attendance("POST", path, body, Some(&attendance.proof)),
+        Ok(attendance) => caduceus_http_json_with_attendance_and_document(
+            "POST",
+            path,
+            body,
+            Some(&attendance.proof),
+            Some(&attendance.document),
+        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
