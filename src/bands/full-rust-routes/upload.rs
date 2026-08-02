@@ -61,12 +61,21 @@ fn upload_display_path(root: &FsPath, display_root: &str, real_path: &FsPath) ->
     }
 }
 
-fn upload_directory_has_children(path: &FsPath) -> bool {
+fn upload_directory_readable(path: &FsPath) -> bool {
+    std::fs::read_dir(path).is_ok()
+}
+
+fn upload_directory_has_children(root: &FsPath, display_root: &str, path: &FsPath) -> bool {
     std::fs::read_dir(path)
         .ok()
         .into_iter()
         .flat_map(|entries| entries.filter_map(Result::ok))
-        .any(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+        .any(|entry| {
+            let child = entry.path();
+            entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false)
+                && upload_directory_readable(&child)
+                && !upload_path_blacklisted(&upload_display_path(root, display_root, &child))
+        })
 }
 
 fn upload_immediate_children(root: &FsPath, display_root: &str, path: &FsPath) -> Vec<UploadDirectoryEntry> {
@@ -75,6 +84,7 @@ fn upload_immediate_children(root: &FsPath, display_root: &str, path: &FsPath) -
         .into_iter()
         .flat_map(|entries| entries.filter_map(Result::ok))
         .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+        .filter(|entry| upload_directory_readable(&entry.path()))
         .filter(|entry| !upload_path_blacklisted(&upload_display_path(root, display_root, &entry.path())))
         .map(|entry| {
             let real_path = entry.path();
@@ -82,7 +92,7 @@ fn upload_immediate_children(root: &FsPath, display_root: &str, path: &FsPath) -
                 name: entry.file_name().to_string_lossy().to_string(),
                 path: upload_display_path(root, display_root, &real_path),
                 entry_type: "directory".to_string(),
-                has_children: upload_directory_has_children(&real_path),
+                has_children: upload_directory_has_children(root, display_root, &real_path),
                 is_expanded: false,
                 children: None,
             }
@@ -130,11 +140,12 @@ fn upload_tree_url(path: &str, depth: usize) -> String {
     format!("/admit/upload/tree?path={}&depth={}", upload_query_escape(path), depth)
 }
 
-fn upload_tree_state_inputs(selected: &str, expanded: &BTreeSet<String>) -> String {
+fn upload_tree_state_inputs(selected: &str, expanded: &BTreeSet<String>, root: &str) -> String {
     format!(
-        r#"<input type="hidden" name="selected" data-upload-current-path value="{}"><input type="hidden" name="expanded" data-upload-expanded-paths value="{}">"#,
+        r#"<input type="hidden" name="selected" data-upload-current-path value="{}"><input type="hidden" name="expanded" data-upload-expanded-paths value="{}"><input type="hidden" data-upload-root-path value="{}">"#,
         upload_html_escape(selected),
-        upload_html_escape(&upload_expanded_csv(expanded))
+        upload_html_escape(&upload_expanded_csv(expanded)),
+        upload_html_escape(root)
     )
 }
 
@@ -209,25 +220,16 @@ fn render_upload_tree_fragment(selected: Option<&str>, expanded: Option<&str>) -
     let selected = selected.unwrap_or(configured_default);
     if !upload_root_available(&root) {
         return format!(
-            r#"{}<div class="directory-error nas-unavailable" data-nas-unavailable="true" data-upload-directory-error>⚠️ NAS Storage Unavailable</div><div class="directory-entry selected" data-directory-path="{}" role="treeitem" aria-selected="true" aria-expanded="false" style="padding-left: 12px"><span class="expand-control" aria-label="No child folders"></span><span class="entry-icon">📁</span><span class="entry-name">nas</span><span class="entry-selected" aria-hidden="true">✓</span></div>"#,
-            upload_tree_state_inputs(selected, &BTreeSet::new()),
-            upload_html_escape(&display_root)
+            r#"{}<div class="directory-error nas-unavailable" data-nas-unavailable="true" data-upload-directory-error>⚠️ NAS Storage Unavailable</div>"#,
+            upload_tree_state_inputs(selected, &BTreeSet::new(), &display_root)
         );
     }
     let mut expanded = upload_expanded_set(expanded);
     expanded.insert(display_root.clone());
-    let root_entry = UploadDirectoryEntry {
-        name: root.file_name().map(|name| name.to_string_lossy().to_string()).filter(|name| !name.is_empty()).unwrap_or_else(|| "nas".to_string()),
-        path: display_root.clone(),
-        entry_type: "directory".to_string(),
-        has_children: upload_directory_has_children(&root),
-        is_expanded: true,
-        children: None,
-    };
     format!(
         r#"{}<div class="directory-error nas-unavailable" data-nas-unavailable="true" data-upload-directory-error hidden>⚠️ NAS Storage Unavailable</div>{}"#,
-        upload_tree_state_inputs(selected, &expanded),
-        upload_tree_row_html(&root_entry, 0, selected, &expanded, &display_root)
+        upload_tree_state_inputs(selected, &expanded, &display_root),
+        render_upload_tree_rows_for_path(&display_root, 0, selected, &expanded)
     )
 }
 

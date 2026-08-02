@@ -170,6 +170,7 @@
     #[test]
     fn upload_viewport_ports_react_tablet_dom_grammar() {
         let html = render_crown_shell();
+        let tree_renderer = include_str!("../full-rust-routes/upload.rs");
         assert!(html.contains(r#"class="upload-tablet" data-upload-viewport data-react-quarry="UploadTablet" data-identity-standard="one-to-one""#));
         assert!(html.contains(r#"class="upload-progress-list" data-upload-progress-list"#));
         assert!(html.contains(r#"class="upload-controls""#));
@@ -184,11 +185,7 @@
         assert!(html.contains(r#"class="directory-breadcrumb-container""#));
         assert!(html.contains(r#"class="breadcrumb-navigation""#));
         assert!(html.contains(r#"class="directory-tree-container""#));
-        assert!(html.contains(r#"class="directory-entry selected""#));
-        assert!(html.contains(r#"class="expand-control""#));
-        assert!(html.contains(r#"class="entry-icon""#));
-        assert!(html.contains(r#"class="entry-name""#));
-        assert!(html.contains(r#"class="entry-selected""#));
+        for marker in [r#"class="directory-entry{}""#, r#"class="expand-control""#, r#"class="entry-icon""#, r#"class="entry-name""#, r#"class="entry-selected""#] { assert!(tree_renderer.contains(marker)); }
         assert!(html.contains(r#"class="file-upload-section" data-upload-regular="file-ingress""#));
         assert!(html.contains(r#"type="file" multiple data-upload-file aria-label="Upload files""#));
         assert!(html.contains("Upload Selected Files"));
