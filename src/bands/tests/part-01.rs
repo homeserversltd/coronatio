@@ -102,7 +102,7 @@
             .await
             .unwrap();
         let root: CoronatioRoot = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"]);
+        assert_eq!(root.primary_tabs, ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp", "firewall"]);
         assert_eq!(root.first_party_panes.len(), PRIMARY_TABS.len());
     }
 
@@ -158,15 +158,18 @@
         assert!(body.contains("data-pane=\"stats\""));
         assert!(body.contains("data-pane=\"portals\""));
         assert!(body.contains("data-pane=\"upload\""));
-        assert!(body.contains("data-pane-panel=\"admin\""));
-        assert!(body.contains("data-pane-panel=\"stats\""));
-        assert!(body.contains("data-pane-panel=\"portals\""));
-        assert!(body.contains("data-pane-panel=\"upload\""));
+        for pane in ["admin", "firewall"] {
+            assert!(!body.contains(&format!("data-pane-panel=\"{}\"", pane)));
+        }
+        for pane in ["stats", "portals", "upload", "dhcp"] {
+            assert!(body.contains(&format!("data-pane-panel=\"{}\"", pane)));
+        }
         assert!(body.contains("function showPane(id, options)"));
         assert!(body.contains("fetch('/api/stats')"));
-        assert!(body.contains(r#"class="disk-actions""#));
-        assert!(body.contains("Hard Drive Test"));
-        assert!(body.contains("Auto Sync"));
+        let admin = render_crown_shell_for_session(Session::Admin);
+        for admin_only in [r#"class="disk-actions""#, "Hard Drive Test", "Auto Sync"] {
+            assert!(admin.contains(admin_only));
+        }
         assert!(body.contains("Admitted services"));
         assert!(body.contains("Upload Selected Files"));
         assert!(!body.contains("Coronatio crown shell"));
@@ -177,8 +180,11 @@
     #[test]
     fn native_pane_bodies_are_not_placeholder_cards() {
         let shell = render_crown_shell();
-        for pane in PRIMARY_TABS {
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"] {
             assert!(shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
+        }
+        for pane in ["admin", "firewall"] {
+            assert!(!shell.contains(&format!("data-pane-panel=\"{}\"", pane)));
         }
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
@@ -190,7 +196,8 @@
         assert!(shell.contains(r#"data-stat-element-id="network-chart""#));
         assert!(shell.contains(r#"data-stat-element-id="kea-leases""#));
         assert!(shell.contains(r#"data-stat-element-id="process-usage""#));
-        assert!(shell.contains(r#"class="disk-actions""#));
+        let admin = render_crown_shell_for_session(Session::Admin);
+        assert!(admin.contains(r#"class="disk-actions""#));
         assert!(!shell.contains("data-admin-quarry"));
         assert!(shell.contains("data-upload-regular=\"file-ingress\""));
         assert!(shell.contains(r#"class="directory-browser-header""#));
@@ -279,12 +286,24 @@
 
     #[test]
     fn crown_tabbar_recreates_flask_react_star_eye_and_hide_controls() {
-        let shell = render_crown_shell_for_session(Session::Admin);
-        assert!(shell.contains("class=\"tab-bar\""));
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"] {
-            assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
-            assert!(shell.contains(&format!("data-pane=\"{}\"", pane)));
+        let admin = render_crown_shell_for_session(Session::Admin);
+        let guest = render_crown_shell_for_session(Session::Guest);
+        assert!(admin.contains("class=\"tab-bar\""));
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
+            assert!(admin.contains(&format!("data-tab-id=\"{}\"", pane)));
+            assert!(admin.contains(&format!("data-pane=\"{}\"", pane)));
+            assert!(guest.contains(&format!("data-tab-id=\"{}\"", pane)));
+            assert!(guest.contains(&format!("data-pane=\"{}\"", pane)));
         }
+        for pane in ["admin", "firewall"] {
+            assert!(admin.contains(&format!("data-tab-id=\"{}\"", pane)));
+            assert!(admin.contains(&format!("data-pane=\"{}\"", pane)));
+            assert!(!guest.contains(&format!("data-tab-id=\"{}\"", pane)));
+            assert!(!guest.contains(&format!("data-pane=\"{}\"", pane)));
+        }
+        assert!(admin.contains("data-tab-id=\"dhcp\""));
+        assert!(!guest.contains("data-tab-id=\"dhcp\""), "DHCP remains hidden, not admin-only");
+        let shell = admin;
         for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"] {
             assert!(shell.contains(&format!("data-tab-visibility-toggle=\"{}\"", pane)));
         }
@@ -494,8 +513,14 @@
         ] {
             assert!(shell.contains(preserved), "theme membrane marker missing: {}", preserved);
         }
-        for pane in ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"] {
+        let admin = render_crown_shell_for_session(Session::Admin);
+        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"] {
             assert!(shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
+            assert!(admin.contains(&format!(r#"data-pane-panel="{}""#, pane)));
+        }
+        for pane in ["admin", "firewall"] {
+            assert!(!shell.contains(&format!(r#"data-pane-panel="{}""#, pane)));
+            assert!(admin.contains(&format!(r#"data-pane-panel="{}""#, pane)));
         }
         assert!(shell.contains("document.documentElement.dataset.theme = headerState.theme"));
         assert!(shell.contains("aria-pressed"));

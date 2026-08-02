@@ -238,6 +238,17 @@ fn shell_document_2() -> &'static str {
           </section>
         </div>
       </section>
+      <section class="pane" id="pane-firewall" data-pane-panel="firewall" data-view-panel="firewall" role="tabpanel" aria-label="Firewall">
+        <div class="firewall-tablet" data-firewall-tablet data-admin-only="true" data-admin-viewport="firewall">
+          <header class="firewall-header"><div><h2>Firewall</h2><p>DNS website policy for one child device.</p></div><span class="ui-badge ui-badge--small ui-badge--info" data-firewall-state>Loading</span></header>
+          <p class="firewall-disclosure">This is DNS website policy, not complete website enforcement: DNS cannot prove HTTPS hostnames, DoH can bypass it, and CDN or shared-IP behavior can affect results.</p>
+          <div class="firewall-controls" data-firewall-editor><label>Child device <select class="ui-select" data-firewall-device aria-label="Child device by MAC"></select></label><label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__switch"><input class="ui-toggle__input" type="checkbox" data-firewall-enabled><span class="ui-toggle__slider"></span></span><span class="ui-toggle__label">Enable policy</span></label><button class="ui-button ui-button--secondary ui-button--small" type="button" data-firewall-refresh>Refresh</button><button class="ui-button ui-button--primary ui-button--small" type="button" data-firewall-save>Save</button><button class="ui-button ui-button--danger ui-button--small" type="button" data-firewall-delete>Remove policy</button></div>
+          <p class="firewall-binding" data-firewall-binding aria-live="polite">Checking stable binding…</p>
+          <div class="firewall-banner firewall-banner--error" data-firewall-error role="alert" hidden></div>
+          <form class="firewall-add-site" data-firewall-add-site-form><label for="firewall-site">Allowed website hostname</label><input id="firewall-site" class="ui-input ui-input--medium" data-firewall-site-input maxlength="253" placeholder="example.com" required><button class="ui-button ui-button--secondary ui-button--small" type="submit">Add website</button></form>
+          <ul class="firewall-sites" data-firewall-sites></ul>
+        </div>
+      </section>
       </div>
     </section>
   </main>

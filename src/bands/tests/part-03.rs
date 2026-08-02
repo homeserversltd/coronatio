@@ -23,7 +23,7 @@
         assert_eq!(registry.visible_tabs_user, ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"]);
         assert_eq!(
             registry.visible_tabs_admin,
-            ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp"]
+            ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp", "firewall"]
         );
         assert!(registry
             .validation_rules
@@ -411,11 +411,14 @@
         assert!(!shell.contains("localStorage.setItem(headerStateKey, JSON.stringify(headerState))"));
         assert!(shell.contains("appRoot.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
         assert!(shell.contains("tabBar.dataset.adminMode = headerState.isAdmin ? 'true' : 'false'"));
-        for viewport in ["admin", "stats", "portals", "upload", "test"] {
-            assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing admin viewport {viewport}");
+        for viewport in ["stats", "portals", "upload", "test"] {
+            assert!(shell.contains(&format!(r#"data-admin-viewport="{}""#, viewport)), "missing public viewport {viewport}");
         }
+        assert!(!shell.contains(r#"data-admin-viewport="admin""#));
+        let admin = render_crown_shell_for_session(Session::Admin);
+        assert!(admin.contains(r#"data-admin-viewport="admin""#));
         for admin_action in ["Hard Drive Test", "Auto Sync", "Hide CPU Usage & Load", "PIN requirement", "Blacklist"] {
-            assert!(shell.contains(admin_action), "missing {admin_action}");
+            assert!(admin.contains(admin_action), "admin missing {admin_action}");
         }
         assert!(!shell.contains("data-admin-quarry"));
         assert!(shell.contains("History"));
