@@ -33,7 +33,10 @@
         for forbidden in ["setInterval(hydrateDns", "innerHTML", "sudo", "/usr/local/sbin", "/etc/unbound"] {
             assert!(!client.contains(forbidden), "DNS client retained forbidden {forbidden}");
         }
-        assert!(crown_chrome_js().contains("hydrateDns"));
+        let chrome = crown_chrome_js();
+        assert!(chrome.contains("hydrateDns"));
+        assert!(chrome.contains("unbound: Object.freeze({ topics: ['admin.dns'], snapshotRoutes: ['/api/dns/records'], eventRoute: null, renewRoute: null, authClass: 'admin' })"));
+        assert!(chrome.contains("if (!pane || !viewportFamilyAdmitted('unbound') || document.visibilityState !== 'visible') return;"));
     }
 
     #[tokio::test]
