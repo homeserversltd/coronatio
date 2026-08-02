@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -26,12 +27,35 @@ SOURCE_SHA_NAME = ".coronatio-installed-source-sha"
 BINARY_SHA_NAME = ".coronatio-installed-binary-sha"
 MANIFEST_NAME = ".coronatio-release-manifest.json"
 JOURNAL_NAME = ".coronatio-transaction.json"
+LOCK_NAME = ".coronatio-install.lock"
 SERVICE_NAME = "coronatio.service"
 HEALTH_URL = "http://127.0.0.1:3013/health"
 CARGO_FALLBACKS = (Path("/usr/local/bin/cargo"), Path("/opt/cargo/bin/cargo"))
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 TOKEN_RE = re.compile(r"^[0-9a-f]{16}$")
 FORWARD_STATES = {"prepared", "stopped", "old_source_moved", "new_source_moved", "old_binary_moved", "new_binary_moved", "old_manifest_moved", "new_manifest_written", "old_binary_sha_moved", "witness_updated", "service_started", "health_verified", "committed"}
+
+
+class ConvergeResult:
+    def __init__(self, status: str, source_sha: str, source_tree_sha256: str, static_sha256: str, binary_sha256: str):
+        self.status = status
+        self.source_sha = source_sha
+        self.source_tree_sha256 = source_tree_sha256
+        self.static_sha256 = static_sha256
+        self.binary_sha256 = binary_sha256
+
+    def manifest(self) -> dict[str, str]:
+        return {"source_sha": self.source_sha, "source_tree_sha256": self.source_tree_sha256,
+                "static_sha256": self.static_sha256, "binary_sha256": self.binary_sha256}
+
+
+class ConvergeFailure(RuntimeError):
+    def __init__(self, message: str, *, source_sha: str | None, manifest: dict[str, str] | None,
+                 rollback_files: str, rollback_service: str, restored: bool):
+        super().__init__(message)
+        self.source_sha, self.manifest = source_sha, manifest
+        self.rollback_files, self.rollback_service, self.restored = rollback_files, rollback_service, restored
 
 
 def run(cmd: list[str], *, cwd: Path = REPO_ROOT, env: dict[str, str] | None = None) -> None:
@@ -59,6 +83,55 @@ def durable_json(path: Path, value: dict[str, Any]) -> None:
 
 def durable_unlink(path: Path) -> None:
     path.unlink(missing_ok=True); fsync_dir(path.parent)
+
+
+def fsync_file(path: Path) -> None:
+    with path.open("rb") as handle:
+        os.fsync(handle.fileno())
+
+
+def fsync_tree(root: Path) -> None:
+    """Persist every staged file and directory before it becomes a swap candidate."""
+    for directory, _, files in os.walk(root, topdown=False):
+        current = Path(directory)
+        for name in files:
+            candidate = current / name
+            if candidate.is_file() and not candidate.is_symlink():
+                fsync_file(candidate)
+        fsync_dir(current)
+
+
+def durable_copy(source: Path, destination: Path) -> None:
+    if destination.exists() or destination.is_symlink():
+        raise RuntimeError(f"staging path already exists: {destination}")
+    shutil.copy2(source, destination)
+    destination.chmod(0o755)
+    fsync_file(destination)
+    fsync_dir(destination.parent)
+
+
+def acquire_install_lock(runtime_root: Path) -> int:
+    """Acquire the fixed, nofollow process lock; caller owns the descriptor lifetime."""
+    lock = runtime_root / LOCK_NAME
+    try:
+        fd = os.open(lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0:
+            raise RuntimeError("unsafe installer lock file")
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RuntimeError("another Coronatio installer is active") from exc
+        return fd
+    except BaseException:
+        try: os.close(fd)  # type: ignore[name-defined]
+        except (OSError, UnboundLocalError): pass
+        raise
+
+
+def release_install_lock(fd: int) -> None:
+    try: fcntl.flock(fd, fcntl.LOCK_UN)
+    finally: os.close(fd)
 
 
 def atomic_replace(source: Path, destination: Path) -> None:
@@ -200,7 +273,7 @@ def read_manifest(path: Path) -> dict[str, str] | None:
     try: value = json.loads(path.read_text("utf-8"))
     except (OSError, ValueError): return None
     required = ("source_sha", "source_tree_sha256", "static_sha256", "binary_sha256")
-    return value if isinstance(value, dict) and all(isinstance(value.get(k), str) for k in required) and SHA_RE.fullmatch(value["source_sha"]) else None
+    return value if isinstance(value, dict) and all(isinstance(value.get(k), str) for k in required) and SHA_RE.fullmatch(value["source_sha"]) and all(SHA256_RE.fullmatch(value[k]) for k in required[1:]) else None
 
 
 def current_matches(runtime_root: Path, binary_dest: Path, head: str) -> bool:
@@ -230,6 +303,7 @@ def snapshot_and_build(runtime_root: Path, binary_dest: Path, head: str, cargo: 
         with archive.open("wb") as out:
             subprocess.run(["git", "archive", "--format=tar", head], cwd=REPO_ROOT, stdout=out, check=True); out.flush(); os.fsync(out.fileno())
         with tarfile.open(archive) as tf: tf.extractall(source, filter="data")
+        fsync_tree(source)
         durable_unlink(archive)
         env = dict(os.environ)
         env["CORONATIO_SOURCE_SHA"] = head
@@ -238,8 +312,9 @@ def snapshot_and_build(runtime_root: Path, binary_dest: Path, head: str, cargo: 
         built = source / "target" / "release" / "coronatio"
         if not digest_file(built, executable=True): raise RuntimeError("release binary missing, non-regular, or non-executable")
         binary_stage = binary_dest.parent / f".coronatio-stage-bin-{token}"
-        shutil.copy2(built, binary_stage); binary_stage.chmod(0o755); fsync_dir(binary_stage.parent)
+        durable_copy(built, binary_stage)
         shutil.rmtree(source / "target"); fsync_dir(source)
+        fsync_tree(source)
         assert_clean_snapshot(head)
         manifest = {"source_sha": head, "source_tree_sha256": source_tree_digest(source), "static_sha256": digest_tree(source / "static"), "binary_sha256": digest_file(binary_stage, executable=True)}
         if not all(manifest.values()): raise RuntimeError("immutable snapshot artifact digest failed")
@@ -257,6 +332,12 @@ def expected_paths(runtime_root: Path, binary_dest: Path, token: str) -> dict[st
     return {"source_stage": runtime_root / f".coronatio-stage-{token}" / "source", "binary_stage": binary_dest.parent / f".coronatio-stage-bin-{token}", "source_backup": runtime_root / f".coronatio-source-backup-{token}", "binary_backup": binary_dest.parent / f".{binary_dest.name}.backup-{token}", "manifest_backup": runtime_root / f".{MANIFEST_NAME}.backup-{token}", "binary_sha_backup": runtime_root / f".{BINARY_SHA_NAME}.backup-{token}"}
 
 
+def artifact_digest(name: str, path: Path) -> str | None:
+    if name == "source":
+        return source_tree_digest(path)
+    return digest_file(path, executable=name == "binary")
+
+
 def validate_journal(runtime_root: Path, binary_dest: Path, tx: Any) -> dict[str, Any]:
     if not isinstance(tx, dict) or tx.get("version") != 2 or not isinstance(tx.get("token"), str) or not TOKEN_RE.fullmatch(tx["token"]) or tx.get("state") not in FORWARD_STATES: raise RuntimeError("malformed transaction journal; preserving artifacts")
     if not isinstance(tx.get("new_sha"), str) or not SHA_RE.fullmatch(tx["new_sha"]) or not isinstance(tx.get("old"), dict): raise RuntimeError("incomplete transaction journal; preserving artifacts")
@@ -265,6 +346,15 @@ def validate_journal(runtime_root: Path, binary_dest: Path, tx: Any) -> dict[str
         if tx.get(name) != str(path): raise RuntimeError("path-invalid transaction journal; preserving artifacts")
     for name in ("source", "binary", "manifest", "binary_sha"):
         if not isinstance(tx["old"].get(name), bool): raise RuntimeError("incomplete transaction journal; preserving artifacts")
+    old_digests = tx.get("old_digests")
+    if not isinstance(old_digests, dict):
+        raise RuntimeError("missing old artifact digests; preserving journal")
+    for name in ("source", "binary", "manifest", "binary_sha"):
+        digest = old_digests.get(name)
+        if tx["old"][name] and (not isinstance(digest, str) or not SHA256_RE.fullmatch(digest)):
+            raise RuntimeError("invalid old artifact digest; preserving journal")
+        if not tx["old"][name] and digest is not None:
+            raise RuntimeError("absent artifact cannot have old digest; preserving journal")
     return tx
 
 
@@ -281,17 +371,23 @@ def set_state(runtime_root: Path, tx: dict[str, Any], state: str) -> None:
     tx["state"] = state; durable_json(journal_path(runtime_root), tx)
 
 
-def restore_old(destination: Path, backup: Path, existed: bool) -> Path | None:
-    """Restore without unlinking a valid destination; a displaced candidate is retained until cleanup."""
+def restore_old(destination: Path, backup: Path, existed: bool, expected_digest: str | None, name: str) -> Path | None:
+    """Restore only an attested prior artifact; never bless an intervening one."""
     displaced = backup.with_name(backup.name + ".recovery")
     if existed:
         if backup.exists():
+            if expected_digest and artifact_digest(name, backup) != expected_digest:
+                raise RuntimeError(f"backup identity mismatch for {name}; preserving journal")
             if destination.exists() or destination.is_symlink():
                 if displaced.exists() or displaced.is_symlink(): remove_path(displaced)
                 atomic_replace(destination, displaced)
             atomic_replace(backup, destination)
+            if expected_digest and artifact_digest(name, destination) != expected_digest:
+                raise RuntimeError(f"restored identity mismatch for {name}; preserving journal")
         elif not (destination.exists() or destination.is_symlink()):
             raise RuntimeError(f"recovery lacks old {destination}; preserving journal")
+        elif expected_digest and artifact_digest(name, destination) != expected_digest:
+            raise RuntimeError(f"foreign destination for {name}; preserving journal")
     elif destination.exists() or destination.is_symlink():
         remove_path(destination)
     return displaced if displaced.exists() or displaced.is_symlink() else None
@@ -312,13 +408,15 @@ def recover_transaction(runtime_root: Path, binary_dest: Path, *, restart: bool 
     if tx["state"] == "committed":
         cleanup_transaction(runtime_root, binary_dest, tx); return True
     try: run(["systemctl", "stop", SERVICE_NAME])
-    except (FileNotFoundError, subprocess.CalledProcessError): pass
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError("recovery cannot stop service; preserving journal") from exc
     p = expected_paths(runtime_root, binary_dest, tx["token"]); old = tx["old"]
-    # os.replace restores directly over a candidate; re-entry after an interrupted restore sees the old destination and keeps it.
-    restore_old(runtime_root / "source", p["source_backup"], old["source"])
-    restore_old(binary_dest, p["binary_backup"], old["binary"])
-    restore_old(runtime_root / MANIFEST_NAME, p["manifest_backup"], old["manifest"])
-    restore_old(runtime_root / BINARY_SHA_NAME, p["binary_sha_backup"], old["binary_sha"])
+    old_digests = tx.get("old_digests", {})
+    # os.replace restores directly over a candidate only after proving the old identity.
+    restore_old(runtime_root / "source", p["source_backup"], old["source"], old_digests.get("source"), "source")
+    restore_old(binary_dest, p["binary_backup"], old["binary"], old_digests.get("binary"), "binary")
+    restore_old(runtime_root / MANIFEST_NAME, p["manifest_backup"], old["manifest"], old_digests.get("manifest"), "manifest")
+    restore_old(runtime_root / BINARY_SHA_NAME, p["binary_sha_backup"], old["binary_sha"], old_digests.get("binary_sha"), "binary_sha")
     set_state(runtime_root, tx, "prepared")
     cleanup_transaction(runtime_root, binary_dest, tx)
     if restart and (runtime_root / "source").exists() and binary_dest.exists(): run(["systemctl", "start", SERVICE_NAME])
@@ -364,35 +462,64 @@ def ensure_runtime_parents(runtime_root: Path, binary_dest: Path) -> None:
                 raise RuntimeError(f"failed to create safe fixed product parent: {parent}")
 
 
-def converge(*, runtime_root: Path, binary_dest: Path, health_url: str, retries: int, delay_seconds: float, timeout_seconds: float, cargo: str | None = None) -> str:
+def result_from_manifest(status: str, manifest: dict[str, str]) -> ConvergeResult:
+    values = (manifest.get("source_sha"), manifest.get("source_tree_sha256"), manifest.get("static_sha256"), manifest.get("binary_sha256"))
+    if not isinstance(values[0], str) or not SHA_RE.fullmatch(values[0]) or any(not isinstance(value, str) or not SHA256_RE.fullmatch(value) for value in values[1:]):
+        raise RuntimeError("invalid installed release manifest")
+    return ConvergeResult(status, values[0], values[1], values[2], values[3])
+
+
+def converge(*, runtime_root: Path, binary_dest: Path, health_url: str, retries: int, delay_seconds: float, timeout_seconds: float, cargo: str | None = None) -> ConvergeResult:
     ensure_runtime_parents(runtime_root, binary_dest)
-    runtime_root.mkdir(parents=False, exist_ok=True); recover_transaction(runtime_root, binary_dest)
+    runtime_root.mkdir(parents=False, exist_ok=True)
+    recover_transaction(runtime_root, binary_dest)
     head = source_head(); assert_clean_snapshot(head)
-    if current_matches(runtime_root, binary_dest, head) and service_active():
-        health_gate(health_url, head, retries, delay_seconds, timeout_seconds); print(f"Coronatio converge no-op: source and running SHA {head}"); return head
-    assert_service_exists()
+    installed = read_manifest(runtime_root / MANIFEST_NAME)
     if current_matches(runtime_root, binary_dest, head):
-        run(["systemctl", "start", SERVICE_NAME]); health_gate(health_url, head, retries, delay_seconds, timeout_seconds); return head
+        if not service_active():
+            assert_service_exists(); run(["systemctl", "start", SERVICE_NAME])
+            health_gate(health_url, head, retries, delay_seconds, timeout_seconds)
+            return result_from_manifest("converged", installed or {})
+        health_gate(health_url, head, retries, delay_seconds, timeout_seconds)
+        return result_from_manifest("no-op", installed or {})
+    assert_service_exists()
     token = hashlib.sha256((head + str(time.time_ns())).encode()).hexdigest()[:16]
     source_stage, binary_stage, manifest = snapshot_and_build(runtime_root, binary_dest, head, cargo or resolve_cargo(), token)
     p = expected_paths(runtime_root, binary_dest, token)
-    tx: dict[str, Any] = {"version": 2, "token": token, "state": "prepared", "new_sha": head, "source_stage": str(source_stage), "binary_stage": str(binary_stage), "source_backup": str(p["source_backup"]), "binary_backup": str(p["binary_backup"]), "manifest_backup": str(p["manifest_backup"]), "binary_sha_backup": str(p["binary_sha_backup"]), "old": {"source": (runtime_root / "source").exists(), "binary": binary_dest.exists(), "manifest": (runtime_root / MANIFEST_NAME).exists(), "binary_sha": (runtime_root / BINARY_SHA_NAME).exists()}}
+    destinations = {"source": runtime_root / "source", "binary": binary_dest, "manifest": runtime_root / MANIFEST_NAME, "binary_sha": runtime_root / BINARY_SHA_NAME}
+    old = {name: path.exists() for name, path in destinations.items()}
+    old_digests = {name: artifact_digest(name, path) for name, path in destinations.items() if old[name]}
+    if any(value is None for value in old_digests.values()):
+        raise RuntimeError("existing release artifact is not attestable")
+    tx: dict[str, Any] = {"version": 2, "token": token, "state": "prepared", "new_sha": head,
+        **{key: str(value) for key, value in p.items()}, "old": old, "old_digests": old_digests}
     set_state(runtime_root, tx, "prepared")
     try:
         run(["systemctl", "stop", SERVICE_NAME]); set_state(runtime_root, tx, "stopped")
-        if tx["old"]["source"]: atomic_replace(runtime_root / "source", p["source_backup"])
-        set_state(runtime_root, tx, "old_source_moved"); atomic_replace(source_stage, runtime_root / "source"); durable_write(runtime_root / "source" / SOURCE_SHA_NAME, (head + "\n").encode()); set_state(runtime_root, tx, "new_source_moved")
-        if tx["old"]["binary"]: atomic_replace(binary_dest, p["binary_backup"])
-        set_state(runtime_root, tx, "old_binary_moved"); atomic_replace(binary_stage, binary_dest); set_state(runtime_root, tx, "new_binary_moved")
-        if tx["old"]["manifest"]: atomic_replace(runtime_root / MANIFEST_NAME, p["manifest_backup"])
-        set_state(runtime_root, tx, "old_manifest_moved"); durable_json(runtime_root / MANIFEST_NAME, manifest); set_state(runtime_root, tx, "new_manifest_written")
-        if tx["old"]["binary_sha"]: atomic_replace(runtime_root / BINARY_SHA_NAME, p["binary_sha_backup"])
-        set_state(runtime_root, tx, "old_binary_sha_moved"); durable_write(runtime_root / BINARY_SHA_NAME, (head + "\n").encode()); set_state(runtime_root, tx, "witness_updated")
+        if old["source"]: atomic_replace(destinations["source"], p["source_backup"])
+        set_state(runtime_root, tx, "old_source_moved"); atomic_replace(source_stage, destinations["source"]); durable_write(destinations["source"] / SOURCE_SHA_NAME, (head + "\n").encode()); fsync_tree(destinations["source"]); set_state(runtime_root, tx, "new_source_moved")
+        if old["binary"]: atomic_replace(binary_dest, p["binary_backup"])
+        set_state(runtime_root, tx, "old_binary_moved"); atomic_replace(binary_stage, binary_dest); fsync_file(binary_dest); fsync_dir(binary_dest.parent); set_state(runtime_root, tx, "new_binary_moved")
+        if old["manifest"]: atomic_replace(destinations["manifest"], p["manifest_backup"])
+        set_state(runtime_root, tx, "old_manifest_moved"); durable_json(destinations["manifest"], manifest); set_state(runtime_root, tx, "new_manifest_written")
+        if old["binary_sha"]: atomic_replace(destinations["binary_sha"], p["binary_sha_backup"])
+        set_state(runtime_root, tx, "old_binary_sha_moved"); durable_write(destinations["binary_sha"], (head + "\n").encode()); set_state(runtime_root, tx, "witness_updated")
         run(["systemctl", "start", SERVICE_NAME]); set_state(runtime_root, tx, "service_started"); health_gate(health_url, head, retries, delay_seconds, timeout_seconds)
         if not current_matches(runtime_root, binary_dest, head): raise RuntimeError("postcondition artifact parity mismatch")
-        set_state(runtime_root, tx, "health_verified"); set_state(runtime_root, tx, "committed"); cleanup_transaction(runtime_root, binary_dest, tx); print(f"Coronatio converge complete: source_sha={head}"); return head
-    except BaseException:
-        recover_transaction(runtime_root, binary_dest); raise
+        exact = read_manifest(destinations["manifest"])
+        result = result_from_manifest("converged", exact or {})
+        if result.manifest() != manifest: raise RuntimeError("installed receipt manifest mismatch")
+        set_state(runtime_root, tx, "health_verified"); set_state(runtime_root, tx, "committed"); cleanup_transaction(runtime_root, binary_dest, tx)
+        return result
+    except BaseException as exc:
+        try:
+            restored = recover_transaction(runtime_root, binary_dest)
+            rollback = "restored" if restored else "not-needed"
+            raise ConvergeFailure(str(exc), source_sha=head, manifest=manifest, rollback_files=rollback, rollback_service=rollback, restored=restored) from exc
+        except ConvergeFailure:
+            raise
+        except BaseException as recovery:
+            raise ConvergeFailure(str(exc), source_sha=head, manifest=manifest, rollback_files="failed", rollback_service="failed", restored=False) from recovery
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -410,42 +537,65 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def install_receipt(ok: bool, status: str, *, source_sha: str | None = None, error: str | None = None, rollback: str = "not-needed") -> dict[str, object]:
-    return {
-        "schema": "coronatio.install.receipt.v1",
-        "ok": ok,
-        "status": status,
-        "source_sha": source_sha,
-        "firstMissingSignal": error,
-        "rollback": rollback,
-        "rollbackFiles": rollback,
-        "rollbackService": "not-attempted" if rollback == "not-needed" else rollback,
-    }
+def install_receipt(ok: bool, status: str, *, result: ConvergeResult | None = None, source_sha: str | None = None,
+                    manifest: dict[str, str] | None = None, error: str | None = None,
+                    rollback_files: str = "not-needed", rollback_service: str = "not-attempted") -> dict[str, object]:
+    manifest = result.manifest() if result else manifest or {}
+    source_sha = result.source_sha if result else source_sha or manifest.get("source_sha")
+    return {"schema": "coronatio.install.receipt.v1", "ok": ok, "status": status,
+            "source_sha": source_sha, "source_tree_sha256": manifest.get("source_tree_sha256"),
+            "static_sha256": manifest.get("static_sha256"), "binary_sha256": manifest.get("binary_sha256"),
+            "firstMissingSignal": error, "rollback": rollback_files, "rollbackFiles": rollback_files,
+            "rollbackService": rollback_service}
+
+
+def valid_success_receipt(receipt: object, head: str) -> bool:
+    """Fulcrum-equivalent success parser: exact head plus all lowerhex artifact hashes."""
+    return bool(isinstance(receipt, dict) and receipt.get("schema") == "coronatio.install.receipt.v1" and
+                receipt.get("ok") is True and receipt.get("status") in {"no-op", "converged"} and
+                receipt.get("source_sha") == head and SHA_RE.fullmatch(head) and
+                all(isinstance(receipt.get(key), str) and SHA256_RE.fullmatch(receipt[key]) for key in
+                    ("source_tree_sha256", "static_sha256", "binary_sha256")))
 
 
 def main(argv: list[str] | None = None) -> int:
     source_sha: str | None = None
+    lock_fd: int | None = None
     try:
         args = parse_args(argv)
         source_sha = source_head()
         if args.health_only:
             health_gate(args.health_url, source_sha, args.health_retries, args.health_delay, args.health_timeout)
-            result = install_receipt(False, "diagnostic", source_sha=source_sha, error="health-only is nonconverged")
+            result = install_receipt(True, "diagnostic", source_sha=source_sha)
         elif args.build_only:
             root = Path(tempfile.mkdtemp(prefix="coronatio-build-"))
             try:
-                snapshot_and_build(root, BINARY_DEST, source_sha, resolve_cargo(), "0" * 16)
+                # Both runtime and binary stage stay under the disposable root.
+                (root / "bin").mkdir()
+                snapshot_and_build(root, root / "bin" / "coronatio", source_sha, resolve_cargo(), "0" * 16)
             finally:
                 shutil.rmtree(root, ignore_errors=True)
-            result = install_receipt(False, "diagnostic", source_sha=source_sha, error="build-only is nonconverged")
+            result = install_receipt(True, "diagnostic", source_sha=source_sha)
         else:
-            converge(runtime_root=RUNTIME_ROOT, binary_dest=BINARY_DEST, health_url=args.health_url, retries=args.health_retries, delay_seconds=args.health_delay, timeout_seconds=args.health_timeout)
-            result = install_receipt(True, "converged", source_sha=source_sha)
+            ensure_runtime_parents(RUNTIME_ROOT, BINARY_DEST)
+            RUNTIME_ROOT.mkdir(parents=False, exist_ok=True)
+            lock_fd = acquire_install_lock(RUNTIME_ROOT)
+            converged = converge(runtime_root=RUNTIME_ROOT, binary_dest=BINARY_DEST, health_url=args.health_url, retries=args.health_retries, delay_seconds=args.health_delay, timeout_seconds=args.health_timeout)
+            result = install_receipt(True, converged.status, result=converged)
+            if not valid_success_receipt(result, source_sha):
+                raise RuntimeError("installer generated an invalid success receipt")
         print(json.dumps(result, sort_keys=True))
-        return 0 if result["ok"] else 1
-    except (FileNotFoundError, RuntimeError, subprocess.CalledProcessError, OSError) as exc:
-        print(json.dumps(install_receipt(False, "failed", source_sha=source_sha, error=str(exc), rollback="failed"), sort_keys=True))
+        return 0
+    except ConvergeFailure as exc:
+        print(json.dumps(install_receipt(False, "failed", source_sha=exc.source_sha, manifest=exc.manifest,
+              error=str(exc), rollback_files=exc.rollback_files, rollback_service=exc.rollback_service), sort_keys=True))
         return 1
+    except (FileNotFoundError, RuntimeError, subprocess.CalledProcessError, OSError) as exc:
+        print(json.dumps(install_receipt(False, "failed", source_sha=source_sha, error=str(exc), rollback_files="not-attempted", rollback_service="not-attempted"), sort_keys=True))
+        return 1
+    finally:
+        if lock_fd is not None:
+            release_install_lock(lock_fd)
 
 
 if __name__ == "__main__":
