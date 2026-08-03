@@ -576,9 +576,17 @@ fn shell_document_3() -> &'static str {
       replaceTabBar(await response.text());
       return currentActiveTabId();
     }
+    function reconcileAdmittedPaneHosts() { if (!immortalFloorGuestSlot) return; const declaredPaneIds = new Set(tabs.map(tab => tab.dataset.pane).filter(Boolean));
+      panes.filter(pane => pane.dataset.admittedPaneHost === 'true' && !declaredPaneIds.has(pane.dataset.panePanel)).forEach(pane => pane.remove()); for (const tab of tabs) { const id = tab.dataset.pane; if (!id || panes.some(pane => pane.dataset.panePanel === id)) continue;
+        const pane = document.createElement('section'); pane.className = 'pane'; pane.id = 'pane-' + id;
+        pane.dataset.panePanel = id; pane.dataset.viewPanel = id; pane.dataset.admittedPaneHost = 'true'; pane.dataset.immortalFloorLayer = '2';
+        pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-label', tab.querySelector('.tab-name')?.textContent?.trim() || id); pane.setAttribute('aria-hidden', 'true'); immortalFloorGuestSlot.appendChild(pane); }
+      panes = [...document.querySelectorAll('[data-pane-panel]')]; }
     function replaceTabBar(html) { if (!tabBar) return;
       tabBar.innerHTML = html;
-      if (window.htmx) window.htmx.process(tabBar); tabs = [...document.querySelectorAll('[data-pane]')];
+      tabs = [...document.querySelectorAll('[data-pane]')];
+      reconcileAdmittedPaneHosts();
+      if (window.htmx) window.htmx.process(tabBar);
       bindTabControls();
       applyTabBarVisibility();
     }
@@ -827,7 +835,6 @@ fn shell_document_3() -> &'static str {
     }
     bindTabControls();
     setStarredTab(tabState.starredTab);
-    document.addEventListener('visibilitychange', reconcileViewportStreamFamily);
-    async function fetchInto(route, target, method = 'GET') {
+    document.addEventListener('visibilitychange', reconcileViewportStreamFamily); async function fetchInto(route, target, method = 'GET') {
       const el = document.getElementById(target);"####
 }

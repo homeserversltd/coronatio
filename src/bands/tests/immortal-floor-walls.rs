@@ -78,8 +78,12 @@ fn immortal_floor_admin_projection_reprocesses_chrome_then_reseats_guest() {
     assert!(chrome.contains("if (tab.dataset.immortalFloorBound === 'true') return;"));
     assert!(chrome.contains("tab.dataset.immortalFloorBound = 'true';"));
     assert_eq!(chrome.matches("tabBar.innerHTML =").count(), 1);
-    assert!(chrome.contains("function replaceTabBar(html)"));
-    assert!(chrome.contains("if (window.htmx) window.htmx.process(tabBar);"));
+    assert!(chrome.contains("function reconcileAdmittedPaneHosts()"));
+    assert!(chrome.contains("pane.dataset.admittedPaneHost = 'true';"));
+    assert!(chrome.contains("immortalFloorGuestSlot.appendChild(pane);"));
+    assert!(chrome.contains("panes.filter(pane => pane.dataset.admittedPaneHost === 'true' && !declaredPaneIds.has(pane.dataset.panePanel)).forEach(pane => pane.remove());"));
+    assert!(chrome.contains("panes = [...document.querySelectorAll('[data-pane-panel]')];"));
+    assert!(chrome.contains("reconcileAdmittedPaneHosts();\n      if (window.htmx) window.htmx.process(tabBar);"));
     assert!(chrome.contains("showPane(selectedTab, { refresh: true })"));
     let replace = chrome.find("replaceTabBar(await response.text())").expect("processed chrome replacement");
     let reseat = chrome.find("showPane(selectedTab, { refresh: true })").expect("admin guest reseat");
