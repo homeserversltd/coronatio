@@ -313,7 +313,7 @@ fn shell_document_2() -> &'static str {
     const appRoot = document.querySelector('[data-product="Coronatio"]');
     const tabBar = document.querySelector('[role="tablist"]');
     let tabs = [...document.querySelectorAll('[data-pane]')];
-    const panes = [...document.querySelectorAll('[data-pane-panel]')];
+    let panes = [...document.querySelectorAll('[data-pane-panel]')];
     const immortalFloorShell = document.querySelector('[data-immortal-floor-shell]');
     const immortalFloorGuestSlot = document.querySelector('[data-immortal-floor-layer="2"]');
     panes.forEach(pane => pane.dataset.immortalFloorLayer = '2');
