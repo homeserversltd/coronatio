@@ -1,14 +1,14 @@
-/* Firewall is an admin-only DNS website policy tablet. */
+/* Firewall is an admin-only child-device website whitelist tablet. */
 .firewall-tablet { display: grid; gap: 1rem; min-width: 0; padding: 1.5rem; color: var(--text); background: var(--background); }
-.firewall-header, .firewall-controls, .firewall-add-site, .firewall-sites li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }
-.firewall-header h2 { margin: 0; }
-.firewall-header p, .firewall-disclosure, .firewall-binding { margin: .25rem 0 0; color: var(--secondary); }
-.firewall-disclosure, .firewall-binding, .firewall-banner { padding: .75rem 1rem; border: 1px solid var(--border); border-radius: var(--border-radius, 6px); background: var(--hiddenTabBackground); }
-.firewall-controls, .firewall-add-site { padding: 1rem; border: 1px solid var(--border); border-radius: var(--border-radius, 6px); background: var(--primary); }
-.firewall-controls label, .firewall-add-site label { display: grid; gap: .35rem; color: var(--secondary); font-size: .875rem; }
+.firewall-header, .firewall-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }
+.firewall-header h2, .firewall-section h3 { margin: 0; }
+.firewall-header p, .firewall-section p { margin: .25rem 0 0; color: var(--secondary); }
+.firewall-section, .firewall-banner, .firewall-receipt { padding: .75rem 1rem; border: 1px solid var(--border); border-radius: var(--border-radius, 6px); background: var(--hiddenTabBackground); }
 .firewall-banner--error { border-color: var(--error); color: var(--error); }
 .firewall-banner[hidden] { display: none; }
-.firewall-sites { display: grid; gap: .5rem; padding: 0; margin: 0; list-style: none; }
-.firewall-sites li { padding: .75rem 1rem; border-left: 4px solid var(--accent); border-radius: var(--border-radius, 6px); background: var(--primary); }
-.firewall-sites code { overflow-wrap: anywhere; color: var(--text); }
-@media (max-width: 48rem) { .firewall-tablet { padding: 1rem; } .firewall-header, .firewall-controls, .firewall-add-site, .firewall-sites li { align-items: stretch; flex-direction: column; } .firewall-controls .ui-button, .firewall-add-site .ui-button { width: 100%; } }
+.firewall-list { display: grid; gap: .5rem; padding: 0; margin: .75rem 0 0; list-style: none; }
+.firewall-list li { padding: .75rem 1rem; border-left: 4px solid var(--accent); border-radius: var(--border-radius, 6px); background: var(--primary); }
+.firewall-list code, .firewall-receipt { overflow-wrap: anywhere; color: var(--text); }
+.firewall-receipt:empty { display: none; }
+.firewall-modal-field { display: grid; gap: .5rem; margin-bottom: .75rem; }
+@media (max-width: 48rem) { .firewall-tablet { padding: 1rem; } .firewall-header, .firewall-list li { align-items: stretch; flex-direction: column; } .firewall-list .ui-button { width: 100%; } }
