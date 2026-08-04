@@ -18,9 +18,9 @@ Admin mode is a leased server session, not a browser claim. Guest and admin view
 
 ## The household memory
 
-`homeserver.json` is the shared household memory. On an installed HomeServer, Coronatio reads `/etc/homeserver.json` first. It contains the facts that should survive a browser closing or the crown restarting: selected theme, favorite and visible tabs, portal configuration, upload defaults, and other household choices.
+`config.json` is the shared household memory at `/etc/appliance/config.json`. It contains the facts that should survive a browser closing or the crown restarting: selected theme, favorite and visible tabs, portal configuration, upload defaults, and other household choices.
 
-The browser may remember short-lived presentation details, but it does not become a rival configuration authority. Development fixtures can be selected with `CORONATIO_HOMESERVER_JSON`; that override exists to test the same behavior away from a live appliance.
+The browser may remember short-lived presentation details, but it does not become a rival configuration authority. Development fixtures can be selected with `CORONATIO_HOMESERVER_JSON`; that override exists to test the same behavior away from a live appliance. Factory portal readback uses `/etc/appliance/config.factory`.
 
 ## Reads and actions take different lanes
 

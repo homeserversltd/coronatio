@@ -7,7 +7,7 @@ async fn portals_config_route() -> impl IntoResponse {
                 schema: "coronatio.portals.config.v1".to_string(),
                 route: "/api/portals".to_string(),
                 success: false,
-                source: homeserver_config_candidates().into_iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(" | "),
+                source: homeserver_json_path().display().to_string(),
                 factory_source: None,
                 portals: Vec::new(),
                 factory_portals: Vec::new(),
@@ -57,7 +57,7 @@ async fn portals_factory_route() -> impl IntoResponse {
 }
 
 fn read_portals_config() -> Result<PortalConfigResponse, String> {
-    let (source, value) = read_first_json(&homeserver_config_candidates())?;
+    let (source, value) = read_json(&homeserver_json_path())?;
     let portals = extract_portals(&value);
     let (factory_source, factory_portals, factory_signal) = read_factory_portal_names();
     Ok(PortalConfigResponse {
@@ -72,46 +72,21 @@ fn read_portals_config() -> Result<PortalConfigResponse, String> {
     })
 }
 
-fn homeserver_config_candidates() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    if let Ok(path) = env::var("CORONATIO_HOMESERVER_JSON") {
-        paths.push(PathBuf::from(path));
-    }
-    paths.push(PathBuf::from("/etc/homeserver/config.json"));
-    paths.push(PathBuf::from("/etc/homeserver.json"));
-    paths.push(PathBuf::from("/var/www/homeserver/src/config/homeserver.json"));
-    paths.push(PathBuf::from("/etc/homeserver.factory"));
-    paths.push(PathBuf::from("/fulcrum/attachments/homeserver/initialization/flask/inject/src/config/homeserver.json"));
-    paths.push(PathBuf::from("/fulcrum/attachments/homeserver/initialization/flask/src/config/homeserver.json"));
-    paths
+fn homeserver_factory_path() -> PathBuf {
+    PathBuf::from(APPLIANCE_FACTORY_CONFIG_JSON)
 }
 
-fn homeserver_factory_candidates() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    if let Ok(path) = env::var("CORONATIO_HOMESERVER_FACTORY_JSON") {
-        paths.push(PathBuf::from(path));
+fn read_json(path: &PathBuf) -> Result<(PathBuf, serde_json::Value), String> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => serde_json::from_str::<serde_json::Value>(&text)
+            .map(|value| (path.clone(), value))
+            .map_err(|error| format!("homeserver-config-invalid-json:{}:{error}", path.display())),
+        Err(_) => Err(format!("homeserver-config-missing:{}", path.display())),
     }
-    paths.push(PathBuf::from("/etc/homeserver.factory"));
-    paths.push(PathBuf::from("/var/www/homeserver/src/config/homeserver.factory"));
-    paths
-}
-
-fn read_first_json(candidates: &[PathBuf]) -> Result<(PathBuf, serde_json::Value), String> {
-    let mut missing = Vec::new();
-    for path in candidates {
-        match std::fs::read_to_string(path) {
-            Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
-                Ok(value) => return Ok((path.clone(), value)),
-                Err(error) => return Err(format!("homeserver-config-invalid-json:{}:{error}", path.display())),
-            },
-            Err(_) => missing.push(path.display().to_string()),
-        }
-    }
-    Err(format!("homeserver-config-missing:{}", missing.join("|")))
 }
 
 fn read_factory_portal_names() -> (Option<String>, Vec<String>, String) {
-    match read_first_json(&homeserver_factory_candidates()) {
+    match read_json(&homeserver_factory_path()) {
         Ok((source, value)) => {
             let names = extract_portals(&value).into_iter().map(|portal| portal.name).collect::<Vec<_>>();
             (Some(source.display().to_string()), names, "none".to_string())

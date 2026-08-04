@@ -32,7 +32,7 @@ Coronatio listens on port `8090` by default. For an isolated development run:
 CORONATIO_TAB_ROOT=/tmp/coronatio-tabs cargo run
 ```
 
-Open `http://127.0.0.1:8090`. Set `CORONATIO_PORT` to choose another port. Development and tests may point `CORONATIO_HOMESERVER_JSON` at a fixture; an installed appliance reads `/etc/homeserver.json` first.
+Open `http://127.0.0.1:8090`. Set `CORONATIO_PORT` to choose another port. Development and tests may point `CORONATIO_HOMESERVER_JSON` at a fixture; an installed appliance reads `/etc/appliance/config.json`.
 
 ## Extend it
 

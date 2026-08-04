@@ -296,23 +296,9 @@ fn tab_bar_html_response_with_active(session: Session, active: Option<&str>) -> 
 }
 
 pub(crate) fn homeserver_json_path() -> PathBuf {
-    if let Ok(path) = env::var("CORONATIO_HOMESERVER_JSON") {
-        return PathBuf::from(path);
-    }
-    for candidate in [
-        INSTALLED_HOMESERVER_JSON,
-        LEGACY_HOMESERVER_JSON,
-        FLASK_HOMESERVER_JSON,
-        FACTORY_HOMESERVER_JSON,
-        QUARRY_HOMESERVER_JSON,
-        LOCAL_QUARRY_HOMESERVER_JSON,
-    ] {
-        let path = PathBuf::from(candidate);
-        if path.exists() {
-            return path;
-        }
-    }
-    PathBuf::from(INSTALLED_HOMESERVER_JSON)
+    env::var("CORONATIO_HOMESERVER_JSON")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(APPLIANCE_CONFIG_JSON))
 }
 
 pub(crate) fn load_homeserver_json_sync() -> Result<(String, serde_json::Value), String> {
