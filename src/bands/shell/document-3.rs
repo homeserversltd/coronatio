@@ -448,11 +448,7 @@ fn shell_document_3() -> &'static str {
       [pulseStream, coreStream].forEach(stream => { try { stream?.close(); } catch (_) {} });
       pulseStream = null; pulseStreamId = null; coreStream = null; coreStreamId = null;
       document.documentElement.dataset.connectionState = 'headless';
-      const notice = document.querySelector('[data-crown-headless-notice]') || document.createElement('p');
-      notice.dataset.crownHeadlessNotice = 'true';
-      notice.textContent = 'You have been disconnected due to inactivity.';
-      notice.setAttribute('role', 'status');
-      if (!notice.parentNode) document.querySelector('[data-product="Coronatio"]')?.prepend(notice);
+      showPane('headless');
     }
     if (!coronatioAttendanceRuntime.recordEligibleActivity) {
       const ATTENDANCE_TOUCH_THROTTLE_MS = 60 * 1000;
@@ -531,9 +527,10 @@ fn shell_document_3() -> &'static str {
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function visibleTabs() { return headerState.isAdmin ? tabs.filter(tab => tab.dataset.pane !== fallbackTab) : eligibleRegularTabs(); }
     function firstVisibleTab() { return eligibleRegularTabs()[0]?.dataset.pane || fallbackTab; }
-    function currentActiveTabId() { return tabs.find(tab => tab.getAttribute('aria-selected') === 'true')?.dataset.pane || fallbackTab; }
+    function currentActiveTabId() { if (coronatioAttendanceRuntime.inactivityHeadless) return 'headless'; return tabs.find(tab => tab.getAttribute('aria-selected') === 'true')?.dataset.pane || fallbackTab; }
     function canStarTab(id) { return eligibleRegularTabs().some(tab => tab.dataset.pane === id); }
     function lawfulPaneCandidate(id) {
+      if (id === 'headless' && coronatioAttendanceRuntime.inactivityHeadless) return id;
       const tab = tabs.find(candidate => candidate.dataset.pane === id);
       if (!tab) return firstVisibleTab();
       if (tab.dataset.adminOnly === 'true') return headerState.isAdmin ? id : firstVisibleTab();
@@ -543,7 +540,7 @@ fn shell_document_3() -> &'static str {
     function applyTabBarVisibility() {
       if (!tabBar) return;
       const selected = currentActiveTabId();
-      const hidden = !headerState.isAdmin && (selected === fallbackTab || eligibleRegularTabs().length <= 2);
+      const hidden = coronatioAttendanceRuntime.inactivityHeadless || (!headerState.isAdmin && (selected === fallbackTab || eligibleRegularTabs().length <= 2));
       tabBar.classList.toggle('hidden', hidden);
       tabBar.dataset.hidden = String(hidden);
     }
@@ -834,6 +831,7 @@ fn shell_document_3() -> &'static str {
       }));
     }
     bindTabControls();
+    document.querySelector('[data-crown-headless-reload]')?.addEventListener('click', () => window.location.reload());
     setStarredTab(tabState.starredTab);
     document.addEventListener('visibilitychange', reconcileViewportStreamFamily); async function fetchInto(route, target, method = 'GET') {
       const el = document.getElementById(target);"####

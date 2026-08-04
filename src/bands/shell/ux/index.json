@@ -38,6 +38,7 @@
     "packs/dhcp.css",
     "packs/firewall.css",
     "packs/unbound.css",
+    "packs/headless.css",
     "shell/document-2-css.css"
   ],
   "authority": "Serve-time concatenation order IS this list; adding a file means adding it here."

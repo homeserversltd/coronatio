@@ -132,6 +132,14 @@ fn shell_document_2() -> &'static str {
           </section>
         </div>
       </section>
+      <section class="pane" id="pane-headless" data-pane-panel="headless" data-view-panel="headless" role="tabpanel" aria-label="Disconnected">
+        <article class="headless-tablet" data-crown-headless-viewport>
+          <img class="headless-tablet-logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNjAiIGhlaWdodD0iMTYwIiB2aWV3Qm94PSIwIDAgMTYwIDE2MCI+PHJlY3Qgd2lkdGg9IjE2MCIgaGVpZ2h0PSIxNjAiIHJ4PSIzMiIgZmlsbD0iIzFmMjkzNyIvPjxwYXRoIGQ9Ik0yOCA4MiA4MCAzNGw1MiA0OHY0NEgyOHoiIGZpbGw9IiM2MGE1ZmEiLz48cGF0aCBkPSJNNTkgMTI2Vjg2aDQydjQwIiBmaWxsPSIjMWYyOTM3Ii8+PHRleHQgeD0iODAiIHk9IjE1MSIgZmlsbD0id2hpdGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjEzIiBmb250LXdlaWdodD0iNzAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5IT01FU0VSVkVSPC90ZXh0Pjwvc3ZnPg==" alt="HomeServer logo">
+          <h1>You have been disconnected due to inactivity.</h1>
+          <button type="button" class="headless-tablet-reload" data-crown-headless-reload>Reload Page</button>
+          <small>Product of HOMESERVER LLC</small>
+        </article>
+      </section>
       <section class="pane active" id="pane-stats" data-pane-panel="stats" data-view-panel="stats" role="tabpanel" aria-label="Stats">
         <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
           __STATS_ELEMENTS_FRAGMENT__
