@@ -110,6 +110,12 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/wakeonlan/wake", post(network_identity_mutation_route))
         .route("/api/wakeonlan/targets/:name", delete(network_identity_mutation_route))
         .route("/api/wakeonlan/status", get(homeserver_rust_read_route))
+        .route("/api/network/device", get(device_roster_route))
+        .route("/api/network/device/claim", post(device_claim_route))
+        .route("/api/network/dhcp/boundary", get(device_boundary_route))
+        .route("/api/network/dhcp/leases", get(device_leases_route))
+        .route("/api/network/dhcp/reservations", get(device_reservations_route))
+        .route("/api/network/dns/read", get(device_dns_read_route))
         .route("/api/dhcp/status", get(dhcp_read_route))
         .route("/api/dhcp/leases", get(dhcp_read_route))
         .route("/api/dhcp/reservations", get(dhcp_read_route).post(dhcp_reservation_create_route))
@@ -498,6 +504,7 @@ fn admin_class_generic_refusal_family(path: &str) -> &'static str {
 include!("full-rust-routes/read.rs");
 
 include!("full-rust-routes/dhcp.rs");
+include!("full-rust-routes/device-identity.rs");
 include!("full-rust-routes/unbound.rs");
 include!("full-rust-routes/firewall.rs");
 

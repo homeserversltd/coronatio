@@ -5,3 +5,7 @@
 .dns-record { justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: .5rem; }
 .dns-record span, [data-dns-state] { color: var(--secondary); font-family: monospace; }
 .dns-empty { color: var(--secondary); }
+.identity-roster-host { overflow-x: auto; }
+.identity-roster { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.identity-roster th, .identity-roster td { padding: .6rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.identity-roster [data-roster-emphasis="address"] td:nth-child(2), .identity-roster [data-roster-emphasis="name"] td:nth-child(2) { font-weight: 700; }
