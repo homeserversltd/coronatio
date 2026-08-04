@@ -638,15 +638,17 @@
             }
         }
         let routes = std::fs::read_to_string("src/bands/routes.rs").unwrap();
-        assert!(contracts.contains("INSTALLED_HOMESERVER_JSON"));
-        assert!(contracts.contains("LEGACY_HOMESERVER_JSON"));
-        assert!(contracts.contains("FLASK_HOMESERVER_JSON"));
-        assert!(contracts.contains("FACTORY_HOMESERVER_JSON"));
-        assert!(contracts.contains("/etc/homeserver/config.json"));
-        assert!(contracts.contains("/etc/homeserver.json"));
-        assert!(contracts.contains("/var/www/homeserver/src/config/homeserver.json"));
-        assert!(contracts.contains("/etc/homeserver.factory"));
-        assert!(routes.contains("fn homeserver_json_path()"));
+        assert!(contracts.contains("APPLIANCE_CONFIG_JSON"));
+        assert!(contracts.contains("APPLIANCE_FACTORY_CONFIG_JSON"));
+        assert!(contracts.contains("/etc/appliance/config.json"));
+        assert!(contracts.contains("/etc/appliance/config.factory"));
+        assert!(!contracts.contains(&["/etc", "homeserver"].join("/")));
+        assert!(routes.contains("APPLIANCE_CONFIG_JSON"));
+        let portals = std::fs::read_to_string("src/bands/full-rust-routes/portals.rs").unwrap();
+        let upload = std::fs::read_to_string("src/bands/full-rust-routes/upload.rs").unwrap();
+        assert!(portals.contains("read_json(&homeserver_json_path())"));
+        assert!(upload.contains("read_json(&homeserver_json_path())"));
+        assert!(portals.contains("APPLIANCE_FACTORY_CONFIG_JSON"));
         assert!(routes.contains("homeserver.json tabs.{config,visibility,starred}"));
         assert!(routes.contains("global.theme.name"));
         for obsolete in [

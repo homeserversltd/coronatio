@@ -13,7 +13,7 @@ Identical means indistinguishable to the user under the same viewport, theme, se
 
 ## Central HomeServer state authority
 
-Coronatio is a one-to-one port before it is a new product surface. The central HomeServer config file, `homeserver.json`, is the first runtime state authority for config, theme, favorites, tabs, portals, upload defaults, and starred/default route behavior. Coronatio SHALL read `/etc/homeserver.json` first on the installed homeserver, then the legacy live HomeServer config as migration fallback, before any Coronatio-local fallback or firmware default. Sidecar JSON may exist only as quarry, fixture, or packed firmware default; it is not the living user-state authority.
+Coronatio is a one-to-one port before it is a new product surface. The central appliance config file, `/etc/appliance/config.json`, is the first runtime state authority for config, theme, favorites, tabs, portals, upload defaults, and starred/default route behavior. Development and test fixtures may use `CORONATIO_HOMESERVER_JSON`; no runtime fallback ladder exists. Sidecar JSON may exist only as fixture or packed firmware default; it is not the living user-state authority.
 
 ## Favorite and first-load manifest law
 

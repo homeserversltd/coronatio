@@ -296,7 +296,7 @@ fn registry_transaction_readback() -> RegistryTransactionReadback {
             backup_policy: "create timestamped backup before mutation when current config exists".to_string(),
             write_policy: "write merged candidate to temp config, validate it, then move temp into the live config path".to_string(),
             permission_restore: "after promote or restore, set owner www-data:www-data and mode 664 in the old host; Coronatio records desired owner/mode and leaves privileged chmod/chown to Caduceus".to_string(),
-            missing_config_fallback: "if live config is absent, read /etc/homeserver.factory; if absent, use minimal tabs/global.cors.allowed_origins structure".to_string(),
+            missing_config_fallback: "if live config is absent, read /etc/appliance/config.factory; if absent, use minimal tabs/global.cors.allowed_origins structure".to_string(),
             read_only_factory_posture: "factory fallback is source material for a candidate, not a durable replacement for the live config unless validation and promotion succeed".to_string(),
         },
         rollback_law: ConfigRollbackLaw {
@@ -312,7 +312,7 @@ fn registry_transaction_readback() -> RegistryTransactionReadback {
 fn registry_transaction_phases() -> Vec<RegistryTransactionPhase> {
     vec![
         registry_transaction_phase(1, "backup-current", "create_backup copies current config to /tmp/<name>.installer_backup.<timestamp>", "record backup policy and receipt fields before mutation", "Caduceus later"),
-        registry_transaction_phase(2, "load-current-or-factory", "read homeserver.json, else /etc/homeserver.factory, else minimal valid structure", "classify live config, factory config, or minimal recovery candidate", "read-only Coronatio contract now; Caduceus later"),
+        registry_transaction_phase(2, "load-current-or-factory", "read config.json, else /etc/appliance/config.factory, else minimal valid structure", "classify live config, factory config, or minimal recovery candidate", "read-only Coronatio contract now; Caduceus later"),
         registry_transaction_phase(3, "deep-merge-patch", "deep_merge recursively merges objects and replaces scalars; tabs.starred is popped and restored", "merge patch into candidate while preserving default route law", "pure typed transaction primitive later"),
         registry_transaction_phase(4, "write-temp-candidate", "json.dump candidate to homeserver.json.temp", "candidate lives outside live path until validation succeeds", "Caduceus later"),
         registry_transaction_phase(5, "validate-candidate", "validate_config_with_factory_fallback(temp_config) rejects factory fallback output", "candidate must pass syntax and factory fallback validation before promotion", "Caduceus later"),

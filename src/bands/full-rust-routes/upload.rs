@@ -323,7 +323,7 @@ async fn upload_browse_hierarchical_route(Query(query): Query<UploadBrowseQuery>
 
 
 fn upload_config_value() -> serde_json::Value {
-    read_first_json(&homeserver_config_candidates()).map(|(_, value)| value).unwrap_or_else(|_| serde_json::json!({}))
+    read_json(&homeserver_json_path()).map(|(_, value)| value).unwrap_or_else(|_| serde_json::json!({}))
 }
 
 fn upload_data(value: &serde_json::Value) -> Option<&serde_json::Value> {
