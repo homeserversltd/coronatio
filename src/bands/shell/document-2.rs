@@ -226,6 +226,12 @@ fn shell_document_2() -> &'static str {
             <div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-identity-claim-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-identity-claim-save>Save</button></div>
           </section>
         </div>
+        <div class="ui-modal-backdrop" data-identity-reservation-modal aria-hidden="true">
+          <section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="identity-reservation-title">
+            <h2 id="identity-reservation-title" data-identity-reservation-title>Reservation</h2><div data-identity-reservation-body></div>
+            <div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-identity-reservation-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-identity-reservation-save>Save</button></div>
+          </section>
+        </div>
       </section>
       <section class="pane" id="pane-firewall" data-pane-panel="firewall" data-view-panel="firewall" role="tabpanel" aria-label="Firewall">
         <div class="firewall-tablet" data-firewall-tablet data-admin-only="true" data-admin-viewport="firewall">
