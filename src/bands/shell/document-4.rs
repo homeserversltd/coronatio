@@ -474,12 +474,9 @@ fn shell_document_4() -> &'static str {
         return `<div class="disk-usage-item"><div class="disk-usage-header"><div class="disk-device">${label} (${Number(drive.usagePercent || 0).toFixed(1)}%)</div>${mountLine}</div><div class="disk-usage-bar"><div class="disk-usage-fill" style="width:${drive.usagePercent || 0}%"></div></div><div class="disk-usage-details"><div>Used: ${fmtBytes(drive.usedBytes)}</div><div>Free: ${fmtBytes(drive.freeBytes)}</div><div>Total: ${fmtBytes(drive.totalBytes)}</div></div></div>`;
       }).join('') || '<div class="disk-usage-loading"><p>Loading disk usage data...</p></div>';
     }
-    function renderKeaLeases(data, notes = {}) {
-      const tbody = document.querySelector('[data-kea-leases]'); if (!tbody) return; if (data.keaLeases && !data.leases) { tbody.innerHTML = '<tr><td colspan="4">No Kea leases found.</td></tr>'; return; }
-      const leases = data.leases || []; tbody.innerHTML = leases.length ? leases.map(lease => {
-        const mac = String(lease.mac || ''), canonicalMac = canonicalNetworkNoteMac(mac), note = canonicalMac ? notes[canonicalMac] ?? '' : '', pencil = headerState.isAdmin ? `<button type="button" class="edit-note-button" data-edit-note-button data-mac="${escapeHtml(mac)}" data-note="${escapeHtml(note)}" title="Edit device note" aria-label="Edit note for ${escapeHtml(mac)}"><i class="fas fa-pencil-alt" aria-hidden="true"></i></button>` : ''; return `<tr><td class="device-note-cell" data-label="Note:"><span class="note-text" data-note-text data-mac="${escapeHtml(mac)}">${escapeHtml(note)}</span>${pencil}</td><td data-label="Hostname:">${escapeHtml(lease.hostname || 'N/A')}</td><td data-label="IP:">${escapeHtml(lease.ip || '')}</td><td data-label="MAC:" title="${escapeHtml(mac)}">${escapeHtml(mac)}</td></tr>`;
-      }).join('') : '<tr><td colspan="4">No Kea leases found.</td></tr>';
-    }
+    function renderStatsRoster() { renderIdentityRoster('liveness'); }
+    function normalizeNetworkNotes(payload) { const notes = payload?.networkNotes || payload?.notes || payload?.data?.networkNotes || payload?.data?.notes || payload; return notes && typeof notes === 'object' && !Array.isArray(notes) ? notes : {}; }
+    function canonicalNetworkNoteMac(value) { const raw = String(value ?? ''), match = raw.match(/^([0-9a-f]{2})([:-])(?:[0-9a-f]{2}\2){4}[0-9a-f]{2}$/i); return match ? raw.split(match[2]).map(octet => octet.toUpperCase()).join(':') : null; }
     function ensureNoteModal() {
       let modal = document.querySelector('[data-note-modal]'); if (modal) return modal;
       modal = document.createElement('div'); modal.className = 'modal-backdrop'; modal.dataset.noteModal = ''; modal.hidden = true; modal.innerHTML = `<div class="modal-window edit-note-modal" role="dialog" aria-modal="true" aria-labelledby="note-modal-title"><h2 id="note-modal-title" data-note-modal-title></h2><textarea class="note-textarea" data-note-textarea rows="4"></textarea><div class="modal-actions"><button type="button" data-note-cancel>Cancel</button><button type="button" data-note-confirm>Confirm</button></div><p class="error-message" data-note-error role="alert" hidden></p></div>`;
@@ -489,12 +486,9 @@ fn shell_document_4() -> &'static str {
     function openNoteModal(mac, note) { const modal = ensureNoteModal(); modal.dataset.mac = mac; modal.querySelector('[data-note-modal-title]').textContent = `Edit Note for ${mac}`; const textarea = modal.querySelector('[data-note-textarea]'); textarea.value = note; modal.querySelector('[data-note-error]').hidden = true; modal.hidden = false; textarea.focus(); }
     async function saveDeviceNote() {
       const modal = document.querySelector('[data-note-modal]'), mac = modal?.dataset.mac || '', textarea = modal?.querySelector('[data-note-textarea]'), errorNode = modal?.querySelector('[data-note-error]'), note = textarea?.value ?? '';
-      try { const response = await fetch('/api/network/notes', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...statsSessionHeaders() }, body: JSON.stringify({ mac, note }) }); if (!response.ok) throw new Error(`Save failed (${response.status})`); document.querySelectorAll('[data-note-text]').forEach(node => { if (node.dataset.mac === mac) node.textContent = note; }); document.querySelectorAll('[data-edit-note-button]').forEach(button => { if (button.dataset.mac === mac) button.dataset.note = note; }); closeNoteModal(); showCoronatioToast('Device note saved', 'success'); }
+      try { const response = await fetch('/api/network/notes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mac, note }) }); if (!response.ok) throw new Error(`Save failed (${response.status})`); const canonicalMac = canonicalNetworkNoteMac(mac); if (canonicalMac) identityState.notes[canonicalMac] = note; renderStatsRoster(); closeNoteModal(); showCoronatioToast('Device note saved', 'success'); }
       catch (error) { if (errorNode) { errorNode.textContent = String(error); errorNode.hidden = false; } }
     }
-    function statsSessionHeaders() { return {}; }
-    function normalizeNetworkNotes(payload) { const notes = payload?.networkNotes || payload?.notes || payload?.data?.networkNotes || payload?.data?.notes || payload; return notes && typeof notes === 'object' && !Array.isArray(notes) ? notes : {}; }
-    function canonicalNetworkNoteMac(value) { const raw = String(value ?? ''), match = raw.match(/^([0-9a-f]{2})([:-])(?:[0-9a-f]{2}\2){4}[0-9a-f]{2}$/i); return match ? raw.split(match[2]).map(octet => octet.toUpperCase()).join(':') : null; }
     function renderProcesses(data) {
       const target = document.querySelector('[data-process-usage-list]');
       if (!target) return;
@@ -504,9 +498,8 @@ fn shell_document_4() -> &'static str {
     async function hydrateStats() {
       if (statsHydrationInFlight) return; statsHydrationInFlight = true;
       try {
-        const headers = statsSessionHeaders(); // Owned chrome: fetch('/api/stats') + fetch('/api/network/notes'), session/no-store.
-        const [statsResponse, notesResponse] = await Promise.all([fetch('/api/stats', { headers, cache: 'no-store' }), fetch('/api/network/notes', { headers, cache: 'no-store' })]); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
-        const data = await statsResponse.json(), notes = notesResponse.ok ? normalizeNetworkNotes(await notesResponse.json()) : {}, label = formatChartTime(); pushChartPoint(label, data); renderCpuChart(data); renderNetwork(data); renderDiskIo(data); renderMemory(data); renderDiskUsage(data); renderKeaLeases(data, notes); renderProcesses(data);
+        const [statsResponse, rosterResponse, notesResponse] = await Promise.all([fetch('/api/stats', { cache: 'no-store' }), headerState.isAdmin ? identityJson('/api/network/device') : Promise.resolve([]), fetch('/api/network/notes', { cache: 'no-store' })]); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
+        const data = await statsResponse.json(), label = formatChartTime(); identityState.roster = identityRows(rosterResponse); identityState.notes = notesResponse.ok ? normalizeNetworkNotes(await notesResponse.json()) : {}; pushChartPoint(label, data); renderCpuChart(data); renderNetwork(data); renderDiskIo(data); renderMemory(data); renderDiskUsage(data); renderStatsRoster(); renderProcesses(data);
       } catch (_) { /* OG has no Stats-family error face; retain the last truthful frame. */ }
       finally { statsHydrationInFlight = false; }
     }

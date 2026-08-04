@@ -145,8 +145,8 @@ fn stat_element_templates() -> Vec<(&'static str, &'static str)> {
             <div class="stat-content"><div class="disk-usage-stats" data-disk-usage-stats></div></div>
           </div>
           <div class="stat-element" data-stat-element-id="kea-leases" data-visible="true">
-            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="kea-leases" data-visible="true" aria-label="Hide DHCP Leases">👁</button><h3 class="stat-title">DHCP Leases</h3></div>
-            <div class="stat-content"><div class="kea-leases-table ui-table ui-table--responsive"><table><thead><tr><th>Device Note</th><th>Hostname</th><th>IP Address</th><th>MAC Address</th></tr></thead><tbody data-kea-leases><tr><td colspan="4"><span class="loading-spinner medium" role="progressbar" aria-label="Loading Kea leases"></span>Loading Kea leases...</td></tr></tbody></table></div></div>
+            <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="kea-leases" data-visible="true" aria-label="Hide Network activity">👁</button><h3 class="stat-title">Network activity</h3></div>
+            <div class="stat-content"><section class="identity-roster-host kea-leases-table ui-table ui-table--responsive" data-identity-roster-host="stats" data-identity-perspective="liveness"><div data-identity-roster><span class="loading-spinner medium" role="progressbar" aria-label="Loading network activity"></span>Loading network activity...</div></section></div>
           </div>
           <div class="stat-element" data-stat-element-id="process-usage" data-visible="true">
             <div class="stat-header"><button type="button" class="visibility-toggle" data-admin-only="true" data-admin-viewport="stats" data-stat-visibility-toggle="process-usage" data-visible="true" aria-label="Hide CPU Usage by Process">👁</button><h3 class="stat-title">CPU Usage by Process</h3></div>
