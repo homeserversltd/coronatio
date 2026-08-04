@@ -216,25 +216,14 @@ fn shell_document_2() -> &'static str {
           </div>
           <div class="dhcp-tablet-content">
             <div class="dhcp-banner dhcp-banner--error" data-dhcp-error role="alert" hidden></div>
-            <div class="dhcp-banner dhcp-banner--loading" data-dhcp-loading aria-live="polite"><span class="loading-spinner medium" role="progressbar" aria-label="Loading DHCP devices"></span><span>Loading DHCP devices…</span></div>
-            <div class="dhcp-list" data-dhcp-list>
-              <form class="dhcp-list-item pinned add-reservation-row" data-dhcp-add-form>
-                <div class="dhcp-list-item-content"><div class="dhcp-list-item-main"><div class="dhcp-list-item-info">
-                  <label class="dhcp-list-item-mac"><span class="info-label">MAC Address:</span><input type="text" name="mac" class="ui-input ui-input--medium" placeholder="aa:bb:cc:dd:ee:ff" required></label>
-                  <label class="dhcp-list-item-ip"><span class="info-label">IP Address:</span><input type="text" name="ip" class="ui-input ui-input--medium" placeholder="Automatic from reserved range"></label>
-                  <label class="dhcp-list-item-hostname"><span class="info-label">Name:</span><input type="text" name="hostname" class="ui-input ui-input--medium" placeholder="Device name"></label>
-                </div><div class="dhcp-list-item-badge"><span class="ui-badge ui-badge--success ui-badge--small">New</span></div></div><div class="dhcp-list-item-actions"><button type="submit" class="ui-button ui-button--success ui-button--small">Add Reservation</button></div></div>
-              </form>
-              <div class="dhcp-empty-state" data-dhcp-empty hidden><p>No DHCP leases or reservations found.</p></div>
-              <div data-dhcp-items></div>
-            </div>
+            <div class="dhcp-banner dhcp-banner--loading" data-dhcp-loading aria-live="polite"><span class="loading-spinner medium" role="progressbar" aria-label="Loading devices"></span><span>Loading device identities…</span></div>
+            <section class="identity-roster-host" data-identity-roster-host="dhcp" data-identity-perspective="address"><h3>Devices</h3><div data-identity-roster></div></section>
           </div>
         </div>
-        <div class="ui-modal-backdrop" data-dhcp-modal-backdrop aria-hidden="true">
-          <section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="dhcp-modal-title">
-            <h2 id="dhcp-modal-title" data-dhcp-modal-title>DHCP</h2>
-            <div data-dhcp-modal-body></div>
-            <div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dhcp-modal-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-dhcp-modal-confirm>Confirm</button></div>
+        <div class="ui-modal-backdrop" data-identity-claim-modal aria-hidden="true">
+          <section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="identity-claim-title">
+            <h2 id="identity-claim-title">Claim device</h2><div data-identity-claim-body></div>
+            <div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-identity-claim-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-identity-claim-save>Save</button></div>
           </section>
         </div>
       </section>
