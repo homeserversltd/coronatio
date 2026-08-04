@@ -749,7 +749,6 @@ fn shell_document_3() -> &'static str {
         tabs.forEach(tab => { const active = tab.dataset.pane === id; tab.setAttribute('aria-selected', String(active)); tab.classList.toggle('active', active); });
         panes.forEach(candidate => { const active = candidate === pane; candidate.classList.toggle('active', active); candidate.classList.toggle('immortal-floor-enter', active); candidate.setAttribute('aria-hidden', String(!active)); });
         activeGuest = id; crossingGuest = null; expose('Seated'); crownDebug.settle(floorDebugHandle, true, { event: 'settle', phase: 'seated', guest: id }); floorDebugHandle = null; applyAdminDomState(); applyTabBarVisibility();
-        if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
         reconcileViewportStreamFamily();
         return true;
       }
