@@ -595,7 +595,7 @@ fn shell_document_3() -> &'static str {
       pulseRenewTimer = null;
     }
     const viewportStreamFamilies = Object.freeze({
-      stats: Object.freeze({ topics: ['stats.system'], snapshotRoutes: ['/api/stats', '/api/network/notes'], eventRoute: '/api/stats/pulse', renewRoute: '/api/stats/pulse/renew', authClass: 'public-enhanced' }),
+      stats: Object.freeze({ topics: ['stats.system'], snapshotRoutes: ['/api/stats', '/api/network/device'], eventRoute: '/api/stats/pulse', renewRoute: '/api/stats/pulse/renew', authClass: 'public-enhanced' }),
       dhcp: Object.freeze({ topics: ['admin.dhcp'], snapshotRoutes: ['/api/dhcp/leases', '/api/dhcp/reservations', '/api/dhcp/statistics', '/api/dhcp/pool-boundary'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
       firewall: Object.freeze({ topics: ['admin.firewall'], snapshotRoutes: ['/api/firewall/observed', '/api/firewall/children'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
       unbound: Object.freeze({ topics: ['admin.dns'], snapshotRoutes: ['/api/dns/records'], eventRoute: null, renewRoute: null, authClass: 'admin' }),

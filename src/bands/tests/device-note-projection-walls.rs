@@ -213,7 +213,7 @@ async fn device_note_put_refuses_invalid_mac_before_outbound_caduceus_call() {
 }
 
 #[tokio::test]
-async fn device_note_get_projects_caduceus_notes_and_stats_shell_preserves_leases_on_note_failure() {
+async fn device_note_get_projects_caduceus_notes_while_stats_uses_the_roster() {
     let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
@@ -247,10 +247,8 @@ async fn device_note_get_projects_caduceus_notes_and_stats_shell_preserves_lease
     assert_eq!(body["notes"]["AA:BB:CC:DD:EE:FF"], "Saved note");
     assert_eq!(witness.join().unwrap(), "GET /api/v1/network/notes HTTP/1.1\r\n");
     let shell = std::fs::read_to_string("src/bands/shell/document-4.rs").unwrap();
-    assert!(shell.contains("notesResponse.ok ? normalizeNetworkNotes(await notesResponse.json()) : {}"));
-    assert!(shell.contains("function canonicalNetworkNoteMac(value)"));
-    assert!(shell.contains("canonicalMac = canonicalNetworkNoteMac(mac), note = canonicalMac ? notes[canonicalMac] ?? '' : ''"));
-    assert!(shell.contains("raw.split(match[2]).map(octet => octet.toUpperCase()).join(':')"));
-    assert!(shell.contains("node.textContent = note"));
-    assert!(shell.contains("escapeHtml(note)"));
+    assert!(shell.contains("identityJson('/api/network/device')"));
+    assert!(shell.contains("renderStatsRoster()"));
+    assert!(!shell.contains("fetch('/api/network/notes'"));
+    assert!(!shell.contains("data-edit-note-button"));
 }
