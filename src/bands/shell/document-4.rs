@@ -666,7 +666,8 @@ fn shell_document_4() -> &'static str {
           setStarredTab(favorite.starredTab);
         }
       } catch (_) { setStarredTab(tabState.starredTab); }
-      showPane((location.hash || '#' + (tabState.starredTab || firstVisibleTab())).slice(1));
+      const requested = location.hash.slice(1);
+      showPane(requested || (canStarTab(tabState.starredTab) ? tabState.starredTab : firstVisibleTab()));
     }
     // TEST-001: og Test UX-library chrome is allowed here: generic scoped tabs, demo modal, demo readbacks.
     function inTabScope(element, scope) {
