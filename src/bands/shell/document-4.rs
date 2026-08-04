@@ -798,9 +798,24 @@ fn shell_document_4() -> &'static str {
       const domainFile = event.target.closest('[data-test-domain-file]');
       if (domainFile) { const section = domainFile.closest('[data-test-domain-file-section]'); const names = Array.from(domainFile.files || []).map(file => file.name); const readback = section?.querySelector('[data-test-domain-file-name]'); const submit = section?.querySelector('[data-test-domain-submit]'); if (readback) readback.textContent = names.length ? names.join(', ') : 'No files selected'; if (submit) submit.disabled = names.length === 0; }
     }); let uxModalDemoOpener = null;
-    document.body.addEventListener('keydown', event => {
-      const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
-      if (event.key === 'Escape' && backdrop?.getAttribute('aria-hidden') === 'false') { event.preventDefault(); closeUxModalDemo(); }
+    const coronatioModalBackdrops = '[data-pin-modal-backdrop], [data-info-modal-backdrop], [data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop], [data-dhcp-modal-backdrop], [data-add-portal-modal], [data-note-modal], [data-manager-modal], [data-hestia-certificate-modal], [data-ux-modal-demo-backdrop]';
+    const coronatioModalCloseControls = '[data-pin-cancel], [data-info-modal-close], [data-upload-modal-close], [data-upload-pin-cancel], [data-dhcp-modal-cancel], [data-portal-modal-close], [data-note-cancel], [data-manager-close], [data-hestia-certificate-close], [data-ux-modal-close]';
+    const coronatioModalConfirmControls = '[data-pin-confirm-button], [data-upload-pin-confirm], [data-dhcp-modal-confirm], [data-note-confirm], [data-manager-confirm]';
+    function openCoronatioModal() {
+      return [...document.querySelectorAll(coronatioModalBackdrops)].filter(modal => !modal.hidden && modal.getAttribute('aria-hidden') !== 'true' && getComputedStyle(modal).display !== 'none').at(-1);
+    }
+    document.addEventListener('keydown', event => {
+      const modal = openCoronatioModal();
+      if (!modal) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.key === 'Escape') {
+        const close = modal.querySelector(coronatioModalCloseControls);
+        if (close) { event.preventDefault(); close.click(); }
+        return;
+      }
+      if (event.key !== 'Enter' || !target || target.closest('textarea, button, a')) return;
+      const confirm = modal.querySelector(coronatioModalConfirmControls);
+      if (confirm && !confirm.disabled) { event.preventDefault(); confirm.click(); }
     });
     function openUxModalDemo(kind, opener) {
       const backdrop = document.querySelector('[data-ux-modal-demo-backdrop]');
