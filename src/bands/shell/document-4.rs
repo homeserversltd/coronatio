@@ -650,10 +650,12 @@ fn shell_document_4() -> &'static str {
         }
         const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
         if (!target) return;
-        target.innerHTML = html;
-        if (tabId === 'portals') bindPortalFragmentControls(target);
-        if (tabId === 'stats') hydrateStats();
-        applyAdminDomState();
+        const changed = morphLivePane(target, html);
+        if (changed) {
+          if (tabId === 'portals') bindPortalFragmentControls(target);
+          if (tabId === 'stats') hydrateStats();
+          applyAdminDomState();
+        }
       } catch (_) {
         showCoronatioToast(`Failed to toggle visibility for ${elementId}`, 'error');
       }

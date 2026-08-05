@@ -613,16 +613,58 @@ fn shell_document_3() -> &'static str {
       if (!family || window.getImmortalFloorState?.() !== 'Seated' || document.visibilityState !== 'visible' || currentActiveTabId() !== id) return false;
       return family.authClass !== 'admin' || headerState.isAdmin;
     }
+    function morphLivePane(target, html) {
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      let mutated = false;
+      const sameKind = (left, right) => left.nodeType === right.nodeType && (left.nodeType !== Node.ELEMENT_NODE || left.tagName === right.tagName);
+      const morphAttributes = (current, next) => {
+        Array.from(current.attributes).forEach(attribute => {
+          if (!next.hasAttribute(attribute.name)) { current.removeAttribute(attribute.name); mutated = true; }
+        });
+        Array.from(next.attributes).forEach(attribute => {
+          if (current.getAttribute(attribute.name) !== attribute.value) { current.setAttribute(attribute.name, attribute.value); mutated = true; }
+        });
+      };
+      const morphNode = (current, next) => {
+        if (!sameKind(current, next)) { current.replaceWith(next.cloneNode(true)); mutated = true; return; }
+        if (current.nodeType === Node.TEXT_NODE || current.nodeType === Node.COMMENT_NODE) {
+          if (current.nodeValue !== next.nodeValue) { current.nodeValue = next.nodeValue; mutated = true; }
+          return;
+        }
+        morphAttributes(current, next);
+        // Stats owns chart canvases and live readouts between element-fact pulls. Its
+        // element wrapper carries the fact attributes; preserve its live descendants.
+        if (current.hasAttribute('data-stat-element-id')) return;
+        const keyed = new Map(Array.from(current.children).filter(child => child.id).map(child => [child.id, child]));
+        Array.from(next.childNodes).forEach((nextChild, index) => {
+          const currentChild = nextChild.nodeType === Node.ELEMENT_NODE && nextChild.id ? keyed.get(nextChild.id) : current.childNodes[index];
+          if (!currentChild) { current.appendChild(nextChild.cloneNode(true)); mutated = true; return; }
+          if (currentChild !== current.childNodes[index]) { current.insertBefore(currentChild, current.childNodes[index] || null); mutated = true; }
+          morphNode(currentChild, nextChild);
+        });
+        while (current.childNodes.length > next.childNodes.length) { current.lastChild.remove(); mutated = true; }
+      };
+      const keyed = new Map(Array.from(target.children).filter(child => child.id).map(child => [child.id, child]));
+      Array.from(template.content.childNodes).forEach((nextChild, index) => {
+        const currentChild = nextChild.nodeType === Node.ELEMENT_NODE && nextChild.id ? keyed.get(nextChild.id) : target.childNodes[index];
+        if (!currentChild) { target.appendChild(nextChild.cloneNode(true)); mutated = true; return; }
+        if (currentChild !== target.childNodes[index]) { target.insertBefore(currentChild, target.childNodes[index] || null); mutated = true; }
+        morphNode(currentChild, nextChild);
+      });
+      while (target.childNodes.length > template.content.childNodes.length) { target.lastChild.remove(); mutated = true; }
+      return mutated;
+    }
     const elementsChangedConsumers = new Map();
     function consumeElementsChanged({ paneId, route, target, afterReplace = () => {} }) {
       const pull = async () => {
         const fragment = target();
-        if (!fragment) return;
+        if (!fragment) return false;
         const response = await fetch(route, { cache: 'no-store' });
-        if (!response.ok) return;
-        fragment.innerHTML = await response.text();
-        afterReplace(fragment);
-        applyAdminDomState();
+        if (!response.ok) return false;
+        const changed = morphLivePane(fragment, await response.text());
+        if (changed) { afterReplace(fragment); applyAdminDomState(); }
+        return changed;
       };
       elementsChangedConsumers.set(paneId, pull);
       return pull;
@@ -694,7 +736,7 @@ fn shell_document_3() -> &'static str {
         pullHeldElementFragments().catch(() => {});
       });
       pulseStream.addEventListener('stats.tick', () => {
-        refreshElementFragment('stats').catch(() => {});
+        hydrateStats().catch(() => {});
       });
       pulseStream.addEventListener('pulse.expired', reconnectPulseStream);
       pulseStream.addEventListener('error', () => {
