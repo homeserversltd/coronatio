@@ -567,6 +567,13 @@ fn shell_document_3() -> &'static str {
       try { const saved = JSON.parse(localStorage.getItem(storageKey) || '{}'); return typeof saved.starredTab === 'string' ? saved.starredTab : null; }
       catch (_) { return null; }
     }
+    function renderedApplianceFavoriteTab() { return tabs.find(tab => tab.querySelector('[data-tab-star][aria-pressed="true"]'))?.dataset.pane || null; }
+    function paintEffectiveFavoriteTab(applianceFavorite = renderedApplianceFavoriteTab()) {
+      const browserFavorite = browserFavoriteTab();
+      const effective = canStarTab(browserFavorite) ? browserFavorite : (canStarTab(applianceFavorite) ? applianceFavorite : null);
+      if (effective) paintStarredTab(effective);
+      return effective;
+    }
     async function refreshTabBar(activeTabId = currentActiveTabId()) {
       if (!tabBar) return;
       const activeParam = activeTabId ? '?active=' + encodeURIComponent(activeTabId) : '';
@@ -587,6 +594,7 @@ fn shell_document_3() -> &'static str {
       reconcileAdmittedPaneHosts();
       if (window.htmx) window.htmx.process(tabBar);
       bindTabControls();
+      paintEffectiveFavoriteTab();
       applyTabBarVisibility();
     }
     function clearPulseRenewal() {
@@ -744,13 +752,13 @@ fn shell_document_3() -> &'static str {
         if (!pane || pane.dataset.viewportFaulted === 'true') throw new Error('guest-unhealthy');
         return pane;
       }
-      async function seatGuest(id) {
+      async function seatGuest(id, detail = '') {
         const pane = panes.find(candidate => candidate.dataset.panePanel === id); if (!pane) return false;
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         crownDebug.mark(floorDebugHandle, 'paint-reveal-boundary', { phase: 'reveal', guest: id });
         tabs.forEach(tab => { const active = tab.dataset.pane === id; tab.setAttribute('aria-selected', String(active)); tab.classList.toggle('active', active); });
         panes.forEach(candidate => { const active = candidate === pane; candidate.classList.toggle('active', active); candidate.classList.toggle('immortal-floor-enter', active); candidate.setAttribute('aria-hidden', String(!active)); });
-        activeGuest = id; crossingGuest = null; expose('Seated'); crownDebug.settle(floorDebugHandle, true, { event: 'settle', phase: 'seated', guest: id }); floorDebugHandle = null; applyAdminDomState(); applyTabBarVisibility();
+        activeGuest = id; crossingGuest = null; expose('Seated', detail); crownDebug.settle(floorDebugHandle, true, { event: 'settle', phase: 'seated', guest: id }); floorDebugHandle = null; applyAdminDomState(); applyTabBarVisibility();
         reconcileViewportStreamFamily();
         return true;
       }
@@ -772,7 +780,7 @@ fn shell_document_3() -> &'static str {
         try {
           await admitFreshGuest(selected);
           if (crossing !== generation) return false;
-          if (!await seatGuest(selected)) { fault('guest-missing'); return false; }
+          if (!await seatGuest(selected, options.detail)) { fault('guest-missing'); return false; }
           return true;
         } catch (error) {
           if (crossing === generation) fault(error?.message || 'admission-fault');
@@ -801,13 +809,15 @@ fn shell_document_3() -> &'static str {
     function showPane(id, options) { return immortalFloor.activate(id, options); }
     async function runFavoriteLadder({ startAt = 1, useHash = false } = {}) {
       const regular = eligibleRegularTabs().map(tab => tab.dataset.pane).filter(Boolean);
-      if (regular.length === 0) { document.querySelector('[data-immortal-floor-message]').textContent = 'This device is locked down.'; return showPane(fallbackTab); }
+      if (regular.length === 0) return showPane(fallbackTab, { detail: 'This device is locked down.' });
       let selected = null;
       if (useHash && startAt <= 0) { const requested = location.hash.slice(1); if (requested && sessionLawfulTab(requested)) { selected = requested; history.replaceState(history.state, document.title, location.pathname + location.search); } }
       const browserFavorite = browserFavoriteTab();
       if (!selected && startAt <= 1 && canStarTab(browserFavorite)) selected = browserFavorite;
-      if (!selected && !browserFavorite && startAt <= 2) { try { const favorite = await fetch('/api/favorites', { cache: 'no-store' }).then(response => response.ok ? response.json() : null); if (favorite?.starredTab) { paintStarredTab(favorite.starredTab); if (canStarTab(favorite.starredTab)) selected = favorite.starredTab; } } catch (_) {} }
+      let applianceFavorite = renderedApplianceFavoriteTab();
+      if (!selected && !browserFavorite && startAt <= 2) { try { const favorite = await fetch('/api/favorites', { cache: 'no-store' }).then(response => response.ok ? response.json() : null); if (favorite?.starredTab) { applianceFavorite = favorite.starredTab; if (canStarTab(applianceFavorite)) selected = applianceFavorite; } } catch (_) {} }
       selected = selected || regular[0];
+      paintEffectiveFavoriteTab(applianceFavorite);
       for (const candidate of [selected, ...regular.filter(id => id !== selected)]) if (await showPane(candidate)) return true;
       return showPane(fallbackTab);
     }
