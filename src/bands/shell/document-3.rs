@@ -45,17 +45,18 @@ fn shell_document_3() -> &'static str {
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
     }
-    function setAdminMode(value) {
+    function setAdminMode(value, options = {}) {
       const previousActive = currentActiveTabId();
       headerState.isAdmin = Boolean(value);
       saveHeaderState();
       applyAdminDomState();
       if (headerState.isAdmin) void upgradeOpenStreams();
       else void downgradeOpenStreams();
+      if (options.boot) return;
       refreshTabBar(previousActive).then(selectedTab => {
         applyTabBarVisibility();
         refreshElementFragment('stats');
-        if (selectedTab) showPane(selectedTab, { refresh: true });
+        if (!sessionLawfulTab(selectedTab)) void runFavoriteLadder({ startAt: 1 });
       });
     }
     async function clearAdminMode() {
@@ -71,7 +72,7 @@ fn shell_document_3() -> &'static str {
     }
     async function bootstrapAdminMode() {
       // A document is always born GUEST. No cookie, refresh, or prior document may restore attendance.
-      setAdminMode(false);
+      setAdminMode(false, { boot: true });
     }
     function openPinModal(mode) {
       modalMode = mode;
@@ -529,13 +530,13 @@ fn shell_document_3() -> &'static str {
     function firstVisibleTab() { return eligibleRegularTabs()[0]?.dataset.pane || fallbackTab; }
     function currentActiveTabId() { if (coronatioAttendanceRuntime.inactivityHeadless) return 'headless'; return tabs.find(tab => tab.getAttribute('aria-selected') === 'true')?.dataset.pane || fallbackTab; }
     function canStarTab(id) { return eligibleRegularTabs().some(tab => tab.dataset.pane === id); }
+    function sessionLawfulTab(id) {
+      const tab = tabs.find(candidate => candidate.dataset.pane === id);
+      return Boolean(tab && tab.dataset.visibility !== 'hidden' && (tab.dataset.adminOnly !== 'true' || headerState.isAdmin));
+    }
     function lawfulPaneCandidate(id) {
       if (id === 'headless' && coronatioAttendanceRuntime.inactivityHeadless) return id;
-      const tab = tabs.find(candidate => candidate.dataset.pane === id);
-      if (!tab) return firstVisibleTab();
-      if (tab.dataset.adminOnly === 'true') return headerState.isAdmin ? id : firstVisibleTab();
-      if (tab.dataset.visibility === 'hidden') return firstVisibleTab();
-      return id;
+      return sessionLawfulTab(id) ? id : firstVisibleTab();
     }
     function applyTabBarVisibility() {
       if (!tabBar) return;
@@ -544,18 +545,9 @@ fn shell_document_3() -> &'static str {
       tabBar.classList.toggle('hidden', hidden);
       tabBar.dataset.hidden = String(hidden);
     }
-    function reconcileActiveTabAfterAdminExit(previousActive) {
-      if (eligibleRegularTabs().length === 0) { showPane(fallbackTab); return; }
-      if (canStarTab(previousActive)) { showPane(previousActive); return; }
-      if (canStarTab(tabState.starredTab)) { showPane(tabState.starredTab); return; }
-      showPane(firstVisibleTab());
-    }
-    function setStarredTab(id) {
-      const selected = canStarTab(id) ? id : firstVisibleTab();
-      tabState.starredTab = selected;
-      saveTabState(tabState);
+    function paintStarredTab(id) {
       tabs.forEach(tab => {
-        const starred = tab.dataset.pane === selected;
+        const starred = tab.dataset.pane === id;
         const button = tab.querySelector('[data-tab-star]');
         if (button) {
           button.classList.toggle('fas', starred);
@@ -564,6 +556,16 @@ fn shell_document_3() -> &'static str {
           button.title = starred ? tab.querySelector('.tab-name').textContent + ' tab is starred' : 'Star ' + tab.querySelector('.tab-name').textContent + ' tab';
         }
       });
+    }
+    function setStarredTab(id) {
+      if (!canStarTab(id)) return;
+      tabState.starredTab = id;
+      saveTabState(tabState);
+      paintStarredTab(id);
+    }
+    function browserFavoriteTab() {
+      try { const saved = JSON.parse(localStorage.getItem(storageKey) || '{}'); return typeof saved.starredTab === 'string' ? saved.starredTab : null; }
+      catch (_) { return null; }
     }
     async function refreshTabBar(activeTabId = currentActiveTabId()) {
       if (!tabBar) return;
@@ -797,6 +799,18 @@ fn shell_document_3() -> &'static str {
     window.immortalFloor = immortalFloor;
     window.getImmortalFloorState = () => immortalFloor.state;
     function showPane(id, options) { return immortalFloor.activate(id, options); }
+    async function runFavoriteLadder({ startAt = 1, useHash = false } = {}) {
+      const regular = eligibleRegularTabs().map(tab => tab.dataset.pane).filter(Boolean);
+      if (regular.length === 0) { document.querySelector('[data-immortal-floor-message]').textContent = 'This device is locked down.'; return showPane(fallbackTab); }
+      let selected = null;
+      if (useHash && startAt <= 0) { const requested = location.hash.slice(1); if (requested && sessionLawfulTab(requested)) { selected = requested; history.replaceState(history.state, document.title, location.pathname + location.search); } }
+      const browserFavorite = browserFavoriteTab();
+      if (!selected && startAt <= 1 && canStarTab(browserFavorite)) selected = browserFavorite;
+      if (!selected && !browserFavorite && startAt <= 2) { try { const favorite = await fetch('/api/favorites', { cache: 'no-store' }).then(response => response.ok ? response.json() : null); if (favorite?.starredTab) { paintStarredTab(favorite.starredTab); if (canStarTab(favorite.starredTab)) selected = favorite.starredTab; } } catch (_) {} }
+      selected = selected || regular[0];
+      for (const candidate of [selected, ...regular.filter(id => id !== selected)]) if (await showPane(candidate)) return true;
+      return showPane(fallbackTab);
+    }
     function bindTabControls() {
       tabs.forEach(tab => {
         if (tab.dataset.immortalFloorBound === 'true') return;
@@ -808,14 +822,9 @@ fn shell_document_3() -> &'static str {
         });
         tab.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showPane(tab.dataset.pane); } });
       });
-      document.querySelectorAll('[data-tab-star]').forEach(button => button.addEventListener('click', async event => {
+      document.querySelectorAll('[data-tab-star]').forEach(button => button.addEventListener('click', event => {
         event.stopPropagation();
-        if (!canStarTab(button.dataset.tabStar)) return;
-        try {
-          const response = await fetch('/api/set_starred_tab', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tabName: button.dataset.tabStar }) });
-          if (response.ok && tabBar) replaceTabBar(await response.text());
-          else { const failure = await response.json().catch(() => ({})); showCoronatioToast('Could not set favorite tab: ' + (failure.firstMissingSignal || failure.error || 'request failed') + '.', 'error'); }
-        } catch (_) { showCoronatioToast('Could not set favorite tab: request failed.', 'error'); }
+        if (canStarTab(button.dataset.tabStar)) setStarredTab(button.dataset.tabStar);
       }));
       document.querySelectorAll('[data-tab-visibility-toggle]').forEach(button => button.addEventListener('click', async event => {
         event.stopPropagation();
@@ -831,7 +840,6 @@ fn shell_document_3() -> &'static str {
     }
     bindTabControls();
     document.querySelector('[data-crown-headless-reload]')?.addEventListener('click', () => window.location.reload());
-    setStarredTab(tabState.starredTab);
     document.addEventListener('visibilitychange', reconcileViewportStreamFamily); async function fetchInto(route, target, method = 'GET') {
       const el = document.getElementById(target);"####
 }

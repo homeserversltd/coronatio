@@ -159,7 +159,7 @@ async fn favorites_route() -> impl IntoResponse {
             starred_tab: manifest.starred_tab,
             source_quarry: manifest.source_quarry,
             tabs: manifest.tabs,
-            first_load_law: "original Flask root loads get_starred_tab() or get_first_visible_tab(); Coronatio opens the manifest starred tab unless an explicit hash names a valid visible tab".to_string(),
+            first_load_law: "first load is a one-shot ladder: lawful URL hash, browser-local non-admin favorite, appliance default, then lockdown; the appliance value is reported without reassignment".to_string(),
         })
         .into_response(),
         Err(error) => (
@@ -363,20 +363,12 @@ fn favorite_manifest_from_homeserver(source: String, value: &serde_json::Value) 
         });
     }
     tabs.sort_by(|a, b| a.id.cmp(&b.id));
-    let mut manifest = FavoriteManifest {
+    let manifest = FavoriteManifest {
         schema: "coronatio.favorite-manifest.v1".to_string(),
         starred_tab,
         source_quarry: vec![source, "homeserver.json tabs.{config,visibility,starred}".to_string()],
         tabs,
     };
-    if !manifest.tabs.iter().any(|tab| tab.id == manifest.starred_tab && tab.visible && !tab.admin_only) {
-        if let Some(tab) = manifest.tabs.iter().find(|tab| tab.visible && !tab.admin_only) {
-            manifest.starred_tab = tab.id.clone();
-        }
-    }
-    for tab in manifest.tabs.iter_mut() {
-        tab.starred = tab.id == manifest.starred_tab;
-    }
     validate_favorite_manifest(&manifest)?;
     Ok(manifest)
 }
@@ -390,14 +382,12 @@ async fn load_favorite_manifest() -> Result<(String, FavoriteManifest), String> 
 fn validate_favorite_manifest(manifest: &FavoriteManifest) -> Result<(), String> {
     if manifest.schema != "coronatio.favorite-manifest.v1" { return Err(format!("unexpected favorite manifest schema {}", manifest.schema)); }
     let mut starred_count = 0;
-    let mut starred_valid = false;
     for tab in &manifest.tabs {
         if !is_safe_tab_id(&tab.id) { return Err(format!("favorite tab id {} is not forward-safe", tab.id)); }
         if tab.starred { starred_count += 1; }
-        if tab.id == manifest.starred_tab && tab.visible && !tab.admin_only { starred_valid = true; }
+        if tab.starred != (tab.id == manifest.starred_tab) { return Err(format!("favorite manifest star flag disagrees with configured starred tab {}", manifest.starred_tab)); }
     }
-    if starred_count != 1 { return Err(format!("favorite manifest must carry exactly one starred tab, found {}", starred_count)); }
-    if !starred_valid { return Err(format!("starred tab {} is absent, hidden, or admin-only", manifest.starred_tab)); }
+    if starred_count > 1 { return Err(format!("favorite manifest must carry at most one starred tab, found {}", starred_count)); }
     Ok(())
 }
 

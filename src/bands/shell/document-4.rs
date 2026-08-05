@@ -658,16 +658,7 @@ fn shell_document_4() -> &'static str {
       }
     }
     async function hydrateFavoriteManifest() {
-      try {
-        const favorite = await fetch('/api/favorites').then(r => r.json());
-        if (favorite?.starredTab) {
-          tabState.starredTab = favorite.starredTab;
-          saveTabState(tabState);
-          setStarredTab(favorite.starredTab);
-        }
-      } catch (_) { setStarredTab(tabState.starredTab); }
-      const requested = location.hash.slice(1);
-      showPane(requested || (canStarTab(tabState.starredTab) ? tabState.starredTab : firstVisibleTab()));
+      await runFavoriteLadder({ startAt: 0, useHash: true });
     }
     // TEST-001: og Test UX-library chrome is allowed here: generic scoped tabs, demo modal, demo readbacks.
     function inTabScope(element, scope) {
