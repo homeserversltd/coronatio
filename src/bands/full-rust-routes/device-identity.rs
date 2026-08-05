@@ -32,7 +32,19 @@ fn device_identity_read(
     }
     let readback = caduceus_http("GET", caduceus_path);
     if readback.ok {
-        return (StatusCode::OK, Json(device_identity_payload(readback.body))).into_response();
+        let payload = device_identity_payload(readback.body);
+        let payload = if caduceus_path == "/api/v1/network/dhcp/boundary" {
+            payload
+                .as_array()
+                .filter(|entries| entries.len() == 1)
+                .and_then(|entries| entries.first())
+                .filter(|entry| entry.is_object())
+                .cloned()
+                .unwrap_or(payload)
+        } else {
+            payload
+        };
+        return (StatusCode::OK, Json(payload)).into_response();
     }
     (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
         "schema": "coronatio.network.identity.read.error.v1", "ok": false, "path": path,
