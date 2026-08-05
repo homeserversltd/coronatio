@@ -613,6 +613,27 @@ fn shell_document_3() -> &'static str {
       if (!family || window.getImmortalFloorState?.() !== 'Seated' || document.visibilityState !== 'visible' || currentActiveTabId() !== id) return false;
       return family.authClass !== 'admin' || headerState.isAdmin;
     }
+    const elementsChangedConsumers = new Map();
+    function consumeElementsChanged({ paneId, route, target, afterReplace = () => {} }) {
+      const pull = async () => {
+        const fragment = target();
+        if (!fragment) return;
+        const response = await fetch(route, { cache: 'no-store' });
+        if (!response.ok) return;
+        fragment.innerHTML = await response.text();
+        afterReplace(fragment);
+        applyAdminDomState();
+      };
+      elementsChangedConsumers.set(paneId, pull);
+      return pull;
+    }
+    function pullHeldElementFragments() {
+      const activePane = lawfulPaneCandidate(currentActiveTabId());
+      const pulls = [...elementsChangedConsumers.entries()]
+        .filter(([paneId]) => document.querySelector(`[data-pane-panel="${paneId}"]`))
+        .map(([, pull]) => pull());
+      return Promise.allSettled(pulls).then(() => activePane);
+    }
     function closeViewportStreamFamily() {
       clearPulseRenewal();
       if (pulseStream) pulseStream.close();
@@ -636,7 +657,7 @@ fn shell_document_3() -> &'static str {
       if (active === 'stats') { hydrateStats(); connectPulseStream(); }
       if (active === 'dhcp') hydrateDhcp();
       if (active === 'unbound') hydrateDns();
-      if (active === 'portals') startPortalCurrentnessCadence();
+      if (active === 'portals') { startPortalCurrentnessCadence(); connectPulseStream(); }
     }
     function schedulePulseRenewal(renewRoute) {
       clearPulseRenewal();
@@ -649,12 +670,12 @@ fn shell_document_3() -> &'static str {
     }
     function reconnectPulseStream() {
       closeViewportStreamFamily();
-      if (viewportFamilyAdmitted('stats')) window.setTimeout(() => {
-        if (viewportFamilyAdmitted('stats')) connectPulseStream();
+      if (viewportFamilyAdmitted('stats') || viewportFamilyAdmitted('portals')) window.setTimeout(() => {
+        if (viewportFamilyAdmitted('stats') || viewportFamilyAdmitted('portals')) connectPulseStream();
       }, 1000);
     }
     function connectPulseStream() {
-      if (!window.EventSource || !viewportFamilyAdmitted('stats')) return;
+      if (!window.EventSource || !(viewportFamilyAdmitted('stats') || viewportFamilyAdmitted('portals'))) return;
       clearPulseRenewal();
       if (pulseStream) pulseStream.close();
       pulseStream = new EventSource('/api/stats/pulse');
@@ -668,6 +689,9 @@ fn shell_document_3() -> &'static str {
       pulseStream.addEventListener('tabs.changed', () => {
         const active = currentActiveTabId();
         refreshTabBar(active).then(selected => { if (selected) showPane(selected); }).catch(() => {});
+      });
+      pulseStream.addEventListener('elements.changed', () => {
+        pullHeldElementFragments().catch(() => {});
       });
       pulseStream.addEventListener('stats.tick', () => {
         refreshElementFragment('stats').catch(() => {});

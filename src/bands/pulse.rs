@@ -17,6 +17,7 @@ mod pulse {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) enum PokeTopic {
         TabsChanged,
+        ElementsChanged,
         StatsTick,
         AdminSystem,
     }
@@ -25,6 +26,7 @@ mod pulse {
         pub(crate) fn wire_name(self) -> &'static str {
             match self {
                 PokeTopic::TabsChanged => "tabs.changed",
+                PokeTopic::ElementsChanged => "elements.changed",
                 PokeTopic::StatsTick => "stats.tick",
                 PokeTopic::AdminSystem => "admin.system",
             }

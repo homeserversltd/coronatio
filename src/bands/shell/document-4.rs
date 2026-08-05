@@ -618,19 +618,20 @@ fn shell_document_4() -> &'static str {
         });
       } catch (_) {}
     }
-    async function refreshElementFragment(tabId) {
-      if (tabId === 'stats' && statsCharts.cpu) { hydrateStats(); return; }
-
-      const headers = {};
-      const route = tabId === 'portals' ? '/api/portals/elements' : '/api/stats/elements';
-      const target = tabId === 'portals' ? document.querySelector('[data-portals-grid]') : document.querySelector('[data-stats-viewport]');
-      if (!target) return;
-      const response = await fetch(route, { headers, cache: 'no-store' });
-      if (!response.ok) return;
-      target.innerHTML = await response.text();
-      if (tabId === 'portals') bindPortalFragmentControls(target);
-      if (tabId === 'stats') hydrateStats();
-      applyAdminDomState();
+    const portalElementsChanged = consumeElementsChanged({
+      paneId: 'portals',
+      route: '/api/portals/elements',
+      target: () => document.querySelector('[data-portals-grid]'),
+      afterReplace: target => bindPortalFragmentControls(target)
+    });
+    const statsElementsChanged = consumeElementsChanged({
+      paneId: 'stats',
+      route: '/api/stats/elements',
+      target: () => document.querySelector('[data-stats-viewport]'),
+      afterReplace: () => hydrateStats()
+    });
+    function refreshElementFragment(tabId) {
+      return ({ portals: portalElementsChanged, stats: statsElementsChanged })[tabId]?.();
     }
     async function toggleElementVisibility(tabId, elementId, visible) {
       try {
