@@ -736,7 +736,7 @@ fn shell_document_3() -> &'static str {
         pullHeldElementFragments().catch(() => {});
       });
       pulseStream.addEventListener('stats.tick', () => {
-        refreshElementFragment('stats').catch(() => {});
+        hydrateStats().catch(() => {});
       });
       pulseStream.addEventListener('pulse.expired', reconnectPulseStream);
       pulseStream.addEventListener('error', () => {
