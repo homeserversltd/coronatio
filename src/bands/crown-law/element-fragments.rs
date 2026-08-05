@@ -41,6 +41,7 @@ async fn element_visibility_route(headers: axum::http::HeaderMap, Json(request):
         return (status, Html(format!(r#"<div data-element-visibility-refusal="persist-failed" data-first-missing-signal="{}">{}</div>"#, html_escape(&persisted.first_missing_signal), html_escape(&persisted.first_missing_signal)))).into_response();
     }
     pulse::poke(pulse::PokeTopic::TabsChanged);
+    pulse::poke(pulse::PokeTopic::ElementsChanged);
     element_fragment_response_from_facts(Session::Admin, &tab, &next)
 }
 
