@@ -498,8 +498,8 @@ fn shell_document_4() -> &'static str {
     async function hydrateStats() {
       if (statsHydrationInFlight) return; statsHydrationInFlight = true;
       try {
-        const [statsResponse, rosterResponse, notesResponse] = await Promise.all([fetch('/api/stats', { cache: 'no-store' }), headerState.isAdmin ? identityJson('/api/network/device') : Promise.resolve([]), fetch('/api/network/notes', { cache: 'no-store' })]); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
-        const data = await statsResponse.json(), label = formatChartTime(); identityState.roster = identityRows(rosterResponse); identityState.notes = notesResponse.ok ? normalizeNetworkNotes(await notesResponse.json()) : {}; pushChartPoint(label, data); renderCpuChart(data); renderNetwork(data); renderDiskIo(data); renderMemory(data); renderDiskUsage(data); renderStatsRoster(); renderProcesses(data);
+        const [statsResponse, rosterResponse, notesResponse] = await Promise.all([fetch('/api/stats', { cache: 'no-store' }), headerState.isAdmin ? identityJson('/api/network/device') : Promise.resolve(null), headerState.isAdmin ? fetch('/api/network/notes', { cache: 'no-store' }) : Promise.resolve(null)]); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
+        const data = await statsResponse.json(), label = formatChartTime(); identityState.roster = headerState.isAdmin ? identityRows(rosterResponse) : identityRows(data.keaLeases?.entries); identityState.notes = notesResponse?.ok ? normalizeNetworkNotes(await notesResponse.json()) : {}; pushChartPoint(label, data); if (data.resources?.load) renderCpuChart(data); if (data.network) renderNetwork(data); if (data.io) renderDiskIo(data); if (data.resources?.memory) renderMemory(data); if (data.storage) renderDiskUsage(data); if (headerState.isAdmin || data.keaLeases) renderStatsRoster(); if (data.processes) renderProcesses(data);
       } catch (_) { /* OG has no Stats-family error face; retain the last truthful frame. */ }
       finally { statsHydrationInFlight = false; }
     }

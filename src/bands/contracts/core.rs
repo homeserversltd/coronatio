@@ -97,20 +97,32 @@ struct StatsSnapshot {
 struct SystemStatsGuestProjection {
     schema: String,
     topic: String,
-    resources: StatsGuestResources,
-    storage: Vec<StatsGuestDrive>,
-    network: StatsGuestNetwork,
-    telemetry: StatsGuestTelemetry,
-    kea_leases: StatsGuestKeaLeases,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resources: Option<StatsGuestResources>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    storage: Option<Vec<StatsGuestDrive>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    network: Option<StatsGuestNetwork>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    io: Option<StatsIo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    processes: Option<Vec<StatsProcess>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    telemetry: Option<StatsGuestTelemetry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kea_leases: Option<StatsGuestKeaLeases>,
     next_routes: StatsNextRoutes,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct StatsGuestResources {
-    load: StatsLoad,
-    memory: StatsMemory,
-    swap: StatsMemory,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    load: Option<StatsLoad>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    memory: Option<StatsMemory>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    swap: Option<StatsMemory>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -133,8 +145,11 @@ struct StatsGuestNetwork {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct StatsGuestTelemetry {
+    #[serde(skip_serializing_if = "Option::is_none")]
     load1: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     cpu_temperature_celsius: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     storage_posture: Option<String>,
     currentness: String,
 }
@@ -143,12 +158,25 @@ struct StatsGuestTelemetry {
 #[serde(rename_all = "camelCase")]
 struct StatsGuestKeaLeases {
     status: String,
-    entries: Vec<StatsGuestKeaLease>,
+    entries: Vec<StatsGuestRosterRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct StatsGuestKeaLease {}
+struct StatsGuestRosterRow {
+    mac: String,
+    observed_lease: StatsGuestObservedLease,
+    dns_names: Vec<String>,
+    claim_state: String,
+    mismatches: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct StatsGuestObservedLease {
+    ip: String,
+    hostname: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -170,43 +198,72 @@ struct SystemStatsAdminProjection {
     next_routes: StatsNextRoutes,
 }
 
-fn project_system_stats_guest(raw: &StatsSnapshot) -> SystemStatsGuestProjection {
+fn project_system_stats_guest(raw: &StatsSnapshot, facts: &IrisFacts) -> SystemStatsGuestProjection {
+    let cpu_visible = stats_element_visible(facts, "cpu-chart");
+    let network_visible = stats_element_visible(facts, "network-chart");
+    let io_visible = stats_element_visible(facts, "io-section");
+    let memory_visible = stats_element_visible(facts, "memory-usage");
+    let storage_visible = stats_element_visible(facts, "disk-usage");
+    let roster_visible = stats_element_visible(facts, "kea-leases");
+    let processes_visible = stats_element_visible(facts, "process-usage");
+    let resources = (cpu_visible || memory_visible).then(|| StatsGuestResources {
+        load: cpu_visible.then(|| raw.resources.load.clone()),
+        memory: memory_visible.then(|| raw.resources.memory.clone()),
+        swap: memory_visible.then(|| raw.resources.swap.clone()),
+    });
+    let telemetry = (cpu_visible || storage_visible).then(|| StatsGuestTelemetry {
+        load1: cpu_visible.then_some(raw.telemetry.load1).flatten(),
+        cpu_temperature_celsius: cpu_visible.then_some(raw.telemetry.cpu_temperature_celsius).flatten(),
+        storage_posture: storage_visible.then(|| raw.telemetry.storage_posture.clone()).flatten(),
+        currentness: "current".to_string(),
+    });
     SystemStatsGuestProjection {
         schema: raw.schema.clone(),
         topic: "system.stats".to_string(),
-        resources: StatsGuestResources {
-            load: raw.resources.load.clone(),
-            memory: raw.resources.memory.clone(),
-            swap: raw.resources.swap.clone(),
-        },
-        storage: raw
-            .storage
-            .iter()
-            .map(|drive| StatsGuestDrive {
-                product_label: product_storage_label(drive),
-                total_bytes: drive.total_bytes,
-                used_bytes: drive.used_bytes,
-                free_bytes: drive.free_bytes,
-                usage_percent: drive.usage_percent,
-            })
-            .collect(),
-        network: StatsGuestNetwork {
+        resources,
+        storage: storage_visible.then(|| {
+            raw.storage
+                .iter()
+                .map(|drive| StatsGuestDrive {
+                    product_label: product_storage_label(drive),
+                    total_bytes: drive.total_bytes,
+                    used_bytes: drive.used_bytes,
+                    free_bytes: drive.free_bytes,
+                    usage_percent: drive.usage_percent,
+                })
+                .collect()
+        }),
+        network: network_visible.then(|| StatsGuestNetwork {
             received_bytes: raw.network.interfaces.iter().map(|interface| interface.rx_bytes).sum(),
             sent_bytes: raw.network.interfaces.iter().map(|interface| interface.tx_bytes).sum(),
-        },
-        telemetry: StatsGuestTelemetry {
-            load1: raw.telemetry.load1,
-            cpu_temperature_celsius: raw.telemetry.cpu_temperature_celsius,
-            storage_posture: raw.telemetry.storage_posture.clone(),
-            currentness: "current".to_string(),
-        },
-        kea_leases: StatsGuestKeaLeases { status: "unavailable".to_string(), entries: Vec::new() },
+        }),
+        io: io_visible.then(|| raw.io.clone()),
+        processes: processes_visible.then(|| raw.processes.clone()),
+        telemetry,
+        kea_leases: roster_visible.then(|| StatsGuestKeaLeases {
+            status: "available".to_string(),
+            entries: raw
+                .leases
+                .iter()
+                .map(|lease| StatsGuestRosterRow {
+                    mac: lease.mac.clone(),
+                    observed_lease: StatsGuestObservedLease { ip: lease.ip.clone(), hostname: lease.hostname.clone() },
+                    dns_names: Vec::new(),
+                    claim_state: "unclaimed".to_string(),
+                    mismatches: Vec::new(),
+                })
+                .collect(),
+        }),
         next_routes: StatsNextRoutes {
             snapshot: raw.next_routes.snapshot.clone(),
             events: raw.next_routes.events.clone(),
             renew: raw.next_routes.renew.clone(),
         },
     }
+}
+
+fn stats_element_visible(facts: &IrisFacts, element_id: &str) -> bool {
+    default_element_grant_from_facts(facts, Session::Guest, "stats", element_id).state == RenderState::Visible
 }
 
 fn project_system_stats_admin(raw: &StatsSnapshot) -> SystemStatsAdminProjection {

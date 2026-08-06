@@ -125,7 +125,10 @@ async fn stats_route(headers: axum::http::HeaderMap) -> Response {
     let raw = stats_snapshot();
     match session_from_headers(&headers) {
         Session::Admin => Json(project_system_stats_admin(&raw)).into_response(),
-        Session::Guest => Json(project_system_stats_guest(&raw)).into_response(),
+        Session::Guest => {
+            let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
+            Json(project_system_stats_guest(&raw, &facts)).into_response()
+        }
     }
 }
 
