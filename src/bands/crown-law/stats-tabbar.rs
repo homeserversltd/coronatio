@@ -589,6 +589,22 @@ fn stats_kea_leases() -> Vec<StatsKeaLease> {
     leases
 }
 
+fn stats_identity_roster() -> StatsKeaLeases {
+    let roster = caduceus_http("GET", "/api/v1/network/device");
+    if !roster.ok { return StatsKeaLeases { status: "unavailable".to_string(), entries: Vec::new() }; }
+    let notes = caduceus_http("GET", "/api/v1/network/notes");
+    if !notes.ok { return StatsKeaLeases { status: "unavailable".to_string(), entries: Vec::new() }; }
+    let notes = notes.body.get("notes").and_then(serde_json::Value::as_object);
+    let payload = device_identity_payload(roster.body);
+    let rows = payload.as_array().cloned().or_else(|| payload.get("devices").or_else(|| payload.get("roster")).or_else(|| payload.get("data").and_then(|data| data.get("devices"))).and_then(serde_json::Value::as_array).cloned()).unwrap_or_default();
+    let entries = rows.into_iter().map(|mut row| {
+        let note = row.get("mac").and_then(serde_json::Value::as_str).and_then(canonical_network_note_mac).and_then(|mac| notes.and_then(|notes| notes.get(&mac))).cloned().unwrap_or(serde_json::Value::String(String::new()));
+        if let Some(object) = row.as_object_mut() { object.insert("note".to_string(), note); }
+        row
+    }).collect();
+    StatsKeaLeases { status: "available".to_string(), entries }
+}
+
 fn stats_processes() -> Vec<StatsProcess> {
     let output = Command::new("ps").args(["-eo", "comm,pcpu,rss", "--sort=-pcpu"]).output();
     let mut processes = Vec::new();

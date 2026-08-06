@@ -261,6 +261,7 @@ fn stats_snapshot() -> StatsSnapshot {
     let network = stats_network();
     let io = stats_io(&storage);
     let leases = stats_kea_leases();
+    let kea_leases = stats_identity_roster();
     let processes = stats_processes();
     let services = stats_services();
     let first_missing_signal = stats_first_missing_signal(&storage, &services);
@@ -298,6 +299,7 @@ fn stats_snapshot() -> StatsSnapshot {
         network: network.clone(),
         io,
         leases,
+        kea_leases,
         processes,
         services: services.clone(),
         telemetry: StatsTelemetry {
