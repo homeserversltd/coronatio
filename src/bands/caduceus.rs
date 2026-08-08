@@ -156,6 +156,10 @@ fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
 }
 
 fn caduceus_http_with_attendance(method: &str, path: &str, attendance: Option<&crate::caduceus_access::AttendanceProof>) -> CaduceusHttpReadback {
+    caduceus_http_with_attendance_and_document(method, path, attendance, None)
+}
+
+fn caduceus_http_with_attendance_and_document(method: &str, path: &str, attendance: Option<&crate::caduceus_access::AttendanceProof>, document: Option<&str>) -> CaduceusHttpReadback {
     let Some(authority) = caduceus_authority() else {
         return caduceus_loopback_refusal(path);
     };
@@ -180,8 +184,11 @@ fn caduceus_http_with_attendance(method: &str, path: &str, attendance: Option<&c
     let attendance_header = attendance
             .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
         .unwrap_or_default();
+    let document_header = document
+        .map(|value| format!("x-caduceus-document: {value}\r\n"))
+        .unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n{attendance_header}Content-Length: 0\r\n\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n{document_header}{attendance_header}Content-Length: 0\r\n\r\n"
     );
     if let Err(_err) = stream.write_all(request.as_bytes()) {
         return CaduceusHttpReadback {
@@ -577,9 +584,73 @@ fn admin_staff_intent(headers: &axum::http::HeaderMap, method: &str, path: &str,
     )
 }
 
+const ADMIN_LOG_PAGE_LIMIT: usize = 100;
+
+fn admin_log_pagination(uri: &Uri) -> (usize, usize) {
+    let mut offset = 0;
+    let mut limit = ADMIN_LOG_PAGE_LIMIT;
+    for pair in uri.query().unwrap_or_default().split('&') {
+        let Some((key, value)) = pair.split_once('=') else { continue; };
+        match key {
+            "offset" => offset = value.parse::<usize>().unwrap_or(0),
+            "limit" => limit = value.parse::<usize>().unwrap_or(ADMIN_LOG_PAGE_LIMIT).clamp(1, 5000),
+            _ => {}
+        }
+    }
+    (offset, limit)
+}
+
+fn admin_logs_modal_fragment(readback: &CaduceusHttpReadback, offset: usize, limit: usize, notice: Option<&str>) -> String {
+    let lines = readback.body.get("lines").and_then(serde_json::Value::as_array);
+    let total = readback.body.get("total_lines").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
+    let returned = lines.map_or(0, Vec::len);
+    let previous = offset.saturating_sub(limit);
+    let next = offset.saturating_add(returned);
+    let previous_disabled = if offset == 0 { " disabled" } else { "" };
+    let next_disabled = if returned == 0 || next >= total { " disabled" } else { "" };
+    let content = if readback.ok {
+        if returned == 0 {
+            "<p data-admin-log-empty>No appliance log lines are available.</p>".to_string()
+        } else {
+            let lines = lines.unwrap_or(&Vec::new()).iter().filter_map(serde_json::Value::as_str).map(html_escape).collect::<Vec<_>>().join("");
+            format!(r#"<pre class="log-frame" data-admin-log-lines>{lines}</pre>"#)
+        }
+    } else {
+        format!(
+            r#"<p class="error" data-admin-log-error>Could not read appliance logs: <code>{}</code></p>"#,
+            html_escape(&readback.first_missing_signal),
+        )
+    };
+    let notice = notice.map(|value| format!(r#"<p class="success" data-admin-log-notice>{}</p>"#, html_escape(value))).unwrap_or_default();
+    format!(
+        r#"<section class="modal modal-window admin-log-modal" data-admin-log-modal data-admin-action-result-fragment="view-logs" data-admin-action-route="/api/admin/logs/homeserver" role="dialog" aria-label="Appliance logs"><h2>Appliance Logs</h2>{notice}<div class="modal-toolbar"><span>Newest first · {returned} shown of {total}</span></div><div class="modal-body">{content}</div><div class="modal-pager"><button type="button" class="secondary" hx-get="/admit/admin/action/view-logs?offset={previous}&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML"{previous_disabled}>Previous</button><button type="button" class="secondary" hx-get="/admit/admin/action/view-logs?offset={next}&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML"{next_disabled}>Next</button><button type="button" class="ui-button ui-button--danger" hx-post="/admit/admin/action/view-logs-clear?offset=0&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML" hx-confirm="Clear the appliance log now?">Clear</button></div></section>"#,
+    )
+}
+
+async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
+    let (offset, limit) = admin_log_pagination(&uri);
+    let path = format!("/api/admin/logs/homeserver?offset={offset}&limit={limit}");
+    let readback = admin_fragment_caduceus_request(&headers, "GET", &path);
+    log_admin_action_admission(&headers, "/admit/admin/action/view-logs", &readback, StatusCode::OK);
+    admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&readback, offset, limit, None))
+}
+
+async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
+    let (_, limit) = admin_log_pagination(&uri);
+    let clear = admin_fragment_caduceus_request(&headers, "POST", "/api/admin/logs/homeserver/clear");
+    if !clear.ok {
+        log_admin_action_admission(&headers, "/admit/admin/action/view-logs-clear", &clear, StatusCode::OK);
+        return admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&clear, 0, limit, None));
+    }
+    let path = format!("/api/admin/logs/homeserver?offset=0&limit={limit}");
+    let readback = admin_fragment_caduceus_request(&headers, "GET", &path);
+    log_admin_action_admission(&headers, "/admit/admin/action/view-logs-clear", &readback, StatusCode::OK);
+    admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&readback, 0, limit, Some("Appliance logs cleared.")))
+}
+
 
 async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
-    if let Some(refusal) = mutation_context_refusal(&headers) {
+    if let Some(refusal) = admin_fragment_context_refusal(&headers) {
         let readback = mutation_refusal_readback("/api/v1/staff/intent", refusal);
         return admin_html_fragment_response(
             mutation_response_status(&readback),
@@ -592,7 +663,7 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
             admin_membrane_refusal_fragment("unknown admin toggle", "unknown-admin-toggle"),
         );
     };
-    let readback = admin_staff_intent(&headers, "POST", path, "admin-service-toggle");
+    let readback = admin_fragment_staff_intent(&headers, "POST", path, "admin-service-toggle");
     let result = AdminMutationResult {
         action: toggle_id.clone(),
         title: label.to_string(),
@@ -605,7 +676,7 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
 
 async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>) -> impl IntoResponse {
     let route = format!("/admit/admin/action/{action_id}");
-    if let Some(refusal) = mutation_context_refusal(&headers) {
+    if let Some(refusal) = admin_fragment_context_refusal(&headers) {
         let readback = mutation_refusal_readback("/api/v1/staff/intent", refusal);
         log_admin_action_admission(&headers, &route, &readback, mutation_response_status(&readback));
         return admin_html_fragment_response(
@@ -624,9 +695,9 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
     let readback = if action_id == "update" {
         caduceus_mutation_readback(&headers, path, "update now", "local")
     } else if mutation {
-        admin_staff_intent(&headers, method, path, homeserver_route_family(path))
+        admin_fragment_staff_intent(&headers, method, path, homeserver_route_family(path))
     } else {
-        caduceus_http(method, path)
+        admin_fragment_caduceus_request(&headers, method, path)
     };
     let status = if mutation { mutation_response_status(&readback) } else { StatusCode::OK };
     log_admin_action_admission(&headers, &route, &readback, status);
