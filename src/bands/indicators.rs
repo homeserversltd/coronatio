@@ -9,4 +9,4 @@ mod indicators {
     include!("indicators/power-meter/index.rs");
 }
 
-use indicators::{render_indicator_modal_registry, render_indicator_strip};
+use indicators::{collect_indicator_topic, render_indicator_modal_registry, render_indicator_strip};

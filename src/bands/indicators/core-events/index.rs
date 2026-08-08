@@ -1,6 +1,6 @@
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::{stream, StreamExt};
-use std::{collections::HashMap, convert::Infallible, time::Instant};
+use std::{collections::{BTreeMap, HashMap}, convert::Infallible, time::Instant};
 
 const CORE_LEASE_SECONDS: u64 = 30;
 static CORE_MEMBERSHIPS: OnceLock<Mutex<HashMap<String, CoreMembership>>> = OnceLock::new();
@@ -155,13 +155,96 @@ fn validate_core_host_membership(stream_id: &str, headers: &axum::http::HeaderMa
 }
 
 pub(crate) fn collect_indicator_topic(topic_id: &str, session: Session) -> Result<serde_json::Value, String> {
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or_default();
     match topic_id {
-        "internet.status" => { let raw = internet_status_snapshot(); serde_json::to_value(if session == Session::Admin { serde_json::to_value(project_internet_status_admin(&raw)).unwrap() } else { serde_json::to_value(project_internet_status_guest(&raw)).unwrap() }).map_err(|e| e.to_string()) },
-        "power.status" => read_power_usage_sample().map(|sample| serde_json::json!({"ok":true,"status":"available","current":sample.current_watts,"historical":sample.history_watts,"unit":"W","timestamp":sample.timestamp_secs})).map_err(str::to_string),
-        "tailscale.status" => Ok(serde_json::json!({"ok":true,"status":"rust-route","interface":"tailscale0","timestamp":timestamp,"scope":if session == Session::Admin {"admin"} else {"guest"}})),
-        "vpn.status" => Ok(serde_json::json!({"ok":true,"vpnStatus":"rust-route","transmissionStatus":"rust-route","timestamp":timestamp,"scope":if session == Session::Admin {"admin"} else {"guest"}})),
-        "services.status" => Ok(serde_json::json!({"ok":true,"status":"rust-route","services":[],"timestamp":timestamp,"scope":if session == Session::Admin {"admin"} else {"guest"}})),
+        "internet.status" => {
+            let raw = internet_status_snapshot();
+            serde_json::to_value(if session == Session::Admin {
+                serde_json::to_value(project_internet_status_admin(&raw)).unwrap()
+            } else {
+                serde_json::to_value(project_internet_status_guest(&raw)).unwrap()
+            })
+            .map_err(|error| error.to_string())
+        }
+        "power.status" => read_power_usage_sample()
+            .map(|sample| serde_json::json!({"ok":true,"status":"available","current":sample.current_watts,"historical":sample.history_watts,"unit":"W","timestamp":sample.timestamp_secs}))
+            .map_err(str::to_string),
+        "tailscale.status" => collect_caduceus_indicator("/api/v1/tailscale/status", session, &[
+            "ok", "success", "status", "interface", "timestamp", "firstMissingSignal",
+        ]),
+        "vpn.status" => collect_caduceus_indicator("/api/v1/vpn/status", session, &[
+            "ok", "success", "vpnStatus", "transmissionStatus", "timestamp", "firstMissingSignal",
+        ]),
+        "services.status" => collect_services_indicator(),
         _ => Err(format!("unknown topic: {topic_id}")),
     }
+}
+
+fn collect_caduceus_indicator(path: &str, session: Session, guest_fields: &[&str]) -> Result<serde_json::Value, String> {
+    let readback = caduceus_http("GET", path);
+    if !readback.ok {
+        return Err(format!("{}: {}", readback.first_missing_signal, path));
+    }
+    let Some(object) = readback.body.as_object() else {
+        return Err(format!("caduceus-invalid-json: {path}"));
+    };
+    if session == Session::Admin {
+        return Ok(serde_json::Value::Object(object.clone()));
+    }
+    let mut projection = serde_json::Map::new();
+    for field in guest_fields {
+        if let Some(value) = object.get(*field) {
+            projection.insert((*field).to_string(), value.clone());
+        }
+    }
+    projection.entry("ok".to_string()).or_insert(serde_json::Value::Bool(true));
+    Ok(serde_json::Value::Object(projection))
+}
+
+fn collect_services_indicator() -> Result<serde_json::Value, String> {
+    let portals = read_portals_config()?.portals;
+    let mut services = BTreeMap::new();
+    for portal in portals {
+        for service in portal.services {
+            let systemd_name = normalize_systemd_unit(&service);
+            services.entry(systemd_name.clone()).or_insert_with(|| {
+                let state = systemctl_is_active(&systemd_name);
+                let is_active = state.as_deref() == Some("active");
+                let status = match state.as_deref() {
+                    Some("active") => "up",
+                    Some(_) => "down",
+                    None => "unknown",
+                };
+                serde_json::json!({
+                    "name": service,
+                    "systemdName": systemd_name,
+                    "isActive": is_active,
+                    "status": status,
+                    "statusDetails": state.unwrap_or_else(|| "systemctl readback unavailable".to_string()),
+                    "isScriptManaged": portal.r#type == "script",
+                    "port": portal.port,
+                    "needsReboot": portal.r#type == "script",
+                })
+            });
+        }
+    }
+    let services = services.into_values().collect::<Vec<_>>();
+    let (checked, active) = services.iter().fold((0_usize, 0_usize), |(checked, active), service| {
+        match service.get("status").and_then(serde_json::Value::as_str) {
+            Some("up") => (checked + 1, active + 1),
+            Some("down") => (checked + 1, active),
+            _ => (checked, active),
+        }
+    });
+    let status = match (checked, active) {
+        (0, _) => "unknown",
+        (checked, active) if checked == active => "up",
+        (_, 0) => "down",
+        _ => "partial",
+    };
+    Ok(serde_json::json!({
+        "ok": true,
+        "status": status,
+        "services": services,
+        "timestamp": SystemTime::now().duration_since(UNIX_EPOCH).map(|duration| duration.as_secs_f64()).unwrap_or_default(),
+    }))
 }

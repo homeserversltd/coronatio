@@ -57,6 +57,25 @@ fn homeserver_read_response(headers: &axum::http::HeaderMap, method: &str, path:
     if path == "/api/admin/logs/homeserver" {
         return homeserver_logs_hyalos_response(headers, method, path);
     }
+    let topic = match path {
+        "/api/status/services" => Some("services.status"),
+        "/api/status/tailscale" => Some("tailscale.status"),
+        "/api/status/vpn/pia" | "/api/status/vpn/transmission" => Some("vpn.status"),
+        _ => None,
+    };
+    if let Some(topic) = topic {
+        return match collect_indicator_topic(topic, session_from_headers(headers)) {
+            Ok(snapshot) => (StatusCode::OK, Json(snapshot)).into_response(),
+            Err(fault) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+                "schema": "coronatio.indicator.topic.fault.v1",
+                "ok": false,
+                "success": false,
+                "topicId": topic,
+                "path": path,
+                "firstMissingSignal": fault,
+            }))).into_response(),
+        };
+    }
 
     match session_from_headers(headers) {
         Session::Admin => (
