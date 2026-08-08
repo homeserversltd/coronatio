@@ -734,6 +734,7 @@ fn shell_document_3() -> &'static str {
     function reconcileViewportStreamFamily() {
       closeViewportStreamFamily();
       stopPortalCurrentnessCadence();
+      stopWakeOnLanCadence();
       if (window.getImmortalFloorState?.() !== 'Seated') return;
       const active = currentActiveTabId();
       if (!viewportFamilyAdmitted(active)) return;
@@ -743,6 +744,7 @@ fn shell_document_3() -> &'static str {
       if (active === 'firewall') hydrateFirewall();
       if (active === 'backblaze') hydrateBackblaze();
       if (active === 'portals') { startPortalCurrentnessCadence(); connectPulseStream(); }
+      if (active === 'wake-on-lan') startWakeOnLanCadence();
     }
     function schedulePulseRenewal(renewRoute) {
       clearPulseRenewal();
@@ -855,7 +857,8 @@ fn shell_document_3() -> &'static str {
         try { if (id === 'stats') await bounded(() => hydrateStats(), statsHydrationTimeoutMs, 'hydration-timeout');
           else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout');
           else if (id === 'unbound') await bounded(() => hydrateDns(), hydrationTimeoutMs, 'hydration-timeout');
-          else if (id === 'firewall') await bounded(() => hydrateFirewall(), hydrationTimeoutMs, 'hydration-timeout'); }
+          else if (id === 'firewall') await bounded(() => hydrateFirewall(), hydrationTimeoutMs, 'hydration-timeout');
+          else if (id === 'wake-on-lan') await bounded(() => hydrateWakeOnLan(), hydrationTimeoutMs, 'hydration-timeout'); }
         catch (error) { throw error; }
         if (!pane || pane.dataset.viewportFaulted === 'true') throw new Error('guest-unhealthy');
         return pane;

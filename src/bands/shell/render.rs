@@ -48,6 +48,7 @@ const SHELL_UX_CONTENTS: &[&str] = &[
     include_str!("ux/packs/admin.css"),
     include_str!("ux/packs/dhcp.css"),
     include_str!("ux/packs/firewall.css"),
+    include_str!("ux/packs/wake-on-lan.css"),
     include_str!("ux/packs/unbound.css"),
     include_str!("ux/packs/backblaze.css"),
     include_str!("ux/packs/headless.css"),
@@ -74,7 +75,7 @@ fn crown_chrome_js() -> String {
     .replace("__UNBOUND_CLIENT__", shell_unbound_client())
     .replace(
         "__FIREWALL_CLIENT__",
-        &format!("{}{}", shell_backblaze_client(), shell_firewall_client()),
+        &format!("{}{}{}", shell_backblaze_client(), shell_firewall_client(), shell_wake_on_lan_client()),
     );
     extract_between(&raw, "<script>", "</script>").unwrap_or_default()
 }
@@ -153,7 +154,7 @@ fn render_crown_shell_for_session(session: Session) -> String {
         .replace("__UNBOUND_CLIENT__", shell_unbound_client())
         .replace(
             "__FIREWALL_CLIENT__",
-            &format!("{}{}", shell_backblaze_client(), shell_firewall_client()),
+            &format!("{}{}{}", shell_backblaze_client(), shell_firewall_client(), shell_wake_on_lan_client()),
         )
         .replace("__UNBOUND_PANE__", DNS_PANE);
     let shell = if session == Session::Guest {

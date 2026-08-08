@@ -107,10 +107,9 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/kea-leases", get(homeserver_rust_read_route))
         .route("/api/network/notes", get(network_notes_read_route).put(network_notes_write_route))
         .route("/api/version", get(homeserver_rust_read_route))
-        .route("/api/wakeonlan/targets", get(homeserver_rust_read_route).post(network_identity_mutation_route))
-        .route("/api/wakeonlan/wake", post(network_identity_mutation_route))
-        .route("/api/wakeonlan/targets/:name", delete(network_identity_mutation_route))
-        .route("/api/wakeonlan/status", get(homeserver_rust_read_route))
+        .route("/api/wakeonlan/devices", get(wake_on_lan_devices_route))
+        .route("/api/wakeonlan/wake", post(wake_on_lan_wake_route))
+        .route("/api/wakeonlan/status", get(wake_on_lan_status_route))
         .route("/api/network/device", get(device_roster_route))
         .route("/api/network/device/claim", post(device_claim_route))
         .route("/api/network/dhcp/boundary", get(device_boundary_route))
@@ -535,6 +534,7 @@ include!("full-rust-routes/dhcp.rs");
 include!("full-rust-routes/device-identity.rs");
 include!("full-rust-routes/unbound.rs");
 include!("full-rust-routes/firewall.rs");
+include!("full-rust-routes/wake-on-lan.rs");
 include!("full-rust-routes/backblaze.rs");
 
 include!("full-rust-routes/network-notes.rs");
@@ -699,9 +699,8 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/kea-leases", &["get"]),
         ("/api/network/notes", &["get", "put"]),
         ("/api/version", &["get"]),
-        ("/api/wakeonlan/targets", &["get", "post"]),
+        ("/api/wakeonlan/devices", &["get"]),
         ("/api/wakeonlan/wake", &["post"]),
-        ("/api/wakeonlan/targets/:name", &["delete"]),
         ("/api/wakeonlan/status", &["get"]),
         ("/api/dhcp/status", &["get"]),
         ("/api/dhcp/leases", &["get"]),
