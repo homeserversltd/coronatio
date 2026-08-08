@@ -45,21 +45,25 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/admin/hard-drive-test/devices", get(homeserver_rust_read_route))
         .route("/api/v1/disk/census", get(disk_census_route))
         .route("/api/admin/diskman/nas-compatible", get(homeserver_rust_read_route))
-        .route("/api/admin/diskman/format", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/unlock", post(admin_class_generic_mutation_route))
+        .route("/api/admin/diskman/format", post(caduceus_diskman_format_route))
+        .route("/api/admin/diskman/unlock", post(caduceus_diskman_unlock_route))
         .route("/api/admin/diskman/unlock-with-password", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/encrypt", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/mount", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/unmount", post(admin_class_generic_mutation_route))
+        .route("/api/admin/diskman/encrypt", post(caduceus_diskman_encrypt_route))
+        .route("/api/admin/diskman/mount", post(caduceus_diskman_mount_route))
+        .route("/api/admin/diskman/unmount", post(caduceus_diskman_unmount_route))
         .route("/api/admin/diskman/apply-permissions", post(admin_class_generic_mutation_route))
         .route("/api/admin/diskman/check-services", get(homeserver_rust_read_route))
         .route("/api/admin/diskman/manage-services", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/sync", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/sync-schedule", get(homeserver_rust_read_route))
-        .route("/api/admin/diskman/sync-schedule-update", post(admin_class_generic_mutation_route))
+        .route("/api/admin/diskman/sync", post(caduceus_diskman_sync_now_route))
+        .route("/api/admin/diskman/sync-schedule", get(caduceus_diskman_sync_schedule_route))
+        .route("/api/admin/diskman/sync-schedule-update", post(caduceus_diskman_sync_schedule_update_route))
         .route("/api/admin/diskman/assign-nas", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/unassign-nas", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/import-to-nas", post(admin_class_generic_mutation_route))
+        .route("/api/admin/diskman/assign-primary-nas", post(caduceus_diskman_assign_primary_nas_route))
+        .route("/api/admin/diskman/assign-nas-backup", post(caduceus_diskman_assign_nas_backup_route))
+        .route("/api/admin/diskman/unassign-nas", post(caduceus_diskman_unassign_nas_route))
+        .route("/api/admin/diskman/import-to-nas", post(caduceus_diskman_import_to_nas_route))
+        .route("/api/admin/diskman/setup-nas", post(caduceus_diskman_setup_nas_route))
+        .route("/api/admin/diskman/sync-job-status", post(caduceus_diskman_sync_job_status_route))
         .route("/api/admin/diskman/create-key", post(admin_class_generic_mutation_route))
         .route("/api/admin/diskman/update-key", post(admin_class_generic_mutation_route))
         .route("/api/admin/diskman/key-status", post(admin_class_generic_mutation_route))
@@ -651,8 +655,12 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/admin/diskman/sync-schedule", &["get"]),
         ("/api/admin/diskman/sync-schedule-update", &["post"]),
         ("/api/admin/diskman/assign-nas", &["post"]),
+        ("/api/admin/diskman/assign-primary-nas", &["post"]),
+        ("/api/admin/diskman/assign-nas-backup", &["post"]),
         ("/api/admin/diskman/unassign-nas", &["post"]),
+        ("/api/admin/diskman/setup-nas", &["post"]),
         ("/api/admin/diskman/import-to-nas", &["post"]),
+        ("/api/admin/diskman/sync-job-status", &["post"]),
         ("/api/admin/diskman/create-key", &["post"]),
         ("/api/admin/diskman/update-key", &["post"]),
         ("/api/admin/diskman/key-status", &["post"]),
