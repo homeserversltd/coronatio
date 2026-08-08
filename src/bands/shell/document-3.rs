@@ -52,11 +52,12 @@ fn shell_document_3() -> &'static str {
       applyAdminDomState();
       if (headerState.isAdmin) void upgradeOpenStreams();
       else void downgradeOpenStreams();
-      if (options.boot) return;
-      refreshTabBar(previousActive).then(selectedTab => {
-        applyTabBarVisibility();
+      if (options.boot) return Promise.resolve(true);
+      if (headerState.isAdmin && options.admission) return AdminChromeProjection(previousActive);
+      return refreshTabBar(previousActive).then(selectedTab => {
         refreshElementFragment('stats');
         if (!sessionLawfulTab(selectedTab)) void runFavoriteLadder({ startAt: 1 });
+        return true;
       });
     }
     async function clearAdminMode() {
@@ -470,9 +471,10 @@ fn shell_document_3() -> &'static str {
           if (!coronatioAttendanceRuntime.currentAttendance) { modalMessage.textContent = 'PIN check unavailable'; return; }
         } catch (_) { modalMessage.textContent = 'PIN check unavailable'; return; }
       }
-      setAdminMode(true);
-      modalMessage.textContent = '';
-      closePinModal();
+      modalMessage.textContent = '✓ Admin access confirmed. Loading…';
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const admitted = await setAdminMode(true, { admission: true });
+      if (admitted) closePinModal();
     });
     async function enterInactivityHeadless() {
       if (coronatioAttendanceRuntime.inactivityHeadless) return;
@@ -909,6 +911,17 @@ fn shell_document_3() -> &'static str {
     window.immortalFloor = immortalFloor;
     window.getImmortalFloorState = () => immortalFloor.state;
     function showPane(id, options) { return immortalFloor.activate(id, options); }
+    async function AdminChromeProjection(previousActive) {
+      try {
+        const selectedTab = await refreshTabBar(previousActive);
+        const selectedGuest = lawfulPaneCandidate(selectedTab || previousActive);
+        const crossed = await showPane(selectedGuest, { refresh: true });
+        return crossed === true && window.getImmortalFloorState?.() === 'Seated' && currentActiveTabId() === selectedGuest;
+      } catch (error) {
+        console.warn('[coronatio] admin admission projection fault', error?.message || error);
+        return false;
+      }
+    }
     async function runFavoriteLadder({ startAt = 1, useHash = false } = {}) {
       const regular = eligibleRegularTabs().map(tab => tab.dataset.pane).filter(Boolean);
       if (regular.length === 0) return showPane(fallbackTab, { detail: 'This device is locked down.' });
