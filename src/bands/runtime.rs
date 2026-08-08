@@ -43,7 +43,6 @@ fn app(state: AppState) -> Router {
         .route("/api/v1/attendance/change-pin", post(caduceus_attendance_change_pin_route))
         .route("/api/v1/attendance/invalidate", post(caduceus_attendance_invalidate_route))
         .route("/api/caduceus/status", get(caduceus_status_route))
-        .route("/api/debug/emit", post(debug_emit_route))
         .route(
             "/api/caduceus/update/check",
             post(caduceus_update_check_route),

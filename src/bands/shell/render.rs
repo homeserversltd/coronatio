@@ -146,7 +146,6 @@ fn render_crown_shell_for_session(session: Session) -> String {
         .replace("__INDICATOR_SPINE__", &render_indicator_strip(session))
         .replace("__INDICATOR_MODAL_REGISTRY__", &render_indicator_modal_registry(session))
         .replace("__TEST__", &render_test_showcase())
-        .replace("__ADMIN_AVAILABLE_DEVICES__", &render_admin_available_devices_html())
         .replace("__ADMIN_MOUNT_DESTINATIONS__", &render_admin_mount_destinations_html())
         .replace("__UPLOAD_TREE_FRAGMENT__", &render_upload_tree_fragment(None, None))
         .replace("__STATS_ELEMENTS_FRAGMENT__", &render_stats_elements_fragment(session))

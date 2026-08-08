@@ -577,27 +577,9 @@ struct ServiceDataReadback {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct AdminRuntimeReadback {
-    devices: Vec<AdminBlockDeviceReadback>,
     mount_destinations: Vec<AdminMountDestinationReadback>,
     services: Vec<AdminServiceStateReadback>,
     source: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-struct AdminBlockDeviceReadback {
-    name: String,
-    device: String,
-    mount: Option<String>,
-    role: Option<String>,
-    filesystem: Option<String>,
-    total_bytes: Option<u64>,
-    used_bytes: Option<u64>,
-    free_bytes: Option<u64>,
-    usage_percent: Option<u8>,
-    encrypted: bool,
-    mapper: Option<String>,
-    lock_state: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

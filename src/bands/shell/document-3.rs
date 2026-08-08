@@ -784,11 +784,10 @@ fn shell_document_3() -> &'static str {
         if (pulseStream && pulseStream.readyState === EventSource.CLOSED) reconnectPulseStream();
       });
     }
-    const crownDebug = installCrownDebugEmitter(); window.crownDebug = crownDebug; installCrownRequestDiagnostics(crownDebug); installCrownLayoutDiagnostics(crownDebug); const immortalFloorStates = Object.freeze(['BootFloor', 'Seated', 'GuestRevolution', 'BareFloor']);
+    const immortalFloorStates = Object.freeze(['BootFloor', 'Seated', 'GuestRevolution', 'BareFloor']);
     const immortalFloor = (() => {
       let state = 'BootFloor'; let generation = 0; let activeGuest = null;
       let crossingGuest = null;
-      let floorDebugHandle = crownDebug.begin('immortal-floor-boot', { phase: 'boot', event: 'begin' });
       const admissionTimeoutMs = 1500;
       const hydrationTimeoutMs = 750;
       const statsHydrationTimeoutMs = 4000;
@@ -799,7 +798,6 @@ fn shell_document_3() -> &'static str {
         } else resolve(false);
       }));
       function expose(next, detail = '') {
-        crownDebug.mark(floorDebugHandle, 'expose', { state: next, phase: 'state', detail });
         if (!immortalFloorStates.includes(next)) throw new Error('Invalid Immortal Floor state: ' + next);
         state = next;
         document.documentElement.dataset.immortalFloorState = next;
@@ -842,14 +840,13 @@ fn shell_document_3() -> &'static str {
               document.body.removeEventListener('htmx:sendError', failed);
               if (timer) window.clearTimeout(timer);
             };
-            const afterSwap = event => { if (panelIdFromHtmxEvent(event) !== id) return; crownDebug.mark(floorDebugHandle, 'after-swap', { guest: id, phase: 'admission' }); cleanup(); resolve(); };
-            const failed = event => { if (panelIdFromHtmxEvent(event) !== id) return; crownDebug.mark(floorDebugHandle, 'admission-fault', { guest: id, phase: 'admission' }); cleanup(); reject(new Error('admission-fault')); };
+            const afterSwap = event => { if (panelIdFromHtmxEvent(event) !== id) return; cleanup(); resolve(); };
+            const failed = event => { if (panelIdFromHtmxEvent(event) !== id) return; cleanup(); reject(new Error('admission-fault')); };
             document.body.addEventListener('htmx:afterSwap', afterSwap);
             document.body.addEventListener('htmx:timeout', failed);
             document.body.addEventListener('htmx:responseError', failed);
             document.body.addEventListener('htmx:sendError', failed);
-            timer = window.setTimeout(() => { crownDebug.mark(floorDebugHandle, 'admission-timeout', { guest: id, phase: 'admission' }); cleanup(); reject(new Error('admission-timeout')); }, admissionTimeoutMs);
-            crownDebug.mark(floorDebugHandle, 'admission-trigger', { guest: id, phase: 'admission' });
+            timer = window.setTimeout(() => { cleanup(); reject(new Error('admission-timeout')); }, admissionTimeoutMs);
             window.htmx.trigger(tab, 'immortal-floor-admit');
           });
         }
@@ -857,30 +854,27 @@ fn shell_document_3() -> &'static str {
           else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout');
           else if (id === 'unbound') await bounded(() => hydrateDns(), hydrationTimeoutMs, 'hydration-timeout');
           else if (id === 'firewall') await bounded(() => hydrateFirewall(), hydrationTimeoutMs, 'hydration-timeout'); }
-        catch (error) { if ((error?.message || '') === 'hydration-timeout') crownDebug.mark(floorDebugHandle, 'hydration-timeout', { guest: id, phase: 'hydration' }); throw error; }
+        catch (error) { throw error; }
         if (!pane || pane.dataset.viewportFaulted === 'true') throw new Error('guest-unhealthy');
         return pane;
       }
       async function seatGuest(id, detail = '') {
         const pane = panes.find(candidate => candidate.dataset.panePanel === id); if (!pane) return false;
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        crownDebug.mark(floorDebugHandle, 'paint-reveal-boundary', { phase: 'reveal', guest: id });
         tabs.forEach(tab => { const active = tab.dataset.pane === id; tab.setAttribute('aria-selected', String(active)); tab.classList.toggle('active', active); });
         panes.forEach(candidate => { const active = candidate === pane; candidate.classList.toggle('active', active); candidate.classList.toggle('immortal-floor-enter', active); candidate.setAttribute('aria-hidden', String(!active)); });
-        activeGuest = id; crossingGuest = null; expose('Seated', detail); crownDebug.settle(floorDebugHandle, true, { event: 'settle', phase: 'seated', guest: id }); floorDebugHandle = null; applyAdminDomState(); applyTabBarVisibility();
+        activeGuest = id; crossingGuest = null; expose('Seated', detail); applyAdminDomState(); applyTabBarVisibility();
         reconcileViewportStreamFamily();
         return true;
       }
       async function activate(requested, options = {}) {
         const selected = lawfulPaneCandidate(requested); crossingGuest = selected;
-        if (!floorDebugHandle) floorDebugHandle = crownDebug.begin('immortal-floor-boot', { phase: 'activation', event: 'begin', guest: selected });
         if (state === 'Seated' && activeGuest === selected && !options.refresh) {
           applyAdminDomState(); reconcileViewportStreamFamily(); return true;
         }
         const crossing = ++generation; const readyNow = await ready;
         if (!readyNow) {
           if (crossing === generation) { emptySlot(); expose('BareFloor'); }
-          crownDebug.settle(floorDebugHandle, false, { event: 'settle', phase: 'bare-floor', reason: 'not-ready', guest: selected }); floorDebugHandle = null;
           return false;
         }
         if (crossing !== generation) return false; // A newer crossing owns the terminal state.
@@ -901,8 +895,6 @@ fn shell_document_3() -> &'static str {
         emptySlot();
         expose('BareFloor', 'This view could not open. Choose a tab to try again.');
         console.warn('[coronatio] view failed to open', { pane: crossingGuest, guest: crossingGuest, kind });
-        crownDebug.settle(floorDebugHandle, false, { event: 'settle', phase: 'bare-floor', reason: kind, guest: crossingGuest });
-        floorDebugHandle = null;
         crossingGuest = null;
         document.documentElement.dataset.immortalFloorFault = kind;
       }
