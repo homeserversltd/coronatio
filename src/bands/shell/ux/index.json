@@ -37,6 +37,7 @@
     "packs/admin.css",
     "packs/dhcp.css",
     "packs/firewall.css",
+    "packs/wake-on-lan.css",
     "packs/unbound.css",
     "packs/backblaze.css",
     "packs/headless.css",
