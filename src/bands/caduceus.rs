@@ -153,6 +153,74 @@ async fn caduceus_keyman_key_status_route(headers: axum::http::HeaderMap, Json(r
     ))
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DiskmanDoorRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    device: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mountpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mapper: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_device: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    apps: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    schedule: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    job_handle: Option<String>,
+    #[serde(default)]
+    dry_run: bool,
+    #[serde(default)]
+    planned: bool,
+}
+
+fn diskman_upstream_response(readback: CaduceusHttpReadback) -> Response {
+    let status = StatusCode::from_u16(readback.status).unwrap_or(StatusCode::BAD_GATEWAY);
+    (status, Json(readback.body)).into_response()
+}
+
+fn diskman_mutation(headers: &axum::http::HeaderMap, action: &str, path: &str, request: DiskmanDoorRequest) -> Response {
+    let body = serde_json::to_value(request).unwrap_or_else(|_| serde_json::json!({}));
+    diskman_upstream_response(caduceus_actuate_json(
+        &mutation_authority(), headers, MutationActionTarget::caduceus(action, path), path, body,
+    ))
+}
+
+macro_rules! diskman_mutation_route {
+    ($name:ident, $action:literal, $path:literal) => {
+        async fn $name(headers: axum::http::HeaderMap, Json(request): Json<DiskmanDoorRequest>) -> impl IntoResponse {
+            diskman_mutation(&headers, $action, $path, request)
+        }
+    };
+}
+
+diskman_mutation_route!(caduceus_diskman_format_route, "diskman.format", "/api/admin/diskman/format");
+diskman_mutation_route!(caduceus_diskman_encrypt_route, "diskman.encrypt", "/api/admin/diskman/encrypt");
+diskman_mutation_route!(caduceus_diskman_unlock_route, "diskman.unlock", "/api/admin/diskman/unlock");
+diskman_mutation_route!(caduceus_diskman_mount_route, "diskman.mount", "/api/admin/diskman/mount");
+diskman_mutation_route!(caduceus_diskman_unmount_route, "diskman.unmount", "/api/admin/diskman/unmount");
+diskman_mutation_route!(caduceus_diskman_assign_primary_nas_route, "diskman.assign-primary-nas", "/api/admin/diskman/assign-primary-nas");
+diskman_mutation_route!(caduceus_diskman_assign_nas_backup_route, "diskman.assign-nas-backup", "/api/admin/diskman/assign-nas-backup");
+diskman_mutation_route!(caduceus_diskman_unassign_nas_route, "diskman.unassign-nas", "/api/admin/diskman/unassign-nas");
+diskman_mutation_route!(caduceus_diskman_setup_nas_route, "diskman.setup-nas", "/api/admin/diskman/setup-nas");
+diskman_mutation_route!(caduceus_diskman_import_to_nas_route, "diskman.import-to-nas", "/api/admin/diskman/import-to-nas");
+diskman_mutation_route!(caduceus_diskman_sync_now_route, "diskman.sync-now", "/api/admin/diskman/sync-now");
+diskman_mutation_route!(caduceus_diskman_sync_schedule_update_route, "diskman.sync-schedule-update", "/api/admin/diskman/sync-schedule-update");
+diskman_mutation_route!(caduceus_diskman_sync_job_status_route, "diskman.sync-job-status", "/api/admin/diskman/sync-job-status");
+
+async fn caduceus_diskman_sync_schedule_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    let authority = mutation_authority();
+    let readback = match authority.authorize(&MutationRequestContext::attended_document_from_headers(&headers), MutationActionTarget::caduceus("diskman.sync-schedule", "/api/admin/diskman/sync-schedule")) {
+        Ok(attendance) => caduceus_http_with_attendance_and_document("GET", "/api/admin/diskman/sync-schedule", Some(&attendance.proof), Some(&attendance.document)),
+        Err(refusal) => mutation_refusal_readback("/api/admin/diskman/sync-schedule", refusal),
+    };
+    diskman_upstream_response(readback)
+}
+
 async fn caduceus_receipts_latest_route() -> impl IntoResponse {
     let readback = caduceus_http("GET", "/api/v1/receipts/latest");
     (
