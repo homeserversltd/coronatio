@@ -100,7 +100,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/portals/factory", get(portals_factory_route))
         .route("/api/service/control", post(portal_service_control_route))
         .route("/api/portals/images/:filename", get(portal_image_route))
-        .route("/api/status/internet/speedtest", post(admin_class_generic_mutation_route))
+        .route("/api/status/internet/speedtest", post(internet_speedtest_route))
         .route("/status/power/usage", get(homeserver_rust_read_route))
         .route("/api/status/power/usage", get(homeserver_rust_read_route))
         .route("/api/kea-leases", get(homeserver_rust_read_route))
@@ -459,6 +459,23 @@ async fn admin_class_generic_mutation_route(headers: axum::http::HeaderMap, meth
     if uri.path() == "/api/upload/pin-required-status" { return upload_pin_required_update(&headers, payload); }
     if uri.path() == "/api/upload/force-permissions" { return upload_force_permissions(&headers, payload); }
     homeserver_mutation_response(&headers, method.as_str(), uri.path())
+}
+
+async fn internet_speedtest_route(headers: axum::http::HeaderMap) -> Response {
+    let path = "/api/status/internet/speedtest";
+    if let Some(refusal) = device_identity_admin(&headers, path) {
+        return refusal;
+    }
+    let readback = caduceus_http_json(
+        "POST",
+        "/api/v1/network/speedtest",
+        serde_json::json!({}),
+        None,
+    );
+    if readback.ok {
+        return (StatusCode::OK, Json(readback.body)).into_response();
+    }
+    (mutation_response_status(&readback), Json(readback.body)).into_response()
 }
 
 async fn network_identity_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> Response {
