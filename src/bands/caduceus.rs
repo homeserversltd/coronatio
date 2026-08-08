@@ -38,6 +38,121 @@ async fn caduceus_update_now_route(headers: axum::http::HeaderMap) -> impl IntoR
     caduceus_mutation_route(&headers, "update_now", "/api/v1/update/now", "update now", "local")
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KeymanDoorRequest {
+    #[serde(default)]
+    target: Option<String>,
+    #[serde(default)]
+    device: Option<String>,
+    #[serde(default)]
+    strategy: Option<String>,
+    #[serde(default)]
+    password: Option<String>,
+    #[serde(default, alias = "current_password")]
+    current_password: Option<String>,
+    #[serde(default, alias = "old_password")]
+    old_password: Option<String>,
+    #[serde(default, alias = "new_password")]
+    new_password: Option<String>,
+    #[serde(default)]
+    planned: bool,
+}
+
+fn keyman_text(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty()).map(|value| value.trim().to_string())
+}
+
+fn redact_keyman_receipt(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Array(values) => serde_json::Value::Array(values.into_iter().map(redact_keyman_receipt).collect()),
+        serde_json::Value::Object(values) => {
+            let values = values.into_iter().filter_map(|(key, value)| {
+                let sensitive = ["password", "secret", "token", "credential", "key_material"]
+                    .iter()
+                    .any(|needle| key.to_ascii_lowercase().contains(needle));
+                (!sensitive).then(|| (key, redact_keyman_receipt(value)))
+            }).collect();
+            serde_json::Value::Object(values)
+        }
+        value => value,
+    }
+}
+
+fn keyman_response(readback: CaduceusHttpReadback) -> (StatusCode, Json<serde_json::Value>) {
+    let status = mutation_response_status(&readback);
+    let ok = readback.ok;
+    let first_missing_signal = readback.first_missing_signal.clone();
+    let receipt = redact_keyman_receipt(readback.body);
+    let receipt_family = receipt.get("receiptFamily").or_else(|| receipt.get("receipt_family")).cloned();
+    (
+        status,
+        Json(serde_json::json!({
+            "schema": "coronatio.caduceus.keyman.v1",
+            "ok": ok,
+            "receipt": receipt,
+            "receiptFamily": receipt_family,
+            "firstMissingSignal": first_missing_signal,
+        })),
+    )
+}
+
+fn keyman_input_error(signal: &str) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "schema": "coronatio.caduceus.keyman.v1",
+            "ok": false,
+            "firstMissingSignal": signal,
+        })),
+    )
+}
+
+async fn caduceus_keyman_create_key_route(headers: axum::http::HeaderMap, Json(request): Json<KeymanDoorRequest>) -> impl IntoResponse {
+    let (Some(target), Some(strategy), Some(password)) = (keyman_text(request.target), keyman_text(request.strategy), request.password.filter(|value| !value.is_empty())) else {
+        return keyman_input_error("keyman-create-fields-required");
+    };
+    keyman_response(caduceus_actuate_json(
+        &mutation_authority(), &headers,
+        MutationActionTarget::caduceus("keyman.create-key", "/api/v1/keyman/create-key"),
+        "/api/v1/keyman/create-key",
+        serde_json::json!({"target": target, "strategy": strategy, "password": password, "planned": request.planned}),
+    ))
+}
+
+async fn caduceus_keyman_update_key_route(headers: axum::http::HeaderMap, Json(request): Json<KeymanDoorRequest>) -> impl IntoResponse {
+    let (Some(device), Some(strategy), Some(current_password)) = (keyman_text(request.device), keyman_text(request.strategy), request.current_password.filter(|value| !value.is_empty())) else {
+        return keyman_input_error("keyman-update-fields-required");
+    };
+    keyman_response(caduceus_actuate_json(
+        &mutation_authority(), &headers,
+        MutationActionTarget::caduceus("keyman.update-key", "/api/v1/keyman/update-key"),
+        "/api/v1/keyman/update-key",
+        serde_json::json!({"device": device, "strategy": strategy, "current_password": current_password, "planned": request.planned}),
+    ))
+}
+
+async fn caduceus_keyman_admin_password_route(headers: axum::http::HeaderMap, Json(request): Json<KeymanDoorRequest>) -> impl IntoResponse {
+    let (Some(old_password), Some(new_password)) = (request.old_password.filter(|value| !value.is_empty()), request.new_password.filter(|value| !value.is_empty())) else {
+        return keyman_input_error("keyman-admin-password-fields-required");
+    };
+    keyman_response(caduceus_actuate_json(
+        &mutation_authority(), &headers,
+        MutationActionTarget::caduceus("keyman.admin-password", "/api/v1/keyman/admin-password"),
+        "/api/v1/keyman/admin-password",
+        serde_json::json!({"old_password": old_password, "new_password": new_password, "planned": request.planned}),
+    ))
+}
+
+async fn caduceus_keyman_key_status_route(headers: axum::http::HeaderMap, Json(request): Json<KeymanDoorRequest>) -> impl IntoResponse {
+    keyman_response(caduceus_actuate_json(
+        &mutation_authority(), &headers,
+        MutationActionTarget::caduceus("keyman.key-status", "/api/v1/keyman/key-status"),
+        "/api/v1/keyman/key-status",
+        serde_json::json!({"planned": request.planned}),
+    ))
+}
+
 async fn caduceus_receipts_latest_route() -> impl IntoResponse {
     let readback = caduceus_http("GET", "/api/v1/receipts/latest");
     (
