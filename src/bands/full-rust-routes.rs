@@ -131,6 +131,8 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/firewall/children", get(firewall_children_route).post(firewall_register_route))
         .route("/api/firewall/children/:mac", delete(firewall_unregister_route))
         .route("/api/firewall/children/:mac/whitelist", get(firewall_whitelist_get_route).put(firewall_whitelist_set_route))
+        .route("/api/backblaze/status", get(backblaze_status_route))
+        .route("/api/backblaze/run", post(backblaze_run_route))
         .route("/api/nasLinker/browse", get(homeserver_rust_read_route))
         .route("/api/nasLinker/deploy", post(admin_class_generic_mutation_route))
         .route("/api/nasLinker/delete", delete(admin_class_generic_mutation_route))
@@ -507,6 +509,7 @@ include!("full-rust-routes/dhcp.rs");
 include!("full-rust-routes/device-identity.rs");
 include!("full-rust-routes/unbound.rs");
 include!("full-rust-routes/firewall.rs");
+include!("full-rust-routes/backblaze.rs");
 
 include!("full-rust-routes/network-notes.rs");
 

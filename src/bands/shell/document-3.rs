@@ -644,6 +644,7 @@ fn shell_document_3() -> &'static str {
       dhcp: Object.freeze({ topics: ['admin.dhcp'], snapshotRoutes: ['/api/dhcp/leases', '/api/dhcp/reservations', '/api/dhcp/statistics', '/api/dhcp/pool-boundary'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
       firewall: Object.freeze({ topics: ['admin.firewall'], snapshotRoutes: ['/api/firewall/observed', '/api/firewall/children'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
       unbound: Object.freeze({ topics: ['admin.dns'], snapshotRoutes: ['/api/dns/records'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
+      backblaze: Object.freeze({ topics: ['backup.manual'], snapshotRoutes: ['/api/backblaze/status'], eventRoute: null, renewRoute: null, authClass: 'public' }),
       portals: Object.freeze({ topics: ['core.services'], snapshotRoutes: ['/api/portals/elements'], eventRoute: null, renewRoute: null, authClass: 'public' })
     });
     function viewportFamilyAdmitted(id) {
@@ -738,6 +739,7 @@ fn shell_document_3() -> &'static str {
       if (active === 'dhcp') hydrateDhcp();
       if (active === 'unbound') hydrateDns();
       if (active === 'firewall') hydrateFirewall();
+      if (active === 'backblaze') hydrateBackblaze();
       if (active === 'portals') { startPortalCurrentnessCadence(); connectPulseStream(); }
     }
     function schedulePulseRenewal(renewRoute) {

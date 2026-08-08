@@ -38,6 +38,7 @@
     "packs/dhcp.css",
     "packs/firewall.css",
     "packs/unbound.css",
+    "packs/backblaze.css",
     "packs/headless.css",
     "shell/document-2-css.css"
   ],
