@@ -334,9 +334,65 @@ fn format_space(used: Option<u64>, total: Option<u64>, free: Option<u64>, percen
     )
 }
 
-fn render_admin_service_card_html(id: &str) -> String {
-    let runtime = admin_runtime_readback();
-    let Some(service) = runtime.services.into_iter().find(|service| service.id == id) else {
+fn caduceus_service_bool(body: &serde_json::Value, keys: &[&str]) -> Option<bool> {
+    keys.iter().find_map(|key| body.get(*key).and_then(serde_json::Value::as_bool)
+        .or_else(|| body.get("status").and_then(|status| status.get(*key)).and_then(serde_json::Value::as_bool)))
+}
+
+fn caduceus_absent_units(body: &serde_json::Value) -> Vec<String> {
+    for key in ["absentUnits", "absent_units"] {
+        if let Some(units) = body.get(key).and_then(serde_json::Value::as_array) {
+            return units.iter().filter_map(serde_json::Value::as_str).map(str::to_string).collect();
+        }
+    }
+    body.get("units").and_then(serde_json::Value::as_array).map(|units| units.iter().filter_map(|unit| {
+        let name = unit.get("unit").or_else(|| unit.get("name")).and_then(serde_json::Value::as_str)?;
+        let absent = unit.get("present").and_then(serde_json::Value::as_bool) == Some(false)
+            || unit.get("loadState").or_else(|| unit.get("load_state")).and_then(serde_json::Value::as_str) == Some("not-found");
+        absent.then(|| name.to_string())
+    }).collect()).unwrap_or_default()
+}
+
+fn caduceus_admin_service_state(id: &str, readback: &CaduceusHttpReadback) -> AdminServiceStateReadback {
+    let (label, enabled, state) = match id {
+        "ssh-password-authentication" => {
+            let enabled = caduceus_service_bool(&readback.body, &["passwordAuthentication", "password_authentication", "enabled"]);
+            ("SSH Password Authentication", enabled.unwrap_or(false), enabled.map(|value| if value { "Enabled" } else { "Disabled" }.to_string()).unwrap_or_else(|| "Unavailable".to_string()))
+        }
+        "ssh-service" => {
+            let running = caduceus_service_bool(&readback.body, &["running", "active"]);
+            ("SSH Service", running.unwrap_or(false), running.map(|value| if value { "Running" } else { "Stopped" }.to_string()).unwrap_or_else(|| "Unavailable".to_string()))
+        }
+        "samba-file-sharing" => {
+            let enabled = caduceus_service_bool(&readback.body, &["allEnabled", "all_enabled"]);
+            let running = caduceus_service_bool(&readback.body, &["allRunning", "all_running"]);
+            let absent = caduceus_absent_units(&readback.body);
+            let state = match (running, absent.is_empty()) {
+                (Some(true), true) => "Running".to_string(),
+                (Some(true), false) => format!("Running (absent: {})", absent.join(", ")),
+                (Some(false), true) => "Stopped".to_string(),
+                (Some(false), false) => format!("Stopped (absent: {})", absent.join(", ")),
+                (None, false) => format!("Unavailable (absent: {})", absent.join(", ")),
+                (None, true) => "Unavailable".to_string(),
+            };
+            ("Samba File Sharing", enabled.unwrap_or(false), state)
+        }
+        _ => ("Service", false, "Unavailable".to_string()),
+    };
+    AdminServiceStateReadback {
+        id: id.to_string(),
+        label: label.to_string(),
+        enabled,
+        state,
+        source: if readback.ok { format!("Caduceus {} systemctl readback", readback.path) } else { format!("Caduceus {} unavailable: {}", readback.path, readback.first_missing_signal) },
+    }
+}
+
+fn render_admin_service_card_html(id: &str, readback: Option<&CaduceusHttpReadback>) -> String {
+    let service = readback.map(|readback| caduceus_admin_service_state(id, readback)).or_else(|| {
+        admin_runtime_readback().services.into_iter().find(|service| service.id == id)
+    });
+    let Some(service) = service else {
         return "<div class=\"ssh-status\"><h3>Service</h3><div class=\"ssh-toggle\"><span class=\"toggle-label\">Unavailable</span></div></div>".to_string();
     };
     let checked = if service.enabled { " checked" } else { "" };
@@ -363,8 +419,8 @@ fn render_admin_service_card_html(id: &str) -> String {
     )
 }
 
-fn render_admin_service_card_result_html(id: &str, result: Option<&AdminMutationResult>) -> String {
-    let mut card = render_admin_service_card_html(id);
+fn render_admin_service_card_result_html(id: &str, readback: Option<&CaduceusHttpReadback>, result: Option<&AdminMutationResult>) -> String {
+    let mut card = render_admin_service_card_html(id, readback);
     if let Some(result) = result {
         let class = if result.ok { "success" } else { "error" };
         card.push_str(&format!(
