@@ -750,6 +750,7 @@ fn shell_document_3() -> &'static str {
       let floorDebugHandle = crownDebug.begin('immortal-floor-boot', { phase: 'boot', event: 'begin' });
       const admissionTimeoutMs = 1500;
       const hydrationTimeoutMs = 750;
+      const statsHydrationTimeoutMs = 4000;
       const ready = new Promise(resolve => requestAnimationFrame(() => {
         if (immortalFloorShell && tabBar && panes.length) {
           immortalFloorShell.dataset.startupPhase = 'Ready';
@@ -811,7 +812,7 @@ fn shell_document_3() -> &'static str {
             window.htmx.trigger(tab, 'immortal-floor-admit');
           });
         }
-        try { if (id === 'stats') await bounded(() => hydrateStats(), hydrationTimeoutMs, 'hydration-timeout');
+        try { if (id === 'stats') await bounded(() => hydrateStats(), statsHydrationTimeoutMs, 'hydration-timeout');
           else if (id === 'dhcp') await bounded(() => hydrateDhcp(), hydrationTimeoutMs, 'hydration-timeout');
           else if (id === 'unbound') await bounded(() => hydrateDns(), hydrationTimeoutMs, 'hydration-timeout'); }
         catch (error) { if ((error?.message || '') === 'hydration-timeout') crownDebug.mark(floorDebugHandle, 'hydration-timeout', { guest: id, phase: 'hydration' }); throw error; }
@@ -857,7 +858,7 @@ fn shell_document_3() -> &'static str {
         generation += 1;
         emptySlot();
         expose('BareFloor', 'This view could not open. Choose a tab to try again.');
-        console.warn('[coronatio] view failed to open', { guest: crossingGuest, kind });
+        console.warn('[coronatio] view failed to open', { pane: crossingGuest, guest: crossingGuest, kind });
         crownDebug.settle(floorDebugHandle, false, { event: 'settle', phase: 'bare-floor', reason: kind, guest: crossingGuest });
         floorDebugHandle = null;
         crossingGuest = null;
