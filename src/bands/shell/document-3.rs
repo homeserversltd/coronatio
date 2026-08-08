@@ -139,6 +139,15 @@ fn shell_document_3() -> &'static str {
       internetIndicator.title = title;
       internetIndicator.setAttribute('aria-label', internetState.status === 'loading' ? 'Checking Internet Status' : 'Internet Status');
     }
+    function setServicesIndicatorState(data) {
+      const button = document.querySelector('[data-indicator="services"]');
+      if (!button) return;
+      const status = data?.status || 'unknown';
+      button.classList.remove('loading', 'ok', 'warn', 'error');
+      button.classList.add(status === 'up' ? 'ok' : (status === 'partial' ? 'warn' : (status === 'down' ? 'error' : 'loading')));
+      button.title = status === 'unknown' ? 'Services status unavailable' : 'Services: ' + status;
+      button.setAttribute('aria-label', 'Services Status ' + status);
+    }
     function routeReadLabel(route, data) {
       const ok = data && (data.ok === true || data.success === true);
       const status = data?.status || (ok ? 'ok' : 'unavailable');
@@ -269,6 +278,30 @@ fn shell_document_3() -> &'static str {
       const input = infoBody.querySelector('[data-tailnet-input]');
       if (input && data?.tailnet && !input.value) input.value = data.tailnet;
     }
+    function hydrateServicesModal(data) {
+      const status = data?.status || 'unknown';
+      const statusNode = infoBody.querySelector('[data-modal-kind-body="services"] [data-modal-status]');
+      if (statusNode) {
+        statusNode.className = 'loading-section ' + (status === 'up' ? 'ok' : (status === 'partial' ? 'warn' : (status === 'down' ? 'error' : 'loading')));
+        statusNode.textContent = String(status).toUpperCase();
+      }
+      const list = infoBody.querySelector('[data-modal-kind-body="services"] .service-status-list');
+      if (list) {
+        list.replaceChildren();
+        const services = Array.isArray(data?.services) ? data.services : [];
+        if (!services.length) {
+          const item = document.createElement('li');
+          item.textContent = 'No service status data available';
+          list.appendChild(item);
+        }
+        services.forEach(service => {
+          const item = document.createElement('li');
+          item.textContent = String(service?.name || service?.systemdName || 'Service') + ': ' + String(service?.status || 'unknown').toUpperCase();
+          list.appendChild(item);
+        });
+      }
+      setServicesIndicatorState(data);
+    }
     function modalRequestBody(button) {
       const route = button.dataset.modalFetch || '';
       if (route.endsWith('/update-tailnet')) return JSON.stringify({ tailnetName: infoBody.querySelector('[data-tailnet-input]')?.value || '' });
@@ -291,9 +324,12 @@ fn shell_document_3() -> &'static str {
         try {
           const response = await fetch(route, { cache: 'no-store' });
           const data = await response.json();
+          const servicesRoute = kind === 'services' && route === '/api/status/services';
           if (kind === 'tailscale' && route === '/api/status/tailscale') hydrateTailscaleModal(data);
+          else if (servicesRoute) hydrateServicesModal(data);
           const label = routeReadLabel(route, data);
-          if (node.matches('ul')) node.innerHTML = `<li>${label}</li>`;
+          if (servicesRoute) {}
+          else if (node.matches('ul')) node.innerHTML = `<li>${label}</li>`;
           else if (node.classList.contains('power-value')) node.querySelector('[data-modal-status]').textContent = label.replace('Power readback: ', '').replace('Power readback unavailable', 'unavailable');
           else if (!(kind === 'tailscale' && route === '/api/status/tailscale')) node.textContent = label;
           if (route === '/api/status') {
@@ -486,6 +522,7 @@ fn shell_document_3() -> &'static str {
     function applyCoreTopic(topicId, envelope) {
       const data = envelope?.snapshot || {};
       if (topicId === 'internet.status') setInternetIndicatorState(data);
+      if (topicId === 'services.status') setServicesIndicatorState(data);
       if (topicId === 'power.status') {
         hydratePowerIndicator(data);
         if (data?.ok && typeof data.current === 'number') pushPowerChartPoint(formatChartTime(), Number(formatPowerWatts(data.current)));
@@ -493,7 +530,7 @@ fn shell_document_3() -> &'static str {
       }
       const indicatorId = ({ 'tailscale.status': 'tailscale', 'vpn.status': 'openvpn', 'services.status': 'services' })[topicId];
       const button = indicatorId ? document.querySelector(`[data-indicator="${indicatorId}"]`) : null;
-      if (button) {
+      if (button && topicId !== 'services.status') {
         button.classList.remove('loading', 'ok', 'warn', 'error');
         button.classList.add(envelope?.status === 'snapshot' && data?.ok !== false ? 'ok' : 'warn');
       }
