@@ -1,0 +1,5 @@
+.backblaze-tablet { display: grid; gap: 1rem; padding: 1.5rem; }
+.backblaze-tablet .ui-card { display: grid; gap: 1rem; }
+.backblaze-status-row { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.backblaze-actions { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+.backblaze-note, [data-backblaze-status], [data-backblaze-result] { color: var(--secondary); }

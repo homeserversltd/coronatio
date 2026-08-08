@@ -199,7 +199,7 @@ fn shell_document_2() -> &'static str {
         </div>
       </section>
       <section class="pane" id="pane-backblaze" data-pane-panel="backblaze" data-view-panel="backblaze" role="tabpanel" aria-label="backBlaze">
-        <article class="card og-stub-pane" data-og-stub-pane="backblaze"><h2>backBlaze</h2><p>not yet ported</p></article>
+        <article class="backblaze-tablet" data-backblaze-tablet><div class="ui-card"><div class="ui-card__header"><h2>backBlaze Backup</h2></div><div class="ui-card__body"><div class="backblaze-status-row"><span class="ui-badge ui-badge--secondary" data-backblaze-badge>Checking</span><span data-backblaze-status aria-live="polite">Checking backup status…</span></div></div><div class="ui-card__footer backblaze-actions"><button type="button" class="ui-button ui-button--primary" data-backblaze-run>Run Backup Now</button><span data-backblaze-result aria-live="polite"></span></div></div><p class="backblaze-note">Backup schedule: manual only.</p></article>
       </section>
       <section class="pane" id="pane-wake-on-lan" data-pane-panel="wake-on-lan" data-view-panel="wake-on-lan" role="tabpanel" aria-label="Wake on LAN">
         <article class="card og-stub-pane" data-og-stub-pane="wake-on-lan"><h2>Wake on LAN</h2><p>not yet ported</p></article>

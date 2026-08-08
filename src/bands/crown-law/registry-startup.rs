@@ -48,7 +48,7 @@ fn native_crown_panes() -> Vec<CrownPane> {
             id: "backblaze".to_string(),
             title: "backBlaze".to_string(),
             role: "backup service tab".to_string(),
-            summary: "Original HOMESERVER backBlaze tab placeholder until the pane body is ported.".to_string(),
+            summary: "Manual Backblaze B2 backups through restic with local last-run status.".to_string(),
             order: 40,
             admin_only: false,
             install_mode: InstallMode::FirstPartyNative,
