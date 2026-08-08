@@ -1,6 +1,6 @@
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::{stream, StreamExt};
-use std::{collections::{BTreeMap, HashMap}, convert::Infallible, time::Instant};
+use std::{collections::HashMap, convert::Infallible, time::Instant};
 
 const CORE_LEASE_SECONDS: u64 = 30;
 static CORE_MEMBERSHIPS: OnceLock<Mutex<HashMap<String, CoreMembership>>> = OnceLock::new();
@@ -202,32 +202,44 @@ fn collect_caduceus_indicator(path: &str, session: Session, guest_fields: &[&str
 
 fn collect_services_indicator() -> Result<serde_json::Value, String> {
     let portals = read_portals_config()?.portals;
-    let mut services = BTreeMap::new();
+    let mut services = Vec::new();
     for portal in portals {
+        let mut systemd_names = Vec::new();
+        let mut states = Vec::new();
+        let mut checked = 0_usize;
+        let mut active = 0_usize;
         for service in portal.services {
             let systemd_name = normalize_systemd_unit(&service);
-            services.entry(systemd_name.clone()).or_insert_with(|| {
-                let state = systemctl_is_active(&systemd_name);
-                let is_active = state.as_deref() == Some("active");
-                let status = match state.as_deref() {
-                    Some("active") => "up",
-                    Some(_) => "down",
-                    None => "unknown",
-                };
-                serde_json::json!({
-                    "name": service,
-                    "systemdName": systemd_name,
-                    "isActive": is_active,
-                    "status": status,
-                    "statusDetails": state.unwrap_or_else(|| "systemctl readback unavailable".to_string()),
-                    "isScriptManaged": portal.r#type == "script",
-                    "port": portal.port,
-                    "needsReboot": portal.r#type == "script",
-                })
-            });
+            let state = systemctl_is_active(&systemd_name);
+            systemd_names.push(systemd_name);
+            states.push(state.clone().unwrap_or_else(|| "unavailable".to_string()));
+            match state.as_deref() {
+                Some("active") => {
+                    checked += 1;
+                    active += 1;
+                }
+                Some(_) => checked += 1,
+                None => {}
+            }
         }
+        let status = match (checked, active) {
+            (0, _) => "unknown",
+            (checked, active) if checked == active => "up",
+            (_, 0) => "down",
+            _ => "partial",
+        };
+        services.push(serde_json::json!({
+            "name": portal.name,
+            "description": portal.description,
+            "systemdName": systemd_names.join(", "),
+            "isActive": status == "up",
+            "status": status,
+            "statusDetails": states.join(", "),
+            "isScriptManaged": portal.r#type == "script",
+            "port": portal.port,
+            "needsReboot": portal.r#type == "script",
+        }));
     }
-    let services = services.into_values().collect::<Vec<_>>();
     let (checked, active) = services.iter().fold((0_usize, 0_usize), |(checked, active), service| {
         match service.get("status").and_then(serde_json::Value::as_str) {
             Some("up") => (checked + 1, active + 1),

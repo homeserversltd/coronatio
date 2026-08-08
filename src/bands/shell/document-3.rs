@@ -297,7 +297,18 @@ fn shell_document_3() -> &'static str {
         }
         services.forEach(service => {
           const item = document.createElement('li');
-          item.textContent = String(service?.name || service?.systemdName || 'Service') + ': ' + String(service?.status || 'unknown').toUpperCase();
+          item.className = 'service-status-item ' + String(service?.status || 'unknown');
+          const content = document.createElement('div');
+          content.className = 'service-item-content';
+          const description = document.createElement('span');
+          description.className = 'service-description';
+          description.textContent = service?.description || '';
+          const name = document.createElement('span');
+          name.className = 'service-name';
+          name.textContent = String(service?.name || service?.systemdName || 'Service');
+          content.appendChild(description);
+          content.appendChild(name);
+          item.appendChild(content);
           list.appendChild(item);
         });
       }
