@@ -49,6 +49,10 @@ fn app(state: AppState) -> Router {
             post(caduceus_update_check_route),
         )
         .route("/api/caduceus/update/now", post(caduceus_update_now_route))
+        .route("/api/caduceus/keyman/create-key", post(caduceus_keyman_create_key_route))
+        .route("/api/caduceus/keyman/update-key", post(caduceus_keyman_update_key_route))
+        .route("/api/caduceus/keyman/admin-password", post(caduceus_keyman_admin_password_route))
+        .route("/api/caduceus/keyman/key-status", post(caduceus_keyman_key_status_route))
         .route(
             "/api/caduceus/receipts/latest",
             get(caduceus_receipts_latest_route),
