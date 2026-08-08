@@ -43,6 +43,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/admin/hard-drive-test/progress", get(homeserver_rust_read_route))
         .route("/api/admin/hard-drive-test/start", post(admin_class_generic_mutation_route))
         .route("/api/admin/hard-drive-test/devices", get(homeserver_rust_read_route))
+        .route("/api/v1/disk/census", get(disk_census_route))
         .route("/api/admin/diskman/nas-compatible", get(homeserver_rust_read_route))
         .route("/api/admin/diskman/format", post(admin_class_generic_mutation_route))
         .route("/api/admin/diskman/unlock", post(admin_class_generic_mutation_route))
@@ -445,6 +446,14 @@ fn format_duration(mut seconds: u64) -> String {
 }
 
 async fn homeserver_rust_read_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_read_response(&headers, method.as_str(), uri.path()) }
+
+async fn disk_census_route() -> Response {
+    let readback = caduceus_http("GET", "/api/v1/disk/census");
+    if readback.ok {
+        return (StatusCode::OK, Json(readback.body)).into_response();
+    }
+    (StatusCode::SERVICE_UNAVAILABLE, Json(readback.body)).into_response()
+}
 
 async fn homeserver_rust_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_mutation_response(&headers, method.as_str(), uri.path()) }
 

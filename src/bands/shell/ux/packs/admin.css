@@ -1041,22 +1041,22 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 }
 
 .disk-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, max-content));
+  gap: 8px;
   justify-content: center;
   margin-top: 20px;
 }
 
 .action-button {
-  padding: 10px 15px;
+  padding: 8px 10px;
   border-radius: 5px;
   color: var(--text);
   background-color: var(--primary);
   border: 1px solid var(--border);
   font-weight: bold;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   transition: background-color 0.2s, color 0.2s, border-color 0.2s;
@@ -1069,6 +1069,14 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 }
 
 .action-button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--primary);
+  color: var(--secondary);
+  border-color: var(--border);
+}
+
+.action-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   background-color: var(--primary);
@@ -1146,14 +1154,7 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
     gap: 1.5rem;
   }
   
-  .disk-actions {
-    flex-wrap: wrap;
-  }
-  
-  .action-button {
-    flex: 1;
-    min-width: 120px;
-  }
+  .disk-actions { grid-template-columns: repeat(auto-fit, minmax(9rem, max-content)); }
 }
 
 .disk-item.non-standard-mount {

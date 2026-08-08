@@ -43,7 +43,6 @@ fn stats_storage() -> Vec<StatsDrive> {
 
 fn admin_runtime_readback() -> AdminRuntimeReadback {
     let mounts = read_proc_mounts();
-    let devices = admin_block_devices_from_mounts(&mounts);
     let mount_destinations = admin_mount_destinations_from_mounts(&mounts);
     let services = vec![
         ssh_password_auth_state(),
@@ -51,7 +50,6 @@ fn admin_runtime_readback() -> AdminRuntimeReadback {
         systemd_service_state("samba-file-sharing", "Samba File Sharing", &["smb", "smbd", "samba"]),
     ];
     AdminRuntimeReadback {
-        devices,
         mount_destinations,
         services,
         source: "/proc/mounts + /sys/block + df -B1 -P + systemctl + sshd_config readback".to_string(),
@@ -80,43 +78,6 @@ fn read_proc_mounts() -> Vec<ProcMountReadback> {
             Some(ProcMountReadback { device, mount, filesystem })
         })
         .collect()
-}
-
-fn admin_block_devices_from_mounts(mounts: &[ProcMountReadback]) -> Vec<AdminBlockDeviceReadback> {
-    let mut devices = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    for mount in mounts {
-        if !mount.device.starts_with("/dev/") || mount.mount.starts_with("/snap/") {
-            continue;
-        }
-        let real_device = canonical_device_path(&mount.device);
-        if !seen.insert((real_device.clone(), mount.mount.clone())) {
-            continue;
-        }
-        let space = df_space_for_mount(&mount.mount);
-        let mapper = mapper_name(&mount.device);
-        let encrypted = mapper.is_some() || device_has_dm_holder(&real_device);
-        devices.push(AdminBlockDeviceReadback {
-            name: best_device_name(&mount.device, &real_device, &mount.mount),
-            device: short_device_name(&real_device),
-            mount: Some(mount.mount.clone()),
-            role: nas_role_for_mount(&mount.mount).map(str::to_string),
-            filesystem: Some(mount.filesystem.clone()),
-            total_bytes: space.as_ref().and_then(|space| space.total_bytes),
-            used_bytes: space.as_ref().and_then(|space| space.used_bytes),
-            free_bytes: space.as_ref().and_then(|space| space.free_bytes),
-            usage_percent: space.as_ref().and_then(|space| space.usage_percent),
-            encrypted,
-            mapper,
-            lock_state: if encrypted { "Unlocked" } else { "Available" }.to_string(),
-        });
-    }
-    devices.sort_by(|left, right| {
-        let left_rank = if left.role.is_some() { 0 } else { 1 };
-        let right_rank = if right.role.is_some() { 0 } else { 1 };
-        (left_rank, left.mount.clone()).cmp(&(right_rank, right.mount.clone()))
-    });
-    devices
 }
 
 fn admin_mount_destinations_from_mounts(mounts: &[ProcMountReadback]) -> Vec<AdminMountDestinationReadback> {
@@ -167,14 +128,6 @@ fn df_space_for_mount(mount: &str) -> Option<DfSpaceReadback> {
     })
 }
 
-fn nas_role_for_mount(mount: &str) -> Option<&'static str> {
-    match mount {
-        "/mnt/nas" => Some("Primary NAS"),
-        "/mnt/nas_backup" => Some("NAS Backup"),
-        _ => None,
-    }
-}
-
 fn canonical_device_path(device: &str) -> String {
     std::fs::canonicalize(device)
         .ok()
@@ -188,37 +141,6 @@ fn short_device_name(device: &str) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or(device)
         .to_string()
-}
-
-fn best_device_name(device: &str, real_device: &str, mount: &str) -> String {
-    if let Some(role) = nas_role_for_mount(mount) {
-        return match role {
-            "Primary NAS" => "homeserver-primary-nas".to_string(),
-            "NAS Backup" => "homeserver-backup-nas".to_string(),
-            _ => short_device_name(real_device),
-        };
-    }
-    if device.starts_with("/dev/disk/by-partlabel/") {
-        return short_device_name(device);
-    }
-    short_device_name(real_device)
-}
-
-fn mapper_name(device: &str) -> Option<String> {
-    if device.starts_with("/dev/mapper/") {
-        Some(short_device_name(device))
-    } else {
-        None
-    }
-}
-
-fn device_has_dm_holder(real_device: &str) -> bool {
-    let Some(name) = FsPath::new(real_device).file_name().and_then(|name| name.to_str()) else { return false; };
-    let holders = format!("/sys/class/block/{name}/holders");
-    std::fs::read_dir(holders)
-        .ok()
-        .map(|mut entries| entries.next().is_some())
-        .unwrap_or(false)
 }
 
 fn ssh_password_auth_state() -> AdminServiceStateReadback {
@@ -432,37 +354,6 @@ fn render_admin_service_card_result_html(id: &str, readback: Option<&CaduceusHtt
         ));
     }
     card
-}
-
-fn render_admin_available_devices_html() -> String {
-    let runtime = admin_runtime_readback();
-    if runtime.devices.is_empty() {
-        return "<div class=\"disk-item empty\"><span class=\"disk-icon\">▣</span><div class=\"disk-info\"><div class=\"disk-name\">No block devices mounted</div><div class=\"disk-details\">No /dev-backed mounts were observed on this body.</div></div></div>".to_string();
-    }
-    runtime.devices.into_iter().map(|device| {
-        let role = device.role.as_ref().map(|role| {
-            let class = if role == "Primary NAS" { "nas-role-primary" } else { "nas-role-backup" };
-            format!(" <span class=\"nas-role-badge {class}\">{}</span>", html_escape(role))
-        }).unwrap_or_default();
-        let mount = device.mount.as_ref().map(|mount| format!("<div class=\"disk-mount-info prominent\"><strong>Mounted at:</strong> {}{}</div>", html_escape(mount), if device.role.is_some() { " <span class=\"destination-label\">(NAS)</span>" } else { "" })).unwrap_or_default();
-        let fs = device.filesystem.clone().unwrap_or_else(|| "unknown".to_string());
-        let encrypted_label = if device.encrypted { " (encrypted)" } else { "" };
-        let mapper = device.mapper.as_ref().map(|mapper| format!("<div class=\"mapper-info\">Mapper: {}</div>", html_escape(mapper))).unwrap_or_default();
-        let lock_class = if device.encrypted { "unlocked" } else { "available" };
-        let lock_icon = if device.encrypted { "🔓" } else { "▣" };
-        format!(
-            "<button type=\"button\" class=\"disk-item available{}\" data-disk-select=\"device\" data-disk-device=\"{}\" data-disk-locked=\"{}\"><span class=\"lock-icon\">{lock_icon}</span><span class=\"disk-icon\">▣</span><div class=\"disk-info\"><div class=\"disk-name\">{}{role}</div>{mount}<div class=\"disk-details\">{} - {}{encrypted_label}</div><div class=\"disk-space-usage\"><strong>Space:</strong> {}</div>{mapper}<div class=\"encryption-status {lock_class}\">{lock_icon} {} <span class=\"filesystem-label\">({})</span></div></div></button>",
-            if device.role.is_some() { " nas-compatible" } else { "" },
-            html_escape(&device.device),
-            if device.encrypted { "false" } else { "true" },
-            html_escape(&device.name),
-            format_admin_bytes(device.total_bytes),
-            html_escape(&fs.to_uppercase()),
-            format_space(device.used_bytes, device.total_bytes, device.free_bytes, device.usage_percent),
-            html_escape(&device.lock_state),
-            html_escape(&fs),
-        )
-    }).collect::<Vec<_>>().join("")
 }
 
 fn render_admin_mount_destinations_html() -> String {

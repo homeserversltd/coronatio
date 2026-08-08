@@ -57,7 +57,7 @@ fn shell_document_2() -> &'static str {
           <section class="mb-6" style="margin-bottom: 0.5rem">
             <div class="system-controls-container" aria-label="System controls">
               <div class="system-controls" data-admin-action-strip="wrapped-row" data-admin-action-strip-count="7">
-                <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-admin-action-id="hard-drive-test" hx-post="/admit/admin/action/hard-drive-test" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">▣</span><span>Hard Drive Test</span></button>
+                <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-hard-drive-test-open><span class="admin-action-icon">▣</span><span>Hard Drive Test</span></button>
                 <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-admin-action-id="update" hx-post="/admit/admin/action/update" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">⬇</span><span>Update</span></button>
                 <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-admin-action-id="restart" hx-post="/admit/admin/action/restart" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Restart HOMESERVER now? Active services will be interrupted."><span class="admin-action-icon">⟳</span><span>Restart</span></button>
                 <button type="button" class="ui-button ui-button--danger ui-button--medium system-controls-btn" data-admin-action-id="shutdown" hx-post="/admit/admin/action/shutdown" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Shut down HOMESERVER now? Active services will stop."><span class="admin-action-icon">⏻</span><span>Shutdown</span></button>
@@ -65,19 +65,6 @@ fn shell_document_2() -> &'static str {
                 <button type="button" class="ui-button ui-button--secondary ui-button--medium system-controls-btn" data-admin-action-id="view-logs" hx-get="/admit/admin/action/view-logs" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this"><span class="admin-action-icon">▤</span><span>View Logs</span></button>
                 <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-hestia-certificate-open><span class="admin-action-icon">◆</span><span>Install Certificate</span></button>
               </div>
-              <section class="crown-diagnostics" data-crown-diagnostics aria-label="Crown Diagnostics">
-                <div><strong>Crown Diagnostics</strong><span data-crown-diagnostics-state>Off</span></div>
-                <p>Temporary, redacted troubleshooting signals. They turn off automatically.</p>
-                <div data-crown-diagnostics-controls>
-                  <button type="button" data-crown-diagnostic-toggle="immortal-floor">Floor &amp; crossings</button>
-                  <button type="button" data-crown-diagnostic-toggle="requests">Requests &amp; resources</button>
-                  <button type="button" data-crown-diagnostic-toggle="layout">Layout &amp; paint</button>
-                  <button type="button" data-crown-diagnostic-toggle="sessions">Sessions &amp; access</button>
-                  <button type="button" data-crown-diagnostic-toggle="streams">Streams</button>
-                  <button type="button" data-crown-diagnostic-toggle="caduceus">Caduceus</button>
-                </div>
-                <small data-crown-diagnostics-unavailable>Sessions/access, streams, and Caduceus are control-ready; no additional safe browser source is claimed by this view.</small>
-              </section>
               <div class="system-service-controls" data-admin-service-controls data-state-source="/api/services/data">
                 <div class="ssh-controls">
                   <div class="ssh-control" data-service-card="ssh-password-authentication" hx-get="/admit/admin/service/ssh-password-authentication" hx-trigger="load" hx-target="this" hx-swap="innerHTML"><div class="ssh-status" data-admin-toggle-card="ssh-password-authentication"><h3>SSH Password Authentication</h3><div class="ssh-toggle"><span class="toggle-label">Loading…</span></div></div></div>
@@ -110,7 +97,7 @@ fn shell_document_2() -> &'static str {
           <section class="mb-6" style="margin-bottom: 0.5rem">
             <div class="disk-manager">
               <div class="disk-manager-container">
-                <div class="disk-column"><h4>Available Devices</h4><div class="disk-list" data-admin-devices-readback="/api/services/data">__ADMIN_AVAILABLE_DEVICES__</div></div>
+                <div class="disk-column"><h4>Available Devices</h4><div class="disk-list" data-disk-census-readback="/api/v1/disk/census"><div class="disk-item empty"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">Reading available devices…</div></div></div></div></div>
                 <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list" data-admin-mounts-readback="/api/services/data">__ADMIN_MOUNT_DESTINATIONS__</div></div>
               </div>
               <div class="disk-actions" data-disk-actions-state="no-selection" aria-live="polite">
@@ -121,12 +108,12 @@ fn shell_document_2() -> &'static str {
                 <button type="button" class="action-button assign-backup" data-disk-action="assign-backup" disabled title="Select an eligible device first">Assign as NAS Backup</button>
                 <button type="button" class="action-button unassign-nas" data-disk-action="unassign" disabled title="Select an eligible device first">Unassign drive</button>
                 <button type="button" class="action-button import-nas" data-disk-action="import" disabled title="Select an eligible device first">Import to NAS</button>
-                <button type="button" class="action-button permissions" data-disk-action="setup-nas" disabled title="Select an eligible device first">Setup NAS</button>
+                <button type="button" class="action-button permissions" data-disk-action="setup-nas" data-disk-action-live title="Setup NAS">Setup NAS</button>
                 <button type="button" class="action-button unlock" data-disk-action="unlock" disabled title="Select an eligible device first">Unlock</button>
                 <button type="button" class="action-button mount" data-disk-action="mount" disabled title="Select an eligible device first">Mount</button>
                 <button type="button" class="action-button unmount" data-disk-action="unmount" disabled title="Select an eligible device first">Unmount</button>
-                <button type="button" class="action-button sync" data-disk-action="sync" disabled title="Select an eligible device first">Sync Now</button>
-                <button type="button" class="action-button auto-sync" data-disk-action="auto-sync" disabled title="Select an eligible device first">Auto Sync</button>
+                <button type="button" class="action-button sync" data-disk-action="sync" data-disk-action-live title="Sync Now">Sync Now</button>
+                <button type="button" class="action-button auto-sync" data-disk-action="auto-sync" data-disk-action-live title="Auto Sync">Auto Sync</button>
               </div>
             </div>
           </section>
@@ -419,75 +406,6 @@ fn shell_document_2() -> &'static str {
     }
     function themeLabel(name) {
       return name;
-    }
-    function installCrownDebugEmitter() {
-      const endpoint = '/api/debug/emit', ttlMs = 5 * 60 * 1000;
-      const families = Object.freeze({ 'immortal-floor': ['immortal-floor-boot'], requests: ['crown-requests'], layout: ['crown-layout'], sessions: ['crown-sessions'], streams: ['crown-streams'], caduceus: ['crown-caduceus'] });
-      const safeKind = value => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(value || ''));
-      const familyFor = kind => Object.keys(families).find(family => families[family].includes(kind)) || kind;
-      const read = () => { try { const value = JSON.parse(localStorage.getItem('coronatioDiagnostics') || '{}'); return value.expiresAt > Date.now() ? value : { enabled: [] }; } catch (_) { return { enabled: [] }; } };
-      const write = value => { try { localStorage.setItem('coronatioDiagnostics', JSON.stringify(value)); } catch (_) {} };
-      function debugParams() { try { return new URLSearchParams(window.location.search || ''); } catch (_) { return new URLSearchParams(''); } }
-      function storageValue(name) { try { return window.localStorage?.getItem(name) || ''; } catch (_) { return ''; } }
-      function enabled(kind) {
-        if (!safeKind(kind)) return false;
-        const params = debugParams();
-        if (params.has('debug')) { const selected = params.get('debug'); return selected === null || selected === '' || selected === '1' || selected === 'true' || selected.split(',').map(value => value.trim()).includes(kind); }
-        if (storageValue('coronatioDebug') === '1' || storageValue('coronatioDebug') === 'true') return true;
-        if (storageValue('coronatioDebugKinds').split(',').map(value => value.trim()).includes(kind)) return true;
-        return read().enabled.includes(familyFor(kind));
-      }
-      function refreshControl() {
-        const state = read(), active = state.enabled || [], label = document.querySelector('[data-crown-diagnostics-state]');
-        if (label) label.textContent = active.length ? `Active for ${Math.max(0, Math.ceil((state.expiresAt - Date.now()) / 1000))}s` : 'Off';
-        document.querySelectorAll('[data-crown-diagnostic-toggle]').forEach(button => { const on = active.includes(button.dataset.crownDiagnosticToggle); button.setAttribute('aria-pressed', String(on)); button.classList.toggle('active', on); });
-      }
-      function toggle(family) { const state = read(), enabled = new Set(state.enabled || []); if (enabled.has(family)) enabled.delete(family); else enabled.add(family); write({ enabled: [...enabled], expiresAt: Date.now() + ttlMs }); refreshControl(); return enabled.has(family); }
-      function clean(value, depth = 0) { if (value === null || value === undefined) return value; if (depth > 4) return '[trimmed]'; if (typeof value === 'string') return value.length > 512 ? value.slice(0, 512) + '…' : value; if (typeof value === 'number' || typeof value === 'boolean') return value; if (Array.isArray(value)) return value.slice(0, 32).map(item => clean(item, depth + 1)); if (typeof value === 'object') { const out = {}; Object.keys(value).slice(0, 48).forEach(key => { const lower = key.toLowerCase(); if (/(token|pin|password|secret|capability|connection)/.test(lower) || lower.includes('body') || lower.includes('payload') || lower === 'headers' || lower.includes('localstorage') || lower.includes('dom') || lower.includes('snapshot') || lower.includes('source')) return; out[key] = clean(value[key], depth + 1); }); return out; } return String(value); }
-      function debugId() { return window.crypto?.randomUUID ? window.crypto.randomUUID() : 'dbg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
-      function now() { return Math.round(performance.now()); }
-      function emit(kind, event, attrs = {}) { if (!enabled(kind)) return false; try { window.fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, event, correlationId: attrs?.correlationId || attrs?.bootId || attrs?.runId, attributes: clean(attrs) }), keepalive: true }).catch(() => {}); return true; } catch (_) { return false; } }
-      function begin(kind, attrs = {}) { if (!enabled(kind)) return null; return { kind, correlationId: attrs.correlationId || attrs.bootId || attrs.runId || debugId(), startedAt: now(), attrs: clean(attrs), marks: [], settled: false }; }
-      function mark(handleOrKind, markName, attrs = {}) { if (!handleOrKind) return false; if (typeof handleOrKind === 'string') return emit(handleOrKind, 'mark', Object.assign({ mark: markName, phase: markName }, attrs)); if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false; handleOrKind.marks.push({ mark: markName, phase: attrs.phase || markName, t: now() - handleOrKind.startedAt, attributes: clean(attrs) }); return true; }
-      function settle(handleOrKind, ok, attrs = {}) { if (!handleOrKind) return false; if (typeof handleOrKind === 'string') return emit(handleOrKind, ok ? 'settle-ok' : 'settle-fault', Object.assign({ ok }, attrs)); if (handleOrKind.settled || !enabled(handleOrKind.kind)) return false; handleOrKind.settled = true; return emit(handleOrKind.kind, attrs.event || 'settle', Object.assign({}, handleOrKind.attrs, attrs, { ok: Boolean(ok), correlationId: handleOrKind.correlationId, durationMs: now() - handleOrKind.startedAt, marks: handleOrKind.marks })); }
-      window.setInterval(refreshControl, 1000); window.addEventListener('DOMContentLoaded', () => { document.querySelectorAll('[data-crown-diagnostic-toggle]').forEach(button => button.addEventListener('click', () => toggle(button.dataset.crownDiagnosticToggle))); refreshControl(); });
-      return Object.freeze({ enabled, emit, begin, mark, settle, toggle, families });
-    }
-    function installCrownRequestDiagnostics(crownDebug) {
-      const safePane = value => /^[a-z0-9-]+$/.test(String(value || '')) ? String(value) : undefined;
-      const safePath = value => { try { const url = new URL(String(value || ''), window.location.origin); return url.origin === window.location.origin && url.pathname !== '/api/debug/emit' ? url.pathname : null; } catch (_) { return null; } };
-      const started = new WeakMap();
-      const metadata = (event, phase) => {
-        const detail = event.detail || {}, xhr = detail.xhr, config = detail.requestConfig || {}, path = safePath(config.path || detail.pathInfo?.requestPath || xhr?.responseURL);
-        if (!path) return null;
-        const began = xhr && started.get(xhr), pane = safePane((detail.elt || detail.target || event.target)?.closest?.('[data-view-panel]')?.dataset?.viewPanel);
-        const attrs = { phase, pathname: path };
-        const method = String(config.verb || config.method || '').toUpperCase(); if (/^(GET|POST|PUT|PATCH|DELETE)$/.test(method)) attrs.method = method;
-        if (Number.isInteger(xhr?.status) && xhr.status >= 0) attrs.status = xhr.status;
-        if (began !== undefined) attrs.durationMs = Math.max(0, Math.round(performance.now() - began));
-        if (pane) attrs.pane = pane;
-        return attrs;
-      };
-      const observe = (name, phase) => document.body.addEventListener(name, event => {
-        if (!crownDebug.enabled('crown-requests')) return;
-        const xhr = event.detail?.xhr;
-        if (name === 'htmx:beforeRequest' && xhr) started.set(xhr, performance.now());
-        const attrs = metadata(event, phase); if (attrs) crownDebug.emit('crown-requests', 'htmx', attrs);
-        if ((name === 'htmx:afterRequest' || name === 'htmx:responseError' || name === 'htmx:sendError') && xhr) started.delete(xhr);
-      });
-      observe('htmx:beforeRequest', 'before-request'); observe('htmx:afterRequest', 'after-request'); observe('htmx:responseError', 'response-error'); observe('htmx:sendError', 'send-error'); observe('htmx:beforeSwap', 'before-swap'); observe('htmx:afterSwap', 'after-swap');
-    }
-    function installCrownLayoutDiagnostics(crownDebug) {
-      if (!window.PerformanceObserver) return;
-      const observe = type => { try { new PerformanceObserver(list => {
-        if (!crownDebug.enabled('crown-layout')) return;
-        list.getEntries().forEach(entry => {
-          const attrs = { entryType: type, name: String(entry.name || type).slice(0, 96), duration: Math.max(0, Number(entry.duration || 0)), phase: type };
-          if (type === 'layout-shift') { attrs.value = Math.max(0, Number(entry.value || 0)); attrs.hadRecentInput = Boolean(entry.hadRecentInput); }
-          crownDebug.emit('crown-layout', 'performance-entry', attrs);
-        });
-      }).observe({ type, buffered: true }); } catch (_) {} };
-      ['paint', 'layout-shift', 'longtask'].forEach(observe);
     }
     function renderThemeChoices() {
       if (!themeChoiceRow) return;
