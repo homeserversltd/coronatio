@@ -857,6 +857,7 @@ fn shell_document_3() -> &'static str {
         generation += 1;
         emptySlot();
         expose('BareFloor', 'This view could not open. Choose a tab to try again.');
+        console.warn('[coronatio] view failed to open', { guest: crossingGuest, kind });
         crownDebug.settle(floorDebugHandle, false, { event: 'settle', phase: 'bare-floor', reason: kind, guest: crossingGuest });
         floorDebugHandle = null;
         crossingGuest = null;
