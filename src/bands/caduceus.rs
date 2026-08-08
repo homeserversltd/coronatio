@@ -542,7 +542,8 @@ struct AdminMutationResult {
 
 fn admin_membrane_refusal_fragment(surface: &str, first_missing_signal: &str) -> String {
     format!(
-        r#"<div class="update-status-container error" data-admin-membrane-refusal="true" data-og-affordance="toast-mapped-to-result-strip"><strong>Enter Admin Mode</strong><span>{}</span><code>{}</code></div>"#,
+        r#"<div class="update-status-container error" data-admin-membrane-refusal="true" data-cartridge-fault-kind="{}" data-og-affordance="toast-mapped-to-result-strip"><strong>Enter Admin Mode</strong><span>{}</span><code>{}</code></div>"#,
+        html_escape(first_missing_signal),
         html_escape(surface),
         html_escape(first_missing_signal),
     )
