@@ -318,6 +318,10 @@ fn render_admin_service_card_html(id: &str, readback: Option<&CaduceusHttpReadba
         return "<div class=\"ssh-status\"><h3>Service</h3><div class=\"ssh-toggle\"><span class=\"toggle-label\">Unavailable</span></div></div>".to_string();
     };
     let checked = if service.enabled { " checked" } else { "" };
+    let fault_kind = readback
+        .filter(|readback| !readback.ok)
+        .map(|readback| format!(" data-cartridge-fault-kind=\"{}\"", html_escape(&readback.first_missing_signal)))
+        .unwrap_or_default();
     let icon_class = if service.enabled { "enabled" } else { "disabled" };
     let icon = match id {
         "ssh-password-authentication" if service.enabled => "🔓",
@@ -330,7 +334,7 @@ fn render_admin_service_card_html(id: &str, readback: Option<&CaduceusHttpReadba
     let toggle_class = if id == "samba-file-sharing" { "samba-toggle" } else { "ssh-toggle" };
     let icon_span_class = if id == "samba-file-sharing" { "samba-icon" } else { "ssh-icon" };
     format!(
-        "<div class=\"{outer_class}\" data-admin-toggle-card=\"{}\" data-real-state=\"{}\" data-real-state-source=\"{}\"><h3>{}</h3><div class=\"{toggle_class}\"><label class=\"ui-toggle ui-toggle--medium toggle-switch\"><span class=\"ui-toggle__switch\"><input type=\"checkbox\" class=\"ui-toggle__input\"{checked} data-state-source=\"{}\" hx-post=\"/admit/admin/toggle/{}\" hx-target=\"closest [data-service-card]\" hx-swap=\"innerHTML\" hx-disabled-elt=\"this\"><span class=\"ui-toggle__slider toggle-slider\"></span></span></label><span class=\"toggle-label\">{}</span><span class=\"{icon_span_class} {icon_class}\">{icon}</span></div></div>",
+        "<div class=\"{outer_class}\" data-admin-toggle-card=\"{}\"{fault_kind} data-real-state=\"{}\" data-real-state-source=\"{}\"><h3>{}</h3><div class=\"{toggle_class}\"><label class=\"ui-toggle ui-toggle--medium toggle-switch\"><span class=\"ui-toggle__switch\"><input type=\"checkbox\" class=\"ui-toggle__input\"{checked} data-state-source=\"{}\" hx-post=\"/admit/admin/toggle/{}\" hx-target=\"closest [data-service-card]\" hx-swap=\"innerHTML\" hx-disabled-elt=\"this\"><span class=\"ui-toggle__slider toggle-slider\"></span></span></label><span class=\"toggle-label\">{}</span><span class=\"{icon_span_class} {icon_class}\">{icon}</span></div></div>",
         html_escape(id),
         html_escape(&service.state),
         html_escape(&service.source),
@@ -346,8 +350,9 @@ fn render_admin_service_card_result_html(id: &str, readback: Option<&CaduceusHtt
     if let Some(result) = result {
         let class = if result.ok { "success" } else { "error" };
         card.push_str(&format!(
-            "<div class=\"update-status-container {class}\" data-admin-mutation-result=\"{}\" data-og-affordance=\"toast-mapped-to-result-strip\"><strong>{}</strong><span>{}</span><code>{}</code></div>",
+            "<div class=\"update-status-container {class}\" data-admin-mutation-result=\"{}\"{} data-og-affordance=\"toast-mapped-to-result-strip\"><strong>{}</strong><span>{}</span><code>{}</code></div>",
             html_escape(&result.action),
+            if result.ok { String::new() } else { format!(" data-cartridge-fault-kind=\"{}\"", html_escape(&result.first_missing_signal)) },
             html_escape(&result.title),
             html_escape(&result.message),
             html_escape(&result.first_missing_signal),
