@@ -389,6 +389,7 @@ fn shell_document_4() -> &'static str {
     function meaningfulInterface(iface) {
       const name = iface.name || '';
       if (!name || name === 'lo' || name === 'docker0' || name.startsWith('br-') || name.startsWith('virbr') || name.startsWith('vnet')) return false;
+      if (!iface.rxBytes && !iface.txBytes) return false;
       return true;
     }
     function renderNetwork(data) {
