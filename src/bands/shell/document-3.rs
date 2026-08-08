@@ -489,6 +489,7 @@ fn shell_document_3() -> &'static str {
       if (topicId === 'power.status') {
         hydratePowerIndicator(data);
         if (data?.ok && typeof data.current === 'number') pushPowerChartPoint(formatChartTime(), Number(formatPowerWatts(data.current)));
+        if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]')) renderPowerModal();
       }
       const indicatorId = ({ 'tailscale.status': 'tailscale', 'vpn.status': 'openvpn', 'services.status': 'services' })[topicId];
       const button = indicatorId ? document.querySelector(`[data-indicator="${indicatorId}"]`) : null;
