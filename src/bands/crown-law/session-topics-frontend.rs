@@ -45,6 +45,15 @@ fn core_topic_contracts() -> Vec<TopicContract> {
             "power sample",
             "always broadcast realtime power samples",
         ),
+        topic_contract(
+            "source.currency",
+            "core",
+            60,
+            false,
+            vec![],
+            "Coronatio source currency against origin/main",
+            "source build or origin/main relation changes",
+        ),
     ]
 }
 
@@ -131,8 +140,10 @@ fn monitor_pulse_readback() -> MonitorPulseReadback {
         stream_contract: pulse_stream_contract(),
         proof_policy: vec![
             "initial subscriber receives stream identity and lease metadata only".to_string(),
-            "pokes are data-free invalidations; no config/product data travels over pulse".to_string(),
-            "admin-only lanes are selected at stream construction from session capability".to_string(),
+            "pokes are data-free invalidations; no config/product data travels over pulse"
+                .to_string(),
+            "admin-only lanes are selected at stream construction from session capability"
+                .to_string(),
             "SSE keepalive/renew/expiry replaces Socket.IO subscription diffing".to_string(),
         ],
     }
@@ -346,4 +357,3 @@ fn field_law(
         migration_rule: migration_rule.to_string(),
     }
 }
-

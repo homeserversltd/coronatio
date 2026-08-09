@@ -175,6 +175,7 @@ pub(crate) fn collect_indicator_topic(topic_id: &str, session: Session) -> Resul
             "ok", "success", "vpnStatus", "transmissionStatus", "timestamp", "firstMissingSignal",
         ]),
         "services.status" => collect_services_indicator(),
+        "source.currency" => collect_source_currency_indicator(session),
         _ => Err(format!("unknown topic: {topic_id}")),
     }
 }
@@ -198,6 +199,25 @@ fn collect_caduceus_indicator(path: &str, session: Session, guest_fields: &[&str
     }
     projection.entry("ok".to_string()).or_insert(serde_json::Value::Bool(true));
     Ok(serde_json::Value::Object(projection))
+}
+
+fn collect_source_currency_indicator(session: Session) -> Result<serde_json::Value, String> {
+    if crate::CORONATIO_BUILD_SHA.is_empty() {
+        return Ok(serde_json::json!({
+            "ok": false,
+            "schema": "caduceus.coronatio.source_currency.v1",
+            "status": "unavailable",
+            "originMainSha": null,
+            "buildSha": "",
+            "relation": "unknown",
+            "firstMissingSignal": "CORONATIO_BUILD_SHA",
+        }));
+    }
+    collect_caduceus_indicator(
+        &format!("/api/v1/coronatio/source-currency?buildSha={}", crate::CORONATIO_BUILD_SHA),
+        session,
+        &["ok", "schema", "originMainSha", "buildSha", "relation", "firstMissingSignal"],
+    )
 }
 
 fn collect_services_indicator() -> Result<serde_json::Value, String> {

@@ -149,6 +149,27 @@ fn shell_document_3() -> &'static str {
       button.title = status === 'unknown' ? 'Services status unavailable' : 'Services: ' + status;
       button.setAttribute('aria-label', 'Services Status ' + status);
     }
+    function setSourceCurrencyIndicatorState(envelope) {
+      const button = document.querySelector('[data-indicator="source-currency"]');
+      if (!button) return;
+      const data = envelope?.snapshot || {};
+      const relation = data?.relation || (envelope?.status === 'unavailable' ? 'unavailable' : 'unknown');
+      const state = relation === 'current' ? { status: 'up', className: 'up ok', label: 'Current' } :
+        relation === 'behind' ? { status: 'partial', className: 'partial warn', label: 'Update available' } :
+        relation === 'diverged' ? { status: 'down', className: 'down error', label: 'Diverged' } :
+        { status: 'unknown', className: 'unknown error', label: 'Unknown' };
+      button.classList.remove('loading', 'ok', 'warn', 'error', 'up', 'partial', 'down', 'unknown');
+      button.classList.add(...state.className.split(' '));
+      button.dataset.sourceCurrencyStatus = state.status;
+      button.title = 'Source currency: ' + state.label;
+      button.setAttribute('aria-label', 'Source Currency ' + state.label);
+      const modal = infoBody.querySelector('[data-modal-kind-body="source-currency"]');
+      if (!modal) return;
+      modal.querySelector('[data-source-currency-label]')?.replaceChildren(document.createTextNode(state.label));
+      modal.querySelector('[data-source-currency-relation]')?.replaceChildren(document.createTextNode(relation === 'current' ? 'The running build matches origin/main.' : relation === 'behind' ? 'An update is available from origin/main.' : relation === 'diverged' ? 'The running build differs from origin/main.' : 'The source-currency relation is unavailable.'));
+      modal.querySelector('[data-source-currency-build-sha]')?.replaceChildren(document.createTextNode(data?.buildSha || 'Unavailable'));
+      modal.querySelector('[data-source-currency-origin-main-sha]')?.replaceChildren(document.createTextNode(data?.originMainSha || 'Unavailable'));
+    }
     function routeReadLabel(route, data) {
       const ok = data && (data.ok === true || data.success === true);
       const status = data?.status || (ok ? 'ok' : 'unavailable');
@@ -531,7 +552,7 @@ fn shell_document_3() -> &'static str {
       if (coreStreamId) requests.push(setStreamMembership('core', coreStreamId, 'downgrade'));
       return Promise.all(requests);
     }
-    const coreTopicIds = ['internet.status', 'tailscale.status', 'vpn.status', 'services.status', 'power.status'];
+    const coreTopicIds = ['internet.status', 'tailscale.status', 'vpn.status', 'services.status', 'power.status', 'source.currency'];
     function applyCoreTopic(topicId, envelope) {
       const data = envelope?.snapshot || {};
       if (topicId === 'internet.status') setInternetIndicatorState(data);
@@ -541,6 +562,7 @@ fn shell_document_3() -> &'static str {
         if (data?.ok && typeof data.current === 'number') pushPowerChartPoint(formatChartTime(), Number(formatPowerWatts(data.current)));
         if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]')) renderPowerModal();
       }
+      if (topicId === 'source.currency') setSourceCurrencyIndicatorState(envelope);
       const indicatorId = ({ 'tailscale.status': 'tailscale', 'vpn.status': 'openvpn', 'services.status': 'services' })[topicId];
       const button = indicatorId ? document.querySelector(`[data-indicator="${indicatorId}"]`) : null;
       if (button && topicId !== 'services.status') {

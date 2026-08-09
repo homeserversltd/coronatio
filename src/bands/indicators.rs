@@ -7,6 +7,7 @@ mod indicators {
     include!("indicators/openvpn/index.rs");
     include!("indicators/services/index.rs");
     include!("indicators/power-meter/index.rs");
+    include!("indicators/source-currency/index.rs");
 }
 
 use indicators::{collect_indicator_topic, render_indicator_modal_registry, render_indicator_strip};

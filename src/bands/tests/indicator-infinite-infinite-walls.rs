@@ -9,10 +9,10 @@
     }
 
     #[test]
-    fn indicator_spine_renders_five_shipped_bands_and_no_inline_shell_buttons() {
+    fn indicator_spine_renders_six_shipped_bands_and_no_inline_shell_buttons() {
         let shell = render_crown_shell_for_session(Session::Admin);
         assert!(shell.contains(r#"data-indicator-spine="coronatio.indicators.v1""#));
-        for id in ["tailscale", "internet", "openvpn", "services", "power-meter"] {
+        for id in ["tailscale", "internet", "openvpn", "services", "power-meter", "source-currency"] {
             assert!(shell.contains(&format!(r#"data-indicator="{id}""#)));
         }
         let document = std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap();
@@ -23,7 +23,7 @@
     #[test]
     fn indicator_catalog_validates_identity_order_and_topic_walls() {
         let catalog = indicators::catalog();
-        assert_eq!(catalog.len(), 5);
+        assert_eq!(catalog.len(), 6);
         assert!(indicators::validate_catalog(&catalog).is_ok());
         assert!(catalog.iter().all(|entry| !entry.title.is_empty() && !entry.icon_id.is_empty() && !entry.initial_state.is_empty()));
         assert_eq!(catalog.iter().filter(|entry| entry.admin_interactive).count(), 4);
@@ -45,7 +45,7 @@
         catalog.push(indicators::IndicatorManifest {
             id: "test-sixth",
             topic_id: "services.status",
-            order: 60,
+            order: 70,
             title: "Test Sixth",
             icon_id: "test",
             initial_state: "loading",
@@ -55,7 +55,7 @@
             collector: None,
         });
         assert!(indicators::validate_catalog(&catalog).is_ok());
-        let rendered = (catalog[5].render_indicator)(indicators::IndicatorRenderContext { session: Session::Guest });
+        let rendered = (catalog[6].render_indicator)(indicators::IndicatorRenderContext { session: Session::Guest });
         assert!(rendered.contains("test-sixth"));
         let shell_source = std::fs::read_to_string("src/bands/shell/document-2.rs").unwrap();
         let dispatcher_source = std::fs::read_to_string("src/bands/shell/document-3.rs").unwrap();
@@ -77,8 +77,8 @@
         let (_id, mut stream) = indicators::subscribe_core_stream(Session::Guest, Duration::from_secs(2));
         assert_eq!(stream.next().await.unwrap().0, "core.open");
         let mut topics = std::collections::BTreeSet::new();
-        for _ in 0..5 { topics.insert(stream.next().await.unwrap().0); }
-        assert_eq!(topics, ["internet.status", "power.status", "services.status", "tailscale.status", "vpn.status"].into_iter().map(str::to_string).collect());
+        for _ in 0..6 { topics.insert(stream.next().await.unwrap().0); }
+        assert_eq!(topics, ["internet.status", "power.status", "services.status", "source.currency", "tailscale.status", "vpn.status"].into_iter().map(str::to_string).collect());
     }
 
     #[tokio::test]
@@ -127,5 +127,44 @@
         let chrome = crown_chrome_js();
         assert_eq!(chrome.matches("new EventSource('/api/core/pulse')").count(), 1);
         assert!(chrome.contains("coreTopicIds.forEach"));
+        assert!(chrome.contains("source.currency"));
+        assert!(chrome.contains("Current"));
+        assert!(chrome.contains("Update available"));
+        assert!(chrome.contains("Diverged"));
+        assert!(chrome.contains("source-currency"));
         assert!(!chrome.contains("showPane(id) {\n      if (coreStream) coreStream.close()"));
+    }
+
+    #[test]
+    fn source_currency_uses_safe_unknown_initial_markup_and_fixed_empty_build_contract() {
+        let source = std::fs::read_to_string("src/bands/indicators/source-currency/index.rs").unwrap();
+        assert!(source.contains(r#"class="indicator unknown source-currency-indicator""#));
+        assert!(source.contains("Unknown / unavailable"));
+        assert!(!source.contains(r#"class="indicator loading source-currency-indicator""#));
+
+        let core_events = std::fs::read_to_string("src/bands/indicators/core-events/index.rs").unwrap();
+        assert!(core_events.contains(r#""schema": "caduceus.coronatio.source_currency.v1""#));
+        assert!(core_events.contains(r#""originMainSha": null"#));
+        assert!(core_events.contains(r#""ok": false"#));
+        assert!(core_events.contains(r#""relation": "unknown""#));
+    }
+
+    #[test]
+    fn source_currency_browser_state_has_ratified_semantic_class_markers() {
+        let chrome = crown_chrome_js();
+        for marker in [
+            "relation === 'current'",
+            "relation === 'behind'",
+            "relation === 'diverged'",
+            "envelope?.status === 'unavailable'",
+            "'up ok'",
+            "'partial warn'",
+            "'down error'",
+            "'unknown error'",
+            "'loading', 'ok', 'warn', 'error', 'up', 'partial', 'down', 'unknown'",
+            "dataset.sourceCurrencyStatus",
+        ] {
+            assert!(chrome.contains(marker), "missing source-currency browser marker: {marker}");
+        }
+        assert!(!chrome.contains("{ status: 'unknown', className: 'loading'"));
     }
