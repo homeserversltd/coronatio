@@ -1,7 +1,75 @@
+use tracing::{
+    field::{Field, Visit},
+    span::{Attributes, Id},
+    Event, Level, Subscriber,
+};
+use tracing_subscriber::{
+    layer::{Context, SubscriberExt},
+    registry::LookupSpan,
+    util::SubscriberInitExt,
+    Layer,
+};
+
+#[derive(Default)]
+struct HyalosMessageVisitor {
+    message: Option<String>,
+}
+
+impl Visit for HyalosMessageVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = Some(format!("{value:?}"));
+        }
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "message" {
+            self.message = Some(value.to_string());
+        }
+    }
+}
+
+struct HyalosTracingLayer;
+
+impl<S> Layer<S> for HyalosTracingLayer
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &Event<'_>, _context: Context<'_, S>) {
+        let metadata = event.metadata();
+        if *metadata.level() > Level::INFO {
+            return;
+        }
+        let mut fields = HyalosMessageVisitor::default();
+        event.record(&mut fields);
+        caduceus_hyalos_reflect_best_effort(
+            "tracing-event",
+            metadata.level().as_str().to_ascii_lowercase(),
+            fields.message.unwrap_or_else(|| metadata.name().to_string()),
+        );
+    }
+
+    fn on_new_span(&self, attributes: &Attributes<'_>, _id: &Id, _context: Context<'_, S>) {
+        let metadata = attributes.metadata();
+        if *metadata.level() > Level::INFO {
+            return;
+        }
+        caduceus_hyalos_reflect_best_effort(
+            "tracing-span",
+            metadata.level().as_str().to_ascii_lowercase(),
+            metadata.name().to_string(),
+        );
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    let filter = tracing_subscriber::EnvFilter::builder()
+        .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
+        .from_env_lossy();
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_filter(filter))
+        .with(HyalosTracingLayer.with_filter(tracing_subscriber::filter::LevelFilter::INFO))
         .init();
 
     let port: u16 = env::var("CORONATIO_PORT")
