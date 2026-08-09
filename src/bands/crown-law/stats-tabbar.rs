@@ -1,7 +1,48 @@
+const STATS_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(900);
+
+fn run_bounded(
+    mut command: std::process::Command,
+    timeout: std::time::Duration,
+) -> Option<std::process::Output> {
+    use std::io::Read;
+
+    let mut child = command.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().ok()?;
+    let stdout_reader = child.stdout.take().map(|mut stdout| std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = stdout.read_to_end(&mut bytes);
+        bytes
+    }));
+    let stderr_reader = child.stderr.take().map(|mut stderr| std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = stderr.read_to_end(&mut bytes);
+        bytes
+    }));
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(std::process::Output {
+                status,
+                stdout: stdout_reader.and_then(|reader| reader.join().ok()).unwrap_or_default(),
+                stderr: stderr_reader.and_then(|reader| reader.join().ok()).unwrap_or_default(),
+            }),
+            Ok(None) if start.elapsed() < timeout => std::thread::sleep(std::time::Duration::from_millis(25)),
+            Ok(None) | Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.and_then(|reader| reader.join().ok());
+                let _ = stderr_reader.and_then(|reader| reader.join().ok());
+                return None;
+            }
+        }
+    }
+}
+
 fn stats_storage() -> Vec<StatsDrive> {
-    let output = Command::new("df").args(["-B1", "-P", "/", "/home", "/vault", "/mnt/nas"]).output();
+    let mut command = Command::new("df");
+    command.args(["-B1", "-P", "/", "/home", "/vault", "/mnt/nas"]);
+    let output = run_bounded(command, STATS_COMMAND_TIMEOUT);
     let mut drives = Vec::new();
-    if let Ok(output) = output {
+    if let Some(output) = output {
         let raw = String::from_utf8_lossy(&output.stdout);
         for line in raw.lines().skip(1) {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -209,7 +250,9 @@ fn systemctl_is_active(unit: &str) -> Option<String> {
             .cloned()
             .filter(|state| !state.is_empty() && state != "unknown");
     }
-    let output = Command::new("systemctl").args(["is-active", unit]).output().ok()?;
+    let mut command = Command::new("systemctl");
+    command.args(["is-active", unit]);
+    let output = run_bounded(command, STATS_COMMAND_TIMEOUT)?;
     let state = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if state.is_empty() || state == "unknown" {
         None
@@ -550,9 +593,11 @@ fn stats_identity_roster() -> StatsKeaLeases {
 }
 
 fn stats_processes() -> Vec<StatsProcess> {
-    let output = Command::new("ps").args(["-eo", "comm,pcpu,rss", "--sort=-pcpu"]).output();
+    let mut command = Command::new("ps");
+    command.args(["-eo", "comm,pcpu,rss", "--sort=-pcpu"]);
+    let output = run_bounded(command, STATS_COMMAND_TIMEOUT);
     let mut processes = Vec::new();
-    if let Ok(output) = output {
+    if let Some(output) = output {
         let raw = String::from_utf8_lossy(&output.stdout);
         for line in raw.lines().skip(1) {
             let mut parts = line.split_whitespace();
