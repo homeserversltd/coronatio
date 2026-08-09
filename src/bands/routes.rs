@@ -1,7 +1,7 @@
-async fn crown_shell_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
+async fn crown_shell_route() -> impl IntoResponse {
     (
         [(header::CONTENT_SECURITY_POLICY, CROWN_CONTENT_SECURITY_POLICY)],
-        Html(render_crown_shell_for_session(session_from_headers(&headers))),
+        Html(render_crown_shell()),
     )
 }
 

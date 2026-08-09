@@ -318,6 +318,16 @@ fn guest_session_projection(signal: &str) -> serde_json::Value {
     serde_json::json!({"schema":"coronatio.caduceus.attendance.projection.v1","ok":false,"admin":false,"firstMissingSignal":crate::caduceus_access::safe_access_code(signal)})
 }
 
+fn document_admission_projection(call: crate::caduceus_access::AttendanceCall) -> serde_json::Value {
+    let mut projection = session_projection(call);
+    if projection.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
+        let object = projection.as_object_mut().expect("attendance projection object");
+        object.insert("adminPatch".to_string(), serde_json::Value::String(render_admin_document_patch()));
+        object.insert("adminTabs".to_string(), serde_json::Value::String(render_plan_tabbar(Session::Admin)));
+    }
+    projection
+}
+
 fn session_response(status: StatusCode, projection: serde_json::Value, clear_cookie: bool) -> Response {
     let mut response = (status, Json(projection)).into_response();
     let _ = clear_cookie;
@@ -388,7 +398,7 @@ async fn caduceus_attendance_open_route(headers: axum::http::HeaderMap, body: ax
     let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
     let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_open(pin, &document);
     let status = attendance_failure_status(&call);
-    attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
+    attendance_projection_response(&headers, ROUTE, status, document_admission_projection(call), Some(&document))
 }
 
 async fn caduceus_attendance_validate_route(headers: axum::http::HeaderMap) -> Response {
@@ -435,8 +445,10 @@ async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) ->
     let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
     let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::UNAUTHORIZED, guest_session_projection("caduceus-attendance-required"), Some(&document)); };
     let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_invalidate(&attendance, &document);
+    let invalidated = call.receipt.ok;
     pulse::downgrade_document(&document);
     indicators::downgrade_core_document(&document);
     let status = attendance_failure_status(&call);
-    attendance_projection_response(&headers, ROUTE, status, session_projection(call), Some(&document))
+    let projection = if invalidated { guest_session_projection("none") } else { session_projection(call) };
+    attendance_projection_response(&headers, ROUTE, status, projection, Some(&document))
 }
