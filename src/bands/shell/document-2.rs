@@ -123,6 +123,9 @@ fn shell_document_2() -> &'static str {
       <section class="pane" id="pane-wake-on-lan" data-pane-panel="wake-on-lan" data-view-panel="wake-on-lan" role="tabpanel" aria-label="Wake on LAN">
         <div class="wake-on-lan-tablet" data-wake-on-lan-tablet><header class="wake-on-lan-header"><div><h2>Wake on LAN</h2><p>Devices known to DHCP.</p></div></header><div class="wake-on-lan-error" data-wake-on-lan-error role="alert" hidden></div><ul class="wake-on-lan-rows" data-wake-on-lan-rows aria-live="polite"></ul></div>
       </section>
+      <section class="pane" id="pane-linker" data-pane-panel="linker" data-view-panel="linker" role="tabpanel" aria-label="Linker" data-admin-only="true" data-admin-viewport="linker">
+        <article class="linker-tablet" data-linker-tablet><p>Linker admission is loaded when this pane is admitted.</p></article>
+      </section>
       __TEST__
       <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" role="tabpanel" aria-label="DHCP">
         <div class="dhcp-tablet" data-dhcp-tablet data-admin-only="true" data-admin-viewport="dhcp">

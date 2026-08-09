@@ -146,6 +146,8 @@ fn app(state: AppState) -> Router {
         .route("/api/stats", get(stats_route))
         .route("/api/faults", get(faults_route))
         .route("/admit/:tab_id", get(admit_tab_route))
+        .route("/admit/linker", get(linker_fragment_route))
+        .route("/admit/linker/:action", post(linker_transition_route))
         .route("/admit/admin/service/:toggle_id", get(admin_service_card_fragment_route))
         .route("/admit/admin/toggle/:toggle_id", post(admin_toggle_fragment_route))
         .route("/admit/admin/action/view-logs", get(admin_logs_fragment_route))
