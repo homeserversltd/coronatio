@@ -439,12 +439,65 @@ fn caduceus_http_json_with_attendance(method: &str, path: &str, body: serde_json
     caduceus_http_json_with_attendance_and_document(method, path, body, attendance, None)
 }
 
+fn caduceus_hyalos_reflect_best_effort(kind: &'static str, level: String, message: String) {
+    #[derive(Debug)]
+    struct HyalosReflect {
+        kind: &'static str,
+        level: String,
+        message: String,
+    }
+
+    static SENDER: OnceLock<std::sync::mpsc::SyncSender<HyalosReflect>> = OnceLock::new();
+    let sender = SENDER.get_or_init(|| {
+        let (sender, receiver) = std::sync::mpsc::sync_channel::<HyalosReflect>(128);
+        let _ = std::thread::Builder::new()
+            .name("coronatio-hyalos".to_string())
+            .spawn(move || {
+                while let Ok(event) = receiver.recv() {
+                    let _ = caduceus_http_json_with_attendance_and_document_timeout(
+                        "POST",
+                        "/api/v1/hyalos/reflect",
+                        serde_json::json!({
+                            "organ": "coronatio",
+                            "kind": event.kind,
+                            "level": event.level,
+                            "message": event.message,
+                        }),
+                        None,
+                        None,
+                        Duration::from_secs(2),
+                    );
+                }
+            });
+        sender
+    });
+    let _ = sender.try_send(HyalosReflect { kind, level, message });
+}
+
 fn caduceus_http_json_with_attendance_and_document(
     method: &str,
     path: &str,
     body: serde_json::Value,
     attendance: Option<&crate::caduceus_access::AttendanceProof>,
     document: Option<&str>,
+) -> CaduceusHttpReadback {
+    caduceus_http_json_with_attendance_and_document_timeout(
+        method,
+        path,
+        body,
+        attendance,
+        document,
+        Duration::from_secs(4),
+    )
+}
+
+fn caduceus_http_json_with_attendance_and_document_timeout(
+    method: &str,
+    path: &str,
+    body: serde_json::Value,
+    attendance: Option<&crate::caduceus_access::AttendanceProof>,
+    document: Option<&str>,
+    timeout: Duration,
 ) -> CaduceusHttpReadback {
     let Some(authority) = caduceus_authority() else {
         return caduceus_loopback_refusal(path);
@@ -465,8 +518,8 @@ fn caduceus_http_json_with_attendance_and_document(
             };
         }
     };
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
     let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
     let attendance_header = attendance
             .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
