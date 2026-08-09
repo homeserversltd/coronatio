@@ -539,6 +539,7 @@ include!("full-rust-routes/device-identity.rs");
 include!("full-rust-routes/unbound.rs");
 include!("full-rust-routes/firewall.rs");
 include!("full-rust-routes/wake-on-lan.rs");
+include!("full-rust-routes/linker.rs");
 include!("full-rust-routes/backblaze.rs");
 
 include!("full-rust-routes/network-notes.rs");

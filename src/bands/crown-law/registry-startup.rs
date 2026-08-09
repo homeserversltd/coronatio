@@ -78,6 +78,17 @@ fn native_crown_panes() -> Vec<CrownPane> {
             state_route: "/api/panes/test".to_string(),
         },
         CrownPane {
+            id: "linker".to_string(),
+            title: "Linker".to_string(),
+            role: "hardlink admission".to_string(),
+            summary: "Admin-attended source selection, destination review, and Caduceus-backed hardlink deployment.".to_string(),
+            order: 70,
+            admin_only: true,
+            install_mode: InstallMode::FirstPartyNative,
+            route: "/#linker".to_string(),
+            state_route: "/admit/linker".to_string(),
+        },
+        CrownPane {
             id: "dhcp".to_string(),
             title: "DHCP".to_string(),
             role: "hidden original tab".to_string(),

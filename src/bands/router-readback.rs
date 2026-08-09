@@ -234,7 +234,9 @@ async fn faults_route() -> impl IntoResponse {
 
 async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<String>) -> impl IntoResponse {
     let session = session_from_headers(&headers);
-    let mut response = if !is_safe_tab_id(&tab_id) {
+    let mut response = if tab_id == "linker" {
+        linker_fragment_route(headers.clone(), Query(LinkerQuery::default())).await
+    } else if !is_safe_tab_id(&tab_id) {
         fragment_fault(StatusCode::BAD_REQUEST, &tab_id, CartridgeFaultKind::UpstreamError)
     } else if native_crown_panes().into_iter().any(|pane| pane.id == tab_id) {
         Html(render_og_pane_fragment(&tab_id, session)).into_response()
