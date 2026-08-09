@@ -242,11 +242,8 @@ fn shell_document_3() -> &'static str {
         if (node) { node.textContent = average === null ? '—W' : average.toFixed(1) + 'W'; node.style.color = color; }
       });
     }
-    function renderPowerModal() {
-      hydratePowerHistoryUI();
-      const canvas = infoBody.querySelector('[data-power-chart]');
-      if (!canvas || !window.Chart) return;
-      if (powerChartState.chart) powerChartState.chart.destroy();
+    function createPowerChart(canvas) {
+      if (powerChartState.chart) return powerChartState.chart;
       powerChartState.chart = new Chart(canvas, {
         type: 'line',
         data: { labels: powerChartState.labels, datasets: [lineDataset('Power', powerChartState.watts, themeCssColor('--accent', '#90cff3'), 'y')] },
@@ -258,6 +255,20 @@ fn shell_document_3() -> &'static str {
           }
         })
       });
+      return powerChartState.chart;
+    }
+    function renderPowerModal() {
+      hydratePowerHistoryUI();
+      const canvas = infoBody.querySelector('[data-power-chart]');
+      if (!canvas || !window.Chart) return;
+      if (powerChartState.chart && powerChartState.chart.canvas !== canvas) { powerChartState.chart.destroy(); powerChartState.chart = null; }
+      const existing = powerChartState.chart;
+      const chart = createPowerChart(canvas);
+      if (existing) {
+        chart.data.labels = powerChartState.labels;
+        chart.data.datasets[0].data = powerChartState.watts;
+        chart.update();
+      }
     }
     function hydratePowerIndicator(data) {
       const button = document.querySelector('[data-indicator="power-meter"]');
