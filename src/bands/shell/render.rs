@@ -91,19 +91,25 @@ fn remove_inline_chrome_script(shell: String) -> String {
     let Some(start) = shell.find("<script>") else { return shell; };
     let Some(close_relative) = shell[start..].rfind("</script>") else { return shell; };
     let close = start + close_relative + "</script>".len();
-    let chrome_source = &shell[start + "<script>".len()..start + close_relative];
     format!(
-        "{}  <script defer src=\"{}\" data-htmx-organ=\"2.0.10\"></script>\n  <script defer src=\"{}\" data-crown-chrome=\"og-htmx\"></script>\n  <template data-crown-chrome-source=\"externalized-for-csp\">{}</template>\n{}",
+        "{}  <script defer src=\"{}\" data-htmx-organ=\"2.0.10\"></script>\n  <script defer src=\"{}\" data-crown-chrome=\"og-htmx\"></script>\n{}",
         &shell[..start],
         CROWN_HTMX_SCRIPT_PATH,
         CROWN_CHROME_SCRIPT_PATH,
-        chrome_source,
         &shell[close..]
     )
 }
 
 fn render_crown_shell() -> String {
+    // Every root document is born guest. Attendance is never consulted here.
     render_crown_shell_for_session(Session::Guest)
+}
+
+fn render_admin_document_patch() -> String {
+    shell_admin_document_patch().replace(
+        "__ADMIN_MOUNT_DESTINATIONS__",
+        &render_admin_mount_destinations_html(),
+    )
 }
 
 fn remove_admin_only_pane_from_guest_shell(shell: String, pane: &str) -> String {
@@ -147,7 +153,6 @@ fn render_crown_shell_for_session(session: Session) -> String {
         .replace("__INDICATOR_SPINE__", &render_indicator_strip(session))
         .replace("__INDICATOR_MODAL_REGISTRY__", &render_indicator_modal_registry(session))
         .replace("__TEST__", &render_test_showcase())
-        .replace("__ADMIN_MOUNT_DESTINATIONS__", &render_admin_mount_destinations_html())
         .replace("__UPLOAD_TREE_FRAGMENT__", &render_upload_tree_fragment(None, None))
         .replace("__STATS_ELEMENTS_FRAGMENT__", &render_stats_elements_fragment(session))
         .replace("__DHCP_CLIENT__", shell_dhcp_client())
@@ -162,7 +167,11 @@ fn render_crown_shell_for_session(session: Session) -> String {
             .into_iter()
             .fold(shell, remove_admin_only_pane_from_guest_shell)
     } else {
-        shell
+        shell.replacen(
+            "<div class=\"immortal-floor-guest-slot\" data-immortal-floor-layer=\"2\" data-slot-empty=\"true\">",
+            &format!("<div class=\"immortal-floor-guest-slot\" data-immortal-floor-layer=\"2\" data-slot-empty=\"true\">{}", render_admin_document_patch()),
+            1,
+        )
     };
     remove_inline_chrome_script(shell)
 }

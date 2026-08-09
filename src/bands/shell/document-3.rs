@@ -60,6 +60,23 @@ fn shell_document_3() -> &'static str {
         return true;
       });
     }
+    function installAdminDocumentPatch(patch, tabsHtml) {
+      if (typeof patch !== 'string' || typeof tabsHtml !== 'string' || !immortalFloorGuestSlot) return false;
+      const template = document.createElement('template');
+      template.innerHTML = patch;
+      const admitted = template.content.querySelector('[data-admin-document-patch="true"]');
+      if (!admitted) return false;
+      document.querySelector('[data-admin-document-patch="true"]')?.remove();
+      immortalFloorGuestSlot.appendChild(admitted);
+      panes = [...document.querySelectorAll('[data-pane-panel]')];
+      if (window.htmx) window.htmx.process(admitted);
+      replaceTabBar(tabsHtml);
+      return true;
+    }
+    function removeAdminDocumentPatch() {
+      document.querySelector('[data-admin-document-patch="true"]')?.remove();
+      panes = [...document.querySelectorAll('[data-pane-panel]')];
+    }
     async function clearAdminMode() {
       try {
         await downgradeOpenStreams();
@@ -68,6 +85,7 @@ fn shell_document_3() -> &'static str {
         // Browser projection still becomes guest when the clear route is unavailable.
       } finally {
         coronatioAttendanceRuntime.currentAttendance = null;
+        removeAdminDocumentPatch();
         setAdminMode(false);
       }
     }
@@ -500,7 +518,7 @@ fn shell_document_3() -> &'static str {
           if (explicitPinRefusal) { modalMessage.textContent = 'Invalid PIN'; return; }
           if (!response.ok || result.admin !== true) { modalMessage.textContent = 'PIN check unavailable'; return; }
           coronatioAttendanceRuntime.currentAttendance = typeof result.attendance === 'string' ? result.attendance : null;
-          if (!coronatioAttendanceRuntime.currentAttendance) { modalMessage.textContent = 'PIN check unavailable'; return; }
+          if (!coronatioAttendanceRuntime.currentAttendance || !installAdminDocumentPatch(result.adminPatch, result.adminTabs)) { coronatioAttendanceRuntime.currentAttendance = null; modalMessage.textContent = 'PIN check unavailable'; return; }
         } catch (_) { modalMessage.textContent = 'PIN check unavailable'; return; }
       }
       modalMessage.textContent = '✓ Admin access confirmed. Loading…';
@@ -515,6 +533,7 @@ fn shell_document_3() -> &'static str {
         if (coronatioAttendanceRuntime.currentAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', cache: 'no-store' });
       } catch (_) { /* Browser projection still becomes guest when invalidation is unavailable. */ }
       coronatioAttendanceRuntime.currentAttendance = null;
+      removeAdminDocumentPatch();
       if (headerState.isAdmin) { headerState.isAdmin = false; saveHeaderState(); applyAdminDomState(); }
       [pulseStream, coreStream].forEach(stream => { try { stream?.close(); } catch (_) {} });
       pulseStream = null; pulseStreamId = null; coreStream = null; coreStreamId = null;
@@ -674,18 +693,13 @@ fn shell_document_3() -> &'static str {
       if (pulseRenewTimer) window.clearTimeout(pulseRenewTimer);
       pulseRenewTimer = null;
     }
-    const viewportStreamFamilies = Object.freeze({
-      stats: Object.freeze({ topics: ['stats.system'], snapshotRoutes: ['/api/stats', '/api/network/device'], eventRoute: '/api/stats/pulse', renewRoute: '/api/stats/pulse/renew', authClass: 'public-enhanced' }),
-      dhcp: Object.freeze({ topics: ['admin.dhcp'], snapshotRoutes: ['/api/dhcp/leases', '/api/dhcp/reservations', '/api/dhcp/statistics', '/api/dhcp/pool-boundary'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
-      firewall: Object.freeze({ topics: ['admin.firewall'], snapshotRoutes: ['/api/firewall/observed', '/api/firewall/children'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
-      unbound: Object.freeze({ topics: ['admin.dns'], snapshotRoutes: ['/api/dns/records'], eventRoute: null, renewRoute: null, authClass: 'admin' }),
-      backblaze: Object.freeze({ topics: ['backup.manual'], snapshotRoutes: ['/api/backblaze/status'], eventRoute: null, renewRoute: null, authClass: 'public' }),
-      portals: Object.freeze({ topics: ['core.services'], snapshotRoutes: ['/api/portals/elements'], eventRoute: null, renewRoute: null, authClass: 'public' })
-    });
     function viewportFamilyAdmitted(id) {
-      const family = viewportStreamFamilies[id];
-      if (!family || window.getImmortalFloorState?.() !== 'Seated' || document.visibilityState !== 'visible' || currentActiveTabId() !== id) return false;
-      return family.authClass !== 'admin' || headerState.isAdmin;
+      return Boolean(
+        document.querySelector(`[data-pane-panel="${id}"]`) &&
+        window.getImmortalFloorState?.() === 'Seated' &&
+        document.visibilityState === 'visible' &&
+        currentActiveTabId() === id
+      );
     }
     function morphLivePane(target, html) {
       const template = document.createElement('template');
@@ -949,8 +963,7 @@ fn shell_document_3() -> &'static str {
     function showPane(id, options) { return immortalFloor.activate(id, options); }
     async function AdminChromeProjection(previousActive) {
       try {
-        const selectedTab = await refreshTabBar(previousActive);
-        const selectedGuest = lawfulPaneCandidate(selectedTab || previousActive);
+        const selectedGuest = lawfulPaneCandidate(previousActive);
         const crossed = await showPane(selectedGuest, { refresh: true });
         return crossed === true && window.getImmortalFloorState?.() === 'Seated' && currentActiveTabId() === selectedGuest;
       } catch (error) {
