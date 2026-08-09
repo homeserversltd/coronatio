@@ -21,10 +21,10 @@ pub(crate) struct IndicatorManifest {
     pub(crate) collector: Option<IndicatorCollector>,
 }
 
-const TOPIC_IDS: &[&str] = &["tailscale.status", "internet.status", "vpn.status", "services.status", "power.status"];
+const TOPIC_IDS: &[&str] = &["tailscale.status", "internet.status", "vpn.status", "services.status", "power.status", "source.currency"];
 
 pub(crate) fn catalog() -> Vec<IndicatorManifest> {
-    let mut entries = vec![tailscale_manifest(), internet_manifest(), openvpn_manifest(), services_manifest(), power_meter_manifest()];
+    let mut entries = vec![tailscale_manifest(), internet_manifest(), openvpn_manifest(), services_manifest(), power_meter_manifest(), source_currency_manifest()];
     validate_catalog(&entries).expect("invalid compiled indicator catalog");
     entries.sort_by_key(|entry| (entry.order, entry.id));
     entries
