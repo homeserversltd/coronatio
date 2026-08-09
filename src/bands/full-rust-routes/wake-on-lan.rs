@@ -30,12 +30,13 @@ fn wake_on_lan_broadcast(ip: &str) -> String {
         .unwrap_or_else(|_| "255.255.255.255".to_string())
 }
 
-fn wake_on_lan_staff_read(ip: &str) -> CaduceusHttpReadback {
-    caduceus_http_json(
-        "POST",
+fn wake_on_lan_staff_read(headers: &axum::http::HeaderMap, ip: &str) -> CaduceusHttpReadback {
+    caduceus_actuate_json(
+        &mutation_authority(),
+        headers,
+        MutationActionTarget::caduceus("wake-on-lan.probe", "/api/admin/wake-on-lan/probe"),
         "/api/admin/wake-on-lan/probe",
         serde_json::json!({ "ip": ip }),
-        None,
     )
 }
 async fn wake_on_lan_devices_route() -> Response {
@@ -65,7 +66,10 @@ async fn wake_on_lan_devices_route() -> Response {
     )
 }
 
-async fn wake_on_lan_wake_route(payload: Option<Json<serde_json::Value>>) -> Response {
+async fn wake_on_lan_wake_route(
+    headers: axum::http::HeaderMap,
+    payload: Option<Json<serde_json::Value>>,
+) -> Response {
     let path = "/api/wakeonlan/wake";
     let payload = payload
         .map(|Json(value)| value)
@@ -95,11 +99,12 @@ async fn wake_on_lan_wake_route(payload: Option<Json<serde_json::Value>>) -> Res
         .filter(|value| !value.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| wake_on_lan_broadcast(ip));
-    let readback = caduceus_http_json(
-        "POST",
+    let readback = caduceus_actuate_json(
+        &mutation_authority(),
+        &headers,
+        MutationActionTarget::caduceus("wake-on-lan.send", "/api/admin/wake-on-lan/send"),
         "/api/admin/wake-on-lan/send",
         serde_json::json!({ "mac": mac, "broadcast": broadcast }),
-        None,
     );
     if readback.ok {
         return (StatusCode::OK, Json(readback.body)).into_response();
@@ -112,13 +117,16 @@ async fn wake_on_lan_wake_route(payload: Option<Json<serde_json::Value>>) -> Res
     )
 }
 
-async fn wake_on_lan_status_route(Query(query): Query<WakeOnLanStatusQuery>) -> Response {
+async fn wake_on_lan_status_route(
+    headers: axum::http::HeaderMap,
+    Query(query): Query<WakeOnLanStatusQuery>,
+) -> Response {
     let path = "/api/wakeonlan/status";
     let ip = query.ip.as_deref().map(str::trim).unwrap_or("");
     if ip.is_empty() {
         return wake_on_lan_error(path, "ip is required", "wake-on-lan-ip-required", None);
     }
-    let readback = wake_on_lan_staff_read(ip);
+    let readback = wake_on_lan_staff_read(&headers, ip);
     if readback.ok {
         return (StatusCode::OK, Json(readback.body)).into_response();
     }
