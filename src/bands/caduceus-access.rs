@@ -164,7 +164,16 @@ pub(crate) fn load_mutation_origin_policy_sync() -> Result<MutationOriginPolicy,
 }
 
 pub(crate) fn same_origin_state_change_with_policy(headers: &axum::http::HeaderMap, policy: &MutationOriginPolicy) -> bool {
-    let Some(origin) = headers.get(header::ORIGIN).and_then(|value| value.to_str().ok()).and_then(parse_browser_origin) else { return false; };
+    let origin = match headers.get(header::ORIGIN) {
+        Some(value) => match value.to_str().ok().and_then(parse_browser_origin) {
+            Some(origin) => origin,
+            None => return false,
+        },
+        None => return headers
+            .get("sec-fetch-site")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|site| site == "same-origin"),
+    };
     let Some(matched) = policy.allowed_origins.iter().find(|allowed| **allowed == origin) else { return false; };
     let Some(host) = forwarded_first(headers, "x-forwarded-host").or_else(|| headers.get(header::HOST).and_then(|value| value.to_str().ok())).and_then(parse_host_authority) else { return false; };
     if host.0 != matched.host || host.1.unwrap_or(matched.port) != matched.port { return false; }
