@@ -61,7 +61,7 @@ fn native_crown_panes() -> Vec<CrownPane> {
             role: "network wake tab".to_string(),
             summary: "Discover LAN devices from Kea leases and reservations, send Wake-on-LAN magic packets, and probe wake status through Caduceus.".to_string(),
             order: 50,
-            admin_only: false,
+            admin_only: true,
             install_mode: InstallMode::FirstPartyNative,
             route: "/#wake-on-lan".to_string(),
             state_route: "/api/panes/wake-on-lan".to_string(),
