@@ -28,15 +28,7 @@ fn stats_storage() -> Vec<StatsDrive> {
         }
     }
     if drives.is_empty() {
-        drives.push(StatsDrive {
-            name: "root".to_string(),
-            mount: "/".to_string(),
-            total_bytes: None,
-            used_bytes: None,
-            free_bytes: None,
-            usage_percent: None,
-            source: "df unavailable".to_string(),
-        });
+        return unavailable_storage("df unavailable");
     }
     drives
 }
@@ -603,7 +595,10 @@ fn stats_services() -> Vec<StatsService> {
 
 fn stats_first_missing_signal(storage: &[StatsDrive], services: &[StatsService]) -> String {
     if storage.iter().any(|drive| drive.total_bytes.is_none()) {
-        return "storage df readback unavailable".to_string();
+        return storage.first().map(|drive| format!("storage {}", drive.source)).unwrap_or_else(|| "storage df readback unavailable".to_string());
+    }
+    if services.iter().any(|service| matches!(service.status.as_str(), "timed out (>1s)" | "unavailable")) {
+        return "services collector unavailable".to_string();
     }
     if services.iter().any(|service| service.status == "readback") {
         return "service systemctl collector deferred to Caduceus; route readbacks are present".to_string();
