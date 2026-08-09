@@ -12,18 +12,11 @@ fn firewall_guest_refusal(path: &str) -> Response {
         .into_response()
 }
 
-fn firewall_staff_intent(verb: &str, metadata: serde_json::Value) -> CaduceusHttpReadback {
-    let argv: Vec<&str> = verb.split_whitespace().collect();
+fn firewall_staff_intent_at(path: &str, metadata: serde_json::Value) -> CaduceusHttpReadback {
     caduceus_http_json(
         "POST",
-        "/api/v1/staff/intent",
-        serde_json::json!({
-            "command": "caduceus_staff",
-            "argv": argv,
-            "verb": verb,
-            "classification": "network-control",
-            "metadata": metadata
-        }),
+        path,
+        metadata,
         None,
     )
 }
@@ -54,13 +47,13 @@ fn firewall_admin(headers: &axum::http::HeaderMap, path: &str) -> Option<Respons
 async fn firewall_observed_route(headers: axum::http::HeaderMap) -> Response {
     let path = "/api/firewall/observed";
     if let Some(refusal) = firewall_admin(&headers, path) { return refusal; }
-    firewall_staff_response(firewall_staff_intent("child-device observed", serde_json::json!({})), path)
+    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/observed", serde_json::json!({})), path)
 }
 
 async fn firewall_children_route(headers: axum::http::HeaderMap) -> Response {
     let path = "/api/firewall/children";
     if let Some(refusal) = firewall_admin(&headers, path) { return refusal; }
-    firewall_staff_response(firewall_staff_intent("child-device list", serde_json::json!({})), path)
+    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/list", serde_json::json!({})), path)
 }
 
 async fn firewall_register_route(
@@ -70,7 +63,7 @@ async fn firewall_register_route(
     let path = "/api/firewall/children";
     if let Some(refusal) = firewall_admin(&headers, path) { return refusal; }
     firewall_staff_response(
-        firewall_staff_intent("child-device register", payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}))),
+        firewall_staff_intent_at("/api/admin/firewall/register", payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}))),
         path,
     )
 }
@@ -78,13 +71,13 @@ async fn firewall_register_route(
 async fn firewall_unregister_route(headers: axum::http::HeaderMap, Path(mac): Path<String>) -> Response {
     let path = format!("/api/firewall/children/{mac}");
     if let Some(refusal) = firewall_admin(&headers, &path) { return refusal; }
-    firewall_staff_response(firewall_staff_intent("child-device unregister", serde_json::json!({"mac": mac})), &path)
+    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/unregister", serde_json::json!({"mac": mac})), &path)
 }
 
 async fn firewall_whitelist_get_route(headers: axum::http::HeaderMap, Path(mac): Path<String>) -> Response {
     let path = format!("/api/firewall/children/{mac}/whitelist");
     if let Some(refusal) = firewall_admin(&headers, &path) { return refusal; }
-    firewall_staff_response(firewall_staff_intent("child-device whitelist get", serde_json::json!({"mac": mac})), &path)
+    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/whitelist-get", serde_json::json!({"mac": mac})), &path)
 }
 
 async fn firewall_whitelist_set_route(
@@ -96,5 +89,5 @@ async fn firewall_whitelist_set_route(
     if let Some(refusal) = firewall_admin(&headers, &path) { return refusal; }
     let mut metadata = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
     if let Some(fields) = metadata.as_object_mut() { fields.insert("mac".to_string(), serde_json::json!(mac)); }
-    firewall_staff_response(firewall_staff_intent("child-device whitelist set", metadata), &path)
+    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/whitelist-set", metadata), &path)
 }
