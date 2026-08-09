@@ -15,7 +15,7 @@ pub(crate) fn source_currency_manifest() -> IndicatorManifest {
 
 fn render_source_currency_indicator(ctx: IndicatorRenderContext) -> String {
     let _ = ctx.session;
-    r##"<button type="button" class="indicator unknown source-currency-indicator" data-indicator="source-currency" data-modal-kind="source-currency" data-modal-title="Coronatio Currency" data-source-currency-status="unknown" aria-label="Source Currency Unknown / unavailable" title="Source currency: Unknown / unavailable"><svg class="indicator-icon" data-packed-icon="git-branch" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3a3 3 0 1 0 2 5.83V11a3 3 0 0 0 3 3h2a1 1 0 0 1 1 1v1.17A3 3 0 1 0 16 16.17V15a3 3 0 0 0-3-3h-2a1 1 0 0 1-1-1V8.83A3 3 0 0 0 6 3z"/></svg><span data-source-currency-label>Unknown / unavailable</span></button>"##.to_string()
+    r##"<button type="button" class="indicator unknown source-currency-indicator" data-indicator="source-currency" data-modal-kind="source-currency" data-modal-title="Coronatio Currency" data-source-currency-status="unknown" aria-label="Source Currency Unknown / unavailable" title="Source currency: Unknown / unavailable"><svg class="indicator-icon" data-packed-icon="git-branch" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3a3 3 0 1 0 2 5.83V11a3 3 0 0 0 3 3h2a1 1 0 0 1 1 1v1.17A3 3 0 1 0 16 16.17V15a3 3 0 0 0-3-3h-2a1 1 0 0 1-1-1V8.83A3 3 0 0 0 6 3z"/></svg></button>"##.to_string()
 }
 fn render_source_currency_modal(ctx: IndicatorRenderContext) -> String {
     let _ = ctx.session;
