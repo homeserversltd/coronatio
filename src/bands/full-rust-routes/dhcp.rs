@@ -13,20 +13,17 @@ fn dhcp_guest_refusal(path: &str) -> Response {
         .into_response()
 }
 
-fn dhcp_readback(path: &str) -> CaduceusHttpReadback {
+fn dhcp_readback(headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpReadback {
     if path == "/api/dhcp/status" {
         return caduceus_http("GET", "/api/v1/network/dhcp/status");
     }
-    caduceus_http_json(
-        "POST",
-        "/api/v1/staff/intent",
-        serde_json::json!({
-            "method": "GET",
-            "route": path,
-            "classification": "network-control",
-            "metadata": {}
-        }),
-        None,
+    mutation_staff_intent(
+        &mutation_authority(),
+        headers,
+        "GET",
+        path,
+        "network-control",
+        serde_json::json!({}),
     )
 }
 
@@ -62,10 +59,7 @@ fn strip_dhcp_identity(value: &serde_json::Value) -> serde_json::Value {
     }
 }
 
-async fn dhcp_read_route(
-    headers: axum::http::HeaderMap,
-    uri: Uri,
-) -> Response {
+async fn dhcp_read_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
     let path = uri.path();
     let session = session_from_headers(&headers);
     if session == Session::Guest
@@ -80,7 +74,7 @@ async fn dhcp_read_route(
         return dhcp_guest_refusal(path);
     }
 
-    let readback = dhcp_readback(path);
+    let readback = dhcp_readback(&headers, path);
     if !readback.ok {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -104,7 +98,12 @@ async fn dhcp_read_route(
     (StatusCode::OK, Json(body)).into_response()
 }
 
-fn dhcp_mutation_response(headers: &axum::http::HeaderMap, method: &str, path: &str, metadata: serde_json::Value) -> Response {
+fn dhcp_mutation_response(
+    headers: &axum::http::HeaderMap,
+    method: &str,
+    path: &str,
+    metadata: serde_json::Value,
+) -> Response {
     let readback = mutation_staff_intent(
         &mutation_authority(),
         &headers,
@@ -149,7 +148,9 @@ async fn dhcp_reservation_create_route(
         &headers,
         "POST",
         "/api/dhcp/reservations",
-        payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({})),
+        payload
+            .map(|Json(value)| value)
+            .unwrap_or_else(|| serde_json::json!({})),
     )
 }
 
@@ -159,9 +160,14 @@ async fn dhcp_reservation_update_route(
     payload: Option<Json<serde_json::Value>>,
 ) -> Response {
     let path = format!("/api/dhcp/reservations/{reservation_id}");
-    let mut metadata = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
+    let mut metadata = payload
+        .map(|Json(value)| value)
+        .unwrap_or_else(|| serde_json::json!({}));
     if let Some(fields) = metadata.as_object_mut() {
-        fields.insert("reservationId".to_string(), serde_json::json!(reservation_id));
+        fields.insert(
+            "reservationId".to_string(),
+            serde_json::json!(reservation_id),
+        );
     }
     dhcp_mutation_response(&headers, "PUT", &path, metadata)
 }
@@ -187,6 +193,8 @@ async fn dhcp_pool_boundary_route(
         &headers,
         "POST",
         "/api/dhcp/pool-boundary",
-        payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({})),
+        payload
+            .map(|Json(value)| value)
+            .unwrap_or_else(|| serde_json::json!({})),
     )
 }

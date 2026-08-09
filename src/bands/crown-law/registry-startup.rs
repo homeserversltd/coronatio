@@ -59,7 +59,7 @@ fn native_crown_panes() -> Vec<CrownPane> {
             id: "wake-on-lan".to_string(),
             title: "Wake on LAN".to_string(),
             role: "network wake tab".to_string(),
-            summary: "Original HOMESERVER Wake on LAN tab placeholder until the pane body is ported.".to_string(),
+            summary: "Discover LAN devices from Kea leases and reservations, send Wake-on-LAN magic packets, and probe wake status through Caduceus.".to_string(),
             order: 50,
             admin_only: false,
             install_mode: InstallMode::FirstPartyNative,
@@ -81,7 +81,7 @@ fn native_crown_panes() -> Vec<CrownPane> {
             id: "dhcp".to_string(),
             title: "DHCP".to_string(),
             role: "hidden original tab".to_string(),
-            summary: "Original hidden HOMESERVER DHCP tab placeholder until the pane body is ported.".to_string(),
+            summary: "Kea DHCP leases and reservations, read and managed through Caduceus.".to_string(),
             order: 80,
             admin_only: false,
             install_mode: InstallMode::FirstPartyNative,
@@ -460,4 +460,3 @@ fn topic_catalog_readback() -> TopicCatalogReadback {
         ],
     }
 }
-
