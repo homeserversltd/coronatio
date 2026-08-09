@@ -736,7 +736,7 @@ fn shell_document_4() -> &'static str {
       if (editNote) { event.preventDefault(); openNoteModal(editNote.dataset.mac || '', editNote.dataset.note || ''); return; }
       const statEye = event.target.closest('[data-stat-visibility-toggle]');
       if (statEye) { event.preventDefault(); event.stopPropagation(); toggleElementVisibility('stats', statEye.dataset.statVisibilityToggle, statEye.dataset.visible !== 'true'); return; }
-      const addPortal = event.target.closest('[data-add-portal-open]');
+      const addPortal = event.target.closest('[data-add-portal-open], [data-test-add-portal]');
       if (addPortal) { openPortalModal('[data-add-portal-modal]'); return; }
       const portalModalClose = event.target.closest('[data-portal-modal-close]');
       if (portalModalClose) { closePortalModals(); return; }
