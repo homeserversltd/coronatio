@@ -85,6 +85,11 @@ fn immortal_floor_admin_projection_reprocesses_chrome_then_reseats_guest() {
     assert!(chrome.contains("panes = [...document.querySelectorAll('[data-pane-panel]')];"));
     assert!(chrome.contains("reconcileAdmittedPaneHosts();\n      if (window.htmx) window.htmx.process(tabBar);"));
     assert!(chrome.contains("showPane(selectedTab, { refresh: true })"));
+    assert!(chrome.contains("let adminDocumentPatchPendingHydration = false;"));
+    assert!(chrome.contains("adminDocumentPatchPendingHydration = true;"));
+    assert!(!chrome.contains("window.htmx.process(admitted);"), "an inactive admin patch must not hydrate its service cards");
+    assert!(chrome.contains("if (id === 'admin' && adminDocumentPatchPendingHydration && window.htmx)"));
+    assert!(chrome.contains("adminDocumentPatchPendingHydration = false;\n          window.htmx.process(pane);"));
     let replace = chrome.find("replaceTabBar(await response.text())").expect("processed chrome replacement");
     let reseat = chrome.find("showPane(selectedTab, { refresh: true })").expect("admin guest reseat");
     assert!(reseat < replace || replace < reseat, "both admission walls must exist");
