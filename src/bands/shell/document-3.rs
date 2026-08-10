@@ -1007,8 +1007,8 @@ fn shell_document_3() -> &'static str {
       const browserFavorite = browserFavoriteTab();
       if (!selected && startAt <= 1 && canStarTab(browserFavorite)) selected = browserFavorite;
       let applianceFavorite = renderedApplianceFavoriteTab();
-      if (!selected && !browserFavorite && startAt <= 2) { try { const favorite = await fetch('/api/favorites', { cache: 'no-store' }).then(response => response.ok ? response.json() : null); if (favorite?.starredTab) { applianceFavorite = favorite.starredTab; if (canStarTab(applianceFavorite)) selected = applianceFavorite; } } catch (_) {} }
-      selected = selected || regular[0];
+      if (!selected && startAt <= 2) { try { const favorite = await fetch('/api/favorites', { cache: 'no-store' }).then(response => response.ok ? response.json() : null); if (favorite?.starredTab) { applianceFavorite = favorite.starredTab; if (canStarTab(applianceFavorite)) selected = applianceFavorite; } } catch (_) {} }
+      selected = selected || (canStarTab(applianceFavorite) ? applianceFavorite : regular[0]);
       paintEffectiveFavoriteTab(applianceFavorite);
       for (const candidate of [selected, ...regular.filter(id => id !== selected)]) if (await showPane(candidate)) return true;
       return showPane(fallbackTab);
