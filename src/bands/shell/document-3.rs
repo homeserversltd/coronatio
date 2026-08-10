@@ -566,6 +566,10 @@ fn shell_document_3() -> &'static str {
     let coreStream = null;
     let coreRenewTimer = null;
     let coreStreamId = null;
+    const sseReconnectBaseDelayMs = 1000;
+    const sseReconnectMaxDelayMs = 30000;
+    let coreReconnectDelayMs = sseReconnectBaseDelayMs;
+    let pulseReconnectDelayMs = sseReconnectBaseDelayMs;
     async function setStreamMembership(family, streamId, action) {
       if (!streamId) return null;
       return fetch(`/api/${family}/pulse/${action}?streamId=${encodeURIComponent(streamId)}`, { method: 'POST', cache: 'no-store' });
@@ -615,6 +619,7 @@ fn shell_document_3() -> &'static str {
         let data = {};
         try { data = JSON.parse(event.data || '{}'); } catch (_) {}
         coreStreamId = data.streamId || event.lastEventId || null;
+        coreReconnectDelayMs = sseReconnectBaseDelayMs;
         scheduleCoreRenewal(data.renewRoute);
         if (headerState.isAdmin) void setStreamMembership('core', coreStreamId, 'upgrade');
       });
@@ -622,7 +627,10 @@ fn shell_document_3() -> &'static str {
         try { applyCoreTopic(topicId, JSON.parse(event.data || '{}')); } catch (_) {}
       }));
       coreStream.addEventListener('core.expired', () => {
-        coreStream.close(); coreStream = null; coreStreamId = null; window.setTimeout(connectCoreStream, 0);
+        coreStream.close(); coreStream = null; coreStreamId = null;
+        const delayMs = coreReconnectDelayMs;
+        coreReconnectDelayMs = Math.min(coreReconnectDelayMs * 2, sseReconnectMaxDelayMs);
+        window.setTimeout(connectCoreStream, delayMs);
       });
     }
     loadThemeCatalog();
@@ -815,9 +823,11 @@ fn shell_document_3() -> &'static str {
     }
     function reconnectPulseStream() {
       closeViewportStreamFamily();
+      const delayMs = pulseReconnectDelayMs;
+      pulseReconnectDelayMs = Math.min(pulseReconnectDelayMs * 2, sseReconnectMaxDelayMs);
       if (viewportFamilyAdmitted('stats') || viewportFamilyAdmitted('portals')) window.setTimeout(() => {
         if (viewportFamilyAdmitted('stats') || viewportFamilyAdmitted('portals')) connectPulseStream();
-      }, 1000);
+      }, delayMs);
     }
     function connectPulseStream() {
       if (!window.EventSource || !(viewportFamilyAdmitted('stats') || viewportFamilyAdmitted('portals'))) return;
@@ -828,6 +838,7 @@ fn shell_document_3() -> &'static str {
         let data = {};
         try { data = JSON.parse(event.data || '{}'); } catch (_) {}
         pulseStreamId = data.streamId || event.lastEventId || null;
+        pulseReconnectDelayMs = sseReconnectBaseDelayMs;
         schedulePulseRenewal(data.renewRoute || (pulseStreamId ? '/api/stats/pulse/renew?streamId=' + encodeURIComponent(pulseStreamId) : null));
         if (headerState.isAdmin) void setStreamMembership('stats', pulseStreamId, 'upgrade');
       });
