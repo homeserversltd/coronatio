@@ -220,8 +220,66 @@ fn admin_fragment_caduceus_request(headers: &axum::http::HeaderMap, method: &str
     }
 }
 
-fn admin_fragment_staff_intent(headers: &axum::http::HeaderMap, method: &str, route: &str, _classification: &str) -> CaduceusHttpReadback {
-    admin_fragment_caduceus_request(headers, method, route)
+fn admin_fragment_staff_intent(headers: &axum::http::HeaderMap, method: &str, route: &str, classification: &str) -> CaduceusHttpReadback {
+    mutation_staff_intent_with_mapping(
+        &mutation_authority(),
+        headers,
+        MutationActionTarget::caduceus("coronatio.admin.fragment", route),
+        method,
+        route,
+        classification,
+        serde_json::json!({}),
+    )
+}
+
+fn mutation_staff_door(method: &str, route: &str, _classification: &str) -> Option<(&'static str, String)> {
+    match (method, route) {
+        ("POST", "/api/files/upload") => Some(("POST", "/api/v1/file/ingress".to_string())),
+        ("POST", "/api/upload/force-permissions") => Some(("POST", "/api/v1/upload/force-permissions".to_string())),
+        ("POST", "/api/service/control") => Some(("POST", "/api/v1/service/control".to_string())),
+        ("POST", "/api/dhcp/reservations") => Some(("POST", "/api/v1/network/dhcp/reservations".to_string())),
+        ("PUT", route) if route.starts_with("/api/dhcp/reservations/") => Some(("PUT", route.replacen("/api/dhcp", "/api/v1/network/dhcp", 1))),
+        ("DELETE", route) if route.starts_with("/api/dhcp/reservations/") => Some(("DELETE", route.replacen("/api/dhcp", "/api/v1/network/dhcp", 1))),
+        ("POST", "/api/dhcp/pool-boundary") => Some(("POST", "/api/v1/network/dhcp/pool-boundary".to_string())),
+        ("POST", "/api/dhcp/config") => Some(("POST", "/api/v1/network/dhcp".to_string())),
+        ("POST", "/usr/local/sbin/caduceus-keyman-rotate-capability") => Some(("POST", "/api/v1/keyman/rotate-capability".to_string())),
+        ("POST", "/api/admin/ssh/status")
+        | ("POST", "/api/admin/ssh/toggle")
+        | ("POST", "/api/admin/ssh/service/status")
+        | ("POST", "/api/admin/ssh/service")
+        | ("POST", "/api/admin/samba/status")
+        | ("POST", "/api/admin/samba/service")
+        | ("POST", "/api/admin/system/restart")
+        | ("POST", "/api/admin/system/shutdown")
+        | ("POST", "/api/admin/services/hard-reset")
+        | ("POST", "/api/admin/hard-drive-test/start") => Some(("POST", route.to_string())),
+        _ => None,
+    }
+}
+
+fn mutation_staff_intent_with_mapping(
+    authority: &MutationAuthority,
+    headers: &axum::http::HeaderMap,
+    mapping: MutationActionTarget,
+    method: &str,
+    route: &str,
+    classification: &str,
+    metadata: serde_json::Value,
+) -> CaduceusHttpReadback {
+    let Some((door_method, door_path)) = mutation_staff_door(method, route, classification) else {
+        return mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 });
+    };
+    let context = mapping.request_context(headers);
+    match authority.authorize(&context, mapping) {
+        Ok(attendance) => caduceus_http_json_with_attendance_and_document(
+            door_method,
+            &door_path,
+            metadata,
+            Some(&attendance.proof),
+            Some(&attendance.document),
+        ),
+        Err(refusal) => mutation_refusal_readback(&door_path, refusal),
+    }
 }
 
 fn mutation_staff_intent(
@@ -233,15 +291,9 @@ fn mutation_staff_intent(
     metadata: serde_json::Value,
 ) -> CaduceusHttpReadback {
     let Some(mapping) = MutationActionTarget::route(method, route) else {
-        return mutation_refusal_readback("/api/v1/staff/intent", MutationRefusal { code: "coronatio-mutation-method-unmapped".to_string(), status: 0 });
+        return mutation_refusal_readback(route, MutationRefusal { code: "coronatio-mutation-method-unmapped".to_string(), status: 0 });
     };
-    caduceus_actuate_json(
-        authority,
-        headers,
-        mapping,
-        "/api/v1/admin/action",
-        serde_json::json!({"method": method, "route": route, "classification": classification, "metadata": metadata}),
-    )
+    mutation_staff_intent_with_mapping(authority, headers, mapping, method, route, classification, metadata)
 }
 
 fn mutation_config_set(
