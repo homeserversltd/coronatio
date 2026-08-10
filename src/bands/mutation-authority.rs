@@ -3,10 +3,14 @@
 // and the opaque attendance proof held only by that document.
 use crate::caduceus_access::{attendance_from_headers, document_incarnation_from_headers, safe_access_code, same_origin_state_change, AttendanceProof, CaduceusAccessClient};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MutationAuthorization { SameOrigin, AttendedDocument }
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MutationActionTarget {
     action: String,
     target: String,
+    authorization: MutationAuthorization,
 }
 
 impl MutationActionTarget {
@@ -20,6 +24,7 @@ impl MutationActionTarget {
         Some(Self {
             action: action.to_string(),
             target: target.to_string(),
+            authorization: MutationAuthorization::SameOrigin,
         })
     }
 
@@ -27,13 +32,23 @@ impl MutationActionTarget {
         Self {
             action: "coronatio.config.set".to_string(),
             target: target.to_string(),
+            authorization: MutationAuthorization::SameOrigin,
         }
     }
 
     fn caduceus(action: impl Into<String>, target: impl Into<String>) -> Self {
-        Self {
-            action: action.into(),
-            target: target.into(),
+        let action = action.into();
+        let authorization = match action.as_str() {
+            "coronatio.linker.browse" | "coronatio.linker.hardlink-scan" => MutationAuthorization::AttendedDocument,
+            _ => MutationAuthorization::SameOrigin,
+        };
+        Self { action, target: target.into(), authorization }
+    }
+
+    fn request_context(&self, headers: &axum::http::HeaderMap) -> MutationRequestContext {
+        match self.authorization {
+            MutationAuthorization::SameOrigin => MutationRequestContext::from_headers(headers),
+            MutationAuthorization::AttendedDocument => MutationRequestContext::attended_document_from_headers(headers),
         }
     }
 }
@@ -168,7 +183,8 @@ fn caduceus_actuate_json(
     path: &str,
     body: serde_json::Value,
 ) -> CaduceusHttpReadback {
-    match authority.authorize(&MutationRequestContext::from_headers(headers), mapping) {
+    let context = mapping.request_context(headers);
+    match authority.authorize(&context, mapping) {
         Ok(attendance) => caduceus_http_json_with_attendance_and_document(
             "POST",
             path,
@@ -186,7 +202,8 @@ fn caduceus_actuate(
     mapping: MutationActionTarget,
     path: &str,
 ) -> CaduceusHttpReadback {
-    match authority.authorize(&MutationRequestContext::from_headers(headers), mapping) {
+    let context = mapping.request_context(headers);
+    match authority.authorize(&context, mapping) {
         Ok(attendance) => caduceus_http_with_attendance("POST", path, Some(&attendance.proof)),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
