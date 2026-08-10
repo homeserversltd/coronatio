@@ -60,6 +60,7 @@ fn shell_document_3() -> &'static str {
         return true;
       });
     }
+    let adminDocumentPatchPendingHydration = false;
     function installAdminDocumentPatch(patch, tabsHtml) {
       if (typeof patch !== 'string' || typeof tabsHtml !== 'string' || !immortalFloorGuestSlot) return false;
       const template = document.createElement('template');
@@ -69,13 +70,14 @@ fn shell_document_3() -> &'static str {
       document.querySelector('[data-admin-document-patch="true"]')?.remove();
       immortalFloorGuestSlot.appendChild(admitted);
       panes = [...document.querySelectorAll('[data-pane-panel]')];
-      if (window.htmx) window.htmx.process(admitted);
+      adminDocumentPatchPendingHydration = true;
       replaceTabBar(tabsHtml);
       return true;
     }
     function removeAdminDocumentPatch() {
       document.querySelector('[data-admin-document-patch="true"]')?.remove();
       panes = [...document.querySelectorAll('[data-pane-panel]')];
+      adminDocumentPatchPendingHydration = false;
     }
     async function clearAdminMode() {
       try {
@@ -937,6 +939,10 @@ fn shell_document_3() -> &'static str {
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         tabs.forEach(tab => { const active = tab.dataset.pane === id; tab.setAttribute('aria-selected', String(active)); tab.classList.toggle('active', active); });
         panes.forEach(candidate => { const active = candidate === pane; candidate.classList.toggle('active', active); candidate.classList.toggle('immortal-floor-enter', active); candidate.setAttribute('aria-hidden', String(!active)); });
+        if (id === 'admin' && adminDocumentPatchPendingHydration && window.htmx) {
+          adminDocumentPatchPendingHydration = false;
+          window.htmx.process(pane);
+        }
         activeGuest = id; crossingGuest = null; expose('Seated', detail); applyAdminDomState(); applyTabBarVisibility();
         reconcileViewportStreamFamily();
         return true;
