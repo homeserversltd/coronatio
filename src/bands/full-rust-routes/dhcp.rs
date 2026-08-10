@@ -13,18 +13,15 @@ fn dhcp_guest_refusal(path: &str) -> Response {
         .into_response()
 }
 
-fn dhcp_readback(headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpReadback {
-    if path == "/api/dhcp/status" {
-        return caduceus_http("GET", "/api/v1/network/dhcp/status");
-    }
-    mutation_staff_intent(
-        &mutation_authority(),
-        headers,
-        "GET",
-        path,
-        "network-control",
-        serde_json::json!({}),
-    )
+fn dhcp_readback(_headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpReadback {
+    let door = match path {
+        "/api/dhcp/status" => "/api/v1/network/dhcp/status",
+        "/api/dhcp/leases" => "/api/v1/network/dhcp/leases",
+        "/api/dhcp/reservations" => "/api/v1/network/dhcp/reservations",
+        "/api/dhcp/pool-boundary" => "/api/v1/network/dhcp/boundary",
+        _ => return mutation_refusal_readback(path, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
+    };
+    caduceus_http("GET", door)
 }
 
 fn strip_dhcp_identity(value: &serde_json::Value) -> serde_json::Value {
@@ -160,15 +157,9 @@ async fn dhcp_reservation_update_route(
     payload: Option<Json<serde_json::Value>>,
 ) -> Response {
     let path = format!("/api/dhcp/reservations/{reservation_id}");
-    let mut metadata = payload
+    let metadata = payload
         .map(|Json(value)| value)
         .unwrap_or_else(|| serde_json::json!({}));
-    if let Some(fields) = metadata.as_object_mut() {
-        fields.insert(
-            "reservationId".to_string(),
-            serde_json::json!(reservation_id),
-        );
-    }
     dhcp_mutation_response(&headers, "PUT", &path, metadata)
 }
 
@@ -177,12 +168,7 @@ async fn dhcp_reservation_delete_route(
     headers: axum::http::HeaderMap,
 ) -> Response {
     let path = format!("/api/dhcp/reservations/{reservation_id}");
-    dhcp_mutation_response(
-        &headers,
-        "DELETE",
-        &path,
-        serde_json::json!({"reservationId": reservation_id}),
-    )
+    dhcp_mutation_response(&headers, "DELETE", &path, serde_json::json!({}))
 }
 
 async fn dhcp_pool_boundary_route(
