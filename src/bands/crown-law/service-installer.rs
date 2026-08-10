@@ -255,15 +255,91 @@ fn installer_lane_mapping() -> Vec<InstallerLaneMapping> {
     ]
 }
 
-fn stats_snapshot() -> StatsSnapshot {
-    let resources = stats_resources();
-    let storage = stats_storage();
-    let network = stats_network();
-    let io = stats_io(&storage);
-    let leases = stats_kea_leases();
-    let kea_leases = stats_identity_roster();
-    let processes = stats_processes();
-    let services = stats_services();
+const STATS_COLLECTOR_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+
+async fn bounded_stats_collector<T>(
+    handle: tokio::task::JoinHandle<T>,
+    timed_out: T,
+    unavailable: T,
+) -> T
+where
+    T: Send + 'static,
+{
+    match tokio::time::timeout(STATS_COLLECTOR_TIMEOUT, handle).await {
+        Ok(Ok(value)) => value,
+        Ok(Err(_)) => unavailable,
+        Err(_) => timed_out,
+    }
+}
+
+fn unavailable_resources() -> StatsResources {
+    StatsResources {
+        load: StatsLoad { one: None, five: None, fifteen: None, cpu_temperature_celsius: None },
+        memory: StatsMemory { total_bytes: None, used_bytes: None, free_bytes: None, percent: None },
+        swap: StatsMemory { total_bytes: None, used_bytes: None, free_bytes: None, percent: None },
+    }
+}
+
+fn unavailable_storage(source: &str) -> Vec<StatsDrive> {
+    vec![StatsDrive {
+        name: "root".to_string(), mount: "/".to_string(), total_bytes: None, used_bytes: None,
+        free_bytes: None, usage_percent: None, source: source.to_string(),
+    }]
+}
+
+fn unavailable_network(reason: &str) -> StatsNetwork {
+    StatsNetwork {
+        interfaces: vec![StatsNetworkInterface { name: "unavailable".to_string(), status: reason.to_string(), rx_bytes: 0, tx_bytes: 0 }],
+        connections: StatsConnectionCounts { established: 0, listening: 0, total: 0 },
+    }
+}
+
+fn unavailable_io(reason: &str) -> StatsIo {
+    StatsIo { devices: vec![StatsIoDevice { device: "unavailable".to_string(), mount: reason.to_string(), read_bytes: 0, write_bytes: 0 }] }
+}
+
+fn unavailable_leases(reason: &str) -> Vec<StatsKeaLease> {
+    vec![StatsKeaLease { hostname: "unavailable".to_string(), ip: reason.to_string(), mac: String::new(), note: String::new() }]
+}
+
+fn unavailable_roster(reason: &str) -> StatsKeaLeases {
+    StatsKeaLeases { status: reason.to_string(), entries: Vec::new() }
+}
+
+fn unavailable_processes(reason: &str) -> Vec<StatsProcess> {
+    vec![StatsProcess { name: reason.to_string(), cpu_percent: 0.0, memory_bytes: 0, process_count: 0 }]
+}
+
+fn unavailable_services(reason: &str) -> Vec<StatsService> {
+    vec![StatsService {
+        name: "Stats collector".to_string(), status: reason.to_string(),
+        details: "service collector unavailable".to_string(), route: String::new(),
+    }]
+}
+
+async fn stats_snapshot() -> StatsSnapshot {
+    let resources_task = tokio::task::spawn_blocking(stats_resources);
+    let storage_task = tokio::task::spawn_blocking(stats_storage);
+    let network_task = tokio::task::spawn_blocking(stats_network);
+    let leases_task = tokio::task::spawn_blocking(stats_kea_leases);
+    let kea_leases_task = tokio::task::spawn_blocking(stats_identity_roster);
+    let processes_task = tokio::task::spawn_blocking(stats_processes);
+    let services_task = tokio::task::spawn_blocking(stats_services);
+
+    let (resources, storage, network, leases, kea_leases, processes, services) = tokio::join!(
+        bounded_stats_collector(resources_task, unavailable_resources(), unavailable_resources()),
+        bounded_stats_collector(storage_task, unavailable_storage("df timeout (>1s)"), unavailable_storage("df unavailable")),
+        bounded_stats_collector(network_task, unavailable_network("timed out (>1s)"), unavailable_network("unavailable")),
+        bounded_stats_collector(leases_task, unavailable_leases("timed out (>1s)"), unavailable_leases("unavailable")),
+        bounded_stats_collector(kea_leases_task, unavailable_roster("timed out (>1s)"), unavailable_roster("unavailable")),
+        bounded_stats_collector(processes_task, unavailable_processes("timed out (>1s)"), unavailable_processes("unavailable")),
+        bounded_stats_collector(services_task, unavailable_services("timed out (>1s)"), unavailable_services("unavailable")),
+    );
+    let io_task = tokio::task::spawn_blocking({
+        let storage = storage.clone();
+        move || stats_io(&storage)
+    });
+    let io = bounded_stats_collector(io_task, unavailable_io("timed out (>1s)"), unavailable_io("unavailable")).await;
     let first_missing_signal = stats_first_missing_signal(&storage, &services);
     StatsSnapshot {
         schema: "coronatio.stats.snapshot.v1".to_string(),
