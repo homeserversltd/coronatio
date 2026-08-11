@@ -601,40 +601,49 @@
   flex: 1;
 }
 
-/* Delete portal button */
+/* Delete portal button: a quiet peer of the visibility toggle until the card is engaged. */
 .delete-portal-button {
   position: absolute;
   top: 8px;
   left: 8px;
   width: 24px;
   height: 24px;
-  background: var(--error);
-  color: white;
+  padding: 4px;
+  background: none;
+  color: var(--secondary);
   border: none;
-  border-radius: 50%;
+  border-radius: 4px;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
+  font-size: 14px;
   z-index: 10;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  opacity: 0.9;
+  transition: all 0.2s ease-in-out;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.portal-element:hover .delete-portal-button,
+.portal-element:focus-within .delete-portal-button,
+.delete-portal-button:focus-visible {
+  opacity: 0.8;
+  pointer-events: auto;
 }
 
 .delete-portal-button:hover:not(:disabled) {
-  background: var(--error);
+  background: var(--primaryHover);
+  color: var(--error);
   transform: scale(1.1);
   opacity: 1;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .delete-portal-button:active {
   transform: scale(0.95);
 }
 
-.delete-portal-button:disabled {
+.portal-element:hover .delete-portal-button:disabled,
+.portal-element:focus-within .delete-portal-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
