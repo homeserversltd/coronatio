@@ -13,3 +13,10 @@
 .backblaze-path-row { padding: .75rem; border: 1px solid var(--border); background: var(--background-alt); overflow-wrap: anywhere; }
 .backblaze-empty { margin: 1rem 0 0; color: var(--secondary); }
 .backblaze-note, [data-backblaze-status], [data-backblaze-result] { color: var(--secondary); }
+
+.backblaze-form-grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.backblaze-path-editor { display: grid; gap: .75rem; margin: 1rem 0; border: 0; padding: 0; }
+.backblaze-path-editor legend { font-weight: 600; }
+.backblaze-path-input { display: flex; gap: .5rem; align-items: center; }
+.backblaze-path-input input { flex: 1; }
+.backblaze-config-result { min-height: 1.5em; }

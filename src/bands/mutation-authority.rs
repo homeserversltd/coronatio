@@ -235,6 +235,7 @@ fn admin_fragment_staff_intent(headers: &axum::http::HeaderMap, method: &str, ro
 fn mutation_staff_door(method: &str, route: &str, _classification: &str) -> Option<(&'static str, String)> {
     match (method, route) {
         ("POST", "/api/files/upload") => Some(("POST", "/api/v1/file/ingress".to_string())),
+        ("POST", "/api/backblaze/config") => Some(("POST", "/api/v1/backblaze/config".to_string())),
         ("POST", "/api/upload/force-permissions") => Some(("POST", "/api/v1/upload/force-permissions".to_string())),
         ("POST", "/api/service/control") => Some(("POST", "/api/v1/service/control".to_string())),
         ("POST", "/api/dhcp/reservations") => Some(("POST", "/api/v1/network/dhcp/reservations".to_string())),

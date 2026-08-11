@@ -111,25 +111,29 @@ fn restic_available() -> bool {
         .is_some_and(|paths| env::split_paths(&paths).any(|path| path.join("restic").is_file()))
 }
 
-fn backblaze_credential_candidates() -> Vec<PathBuf> {
+fn backblaze_credential_candidates(service: &str) -> Vec<PathBuf> {
     let root = PathBuf::from(BACKBLAZE_KEY_EXCHANGE);
     let mut candidates = [
-        "backblaze",
-        "backblaze.env",
-        "backblaze.json",
-        "backblaze.key",
+        service.to_string(),
+        format!("{service}.env"),
+        format!("{service}.json"),
+        format!("{service}.key"),
+        "backblaze".to_string(),
+        "backblaze.env".to_string(),
+        "backblaze.json".to_string(),
+        "backblaze.key".to_string(),
     ]
     .into_iter()
     .map(|name| root.join(name))
     .filter(|path| path.is_file())
     .collect::<Vec<_>>();
-    if let Ok(entries) = std::fs::read_dir(root) {
+    if let Ok(entries) = std::fs::read_dir(&root) {
         candidates.extend(entries.flatten().map(|entry| entry.path()).filter(|path| {
             path.is_file()
                 && path
                     .file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("backblaze"))
+                    .is_some_and(|name| name.starts_with(service) || name.starts_with("backblaze"))
         }));
     }
     candidates.sort();
@@ -193,19 +197,20 @@ fn parse_backblaze_credentials(raw: &str) -> Option<BackblazeCredentials> {
     })
 }
 
-fn backblaze_credentials() -> Result<BackblazeCredentials, String> {
+fn backblaze_credentials(bucket: &str) -> Result<BackblazeCredentials, String> {
+    let service = bucket.replace('-', "_");
     let exporter = PathBuf::from(BACKBLAZE_KEYMAN_EXPORT);
     if !exporter.is_file() {
         return Err("backblaze Keyman export is not configured".to_string());
     }
     let export = Command::new(exporter)
-        .arg("backblaze")
+        .arg(&service)
         .output()
         .map_err(|_| "backblaze Keyman export could not start".to_string())?;
     if !export.status.success() {
         return Err("backblaze Keyman credentials are not available".to_string());
     }
-    backblaze_credential_candidates()
+    backblaze_credential_candidates(&service)
         .into_iter()
         .find_map(|path| {
             std::fs::read_to_string(path)
@@ -218,7 +223,7 @@ fn backblaze_credentials() -> Result<BackblazeCredentials, String> {
 fn backblaze_checks() -> serde_json::Value {
     let restic = restic_available();
     let config = backblaze_config();
-    let credentials = backblaze_credentials();
+    let credentials = backblaze_config().and_then(|config| backblaze_credentials(&config.bucket));
     serde_json::json!({
         "restic": {"ok": restic, "reason": if restic { "none" } else { "restic is not configured" }},
         "config": match &config {
@@ -238,7 +243,7 @@ fn backblaze_preflight(include_credentials: bool) -> Result<BackblazeConfig, Str
     }
     let config = backblaze_config()?;
     if include_credentials {
-        backblaze_credentials()?;
+        backblaze_credentials(&config.bucket)?;
     }
     Ok(config)
 }
@@ -263,6 +268,29 @@ fn backblaze_status_value() -> serde_json::Value {
 
 async fn backblaze_status_route() -> impl IntoResponse {
     (StatusCode::OK, Json(backblaze_status_value()))
+}
+
+async fn backblaze_config_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    let readback = mutation_staff_intent(&mutation_authority(), &headers, "POST", "/api/backblaze/config", "backblaze configuration", body);
+    if readback.ok {
+        return (StatusCode::OK, Json(serde_json::json!({"ok": true, "locked": true}))).into_response();
+    }
+    let step = readback
+        .body
+        .get("step")
+        .and_then(serde_json::Value::as_str)
+        .filter(|step| matches!(*step, "verify" | "keyman" | "config" | "locked"))
+        .unwrap_or("config");
+    let reason = readback
+        .body
+        .get("reason")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(readback.first_missing_signal.as_str());
+    (
+        mutation_response_status(&readback),
+        Json(serde_json::json!({"ok": false, "step": step, "reason": reason})),
+    )
+        .into_response()
 }
 
 fn backblaze_snapshot(value: &serde_json::Value) -> serde_json::Value {
@@ -292,7 +320,7 @@ async fn backblaze_snapshots_route() -> Response {
                 .into_response();
         }
     };
-    let credentials = match backblaze_credentials() {
+    let credentials = match backblaze_credentials(&config.bucket) {
         Ok(credentials) => credentials,
         Err(reason) => {
             return (
@@ -302,15 +330,18 @@ async fn backblaze_snapshots_route() -> Response {
                 .into_response();
         }
     };
-    let output = Command::new("restic")
+    let mut output = Command::new("restic")
         .args(["--repo", config.repository.as_str(), "snapshots", "--json"])
         .env(
             "RESTIC_PASSWORD",
             restic_password(&credentials.application_key),
         )
-        .env("B2_ACCOUNT_ID", credentials.account_id)
-        .env("B2_ACCOUNT_KEY", credentials.application_key)
+        .env("B2_ACCOUNT_ID", &credentials.account_id)
+        .env("B2_ACCOUNT_KEY", &credentials.application_key)
         .output();
+    if output.as_ref().is_ok_and(|result| !result.status.success() && restic_repo_uninitialized(&result.stderr)) && restic_init(&config, &credentials) {
+        output = Command::new("restic").args(["--repo", config.repository.as_str(), "snapshots", "--json"]).env("RESTIC_PASSWORD", restic_password(&credentials.application_key)).env("B2_ACCOUNT_ID", &credentials.account_id).env("B2_ACCOUNT_KEY", &credentials.application_key).output();
+    }
     match output {
         Ok(output) if output.status.success() => match serde_json::from_slice::<serde_json::Value>(&output.stdout) {
             Ok(serde_json::Value::Array(snapshots)) => (StatusCode::OK, Json(serde_json::json!({"ok": true, "snapshots": snapshots.iter().map(backblaze_snapshot).collect::<Vec<_>>()}))).into_response(),
@@ -319,6 +350,15 @@ async fn backblaze_snapshots_route() -> Response {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": "restic could not read snapshots"}))).into_response(),
         Err(_) => (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": "restic could not start"}))).into_response(),
     }
+}
+
+fn restic_repo_uninitialized(stderr: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(stderr).to_ascii_lowercase();
+    text.contains("not initialized") || text.contains("repository does not exist") || text.contains("is there a repository")
+}
+
+fn restic_init(config: &BackblazeConfig, credentials: &BackblazeCredentials) -> bool {
+    Command::new("restic").args(["--repo", config.repository.as_str(), "init"]).env("RESTIC_PASSWORD", restic_password(&credentials.application_key)).env("B2_ACCOUNT_ID", &credentials.account_id).env("B2_ACCOUNT_KEY", &credentials.application_key).output().is_ok_and(|output| output.status.success())
 }
 
 fn now_unix_seconds() -> u64 {
@@ -352,13 +392,16 @@ fn restic_backup_size(output: &[u8]) -> Option<u64> {
 
 fn run_backblaze_backup(config: BackblazeConfig, credentials: BackblazeCredentials) {
     let password = restic_password(&credentials.application_key);
-    let output = Command::new("restic")
+    let mut output = Command::new("restic")
         .args(["--repo", config.repository.as_str(), "backup", "--json"])
         .args(&config.paths)
-        .env("RESTIC_PASSWORD", password)
-        .env("B2_ACCOUNT_ID", credentials.account_id)
-        .env("B2_ACCOUNT_KEY", credentials.application_key)
+        .env("RESTIC_PASSWORD", &password)
+        .env("B2_ACCOUNT_ID", &credentials.account_id)
+        .env("B2_ACCOUNT_KEY", &credentials.application_key)
         .output();
+    if output.as_ref().is_ok_and(|result| !result.status.success() && restic_repo_uninitialized(&result.stderr)) && restic_init(&config, &credentials) {
+        output = Command::new("restic").args(["--repo", config.repository.as_str(), "backup", "--json"]).args(&config.paths).env("RESTIC_PASSWORD", &password).env("B2_ACCOUNT_ID", &credentials.account_id).env("B2_ACCOUNT_KEY", &credentials.application_key).output();
+    }
     let mut state = backblaze_state();
     state.running = false;
     state.last_run_at = Some(now_unix_seconds());
@@ -383,7 +426,7 @@ async fn backblaze_run_route() -> Response {
                 .into_response();
         }
     };
-    let credentials = match backblaze_credentials() {
+    let credentials = match backblaze_credentials(&config.bucket) {
         Ok(credentials) => credentials,
         Err(reason) => {
             return (
