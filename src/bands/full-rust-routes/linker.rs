@@ -228,26 +228,30 @@ fn linker_call(
         b,
     )
 }
+fn linker_read(h: &axum::http::HeaderMap, path: &str, query: &[(&str, &str)]) -> CaduceusHttpReadback {
+    let mut encoded = url::form_urlencoded::Serializer::new(String::new());
+    for (name, value) in query {
+        encoded.append_pair(name, value);
+    }
+    let request_path = format!("{path}?{}", encoded.finish());
+    caduceus_http_json_with_attendance_and_document(
+        "GET",
+        &request_path,
+        serde_json::json!({}),
+        attendance_from_headers(h).as_ref(),
+        document_incarnation_from_headers(h).as_deref(),
+    )
+}
 fn linker_browse(
     h: &axum::http::HeaderMap,
     s: &mut LinkerState,
 ) -> Result<CaduceusHttpReadback, CaduceusHttpReadback> {
-    let r = linker_call(
-        h,
-        "coronatio.linker.browse",
-        "/api/v1/linker/browse",
-        serde_json::json!({"path":s.path}),
-    );
+    let r = linker_read(h, "/api/v1/linker/browse", &[("path", &s.path)]);
     if !r.ok {
         return Err(r);
     }
     s.entries = linker_entries(&r.body, &s.filter);
-    let scan = linker_call(
-        h,
-        "coronatio.linker.hardlink-scan",
-        "/api/v1/linker/hardlink-scan",
-        serde_json::json!({"path":s.path}),
-    );
+    let scan = linker_read(h, "/api/v1/linker/hardlink-scan", &[("path", &s.path)]);
     if !scan.ok {
         return Err(scan);
     }
