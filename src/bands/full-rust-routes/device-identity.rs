@@ -22,18 +22,19 @@ fn device_identity_payload(body: serde_json::Value) -> serde_json::Value {
         .unwrap_or(body)
 }
 
-fn device_identity_read(
-    path: &str,
-    caduceus_path: &str,
-    headers: &axum::http::HeaderMap,
-) -> Response {
+fn device_identity_read(path: &str, headers: &axum::http::HeaderMap) -> Response {
     if let Some(refusal) = device_identity_admin(headers, path) {
         return refusal;
     }
-    let readback = caduceus_http("GET", caduceus_path);
+    let door = match resolve_caduceus_door("GET", path) {
+        Ok(door) => door,
+        Err(CaduceusDoorResolutionFailure::Unmapped) => return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"schema": "coronatio.network.identity.read.error.v1", "ok": false, "path": path, "authority": "Caduceus network identity", "firstMissingSignal": "coronatio-caduceus-door-unmapped"}))).into_response(),
+        Err(CaduceusDoorResolutionFailure::Unavailable) => return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"schema": "coronatio.network.identity.read.error.v1", "ok": false, "path": path, "authority": "Caduceus network identity", "firstMissingSignal": "caduceus-doors-unavailable"}))).into_response(),
+    };
+    let readback = caduceus_http(&door.method, &door.path);
     if readback.ok {
         let payload = device_identity_payload(readback.body);
-        let payload = if caduceus_path == "/api/v1/network/dhcp/boundary" {
+        let payload = if path == "/api/network/dhcp/boundary" {
             payload
                 .as_array()
                 .filter(|entries| entries.len() == 1)
@@ -53,35 +54,19 @@ fn device_identity_read(
 }
 
 async fn device_roster_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read(&"/api/network/device", "/api/v1/network/device", &headers)
+    device_identity_read("/api/network/device", &headers)
 }
 async fn device_boundary_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read(
-        "/api/network/dhcp/boundary",
-        "/api/v1/network/dhcp/boundary",
-        &headers,
-    )
+    device_identity_read("/api/network/dhcp/boundary", &headers)
 }
 async fn device_leases_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read(
-        "/api/network/dhcp/leases",
-        "/api/v1/network/dhcp/leases",
-        &headers,
-    )
+    device_identity_read("/api/network/dhcp/leases", &headers)
 }
 async fn device_reservations_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read(
-        "/api/network/dhcp/reservations",
-        "/api/v1/network/dhcp/reservations",
-        &headers,
-    )
+    device_identity_read("/api/network/dhcp/reservations", &headers)
 }
 async fn device_dns_read_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read(
-        "/api/network/dns/read",
-        "/api/v1/network/dns/read",
-        &headers,
-    )
+    device_identity_read("/api/network/dns/read", &headers)
 }
 
 async fn device_claim_route(
@@ -93,9 +78,14 @@ async fn device_claim_route(
         return refusal;
     }
     // One identity binding is one Caduceus call: DHCP and DNS stay coordinated by staff.
+    let door = match resolve_caduceus_door("POST", path) {
+        Ok(door) => door,
+        Err(CaduceusDoorResolutionFailure::Unmapped) => return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"schema": "coronatio.network.identity.read.error.v1", "ok": false, "path": path, "authority": "Caduceus network identity", "firstMissingSignal": "coronatio-caduceus-door-unmapped"}))).into_response(),
+        Err(CaduceusDoorResolutionFailure::Unavailable) => return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"schema": "coronatio.network.identity.read.error.v1", "ok": false, "path": path, "authority": "Caduceus network identity", "firstMissingSignal": "caduceus-doors-unavailable"}))).into_response(),
+    };
     let readback = caduceus_http_json(
-        "POST",
-        "/api/v1/network/device/claim",
+        &door.method,
+        &door.path,
         payload
             .map(|Json(v)| v)
             .unwrap_or_else(|| serde_json::json!({})),
