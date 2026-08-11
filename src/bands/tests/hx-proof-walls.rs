@@ -187,7 +187,9 @@
         let fault_body = String::from_utf8(axum::body::to_bytes(fault.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(fault_body.contains("data-cartridge-fault=\"true\""), "{fault_body}");
         assert!(fault_body.contains("data-cartridge-fault-kind=\"tab-not-found\""), "{fault_body}");
-        assert!(fault_body.contains("class=\"card error-message\""), "{fault_body}");
+        assert!(fault_body.contains("<div hidden"), "{fault_body}");
+        assert!(!fault_body.contains("Cartridge fault"), "{fault_body}");
+        assert!(!fault_body.contains("class=\"card error-message\""), "{fault_body}");
         let sibling = router.clone().oneshot(Request::builder().uri("/admit/upload").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(sibling.status(), StatusCode::OK);
         let sibling_body = String::from_utf8(axum::body::to_bytes(sibling.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
