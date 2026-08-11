@@ -576,20 +576,82 @@ fn stats_kea_leases() -> Vec<StatsKeaLease> {
     leases
 }
 
+const STATS_IDENTITY_ROSTER_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+const STATS_IDENTITY_ROSTER_FAILED_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+static STATS_IDENTITY_ROSTER_CACHE: OnceLock<Mutex<Option<(std::time::Instant, StatsKeaLeases)>>> =
+    OnceLock::new();
+
 fn stats_identity_roster() -> StatsKeaLeases {
+    let mut cache = STATS_IDENTITY_ROSTER_CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap();
+    if let Some((cached_at, cached_roster)) = cache.as_ref() {
+        let ttl = if cached_roster.status == "available" {
+            STATS_IDENTITY_ROSTER_TTL
+        } else {
+            STATS_IDENTITY_ROSTER_FAILED_TTL
+        };
+        if cached_at.elapsed() < ttl {
+            return cached_roster.clone();
+        }
+    }
+
     let roster = caduceus_http("GET", "/api/v1/network/device");
-    if !roster.ok { return StatsKeaLeases { status: "unavailable".to_string(), entries: Vec::new() }; }
-    let notes = caduceus_http("GET", "/api/v1/network/notes");
-    if !notes.ok { return StatsKeaLeases { status: "unavailable".to_string(), entries: Vec::new() }; }
-    let notes = notes.body.get("notes").and_then(serde_json::Value::as_object);
-    let payload = device_identity_payload(roster.body);
-    let rows = payload.as_array().cloned().or_else(|| payload.get("devices").or_else(|| payload.get("roster")).or_else(|| payload.get("data").and_then(|data| data.get("devices"))).and_then(serde_json::Value::as_array).cloned()).unwrap_or_default();
-    let entries = rows.into_iter().map(|mut row| {
-        let note = row.get("mac").and_then(serde_json::Value::as_str).and_then(canonical_network_note_mac).and_then(|mac| notes.and_then(|notes| notes.get(&mac))).cloned().unwrap_or(serde_json::Value::String(String::new()));
-        if let Some(object) = row.as_object_mut() { object.insert("note".to_string(), note); }
-        row
-    }).collect();
-    StatsKeaLeases { status: "available".to_string(), entries }
+    let result = if !roster.ok {
+        StatsKeaLeases {
+            status: "unavailable".to_string(),
+            entries: Vec::new(),
+        }
+    } else {
+        let notes = caduceus_http("GET", "/api/v1/network/notes");
+        if !notes.ok {
+            StatsKeaLeases {
+                status: "unavailable".to_string(),
+                entries: Vec::new(),
+            }
+        } else {
+            let notes = notes
+                .body
+                .get("notes")
+                .and_then(serde_json::Value::as_object);
+            let payload = device_identity_payload(roster.body);
+            let rows = payload
+                .as_array()
+                .cloned()
+                .or_else(|| {
+                    payload
+                        .get("devices")
+                        .or_else(|| payload.get("roster"))
+                        .or_else(|| payload.get("data").and_then(|data| data.get("devices")))
+                        .and_then(serde_json::Value::as_array)
+                        .cloned()
+                })
+                .unwrap_or_default();
+            let entries = rows
+                .into_iter()
+                .map(|mut row| {
+                    let note = row
+                        .get("mac")
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(canonical_network_note_mac)
+                        .and_then(|mac| notes.and_then(|notes| notes.get(&mac)))
+                        .cloned()
+                        .unwrap_or(serde_json::Value::String(String::new()));
+                    if let Some(object) = row.as_object_mut() {
+                        object.insert("note".to_string(), note);
+                    }
+                    row
+                })
+                .collect();
+            StatsKeaLeases {
+                status: "available".to_string(),
+                entries,
+            }
+        }
+    };
+    *cache = Some((std::time::Instant::now(), result.clone()));
+    result
 }
 
 fn stats_processes() -> Vec<StatsProcess> {
