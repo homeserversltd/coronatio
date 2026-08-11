@@ -542,13 +542,20 @@ async fn backblaze_bucket_post_route(
     headers: axum::http::HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
+    let mut intent_body = body.clone();
+    if let Some(object) = intent_body.as_object_mut() {
+        object.remove("keyId");
+        object.remove("key_id");
+        object.remove("applicationKey");
+        object.remove("application_key");
+    }
     let r = mutation_staff_intent(
         &mutation_authority(),
         &headers,
         "POST",
         "/api/backblaze/buckets",
         "backblaze bucket",
-        body.clone(),
+        intent_body,
     );
     if !r.ok {
         return (
