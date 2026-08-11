@@ -232,29 +232,8 @@ fn admin_fragment_staff_intent(headers: &axum::http::HeaderMap, method: &str, ro
     )
 }
 
-fn mutation_staff_door(method: &str, route: &str, _classification: &str) -> Option<(&'static str, String)> {
-    match (method, route) {
-        ("POST", "/api/files/upload") => Some(("POST", "/api/v1/file/ingress".to_string())),
-        ("POST", "/api/upload/force-permissions") => Some(("POST", "/api/v1/upload/force-permissions".to_string())),
-        ("POST", "/api/service/control") => Some(("POST", "/api/v1/service/control".to_string())),
-        ("POST", "/api/dhcp/reservations") => Some(("POST", "/api/v1/network/dhcp/reservations".to_string())),
-        ("PUT", route) if route.starts_with("/api/dhcp/reservations/") => Some(("PUT", route.replacen("/api/dhcp", "/api/v1/network/dhcp", 1))),
-        ("DELETE", route) if route.starts_with("/api/dhcp/reservations/") => Some(("DELETE", route.replacen("/api/dhcp", "/api/v1/network/dhcp", 1))),
-        ("POST", "/api/dhcp/pool-boundary") => Some(("POST", "/api/v1/network/dhcp/pool-boundary".to_string())),
-        ("POST", "/api/dhcp/config") => Some(("POST", "/api/v1/network/dhcp".to_string())),
-        ("POST", "/usr/local/sbin/caduceus-keyman-rotate-capability") => Some(("POST", "/api/v1/keyman/rotate-capability".to_string())),
-        ("POST", "/api/admin/ssh/status")
-        | ("POST", "/api/admin/ssh/toggle")
-        | ("POST", "/api/admin/ssh/service/status")
-        | ("POST", "/api/admin/ssh/service")
-        | ("POST", "/api/admin/samba/status")
-        | ("POST", "/api/admin/samba/service")
-        | ("POST", "/api/admin/system/restart")
-        | ("POST", "/api/admin/system/shutdown")
-        | ("POST", "/api/admin/services/hard-reset")
-        | ("POST", "/api/admin/hard-drive-test/start") => Some(("POST", route.to_string())),
-        _ => None,
-    }
+fn mutation_staff_door(method: &str, route: &str, _classification: &str) -> Result<ResolvedCaduceusDoor, CaduceusDoorResolutionFailure> {
+    resolve_caduceus_door(method, route)
 }
 
 fn mutation_staff_intent_with_mapping(
@@ -266,20 +245,23 @@ fn mutation_staff_intent_with_mapping(
     classification: &str,
     metadata: serde_json::Value,
 ) -> CaduceusHttpReadback {
-    let Some((door_method, door_path)) = mutation_staff_door(method, route, classification) else {
-        return mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 });
-    };
     let context = mapping.request_context(headers);
-    match authority.authorize(&context, mapping) {
-        Ok(attendance) => caduceus_http_json_with_attendance_and_document(
-            door_method,
-            &door_path,
-            metadata,
-            Some(&attendance.proof),
-            Some(&attendance.document),
-        ),
-        Err(refusal) => mutation_refusal_readback(&door_path, refusal),
-    }
+    let attendance = match authority.authorize(&context, mapping) {
+        Ok(attendance) => attendance,
+        Err(refusal) => return mutation_refusal_readback(route, refusal),
+    };
+    let door = match mutation_staff_door(method, route, classification) {
+        Ok(door) => door,
+        Err(CaduceusDoorResolutionFailure::Unmapped) => return mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
+        Err(CaduceusDoorResolutionFailure::Unavailable) => return mutation_refusal_readback(route, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 }),
+    };
+    caduceus_http_json_with_attendance_and_document(
+        &door.method,
+        &door.path,
+        metadata,
+        Some(&attendance.proof),
+        Some(&attendance.document),
+    )
 }
 
 fn mutation_staff_intent(

@@ -30,6 +30,7 @@ mod caduceus_access {
     use super::*;
     include!("bands/caduceus-access.rs");
 }
+include!("bands/caduceus-doors.rs");
 include!("bands/mutation-authority.rs");
 include!("bands/pulse.rs");
 include!("bands/router-readback.rs");

@@ -14,14 +14,11 @@ fn dhcp_guest_refusal(path: &str) -> Response {
 }
 
 fn dhcp_readback(_headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpReadback {
-    let door = match path {
-        "/api/dhcp/status" => "/api/v1/network/dhcp/status",
-        "/api/dhcp/leases" => "/api/v1/network/dhcp/leases",
-        "/api/dhcp/reservations" => "/api/v1/network/dhcp/reservations",
-        "/api/dhcp/pool-boundary" => "/api/v1/network/dhcp/boundary",
-        _ => return mutation_refusal_readback(path, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
-    };
-    caduceus_http("GET", door)
+    match resolve_caduceus_door("GET", path) {
+        Ok(door) => caduceus_http(&door.method, &door.path),
+        Err(CaduceusDoorResolutionFailure::Unmapped) => mutation_refusal_readback(path, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
+        Err(CaduceusDoorResolutionFailure::Unavailable) => mutation_refusal_readback(path, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 }),
+    }
 }
 
 fn strip_dhcp_identity(value: &serde_json::Value) -> serde_json::Value {
