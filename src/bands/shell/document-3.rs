@@ -802,7 +802,6 @@ fn shell_document_3() -> &'static str {
     function reconcileViewportStreamFamily() {
       closeViewportStreamFamily();
       stopPortalCurrentnessCadence();
-      stopWakeOnLanCadence();
       if (window.getImmortalFloorState?.() !== 'Seated') return;
       const active = currentActiveTabId();
       if (!viewportFamilyAdmitted(active)) return;
@@ -812,7 +811,7 @@ fn shell_document_3() -> &'static str {
       if (active === 'firewall') hydrateFirewall();
       if (active === 'backblaze') hydrateBackblaze();
       if (active === 'portals') { startPortalCurrentnessCadence(); connectPulseStream(); }
-      if (active === 'wake-on-lan') startWakeOnLanCadence();
+      if (active === 'wake-on-lan') hydrateWakeOnLan();
     }
     function schedulePulseRenewal(renewRoute) {
       clearPulseRenewal();
