@@ -1,6 +1,6 @@
 fn shell_firewall_client() -> &'static str {
     r####"    const firewallState = { observed: [], children: [], selectedMac: '', hosts: [] };
-    function firewallRows(payload, key) { if (Array.isArray(payload)) return payload; for (const source of [payload?.[key], payload?.devices, payload?.device?.whitelist, payload?.data?.[key], payload?.result?.[key], payload?.items]) if (Array.isArray(source)) return source; return []; }
+    function firewallRows(payload, key) { if (Array.isArray(payload)) return payload; for (const source of [payload?.[key], payload?.devices, payload?.device?.whitelist, payload?.receipt?.[key], payload?.receipt?.devices, payload?.receipt?.device?.whitelist, payload?.data?.[key], payload?.result?.[key], payload?.items]) if (Array.isArray(source)) return source; return []; }
     function firewallMac(row) { return String(row?.mac || row?.macAddress || row?.['hw-address'] || row?.hwAddress || row || '').toUpperCase(); }
     function firewallMessage(payload) { return payload?.message || payload?.firstMissingSignal || payload?.error || 'Child-device controls are unavailable'; }
     async function firewallJson(route, options = {}) { const response = await fetch(route, { cache: 'no-store', headers: options.body ? { 'content-type': 'application/json' } : {}, ...options }); const body = await response.json().catch(() => ({})); if (!response.ok || body?.ok === false) throw body; return body; }
