@@ -268,6 +268,62 @@ async fn tab_bar_fragment_route(
     tab_bar_html_response_with_active(session_from_headers(&headers), query.active.as_deref())
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct CartridgeMutationRequest {
+    id: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    guest_class: String,
+    #[serde(default)]
+    admin_only: bool,
+}
+
+fn cartridge_proxy_response(readback: CaduceusHttpReadback) -> Response {
+    let status = if readback.ok { StatusCode::OK } else { mutation_response_status(&readback) };
+    (status, Json(serde_json::json!({"ok": readback.ok, "cartridges": readback.body, "firstMissingSignal": readback.first_missing_signal}))).into_response()
+}
+
+async fn cartridges_read_proxy_route() -> Response {
+    let route = "/api/v1/cartridges";
+    let readback = match resolve_caduceus_door("GET", route) {
+        Ok(door) => caduceus_http(&door.method, &door.path),
+        Err(CaduceusDoorResolutionFailure::Unmapped) => mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
+        Err(CaduceusDoorResolutionFailure::Unavailable) => mutation_refusal_readback(route, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 }),
+    };
+    cartridge_proxy_response(readback)
+}
+
+async fn cartridges_admit_proxy_route(headers: axum::http::HeaderMap, Json(request): Json<CartridgeMutationRequest>) -> Response {
+    cartridge_mutation_proxy_response(headers, "/api/v1/cartridges/admit", request, true)
+}
+
+async fn cartridges_remove_proxy_route(headers: axum::http::HeaderMap, Json(request): Json<CartridgeMutationRequest>) -> Response {
+    cartridge_mutation_proxy_response(headers, "/api/v1/cartridges/remove", request, false)
+}
+
+fn cartridge_mutation_proxy_response(headers: axum::http::HeaderMap, route: &str, request: CartridgeMutationRequest, admitting: bool) -> Response {
+    if session_from_headers(&headers) != Session::Admin {
+        return cartridge_proxy_response(mutation_refusal_readback(route, MutationRefusal { code: "caduceus-attendance-required".to_string(), status: 401 }));
+    }
+    let id = if admitting { normalize_tab_id(&request.title) } else { normalize_tab_id(&request.id) };
+    let valid = is_safe_tab_id(&id) && (!admitting || (!request.title.trim().is_empty() && safe_cartridge_url(&request.url).is_some() && request.guest_class == "iframe"));
+    if !valid {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "firstMissingSignal": "invalid-cartridge-request"}))).into_response();
+    }
+    let body = if admitting {
+        serde_json::json!({"id": id, "title": request.title.trim(), "url": request.url, "guest_class": "iframe", "admin_only": request.admin_only})
+    } else { serde_json::json!({"id": id}) };
+    let readback = mutation_staff_intent_with_mapping(
+        &mutation_authority(), &headers,
+        MutationActionTarget::caduceus(if admitting { "coronatio.cartridges.admit" } else { "coronatio.cartridges.remove" }, route),
+        "POST", route, "loadable-cartridge", body,
+    );
+    cartridge_proxy_response(readback)
+}
+
 fn tab_bar_html_response_from_facts(session: Session, facts: &IrisFacts) -> Response {
     let body = render_plan_tabbar_projection_from_facts(facts, session, None, false);
     let mut response = (StatusCode::OK, Html(body)).into_response();
@@ -307,6 +363,78 @@ async fn load_homeserver_json() -> Result<(String, serde_json::Value), String> {
     let value: serde_json::Value = serde_json::from_str(&raw)
         .map_err(|error| format!("homeserver.json invalid at {}: {}", path.display(), error))?;
     Ok((path.display().to_string(), value))
+}
+
+const CARTRIDGE_REGISTRY_PATH: &str = "/etc/appliance/cartridges.json";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ApplianceCartridgeRegistry {
+    schema: String,
+    #[serde(default, alias = "rows")]
+    cartridges: Vec<ApplianceCartridge>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ApplianceCartridge {
+    id: String,
+    title: String,
+    url: String,
+    guest_class: String,
+    admin_only: bool,
+}
+
+fn cartridge_registry_path() -> PathBuf {
+    env::var("CORONATIO_CARTRIDGE_REGISTRY")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(CARTRIDGE_REGISTRY_PATH))
+}
+
+fn safe_cartridge_url(raw: &str) -> Option<String> {
+    let parsed = url::Url::parse(raw).ok()?;
+    matches!(parsed.scheme(), "http" | "https").then(|| raw.to_string())
+}
+
+fn load_appliance_cartridges() -> Vec<ApplianceCartridge> {
+    let Ok(raw) = std::fs::read_to_string(cartridge_registry_path()) else { return Vec::new(); };
+    let Ok(registry) = serde_json::from_str::<ApplianceCartridgeRegistry>(&raw) else { return Vec::new(); };
+    if registry.schema != "appliance.cartridges.v1" { return Vec::new(); }
+    let mut seen = BTreeSet::new();
+    registry.cartridges.into_iter().filter_map(|mut cartridge| {
+        cartridge.id = normalize_tab_id(&cartridge.id);
+        cartridge.title = cartridge.title.trim().to_string();
+        cartridge.url = safe_cartridge_url(&cartridge.url)?;
+        (is_safe_tab_id(&cartridge.id) && !cartridge.title.is_empty() && cartridge.guest_class == "iframe" && seen.insert(cartridge.id.clone())).then_some(cartridge)
+    }).collect()
+}
+
+fn appliance_cartridge(tab_id: &str) -> Option<ApplianceCartridge> {
+    load_appliance_cartridges().into_iter().find(|cartridge| cartridge.id == tab_id)
+}
+
+fn merged_tab_contracts_from_homeserver(value: &serde_json::Value) -> Vec<CoronatioTabContract> {
+    let mut tabs = native_tab_contracts();
+    let next_order = tabs.iter().map(|tab| tab.order).max().unwrap_or(0) + 1;
+    for (offset, cartridge) in load_appliance_cartridges().into_iter().enumerate() {
+        if tabs.iter().any(|tab| tab.id == cartridge.id) { continue; }
+        tabs.push(CoronatioTabContract { id: cartridge.id.clone(), display_name: cartridge.title, order: next_order + offset as i64, enabled: true, admin_only: cartridge.admin_only, visibility: TabVisibility::default(), install_mode: InstallMode::DynamicCartridge, route: format!("/#{}", cartridge.id), state_route: format!("/admit/{}", cartridge.id) });
+    }
+    if let Some(tabs_obj) = value.get("tabs").and_then(serde_json::Value::as_object) {
+        for tab in tabs.iter_mut() {
+            let Some(raw) = tabs_obj.get(&tab.id) else { continue; };
+            if let Some(config) = raw.get("config").and_then(serde_json::Value::as_object) {
+                if let Some(name) = config.get("displayName").and_then(serde_json::Value::as_str) { tab.display_name = name.to_string(); }
+                if let Some(enabled) = config.get("isEnabled").and_then(serde_json::Value::as_bool) { tab.enabled = enabled; }
+                if let Some(admin_only) = config.get("adminOnly").and_then(serde_json::Value::as_bool) { tab.admin_only = admin_only; }
+            }
+            if let Some(visibility) = raw.get("visibility").and_then(serde_json::Value::as_object) {
+                if let Some(visible) = visibility.get("tab").and_then(serde_json::Value::as_bool) { tab.visibility.tab = visible; }
+                if let Some(elements) = visibility.get("elements").and_then(serde_json::Value::as_object) {
+                    tab.visibility.elements = elements.iter().filter_map(|(id, v)| v.as_bool().map(|visible| { let canonical = if tab.id == "stats" { canonical_stats_element_id(id) } else { id.as_str() }; (canonical.to_string(), visible) })).collect();
+                }
+            }
+        }
+    }
+    tabs
 }
 
 fn favorite_manifest_from_homeserver(source: String, value: &serde_json::Value) -> Result<FavoriteManifest, String> {
@@ -395,35 +523,12 @@ fn canonical_stats_element_id(id: &str) -> &str {
 }
 
 fn iris_facts_from_homeserver_value(value: &serde_json::Value) -> IrisFacts {
-    let tabs_obj = value.get("tabs").and_then(serde_json::Value::as_object);
-    let starred = tabs_obj
+    let starred = value.get("tabs").and_then(serde_json::Value::as_object)
         .and_then(|tabs| tabs.get("starred"))
         .and_then(serde_json::Value::as_str)
         .unwrap_or("stats")
         .to_string();
-    let mut tabs = native_tab_contracts();
-    if let Some(tabs_obj) = tabs_obj {
-        for tab in tabs.iter_mut() {
-            let Some(raw) = tabs_obj.get(&tab.id) else { continue; };
-            if let Some(config) = raw.get("config").and_then(serde_json::Value::as_object) {
-                if let Some(name) = config.get("displayName").and_then(serde_json::Value::as_str) { tab.display_name = name.to_string(); }
-                if let Some(enabled) = config.get("isEnabled").and_then(serde_json::Value::as_bool) { tab.enabled = enabled; }
-                if let Some(admin_only) = config.get("adminOnly").and_then(serde_json::Value::as_bool) { tab.admin_only = admin_only; }
-            }
-            if let Some(visibility) = raw.get("visibility").and_then(serde_json::Value::as_object) {
-                if let Some(visible) = visibility.get("tab").and_then(serde_json::Value::as_bool) { tab.visibility.tab = visible; }
-                if let Some(elements) = visibility.get("elements").and_then(serde_json::Value::as_object) {
-                    tab.visibility.elements = elements.iter().filter_map(|(id, v)| {
-                        v.as_bool().map(|visible| {
-                            let canonical = if tab.id == "stats" { canonical_stats_element_id(id) } else { id.as_str() };
-                            (canonical.to_string(), visible)
-                        })
-                    }).collect();
-                }
-            }
-        }
-    }
-    iris::from_coronatio_contracts(&tabs, &starred)
+    iris::from_coronatio_contracts(&merged_tab_contracts_from_homeserver(value), &starred)
 }
 
 fn caduceus_config_failure_response(readback: CaduceusHttpReadback) -> Response {

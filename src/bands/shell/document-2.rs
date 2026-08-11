@@ -127,6 +127,7 @@ fn shell_document_2() -> &'static str {
         <article class="linker-tablet" data-linker-tablet><p>Linker admission is loaded when this pane is admitted.</p></article>
       </section>
       __TEST__
+      __CARTRIDGE_PANES__
       <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" role="tabpanel" aria-label="DHCP">
         <div class="dhcp-tablet" data-dhcp-tablet data-admin-only="true" data-admin-viewport="dhcp">
           <div class="dhcp-info-banner" data-dhcp-info-banner aria-live="polite">
@@ -203,8 +204,16 @@ fn shell_document_2() -> &'static str {
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="add-tab-modal-title">
       <button type="button" class="modal-close" data-add-tab-modal-close aria-label="Close Add tab modal">×</button>
       <h2 class="modal-title" id="add-tab-modal-title">Add tab</h2>
-      <div class="modal-content"><p>A loadable cartridge is admitted at runtime through the tab registry with process-level fault isolation. Cartridge ingress will arrive through the Caduceus twin-snake method. Today, tabs are first-party native crown panes compiled into the crown.</p></div>
-      <div class="modal-actions"><button type="button" class="secondary" data-add-tab-modal-close>Close</button></div>
+      <div class="modal-content">
+        <p>Loadable cartridges are the extension lane.</p>
+        <form class="portal-form" data-cartridge-add-form>
+          <div class="form-group"><label for="cartridge-title">Title *</label><input id="cartridge-title" name="title" type="text" required maxlength="80" placeholder="e.g., Jellyfin"></div>
+          <div class="form-group"><label for="cartridge-url">URL *</label><input id="cartridge-url" name="url" type="url" required placeholder="http://jellyfin.home.arpa:8096"></div>
+          <div class="form-group"><label><input name="adminOnly" type="checkbox"> Admin only</label></div>
+          <div class="modal-actions"><button type="button" class="secondary" data-add-tab-modal-close>Cancel</button><button type="submit" class="submit-button">Add tab</button></div>
+        </form>
+        <section data-cartridge-management><h3>Loadable cartridges</h3><ul data-cartridge-management-list></ul></section>
+      </div>
     </section>
   </div>
   <div class="toast-container coronatio-toast-stack" data-coronatio-toast-stack aria-live="polite" aria-atomic="false"></div>

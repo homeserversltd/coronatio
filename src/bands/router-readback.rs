@@ -238,6 +238,11 @@ async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<Stri
         linker_fragment_route(headers.clone(), Query(LinkerQuery::default())).await
     } else if !is_safe_tab_id(&tab_id) {
         fragment_fault(StatusCode::BAD_REQUEST, &tab_id, CartridgeFaultKind::UpstreamError)
+    } else if let Some(cartridge) = appliance_cartridge(&tab_id) {
+        let facts = load_iris_facts_sync().unwrap_or_else(|| iris_facts_from_homeserver_value(&serde_json::json!({})));
+        let visible = iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == tab_id && grant.state == RenderState::Visible);
+        if visible { Html(render_cartridge_iframe_fragment(&cartridge)).into_response() }
+        else { fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound) }
     } else if native_crown_panes().into_iter().any(|pane| pane.id == tab_id) {
         Html(render_og_pane_fragment(&tab_id, session)).into_response()
     } else {
@@ -246,6 +251,18 @@ async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<Stri
     response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
     response
+}
+
+fn render_cartridge_pane_hosts() -> String {
+    load_appliance_cartridges().into_iter().map(|cartridge| format!(
+        r#"<section class="pane" id="pane-{}" data-pane-panel="{}" data-view-panel="{}" role="tabpanel" aria-label="{}"></section>"#,
+        html_escape(&cartridge.id), html_escape(&cartridge.id), html_escape(&cartridge.id), html_escape(&cartridge.title)
+    )).collect::<Vec<_>>().join("")
+}
+
+fn render_cartridge_iframe_fragment(cartridge: &ApplianceCartridge) -> String {
+    format!(r#"<div class="cartridge-viewport" data-cartridge-id="{}"><iframe src="{}" title="{}" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="same-origin"></iframe></div>"#,
+        html_escape(&cartridge.id), html_escape(&cartridge.url), html_escape(&cartridge.title))
 }
 
 fn fragment_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKind) -> Response {
