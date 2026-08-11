@@ -102,20 +102,6 @@
             "/api/backup/debug/status",
             "/api/backup/header-stats",
             "/api/backup/backups/list",
-            "/api/backblazeTab/browse",
-            "/api/backblazeTab/buckets",
-            "/api/backblazeTab/buckets/:bucket_id/tree",
-            "/api/backblazeTab/buckets/:bucket_id/files",
-            "/api/backblazeTab/buckets/:bucket_id/storage",
-            "/api/backblazeTab/buckets/:bucket_id/sync/status",
-            "/api/backblazeTab/buckets/:bucket_id/sync/config",
-            "/api/backblazeTab/ledger/events",
-            "/api/backblazeTab/ledger/jobs/:job_id",
-            "/api/backblazeTab/database/list",
-            "/api/backblazeTab/forgejo/status",
-            "/api/backblazeTab/forgejo/backups",
-            "/api/backblazeTab/chunk-store",
-            "/api/backblazeTab/chunks-registry",
             "/api/miner/coins",
             "/api/miner/miners",
             "/api/miner/miners/:miner_id/coins/:coin_id/status",
@@ -140,9 +126,9 @@
         let generic = field_005b_generic_projected_get_routes();
         let real = field_005b_real_body_exception_get_routes();
         let og = field_005b_og_admin_gated_get_routes();
-        assert_eq!(all.len(), 112, "new GET route entered full-rust-routes.rs and must be FIELD-005b-classified");
+        assert_eq!(all.len(), 98, "new GET route entered full-rust-routes.rs and must be FIELD-005b-classified");
         assert_eq!(typed.len(), 12, "typed-projection bucket changed");
-        assert_eq!(generic.len(), 87, "generic-projected-this-slice bucket changed");
+        assert_eq!(generic.len(), 73, "generic-projected-this-slice bucket changed");
         assert_eq!(real.len(), 11, "real-body-exception bucket changed");
         assert_eq!(og.len(), 2, "og-admin-gated GET bucket changed");
 
