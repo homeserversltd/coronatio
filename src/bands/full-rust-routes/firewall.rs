@@ -12,12 +12,40 @@ fn firewall_guest_refusal(path: &str) -> Response {
         .into_response()
 }
 
-fn firewall_staff_intent_at(path: &str, metadata: serde_json::Value) -> CaduceusHttpReadback {
-    caduceus_http_json(
+fn firewall_seated_read(caduceus_path: &str, metadata: serde_json::Value) -> CaduceusHttpReadback {
+    match resolve_caduceus_door("POST", caduceus_path) {
+        Ok(door) => caduceus_http_json(&door.method, &door.path, metadata, None),
+        Err(CaduceusDoorResolutionFailure::Unmapped) => mutation_refusal_readback(
+            caduceus_path,
+            MutationRefusal {
+                code: "coronatio-caduceus-door-unmapped".to_string(),
+                status: 0,
+            },
+        ),
+        Err(CaduceusDoorResolutionFailure::Unavailable) => mutation_refusal_readback(
+            caduceus_path,
+            MutationRefusal {
+                code: "caduceus-doors-unavailable".to_string(),
+                status: 0,
+            },
+        ),
+    }
+}
+
+fn firewall_seated_mutation(
+    headers: &axum::http::HeaderMap,
+    crown_path: &str,
+    caduceus_path: &str,
+    metadata: serde_json::Value,
+) -> CaduceusHttpReadback {
+    mutation_staff_intent_with_mapping(
+        &mutation_authority(),
+        headers,
+        MutationActionTarget::caduceus("caduceus_staff.child_device", crown_path),
         "POST",
-        path,
+        caduceus_path,
+        "child-device",
         metadata,
-        None,
     )
 }
 
@@ -31,7 +59,7 @@ fn firewall_staff_response(readback: CaduceusHttpReadback, path: &str) -> Respon
             "schema": "coronatio.firewall.staff-unavailable.v1",
             "ok": false,
             "path": path,
-            "message": "Child-device controls are unavailable because the Caduceus staff actuator is not present or did not answer.",
+            "message": "Child-device controls are unavailable because the seated Caduceus door did not answer.",
             "authority": "Caduceus staff child-device",
             "caduceusStatus": readback.status,
             "firstMissingSignal": readback.first_missing_signal
@@ -46,14 +74,24 @@ fn firewall_admin(headers: &axum::http::HeaderMap, path: &str) -> Option<Respons
 
 async fn firewall_observed_route(headers: axum::http::HeaderMap) -> Response {
     let path = "/api/firewall/observed";
-    if let Some(refusal) = firewall_admin(&headers, path) { return refusal; }
-    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/observed", serde_json::json!({})), path)
+    if let Some(refusal) = firewall_admin(&headers, path) {
+        return refusal;
+    }
+    firewall_staff_response(
+        firewall_seated_read("/api/admin/firewall/observed", serde_json::json!({})),
+        path,
+    )
 }
 
 async fn firewall_children_route(headers: axum::http::HeaderMap) -> Response {
     let path = "/api/firewall/children";
-    if let Some(refusal) = firewall_admin(&headers, path) { return refusal; }
-    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/list", serde_json::json!({})), path)
+    if let Some(refusal) = firewall_admin(&headers, path) {
+        return refusal;
+    }
+    firewall_staff_response(
+        firewall_seated_read("/api/admin/firewall/list", serde_json::json!({})),
+        path,
+    )
 }
 
 async fn firewall_register_route(
@@ -61,23 +99,56 @@ async fn firewall_register_route(
     payload: Option<Json<serde_json::Value>>,
 ) -> Response {
     let path = "/api/firewall/children";
-    if let Some(refusal) = firewall_admin(&headers, path) { return refusal; }
+    if let Some(refusal) = firewall_admin(&headers, path) {
+        return refusal;
+    }
     firewall_staff_response(
-        firewall_staff_intent_at("/api/admin/firewall/register", payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}))),
+        firewall_seated_mutation(
+            &headers,
+            path,
+            "/api/admin/firewall/register",
+            payload
+                .map(|Json(value)| value)
+                .unwrap_or_else(|| serde_json::json!({})),
+        ),
         path,
     )
 }
 
-async fn firewall_unregister_route(headers: axum::http::HeaderMap, Path(mac): Path<String>) -> Response {
+async fn firewall_unregister_route(
+    headers: axum::http::HeaderMap,
+    Path(mac): Path<String>,
+) -> Response {
     let path = format!("/api/firewall/children/{mac}");
-    if let Some(refusal) = firewall_admin(&headers, &path) { return refusal; }
-    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/unregister", serde_json::json!({"mac": mac})), &path)
+    if let Some(refusal) = firewall_admin(&headers, &path) {
+        return refusal;
+    }
+    firewall_staff_response(
+        firewall_seated_mutation(
+            &headers,
+            &path,
+            "/api/admin/firewall/unregister",
+            serde_json::json!({"mac": mac}),
+        ),
+        &path,
+    )
 }
 
-async fn firewall_whitelist_get_route(headers: axum::http::HeaderMap, Path(mac): Path<String>) -> Response {
+async fn firewall_whitelist_get_route(
+    headers: axum::http::HeaderMap,
+    Path(mac): Path<String>,
+) -> Response {
     let path = format!("/api/firewall/children/{mac}/whitelist");
-    if let Some(refusal) = firewall_admin(&headers, &path) { return refusal; }
-    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/whitelist-get", serde_json::json!({"mac": mac})), &path)
+    if let Some(refusal) = firewall_admin(&headers, &path) {
+        return refusal;
+    }
+    firewall_staff_response(
+        firewall_seated_read(
+            "/api/admin/firewall/whitelist-get",
+            serde_json::json!({"mac": mac}),
+        ),
+        &path,
+    )
 }
 
 async fn firewall_whitelist_set_route(
@@ -86,8 +157,22 @@ async fn firewall_whitelist_set_route(
     payload: Option<Json<serde_json::Value>>,
 ) -> Response {
     let path = format!("/api/firewall/children/{mac}/whitelist");
-    if let Some(refusal) = firewall_admin(&headers, &path) { return refusal; }
-    let mut metadata = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
-    if let Some(fields) = metadata.as_object_mut() { fields.insert("mac".to_string(), serde_json::json!(mac)); }
-    firewall_staff_response(firewall_staff_intent_at("/api/admin/firewall/whitelist-set", metadata), &path)
+    if let Some(refusal) = firewall_admin(&headers, &path) {
+        return refusal;
+    }
+    let mut metadata = payload
+        .map(|Json(value)| value)
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(fields) = metadata.as_object_mut() {
+        fields.insert("mac".to_string(), serde_json::json!(mac));
+    }
+    firewall_staff_response(
+        firewall_seated_mutation(
+            &headers,
+            &path,
+            "/api/admin/firewall/whitelist-set",
+            metadata,
+        ),
+        &path,
+    )
 }
