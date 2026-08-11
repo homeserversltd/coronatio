@@ -23,7 +23,7 @@
         assert_eq!(registry.visible_tabs_user, ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"]);
         assert_eq!(
             registry.visible_tabs_admin,
-            ["admin", "portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "dhcp", "firewall", "unbound"]
+            ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "admin", "dhcp", "firewall", "unbound"]
         );
         assert!(registry
             .validation_rules
