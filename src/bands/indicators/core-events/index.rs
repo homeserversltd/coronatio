@@ -26,6 +26,8 @@ struct CoreStreamState {
     control_rx: tokio::sync::mpsc::UnboundedReceiver<CoreControl>,
     index: usize,
     opened: bool,
+    last_collected: HashMap<&'static str, Instant>,
+    last_payload: HashMap<&'static str, String>,
 }
 impl Drop for CoreStreamState { fn drop(&mut self) { core_memberships().lock().unwrap().remove(&self.stream_id); } }
 
@@ -87,10 +89,12 @@ pub(crate) fn subscribe_core_stream(session: Session, lease: Duration) -> (Strin
         document: None,
         control_tx,
     });
-    let state = CoreStreamState { stream_id: stream_id.clone(), session, control_rx, index: 0, opened: false };
+    let state = CoreStreamState { stream_id: stream_id.clone(), session, control_rx, index: 0, opened: false, last_collected: HashMap::new(), last_payload: HashMap::new() };
     let frames = stream::unfold(Some(state), move |state| async move {
         let mut state = state?;
-        while let Ok(CoreControl::Set(session)) = state.control_rx.try_recv() { state.session = session; }
+        while let Ok(CoreControl::Set(session)) = state.control_rx.try_recv() {
+            if state.session != session { state.session = session; state.last_collected.clear(); state.last_payload.clear(); }
+        }
         if Instant::now() >= core_memberships().lock().unwrap().get(&state.stream_id).map(|membership| membership.deadline).unwrap_or_else(Instant::now) {
             let id = state.stream_id.clone(); core_memberships().lock().unwrap().remove(&id);
             return Some((("core.expired".into(), id.clone(), serde_json::json!({"streamId":id,"status":"expired"}).to_string()), None));
@@ -102,16 +106,34 @@ pub(crate) fn subscribe_core_stream(session: Session, lease: Duration) -> (Strin
             return Some((("core.open".into(), id, data), Some(state)));
         }
         if state.index >= catalog().len() { tokio::time::sleep(Duration::from_secs(1)).await; state.index = 0; }
-        while let Ok(CoreControl::Set(session)) = state.control_rx.try_recv() { state.session = session; }
+        while let Ok(CoreControl::Set(session)) = state.control_rx.try_recv() {
+            if state.session != session { state.session = session; state.last_collected.clear(); state.last_payload.clear(); }
+        }
         let entry = catalog()[state.index]; state.index += 1;
-        let payload = match entry.collector.map(|collector| collector(state.session)) {
-            Some(Ok(value)) => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"snapshot","snapshot":value}),
-            Some(Err(error)) => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":error}),
-            None => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":"collector absent"}),
-        };
-        Some(((entry.topic_id.into(), format!("{}:{}", state.stream_id, state.index), payload.to_string()), Some(state)))
+        let now = Instant::now();
+        let refresh_due = state.last_collected.get(entry.topic_id).map(|last| now.duration_since(*last) >= minimum_refresh_interval(entry.topic_id)).unwrap_or(true);
+        let payload = if refresh_due {
+            tracing::debug!(topic_id = entry.topic_id, "collecting core indicator topic");
+            let payload = match entry.collector.map(|collector| collector(state.session)) {
+                Some(Ok(value)) => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"snapshot","snapshot":value}),
+                Some(Err(error)) => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":error}),
+                None => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":"collector absent"}),
+            }.to_string();
+            state.last_collected.insert(entry.topic_id, now);
+            state.last_payload.insert(entry.topic_id, payload.clone());
+            payload
+        } else { state.last_payload.get(entry.topic_id).expect("cached core topic payload").clone() };
+        Some(((entry.topic_id.into(), format!("{}:{}", state.stream_id, state.index), payload), Some(state)))
     }).boxed();
     (stream_id, frames)
+}
+
+fn minimum_refresh_interval(topic_id: &str) -> Duration {
+    match topic_id {
+        "source.currency" => Duration::from_secs(60),
+        "tailscale.status" | "vpn.status" | "services.status" => Duration::from_secs(15),
+        _ => Duration::from_secs(1),
+    }
 }
 
 pub(crate) fn renew_core_stream(stream_id: &str, lease: Duration) -> bool {
