@@ -148,7 +148,7 @@ fn shell_document_2() -> &'static str {
           <div class="dhcp-tablet-content">
             <div class="dhcp-banner dhcp-banner--error" data-dhcp-error role="alert" hidden></div>
             <div class="dhcp-banner dhcp-banner--loading" data-dhcp-loading aria-live="polite"><span class="loading-spinner medium" role="progressbar" aria-label="Loading devices"></span><span>Loading device identities…</span></div>
-            <section class="identity-roster-host" data-identity-roster-host="dhcp" data-identity-perspective="address"><h3>Devices</h3><div data-identity-roster></div></section>
+            <section class="identity-roster-host dhcp-device-roster" data-identity-roster-host="dhcp" data-identity-perspective="address"><h3>Device addresses</h3><p class="dhcp-device-roster-hint">Pinned addresses are reserved. Lease-only devices can be pinned in one click.</p><div data-identity-roster></div></section>
           </div>
         </div>
         <div class="ui-modal-backdrop" data-identity-claim-modal aria-hidden="true">

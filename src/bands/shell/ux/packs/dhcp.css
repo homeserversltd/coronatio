@@ -175,6 +175,85 @@
   color: var(--secondary);
 }
 
+
+.dhcp-device-roster {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.dhcp-device-roster-hint {
+  margin: 0;
+  color: var(--secondary);
+}
+
+.dhcp-device-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 0.45rem;
+}
+
+.dhcp-device-table th {
+  padding: 0.5rem 0.75rem;
+  color: var(--secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.dhcp-device-table td {
+  padding: 0.7rem 0.75rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--primary);
+}
+
+.dhcp-device-table td:first-child {
+  border-left: 4px solid var(--accent);
+  border-radius: var(--border-radius, 6px) 0 0 var(--border-radius, 6px);
+}
+
+.dhcp-device-table td:last-child {
+  border-right: 1px solid var(--border);
+  border-radius: 0 var(--border-radius, 6px) var(--border-radius, 6px) 0;
+}
+
+.dhcp-device-row--pinned td {
+  background: var(--hiddenTabBackground);
+}
+
+.dhcp-device-row--pinned td:first-child {
+  border-left-color: var(--success);
+}
+
+.dhcp-device-row--lease td:first-child {
+  border-left-color: var(--accent);
+}
+
+.dhcp-pin-badge,
+.dhcp-unpinned-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.6rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.dhcp-pin-badge {
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.dhcp-unpinned-state {
+  color: var(--secondary);
+  border: 1px solid var(--border);
+}
+
+.dhcp-device-actions {
+  white-space: nowrap;
+}
+
 @media (max-width: 48rem) {
   .dhcp-tablet {
     padding: 1rem;
