@@ -157,23 +157,25 @@ fn resolve_from_caduceus_door_seat(
     crown_path: &str,
 ) -> Option<ResolvedCaduceusDoor> {
     let method = method.to_ascii_uppercase();
-    let mut candidates = seat
-        .doors
-        .iter()
-        .filter(|row| row.method.eq_ignore_ascii_case(&method))
-        .filter_map(|row| {
-            let values = match row.crown_aliases.as_deref() {
-                Some(aliases) => aliases
-                    .iter()
-                    .find_map(|alias| caduceus_door_shape_matches(alias, crown_path)),
-                None => row
-                    .crown_alias
-                    .as_deref()
-                    .and_then(|alias| caduceus_door_shape_matches(alias, crown_path)),
-            }?;
-            Some((row, values))
-        })
-        .collect::<Vec<_>>();
+    let mut candidates =
+        seat.doors
+            .iter()
+            .filter(|row| row.method.eq_ignore_ascii_case(&method))
+            .filter_map(|row| {
+                let values = caduceus_door_shape_matches(&row.path, crown_path).or_else(|| {
+                    match row.crown_aliases.as_deref() {
+                        Some(aliases) => aliases
+                            .iter()
+                            .find_map(|alias| caduceus_door_shape_matches(alias, crown_path)),
+                        None => row
+                            .crown_alias
+                            .as_deref()
+                            .and_then(|alias| caduceus_door_shape_matches(alias, crown_path)),
+                    }
+                })?;
+                Some((row, values))
+            })
+            .collect::<Vec<_>>();
     candidates.sort_by_key(|(row, values)| (usize::from(!values.is_empty()), row.path.len()));
     candidates
         .into_iter()
