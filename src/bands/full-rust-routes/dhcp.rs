@@ -88,9 +88,10 @@ async fn dhcp_read_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
             .into_response();
     }
 
+    let body = device_identity_payload(readback.body);
     let body = match session {
-        Session::Admin => readback.body,
-        Session::Guest => strip_dhcp_identity(&readback.body),
+        Session::Admin => body,
+        Session::Guest => strip_dhcp_identity(&body),
     };
     (StatusCode::OK, Json(body)).into_response()
 }
@@ -118,7 +119,7 @@ fn dhcp_mutation_result_response(
     readback: CaduceusHttpReadback,
 ) -> Response {
     if readback.ok {
-        return (StatusCode::OK, Json(readback.body)).into_response();
+        return (StatusCode::OK, Json(device_identity_payload(readback.body))).into_response();
     }
     (
         mutation_response_status(&readback),

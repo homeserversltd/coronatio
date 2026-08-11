@@ -75,12 +75,12 @@ async fn firewall_guest_routes_refuse_before_caduceus_contact() {
 #[tokio::test]
 async fn firewall_preserves_authoritative_failure_body_status_and_signal() {
     let receipt = serde_json::json!({"ok":true,"changed":false,"receipt":{"bindingVerified":true},"firstMissingSignal":"dns-validation-pending"});
-    let response = firewall_upstream_response(CaduceusHttpReadback { ok: true, status: 200, path: "upstream".to_string(), body: receipt.clone(), first_missing_signal: "dns-validation-pending".to_string() }, "PUT", "/api/firewall/policies/AA:BB:CC:DD:EE:FF");
+    let response = diskman_upstream_response(CaduceusHttpReadback { ok: true, status: 200, path: "upstream".to_string(), body: receipt.clone(), first_missing_signal: "dns-validation-pending".to_string() });
     assert_eq!(response.status(), StatusCode::OK);
     let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(body, receipt);
     let upstream_refusal = serde_json::json!({"ok":false,"accepted":false,"firstMissingSignal":"revision-conflict","rollback":"not-needed"});
-    let refusal = firewall_upstream_response(CaduceusHttpReadback { ok: false, status: 409, path: "upstream".to_string(), body: upstream_refusal.clone(), first_missing_signal: "revision-conflict".to_string() }, "PUT", "/api/firewall/policies/AA:BB:CC:DD:EE:FF");
+    let refusal = diskman_upstream_response(CaduceusHttpReadback { ok: false, status: 409, path: "upstream".to_string(), body: upstream_refusal.clone(), first_missing_signal: "revision-conflict".to_string() });
     assert_eq!(refusal.status(), StatusCode::CONFLICT);
     let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(refusal.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(body, upstream_refusal);
