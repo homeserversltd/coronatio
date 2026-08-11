@@ -136,6 +136,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/firewall/children/:mac", delete(firewall_unregister_route))
         .route("/api/firewall/children/:mac/whitelist", get(firewall_whitelist_get_route).put(firewall_whitelist_set_route))
         .route("/api/backblaze/status", get(backblaze_status_route))
+        .route("/api/backblaze/snapshots", get(backblaze_snapshots_route))
         .route("/api/backblaze/run", post(backblaze_run_route))
         .route("/api/nasLinker/browse", get(homeserver_rust_read_route))
         .route("/api/nasLinker/deploy", post(admin_class_generic_mutation_route))
