@@ -1,0 +1,15 @@
+/* LIBRARY: LAN IP octet calendar and upstream resolver checkbox set. */
+.ui-lan-ip-calendar, .ui-upstream-resolver { display: grid; gap: var(--tab-nest-gap-block); }
+.ui-lan-ip-calendar__prefix { color: var(--text-secondary); font-family: monospace; }
+.ui-lan-ip-calendar__chrome, .ui-lan-ip-calendar__pager, .ui-upstream-resolver__row { display: flex; align-items: center; gap: var(--tab-nest-gap-inline); flex-wrap: wrap; }
+.ui-lan-ip-calendar__chrome { justify-content: space-between; }
+.ui-lan-ip-calendar__grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: var(--tab-nest-gap-inline); }
+.ui-lan-ip-calendar__octet { min-height: 2.5rem; padding: 0; border: 1px solid var(--border); border-radius: var(--border-radius, 6px); background: var(--background); color: var(--text); font: inherit; cursor: pointer; }
+.ui-lan-ip-calendar__octet:hover:not(:disabled) { border-color: var(--accent); }
+.ui-lan-ip-calendar__octet:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ui-lan-ip-calendar__octet[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--background); font-weight: 700; }
+.ui-lan-ip-calendar__octet:disabled { opacity: .45; cursor: not-allowed; }
+.ui-lan-ip-calendar__readout, .ui-upstream-resolver__readout { margin: 0; padding: var(--tab-nest-gap-block); background: var(--primary); border: 1px solid var(--border); border-radius: var(--border-radius, 6px); white-space: pre-wrap; }
+.ui-upstream-resolver__list { display: grid; gap: var(--tab-nest-gap-block); }
+.ui-upstream-resolver__custom[hidden] { display: none; }
+@media (max-width: 480px) { .ui-lan-ip-calendar__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
