@@ -16,6 +16,8 @@ struct BackblazeState {
 #[derive(Debug, Clone)]
 struct BackblazeConfig {
     repository: String,
+    bucket: String,
+    prefix: Option<String>,
     paths: Vec<String>,
 }
 
@@ -90,12 +92,18 @@ fn backblaze_config() -> Result<BackblazeConfig, String> {
         .get("prefix")
         .and_then(serde_json::Value::as_str)
         .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let repository = match prefix {
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let repository = match prefix.as_deref() {
         Some(prefix) => format!("b2:{bucket}:{prefix}"),
         None => format!("b2:{bucket}:"),
     };
-    Ok(BackblazeConfig { repository, paths })
+    Ok(BackblazeConfig {
+        repository,
+        bucket: bucket.to_string(),
+        prefix,
+        paths,
+    })
 }
 
 fn restic_available() -> bool {
@@ -207,6 +215,23 @@ fn backblaze_credentials() -> Result<BackblazeCredentials, String> {
         .ok_or_else(|| "backblaze Keyman credentials are not available".to_string())
 }
 
+fn backblaze_checks() -> serde_json::Value {
+    let restic = restic_available();
+    let config = backblaze_config();
+    let credentials = backblaze_credentials();
+    serde_json::json!({
+        "restic": {"ok": restic, "reason": if restic { "none" } else { "restic is not configured" }},
+        "config": match &config {
+            Ok(config) => serde_json::json!({"ok": true, "bucket": config.bucket, "prefix": config.prefix, "paths": config.paths}),
+            Err(reason) => serde_json::json!({"ok": false, "reason": reason}),
+        },
+        "credentials": match &credentials {
+            Ok(_) => serde_json::json!({"ok": true}),
+            Err(reason) => serde_json::json!({"ok": false, "reason": reason}),
+        },
+    })
+}
+
 fn backblaze_preflight(include_credentials: bool) -> Result<BackblazeConfig, String> {
     if !restic_available() {
         return Err("restic is not configured".to_string());
@@ -220,8 +245,8 @@ fn backblaze_preflight(include_credentials: bool) -> Result<BackblazeConfig, Str
 
 fn backblaze_status_value() -> serde_json::Value {
     let state = backblaze_state();
-    let configuration = backblaze_preflight(true);
-    let (configured, reason) = match configuration {
+    let checks = backblaze_checks();
+    let (configured, reason) = match backblaze_preflight(true) {
         Ok(_) => (true, "none".to_string()),
         Err(reason) => (false, reason),
     };
@@ -232,11 +257,68 @@ fn backblaze_status_value() -> serde_json::Value {
         "configured": configured,
         "running": state.running,
         "reason": reason,
+        "checks": checks,
     })
 }
 
 async fn backblaze_status_route() -> impl IntoResponse {
     (StatusCode::OK, Json(backblaze_status_value()))
+}
+
+fn backblaze_snapshot(value: &serde_json::Value) -> serde_json::Value {
+    let paths = value
+        .get("paths")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    serde_json::json!({
+        "id": value.get("id").and_then(serde_json::Value::as_str).unwrap_or_default(),
+        "short_id": value.get("short_id").and_then(serde_json::Value::as_str).unwrap_or_default(),
+        "time": value.get("time").and_then(serde_json::Value::as_str).unwrap_or_default(),
+        "paths": paths,
+        "hostname": value.get("hostname").and_then(serde_json::Value::as_str).unwrap_or_default(),
+        "summary": value.get("summary").cloned().unwrap_or(serde_json::Value::Null),
+    })
+}
+
+async fn backblaze_snapshots_route() -> Response {
+    let config = match backblaze_preflight(false) {
+        Ok(config) => config,
+        Err(reason) => {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({"ok": false, "reason": reason})),
+            )
+                .into_response();
+        }
+    };
+    let credentials = match backblaze_credentials() {
+        Ok(credentials) => credentials,
+        Err(reason) => {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({"ok": false, "reason": reason})),
+            )
+                .into_response();
+        }
+    };
+    let output = Command::new("restic")
+        .args(["--repo", config.repository.as_str(), "snapshots", "--json"])
+        .env(
+            "RESTIC_PASSWORD",
+            restic_password(&credentials.application_key),
+        )
+        .env("B2_ACCOUNT_ID", credentials.account_id)
+        .env("B2_ACCOUNT_KEY", credentials.application_key)
+        .output();
+    match output {
+        Ok(output) if output.status.success() => match serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+            Ok(serde_json::Value::Array(snapshots)) => (StatusCode::OK, Json(serde_json::json!({"ok": true, "snapshots": snapshots.iter().map(backblaze_snapshot).collect::<Vec<_>>()}))).into_response(),
+            _ => (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": "restic returned an unreadable snapshots response"}))).into_response(),
+        },
+        Ok(_) => (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": "restic could not read snapshots"}))).into_response(),
+        Err(_) => (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": "restic could not start"}))).into_response(),
+    }
 }
 
 fn now_unix_seconds() -> u64 {
@@ -298,7 +380,7 @@ async fn backblaze_run_route() -> Response {
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"ok": false, "message": reason})),
             )
-                .into_response()
+                .into_response();
         }
     };
     let credentials = match backblaze_credentials() {
@@ -308,7 +390,7 @@ async fn backblaze_run_route() -> Response {
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"ok": false, "message": reason})),
             )
-                .into_response()
+                .into_response();
         }
     };
     let _run_guard = BACKBLAZE_RUN_LOCK

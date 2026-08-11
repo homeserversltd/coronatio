@@ -1,5 +1,15 @@
 .backblaze-tablet { display: grid; gap: 1rem; padding: 1.5rem; }
-.backblaze-tablet .ui-card { display: grid; gap: 1rem; }
-.backblaze-status-row { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.backblaze-tablet .ui-card { display: grid; gap: 0; }
+.backblaze-tablet .ui-card__header { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.backblaze-tablet .ui-card__header h2 { margin: 0; }
+.backblaze-checklist, .backblaze-paths, .backblaze-detail-list { display: grid; gap: .75rem; }
+.backblaze-check-row { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.backblaze-detail-list { margin: 0; }
+.backblaze-detail-list > div { display: grid; grid-template-columns: minmax(9rem, .35fr) 1fr; gap: .75rem; padding-bottom: .75rem; border-bottom: 1px solid var(--border); }
+.backblaze-detail-list > div:last-child { padding-bottom: 0; border-bottom: 0; }
+.backblaze-detail-list dt { font-weight: 600; }
+.backblaze-detail-list dd { margin: 0; }
 .backblaze-actions { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+.backblaze-path-row { padding: .75rem; border: 1px solid var(--border); background: var(--background-alt); overflow-wrap: anywhere; }
+.backblaze-empty { margin: 1rem 0 0; color: var(--secondary); }
 .backblaze-note, [data-backblaze-status], [data-backblaze-result] { color: var(--secondary); }
