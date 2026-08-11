@@ -81,6 +81,7 @@ async fn main() {
         tab_root: Arc::new(PathBuf::from(tab_root)),
     };
 
+    preload_caduceus_door_seat();
     let app = app(state);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr)
