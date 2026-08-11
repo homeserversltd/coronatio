@@ -546,6 +546,8 @@ fn shell_document_4() -> &'static str {
     }
     function openPortalModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
     function closePortalModals() { document.querySelectorAll('[data-add-portal-modal], [data-service-status-modal]').forEach(modal => { modal.hidden = true; }); }
+    function openAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); requestAnimationFrame(() => modal.querySelector('[data-add-tab-modal-close]')?.focus()); }
+    function closeAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); }
     function showPortalServiceStatus(results) {
       const modal = document.querySelector('[data-service-status-modal]'); const content = modal?.querySelector('[data-service-status-content]');
       if (content) content.textContent = results.map(result => {
@@ -736,8 +738,14 @@ fn shell_document_4() -> &'static str {
       if (editNote) { event.preventDefault(); openNoteModal(editNote.dataset.mac || '', editNote.dataset.note || ''); return; }
       const statEye = event.target.closest('[data-stat-visibility-toggle]');
       if (statEye) { event.preventDefault(); event.stopPropagation(); toggleElementVisibility('stats', statEye.dataset.statVisibilityToggle, statEye.dataset.visible !== 'true'); return; }
+      const addTab = event.target.closest('[data-add-tab-button]');
+      if (addTab) { openAddTabModal(); return; }
       const addPortal = event.target.closest('[data-add-portal-open], [data-test-add-portal]');
       if (addPortal) { openPortalModal('[data-add-portal-modal]'); return; }
+      const addTabModalClose = event.target.closest('[data-add-tab-modal-close]');
+      if (addTabModalClose) { closeAddTabModal(); return; }
+      const addTabBackdrop = event.target.closest('[data-add-tab-modal]');
+      if (addTabBackdrop && event.target === addTabBackdrop) { closeAddTabModal(); return; }
       const portalModalClose = event.target.closest('[data-portal-modal-close]');
       if (portalModalClose) { closePortalModals(); return; }
       const portalBackdrop = event.target.closest('[data-add-portal-modal], [data-service-status-modal]');
@@ -787,8 +795,8 @@ fn shell_document_4() -> &'static str {
       const domainFile = event.target.closest('[data-test-domain-file]');
       if (domainFile) { const section = domainFile.closest('[data-test-domain-file-section]'); const names = Array.from(domainFile.files || []).map(file => file.name); const readback = section?.querySelector('[data-test-domain-file-name]'); const submit = section?.querySelector('[data-test-domain-submit]'); if (readback) readback.textContent = names.length ? names.join(', ') : 'No files selected'; if (submit) submit.disabled = names.length === 0; }
     }); let uxModalDemoOpener = null;
-    const coronatioModalBackdrops = '[data-pin-modal-backdrop], [data-info-modal-backdrop], [data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop], [data-dhcp-modal-backdrop], [data-add-portal-modal], [data-note-modal], [data-manager-modal], [data-hestia-certificate-modal], [data-ux-modal-demo-backdrop]';
-    const coronatioModalCloseControls = '[data-pin-cancel], [data-info-modal-close], [data-upload-modal-close], [data-upload-pin-cancel], [data-dhcp-modal-cancel], [data-portal-modal-close], [data-note-cancel], [data-manager-close], [data-hestia-certificate-close], [data-ux-modal-close]';
+    const coronatioModalBackdrops = '[data-pin-modal-backdrop], [data-info-modal-backdrop], [data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop], [data-dhcp-modal-backdrop], [data-add-portal-modal], [data-add-tab-modal], [data-note-modal], [data-manager-modal], [data-hestia-certificate-modal], [data-ux-modal-demo-backdrop]';
+    const coronatioModalCloseControls = '[data-pin-cancel], [data-info-modal-close], [data-upload-modal-close], [data-upload-pin-cancel], [data-dhcp-modal-cancel], [data-portal-modal-close], [data-add-tab-modal-close], [data-note-cancel], [data-manager-close], [data-hestia-certificate-close], [data-ux-modal-close]';
     const coronatioModalConfirmControls = '[data-pin-confirm-button], [data-upload-pin-confirm], [data-dhcp-modal-confirm], [data-note-confirm], [data-manager-confirm]';
     function openCoronatioModal() {
       return [...document.querySelectorAll(coronatioModalBackdrops)].filter(modal => !modal.hidden && modal.getAttribute('aria-hidden') !== 'true' && getComputedStyle(modal).display !== 'none').at(-1);

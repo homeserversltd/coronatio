@@ -199,6 +199,14 @@ fn shell_document_2() -> &'static str {
       <div class="service-status-modal"><pre class="service-status-content" data-service-status-content></pre><button type="button" class="copy-button" data-service-status-copy>Copy to Clipboard</button></div>
     </div>
   </div>
+  <div class="modal-overlay" data-add-tab-modal aria-hidden="true" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="add-tab-modal-title">
+      <button type="button" class="modal-close" data-add-tab-modal-close aria-label="Close Add tab modal">×</button>
+      <h2 class="modal-title" id="add-tab-modal-title">Add tab</h2>
+      <div class="modal-content"><p>A loadable cartridge is admitted at runtime through the tab registry with process-level fault isolation. Cartridge ingress will arrive through the Caduceus twin-snake method. Today, tabs are first-party native crown panes compiled into the crown.</p></div>
+      <div class="modal-actions"><button type="button" class="secondary" data-add-tab-modal-close>Close</button></div>
+    </section>
+  </div>
   <div class="toast-container coronatio-toast-stack" data-coronatio-toast-stack aria-live="polite" aria-atomic="false"></div>
   <script>
     var coronatioAttendanceRuntimeKey = Symbol.for('coronatio.attendance.runtime.v1');
