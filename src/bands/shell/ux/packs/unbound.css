@@ -1,11 +1,99 @@
-.dns-tablet { display: grid; gap: 1rem; padding: 1.5rem; background: var(--background); color: var(--text); }
-.dns-tablet-header, .dns-form, .dns-record { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-.dns-tablet-header, .dns-form, .dns-records { padding: 1rem; border: 1px solid var(--border); border-radius: var(--border-radius, 6px); background: var(--primary); }
-.dns-records { display: grid; gap: .5rem; }
-.dns-record { justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: .5rem; }
-.dns-record span, [data-dns-state] { color: var(--secondary); font-family: monospace; }
-.dns-empty { color: var(--secondary); }
-.identity-roster-host { overflow-x: auto; }
-.identity-roster { width: 100%; border-collapse: collapse; font-size: .9rem; }
-.identity-roster th, .identity-roster td { padding: .6rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
-.identity-roster [data-roster-emphasis="address"] td:nth-child(2), .identity-roster [data-roster-emphasis="name"] td:nth-child(2) { font-weight: 700; }
+.dns-tablet {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1.5rem;
+  background: var(--background);
+  color: var(--text);
+}
+
+.dns-tablet-header,
+.dns-header-actions,
+.dns-resolver-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .75rem;
+}
+
+.dns-tablet-header {
+  justify-content: space-between;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius, 6px);
+  background: var(--primary);
+}
+
+.dns-tablet-header h2,
+.dns-tablet-header p,
+.dns-names-section h3,
+.dns-resolver-section h3,
+.dns-records h3 {
+  margin: 0;
+}
+
+.dns-tablet-header p,
+[data-dns-state],
+.dns-empty {
+  color: var(--secondary);
+}
+
+.dns-names-section,
+.dns-resolver-section,
+.dns-records {
+  display: grid;
+  gap: .75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius, 6px);
+  background: var(--primary);
+}
+
+.dns-name-table,
+.dns-records .ui-table,
+.identity-roster {
+  width: 100%;
+}
+
+.dns-name-table code,
+.dns-info-row strong {
+  color: var(--accent);
+}
+
+.dns-resolver-controls .ui-select-wrapper {
+  flex: 1 1 14rem;
+}
+
+.dns-resolver-status {
+  display: grid;
+  gap: .5rem;
+}
+
+.dns-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: .5rem;
+  border-top: 1px solid var(--border);
+}
+
+.identity-roster-host {
+  overflow-x: auto;
+}
+
+.identity-roster th,
+.identity-roster td {
+  padding: .6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+[data-dns-add-modal][hidden] { display: none; }
+
+@media (max-width: 48rem) {
+  .dns-tablet { padding: 1rem; }
+  .dns-tablet-header { align-items: stretch; }
+  .dns-header-actions .ui-button,
+  .dns-resolver-controls .ui-button { flex: 1 1 12rem; }
+}
