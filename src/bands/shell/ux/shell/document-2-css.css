@@ -30,3 +30,7 @@
       .tab-bar, .content { padding-left: 12px; padding-right: 12px; }
       .pane-grid { grid-template-columns: 1fr; }
     }
+
+/* Loadable cartridge viewport: only its admitted crown pane owns the iframe. */
+.cartridge-viewport { width: 100%; height: 100%; min-height: 0; }
+.cartridge-viewport > iframe { display: block; width: 100%; height: 100%; min-height: 72vh; border: 0; }

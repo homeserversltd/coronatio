@@ -546,7 +546,19 @@ fn shell_document_4() -> &'static str {
     }
     function openPortalModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
     function closePortalModals() { document.querySelectorAll('[data-add-portal-modal], [data-service-status-modal]').forEach(modal => { modal.hidden = true; }); }
-    function openAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); requestAnimationFrame(() => modal.querySelector('[data-add-tab-modal-close]')?.focus()); }
+    function cartridgeIdFromTitle(title) { return String(title || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+    function cartridgeRows(payload) { const body = payload?.cartridges ?? payload ?? {}; return Array.isArray(body) ? body : (body.cartridges || body.rows || []); }
+    async function loadCartridgeManagement() { const list = document.querySelector('[data-cartridge-management-list]'); if (!list) return;
+      try { const response = await fetch('/api/v1/cartridges', { cache: 'no-store' }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.firstMissingSignal || 'Cartridges unavailable'); const rows = cartridgeRows(payload); list.innerHTML = rows.length ? rows.map(row => `<li data-cartridge-row="${escapeHtml(row.id)}"><span>${escapeHtml(row.title || row.id)}</span><button type="button" class="secondary" data-cartridge-remove="${escapeHtml(row.id)}">Remove</button></li>`).join('') : '<li>No loadable cartridges admitted.</li>'; }
+      catch (error) { list.textContent = error.message || 'Cartridges unavailable'; } }
+    async function refreshCartridgeTabs() { const active = currentActiveTabId(); const selected = await refreshTabBar(active); if (selected) showPane(selected); }
+    async function submitCartridgeForm(event) { event.preventDefault(); const form = event.currentTarget; const title = form.elements.title.value.trim(), url = form.elements.url.value.trim(), id = cartridgeIdFromTitle(title); if (!id || !url) { showCoronatioToast('Title and URL are required', 'error'); return; } const submit = form.querySelector('[type="submit"]'); if (submit) submit.disabled = true;
+      try { const response = await fetch('/api/v1/cartridges/admit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, title, url, guest_class: 'iframe', admin_only: Boolean(form.elements.adminOnly.checked) }) }); const payload = await response.json().catch(() => ({})); if (!response.ok || payload.ok === false) throw new Error(payload.firstMissingSignal || 'Could not add tab'); form.reset(); closeAddTabModal(); showCoronatioToast(`Added ${title}`, 'success'); await refreshCartridgeTabs(); }
+      catch (error) { showCoronatioToast(error.message || 'Could not add tab', 'error'); } finally { if (submit) submit.disabled = false; } }
+    async function removeCartridge(id) { if (!id) return;
+      try { const response = await fetch('/api/v1/cartridges/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); const payload = await response.json().catch(() => ({})); if (!response.ok || payload.ok === false) throw new Error(payload.firstMissingSignal || 'Could not remove tab'); showCoronatioToast(`Removed ${id}`, 'success'); await loadCartridgeManagement(); await refreshCartridgeTabs(); }
+      catch (error) { showCoronatioToast(error.message || 'Could not remove tab', 'error'); } }
+    function openAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); void loadCartridgeManagement(); requestAnimationFrame(() => modal.querySelector('[name="title"]')?.focus()); }
     function closeAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); }
     function showPortalServiceStatus(results) {
       const modal = document.querySelector('[data-service-status-modal]'); const content = modal?.querySelector('[data-service-status-content]');
@@ -740,6 +752,8 @@ fn shell_document_4() -> &'static str {
       if (statEye) { event.preventDefault(); event.stopPropagation(); toggleElementVisibility('stats', statEye.dataset.statVisibilityToggle, statEye.dataset.visible !== 'true'); return; }
       const addTab = event.target.closest('[data-add-tab-button]');
       if (addTab) { openAddTabModal(); return; }
+      const removeCartridgeButton = event.target.closest('[data-cartridge-remove]');
+      if (removeCartridgeButton) { removeCartridge(removeCartridgeButton.dataset.cartridgeRemove); return; }
       const addPortal = event.target.closest('[data-add-portal-open], [data-test-add-portal]');
       if (addPortal) { openPortalModal('[data-add-portal-modal]'); return; }
       const addTabModalClose = event.target.closest('[data-add-tab-modal-close]');
@@ -781,7 +795,7 @@ fn shell_document_4() -> &'static str {
     }, true); document.body.addEventListener('animationend', event => {
       const toast = event.target.closest?.('[data-coronatio-toast]');
       if (toast && toast.classList.contains('toast-exit') && event.animationName === 'toast-slide-out') toast.remove();
-    }); document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm);
+    }); document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm); document.querySelector('[data-cartridge-add-form]')?.addEventListener('submit', submitCartridgeForm);
     document.body.addEventListener('input', event => {
       const slider = event.target.closest('[data-ui-slider]');
       if (slider) { const out = slider.closest('.showcase-item')?.querySelector('[data-slider-value]'); if (out) out.textContent = slider.value; return; }
