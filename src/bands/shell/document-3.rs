@@ -807,6 +807,7 @@ fn shell_document_3() -> &'static str {
       if (!viewportFamilyAdmitted(active)) return;
       if (active === 'stats') { hydrateStats(); connectPulseStream(); }
       if (active === 'dhcp') hydrateDhcp();
+      if (active === 'test') hydrateTestNetworkCatalog();
       if (active === 'unbound') hydrateDns();
       if (active === 'firewall') hydrateFirewall();
       if (active === 'backblaze') hydrateBackblaze();
