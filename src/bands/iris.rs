@@ -238,7 +238,12 @@ mod iris {
             .filter(|tab| tab.id != "fallback")
             .cloned()
             .collect::<Vec<_>>();
-        tabs.sort_by(|left, right| left.order.cmp(&right.order).then(left.id.cmp(&right.id)));
+        tabs.sort_by(|left, right| {
+            left.admin_only
+                .cmp(&right.admin_only)
+                .then(left.order.cmp(&right.order))
+                .then(left.id.cmp(&right.id))
+        });
         tabs
     }
 
