@@ -18,6 +18,8 @@ struct CaduceusDoorRow {
     #[serde(default)]
     crown_alias: Option<String>,
     #[serde(default)]
+    crown_aliases: Option<Vec<String>>,
+    #[serde(default)]
     actuator: Option<String>,
 }
 
@@ -160,8 +162,15 @@ fn resolve_from_caduceus_door_seat(
         .iter()
         .filter(|row| row.method.eq_ignore_ascii_case(&method))
         .filter_map(|row| {
-            let alias = row.crown_alias.as_deref()?;
-            let values = caduceus_door_shape_matches(alias, crown_path)?;
+            let values = match row.crown_aliases.as_deref() {
+                Some(aliases) => aliases
+                    .iter()
+                    .find_map(|alias| caduceus_door_shape_matches(alias, crown_path)),
+                None => row
+                    .crown_alias
+                    .as_deref()
+                    .and_then(|alias| caduceus_door_shape_matches(alias, crown_path)),
+            }?;
             Some((row, values))
         })
         .collect::<Vec<_>>();
