@@ -35,7 +35,7 @@ async fn caduceus_update_check_route(headers: axum::http::HeaderMap) -> impl Int
 }
 
 async fn caduceus_update_now_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    caduceus_mutation_route(&headers, "update_now", "/api/v1/update/now", "update now", "local")
+    caduceus_mutation_route(&headers, "update_now", "/api/v1/harmonia/update", "harmonia update", "local")
 }
 
 #[derive(Deserialize)]
