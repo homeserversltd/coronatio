@@ -169,7 +169,9 @@ fn shell_document_3() -> &'static str {
       button.title = status === 'unknown' ? 'Services status unavailable' : 'Services: ' + status;
       button.setAttribute('aria-label', 'Services Status ' + status);
     }
+    const sourceCurrencyUpdateState = { inFlight: false, latestEnvelope: null };
     function setSourceCurrencyIndicatorState(envelope) {
+      sourceCurrencyUpdateState.latestEnvelope = envelope;
       const button = document.querySelector('[data-indicator="source-currency"]');
       if (!button) return;
       const data = envelope?.snapshot || {};
@@ -189,6 +191,38 @@ fn shell_document_3() -> &'static str {
       modal.querySelector('[data-source-currency-relation]')?.replaceChildren(document.createTextNode(relation === 'current' ? 'The running build matches origin/main.' : relation === 'behind' ? 'An update is available from origin/main.' : relation === 'diverged' ? 'The running build differs from origin/main.' : 'The source-currency relation is unavailable.'));
       modal.querySelector('[data-source-currency-build-sha]')?.replaceChildren(document.createTextNode(data?.buildSha || 'Unavailable'));
       modal.querySelector('[data-source-currency-origin-main-sha]')?.replaceChildren(document.createTextNode(data?.originMainSha || 'Unavailable'));
+      const update = modal.querySelector('[data-source-currency-update]');
+      if (update) {
+        const available = headerState.isAdmin && relation === 'behind';
+        update.hidden = !available;
+        update.disabled = !available || sourceCurrencyUpdateState.inFlight;
+        update.setAttribute('aria-busy', String(sourceCurrencyUpdateState.inFlight));
+      }
+    }
+    async function startSourceCurrencyUpdate(update) {
+      if (!headerState.isAdmin || sourceCurrencyUpdateState.inFlight || update.disabled) return;
+      sourceCurrencyUpdateState.inFlight = true;
+      update.disabled = true;
+      update.setAttribute('aria-busy', 'true');
+      try {
+        const response = await fetch('/api/caduceus/update/now', { method: 'POST', cache: 'no-store' });
+        const receipt = await response.json().catch(() => ({}));
+        const readback = receipt?.readback || {};
+        if (readback.status === 404) {
+          showCoronatioToast('Update pending — Caduceus is not deployed yet.', 'warning');
+        } else if (receipt?.accepted) {
+          showCoronatioToast('Update started — the crown will restart when it completes', 'success');
+        } else if (readback.status === 409) {
+          showCoronatioToast('Update is already running.', 'warning');
+        } else {
+          showCoronatioToast(readback.firstMissingSignal || receipt.firstMissingSignal || 'Update could not be started.', 'warning');
+        }
+      } catch (_) {
+        showCoronatioToast('Update could not be started.', 'warning');
+      } finally {
+        sourceCurrencyUpdateState.inFlight = false;
+        setSourceCurrencyIndicatorState(sourceCurrencyUpdateState.latestEnvelope);
+      }
     }
     function routeReadLabel(route, data) {
       const ok = data && (data.ok === true || data.success === true);
@@ -469,6 +503,7 @@ fn shell_document_3() -> &'static str {
       infoBackdrop.setAttribute('aria-hidden', 'false');
       wireModalFetches();
       hydrateModalRouteReads(kind);
+      if (kind === 'source-currency') setSourceCurrencyIndicatorState(sourceCurrencyUpdateState.latestEnvelope);
       if (kind === 'power-meter') renderPowerModal();
     }
     function closeInfoModal() {

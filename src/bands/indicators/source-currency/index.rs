@@ -6,7 +6,7 @@ pub(crate) fn source_currency_manifest() -> IndicatorManifest {
         title: "Coronatio Currency",
         icon_id: "git-branch",
         initial_state: "unknown",
-        admin_interactive: false,
+        admin_interactive: true,
         render_indicator: render_source_currency_indicator,
         render_modal: render_source_currency_modal,
         collector: Some(source_currency_collector),
@@ -19,7 +19,7 @@ fn render_source_currency_indicator(ctx: IndicatorRenderContext) -> String {
 }
 fn render_source_currency_modal(ctx: IndicatorRenderContext) -> String {
     let _ = ctx.session;
-    r##"<div class="source-currency-modal" data-modal-kind-body="source-currency"><p class="status-text unknown" data-source-currency-label>Unknown / unavailable</p><p data-source-currency-relation>The source-currency relation is unavailable.</p><dl><dt>Build SHA</dt><dd class="readout" data-source-currency-build-sha>Unavailable</dd><dt>Origin main SHA</dt><dd class="readout" data-source-currency-origin-main-sha>Unavailable</dd></dl></div>"##.to_string()
+    r##"<div class="source-currency-modal" data-modal-kind-body="source-currency"><p class="status-text unknown" data-source-currency-label>Unknown / unavailable</p><p data-source-currency-relation>The source-currency relation is unavailable.</p><dl><dt>Build SHA</dt><dd class="readout" data-source-currency-build-sha>Unavailable</dd><dt>Origin main SHA</dt><dd class="readout" data-source-currency-origin-main-sha>Unavailable</dd></dl>${indicatorAdminSection(`<div class="source-currency-actions"><button type="button" class="ui-button ui-button--primary" data-source-currency-update hidden disabled>Update now</button></div>`)}</div>"##.to_string()
 }
 fn source_currency_collector(session: Session) -> Result<serde_json::Value, String> {
     collect_indicator_topic("source.currency", session)
