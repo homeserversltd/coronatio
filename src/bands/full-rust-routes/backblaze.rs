@@ -1,4 +1,5 @@
 const BACKBLAZE_STATE_PATH: &str = "/var/lib/coronatio/backblaze_state.json";
+const BACKBLAZE_KEYMAN_NEWKEY: &str = "/vault/keyman/newkey.sh";
 const BACKBLAZE_KEYMAN_EXPORT: &str = "/vault/keyman/exportkey.sh";
 const BACKBLAZE_KEY_EXCHANGE: &str = "/mnt/keyexchange";
 const BACKBLAZE_RESTIC_SALT: &[u8] = b"coronatio_backblaze_restic_v1";
@@ -6,25 +7,27 @@ static BACKBLAZE_RUN_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct BackblazeState {
+    #[serde(default)]
+    buckets: BTreeMap<String, BackblazeBucketState>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct BackblazeBucketState {
+    running: bool,
     last_run_at: Option<u64>,
     last_run_ok: Option<bool>,
-    last_backup_size_bytes: Option<u64>,
     #[serde(default)]
-    running: bool,
+    last_error: Option<String>,
 }
-
-#[derive(Debug, Clone)]
-struct BackblazeConfig {
-    repository: String,
-    bucket: String,
-    prefix: Option<String>,
-    paths: Vec<String>,
-}
-
 #[derive(Debug, Clone)]
 struct BackblazeCredentials {
-    account_id: String,
+    key_id: String,
     application_key: String,
+}
+#[derive(Debug, Clone)]
+struct B2Authorization {
+    api_url: String,
+    token: String,
+    bucket_id: String,
 }
 
 fn backblaze_state_path() -> PathBuf {
@@ -32,83 +35,119 @@ fn backblaze_state_path() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(BACKBLAZE_STATE_PATH))
 }
-
 fn backblaze_state() -> BackblazeState {
     std::fs::read_to_string(backblaze_state_path())
         .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
 }
-
 fn write_backblaze_state(state: &BackblazeState) -> Result<(), String> {
     let path = backblaze_state_path();
-    let parent = path
-        .parent()
-        .ok_or_else(|| "backblaze-state-path-invalid".to_string())?;
-    std::fs::create_dir_all(parent)
-        .map_err(|_| "backblaze-state-directory-unwritable".to_string())?;
-    let encoded =
-        serde_json::to_vec(state).map_err(|_| "backblaze-state-encode-failed".to_string())?;
-    let temporary = parent.join(format!(".backblaze_state.{}.tmp", std::process::id()));
-    std::fs::write(&temporary, encoded).map_err(|_| "backblaze-state-unwritable".to_string())?;
-    std::fs::rename(&temporary, path).map_err(|_| "backblaze-state-promote-failed".to_string())
+    let parent = path.parent().ok_or("invalid state path")?;
+    std::fs::create_dir_all(parent).map_err(|_| "state directory unavailable")?;
+    let tmp = parent.join(format!(".backblaze.{}.tmp", std::process::id()));
+    std::fs::write(
+        &tmp,
+        serde_json::to_vec(state).map_err(|_| "state encode failed")?,
+    )
+    .map_err(|_| "state write failed")?;
+    std::fs::rename(tmp, path).map_err(|_| "state promote failed".to_string())
+}
+fn normalized_service(bucket: &str) -> String {
+    bucket.replace('-', "_")
+}
+fn keyman_service(bucket: &str) -> String {
+    normalized_service(bucket)
 }
 
-fn backblaze_config() -> Result<BackblazeConfig, String> {
-    let (_, homeserver) = load_homeserver_json_sync()?;
-    let config = homeserver
+fn backblaze_config_value() -> Result<serde_json::Value, String> {
+    let (_, root) = load_homeserver_json_sync()?;
+    let config = root
         .get("tabs")
-        .and_then(|tabs| tabs.get("backblaze"))
-        .and_then(|tab| tab.get("config"))
-        .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| {
-            "backblaze configuration is missing from tabs.backblaze.config".to_string()
-        })?;
+        .and_then(|v| v.get("backblaze"))
+        .and_then(|v| v.get("config"))
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if config.get("buckets").and_then(|v| v.as_array()).is_some() {
+        return Ok(config);
+    }
     let bucket = config
         .get("bucket")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "backblaze bucket is missing from tabs.backblaze.config".to_string())?;
-    let paths = config
-        .get("paths")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| "backblaze paths are missing from tabs.backblaze.config".to_string())?
-        .iter()
-        .map(serde_json::Value::as_str)
-        .map(|value| {
-            value
-                .map(str::trim)
-                .filter(|path| !path.is_empty())
-                .map(str::to_string)
-        })
-        .collect::<Option<Vec<_>>>()
-        .filter(|paths| !paths.is_empty())
-        .ok_or_else(|| "backblaze paths must be a non-empty list of absolute paths".to_string())?;
-    if paths.iter().any(|path| !path.starts_with('/')) {
-        return Err("backblaze paths must be absolute".to_string());
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    if bucket.is_empty() {
+        return Ok(serde_json::json!({"buckets": []}));
     }
-    let prefix = config
-        .get("prefix")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    let repository = match prefix.as_deref() {
-        Some(prefix) => format!("b2:{bucket}:{prefix}"),
-        None => format!("b2:{bucket}:"),
-    };
-    Ok(BackblazeConfig {
-        repository,
-        bucket: bucket.to_string(),
-        prefix,
-        paths,
-    })
+    let prefix = config.get("prefix").and_then(|v| v.as_str()).unwrap_or("");
+    let items = config
+        .get("paths")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|v| v.as_str().map(|path| serde_json::json!({"path": path})))
+        .collect::<Vec<_>>();
+    Ok(
+        serde_json::json!({"buckets": [{"bucket": bucket, "prefix": prefix, "encrypted": true, "items": items}]}),
+    )
 }
-
-fn restic_available() -> bool {
-    env::var_os("PATH")
-        .is_some_and(|paths| env::split_paths(&paths).any(|path| path.join("restic").is_file()))
+fn normalized_config(raw: serde_json::Value) -> Result<serde_json::Value, String> {
+    let buckets = raw
+        .get("buckets")
+        .and_then(|v| v.as_array())
+        .ok_or("buckets must be an array")?;
+    let mut out = Vec::new();
+    for b in buckets {
+        let bucket = b
+            .get("bucket")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if bucket.is_empty() || bucket.contains('/') {
+            return Err("bucket is invalid".into());
+        }
+        let prefix = b
+            .get("prefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .trim_matches('/');
+        let encrypted = b.get("encrypted").and_then(|v| v.as_bool()).unwrap_or(true);
+        let items = b
+            .get("items")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|i| {
+                let p = i.get("path").and_then(|v| v.as_str()).unwrap_or("").trim();
+                (!p.is_empty() && p.starts_with('/')).then(|| serde_json::json!({"path": p}))
+            })
+            .collect::<Vec<_>>();
+        out.push(serde_json::json!({"bucket": bucket, "prefix": prefix, "encrypted": encrypted, "items": items}));
+    }
+    Ok(serde_json::json!({"buckets": out}))
+}
+fn save_backblaze_config(config: serde_json::Value) -> Result<(), String> {
+    let path = homeserver_json_path();
+    let raw = std::fs::read_to_string(&path).map_err(|_| "homeserver.json unreadable")?;
+    let mut root: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|_| "homeserver.json invalid")?;
+    root["tabs"]["backblaze"]["config"] = config;
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&root).map_err(|_| "config encode failed")?,
+    )
+    .map_err(|_| "config write failed".into())
+}
+fn backblaze_bucket(config: &serde_json::Value, name: &str) -> Option<serde_json::Value> {
+    config
+        .get("buckets")?
+        .as_array()?
+        .iter()
+        .find(|b| b.get("bucket").and_then(|v| v.as_str()) == Some(name))
+        .cloned()
 }
 
 fn backblaze_credential_candidates(service: &str) -> Vec<PathBuf> {
@@ -150,25 +189,19 @@ fn credential_field(value: &serde_json::Value, names: &[&str]) -> Option<String>
         .map(str::to_string)
 }
 
-fn parse_backblaze_credentials(raw: &str) -> Option<BackblazeCredentials> {
+fn parse_keyman_credentials(raw: &str) -> Option<BackblazeCredentials> {
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) {
-        let account_id = credential_field(
+        let key_id = credential_field(
             &value,
-            &[
-                "B2_ACCOUNT_ID",
-                "account_id",
-                "accountId",
-                "key_id",
-                "keyId",
-            ],
+            &["B2_ACCOUNT_ID", "key_id", "accountId", "key_id", "keyId"],
         );
         let application_key = credential_field(
             &value,
             &["B2_ACCOUNT_KEY", "application_key", "applicationKey", "key"],
         );
-        if let (Some(account_id), Some(application_key)) = (account_id, application_key) {
+        if let (Some(key_id), Some(application_key)) = (key_id, application_key) {
             return Some(BackblazeCredentials {
-                account_id,
+                key_id,
                 application_key,
             });
         }
@@ -183,7 +216,7 @@ fn parse_backblaze_credentials(raw: &str) -> Option<BackblazeCredentials> {
             )
         })
         .collect::<BTreeMap<_, _>>();
-    let account_id = ["B2_ACCOUNT_ID", "B2_KEY_ID", "account_id", "key_id"]
+    let key_id = ["B2_ACCOUNT_ID", "B2_KEY_ID", "key_id", "key_id"]
         .into_iter()
         .find_map(|key| values.get(key).copied())
         .filter(|value| !value.is_empty())?;
@@ -192,13 +225,13 @@ fn parse_backblaze_credentials(raw: &str) -> Option<BackblazeCredentials> {
         .find_map(|key| values.get(key).copied())
         .filter(|value| !value.is_empty())?;
     Some(BackblazeCredentials {
-        account_id: account_id.to_string(),
+        key_id: key_id.to_string(),
         application_key: application_key.to_string(),
     })
 }
 
-fn backblaze_credentials(bucket: &str) -> Result<BackblazeCredentials, String> {
-    let service = bucket.replace('-', "_");
+fn keyman_credentials(bucket: &str) -> Result<BackblazeCredentials, String> {
+    let service = keyman_service(bucket);
     let exporter = PathBuf::from(BACKBLAZE_KEYMAN_EXPORT);
     if !exporter.is_file() {
         return Err("backblaze Keyman export is not configured".to_string());
@@ -215,247 +248,665 @@ fn backblaze_credentials(bucket: &str) -> Result<BackblazeCredentials, String> {
         .find_map(|path| {
             std::fs::read_to_string(path)
                 .ok()
-                .and_then(|raw| parse_backblaze_credentials(&raw))
+                .and_then(|raw| parse_keyman_credentials(&raw))
         })
         .ok_or_else(|| "backblaze Keyman credentials are not available".to_string())
 }
 
-fn backblaze_checks() -> serde_json::Value {
-    let restic = restic_available();
-    let config = backblaze_config();
-    let credentials = backblaze_config().and_then(|config| backblaze_credentials(&config.bucket));
-    serde_json::json!({
-        "restic": {"ok": restic, "reason": if restic { "none" } else { "restic is not configured" }},
-        "config": match &config {
-            Ok(config) => serde_json::json!({"ok": true, "bucket": config.bucket, "prefix": config.prefix, "paths": config.paths}),
-            Err(reason) => serde_json::json!({"ok": false, "reason": reason}),
-        },
-        "credentials": match &credentials {
-            Ok(_) => serde_json::json!({"ok": true}),
-            Err(reason) => serde_json::json!({"ok": false, "reason": reason}),
-        },
+fn b2_authorize(credentials: &BackblazeCredentials) -> Result<B2Authorization, String> {
+    let basic = format!("{}:{}", credentials.key_id, credentials.application_key);
+    let output = Command::new("curl")
+        .args([
+            "-fsS",
+            "-u",
+            &basic,
+            "https://api.backblazeb2.com/b2api/v2/b2_authorize_account",
+        ])
+        .output()
+        .map_err(|_| "B2 authorize failed")?;
+    if !output.status.success() {
+        return Err("B2 authorize failed".into());
+    }
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|_| "B2 authorize returned invalid response")?;
+    Ok(B2Authorization {
+        api_url: value["apiUrl"]
+            .as_str()
+            .ok_or("B2 authorize returned no API URL")?
+            .to_owned(),
+        token: value["authorizationToken"]
+            .as_str()
+            .ok_or("B2 authorize returned no token")?
+            .to_owned(),
+        bucket_id: String::new(),
     })
 }
-
-fn backblaze_preflight(include_credentials: bool) -> Result<BackblazeConfig, String> {
-    if !restic_available() {
-        return Err("restic is not configured".to_string());
+fn authorize_and_list(
+    bucket: &str,
+    credentials: &BackblazeCredentials,
+) -> Result<B2Authorization, String> {
+    let auth = b2_authorize(credentials)?;
+    let url = format!("{}/b2api/v2/b2_list_buckets", auth.api_url);
+    let output = Command::new("curl")
+        .args([
+            "-fsS",
+            "-H",
+            &format!("Authorization: {}", auth.token),
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            &serde_json::json!({"accountId": credentials.key_id, "bucketName": bucket}).to_string(),
+            &url,
+        ])
+        .output()
+        .map_err(|_| "B2 bucket listing failed")?;
+    if !output.status.success() {
+        return Err("B2 bucket listing failed".into());
     }
-    let config = backblaze_config()?;
-    if include_credentials {
-        backblaze_credentials(&config.bucket)?;
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|_| "B2 bucket listing returned invalid response")?;
+    if let Some(found) = value
+        .get("buckets")
+        .and_then(|v| v.as_array())
+        .and_then(|bs| {
+            bs.iter()
+                .find(|b| b.get("bucketName").and_then(|v| v.as_str()) == Some(bucket))
+        })
+    {
+        let mut auth = auth;
+        auth.bucket_id = found
+            .get("bucketId")
+            .and_then(|v| v.as_str())
+            .ok_or("B2 bucket listing returned no bucket ID")?
+            .to_owned();
+        Ok(auth)
+    } else {
+        Err("B2 bucket is not reachable".into())
     }
-    Ok(config)
 }
-
-fn backblaze_status_value() -> serde_json::Value {
-    let state = backblaze_state();
-    let checks = backblaze_checks();
-    let (configured, reason) = match backblaze_preflight(true) {
-        Ok(_) => (true, "none".to_string()),
-        Err(reason) => (false, reason),
+fn authorize_bucket(bucket: &str, submitted: &serde_json::Value) -> Result<(), String> {
+    let key_id = submitted
+        .get("keyId")
+        .and_then(|v| v.as_str())
+        .or_else(|| submitted.get("key_id").and_then(|v| v.as_str()))
+        .ok_or("keyId is required")?;
+    let application_key = submitted
+        .get("applicationKey")
+        .and_then(|v| v.as_str())
+        .or_else(|| submitted.get("application_key").and_then(|v| v.as_str()))
+        .ok_or("applicationKey is required")?;
+    let credentials = BackblazeCredentials {
+        key_id: key_id.to_owned(),
+        application_key: application_key.to_owned(),
     };
-    serde_json::json!({
-        "last_run_at": state.last_run_at,
-        "last_run_ok": state.last_run_ok,
-        "last_backup_size_bytes": state.last_backup_size_bytes,
-        "configured": configured,
-        "running": state.running,
-        "reason": reason,
-        "checks": checks,
-    })
-}
-
-async fn backblaze_status_route() -> impl IntoResponse {
-    (StatusCode::OK, Json(backblaze_status_value()))
-}
-
-async fn backblaze_config_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
-    let readback = mutation_staff_intent(&mutation_authority(), &headers, "POST", "/api/backblaze/config", "backblaze configuration", body);
-    if readback.ok {
-        return (StatusCode::OK, Json(serde_json::json!({"ok": true, "locked": true}))).into_response();
+    let _ = authorize_and_list(bucket, &credentials)?;
+    let service = keyman_service(bucket);
+    let seed = Command::new(BACKBLAZE_KEYMAN_NEWKEY)
+        .args([&service, key_id, application_key])
+        .output()
+        .map_err(|_| "Keyman newkey service unavailable")?;
+    if !seed.status.success() {
+        return Err("Keyman newkey service unavailable".into());
     }
-    let step = readback
-        .body
-        .get("step")
-        .and_then(serde_json::Value::as_str)
-        .filter(|step| matches!(*step, "verify" | "keyman" | "config" | "locked"))
-        .unwrap_or("config");
-    let reason = readback
-        .body
-        .get("reason")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or(readback.first_missing_signal.as_str());
-    (
-        mutation_response_status(&readback),
-        Json(serde_json::json!({"ok": false, "step": step, "reason": reason})),
-    )
-        .into_response()
+    Ok(())
 }
 
-fn backblaze_snapshot(value: &serde_json::Value) -> serde_json::Value {
-    let paths = value
-        .get("paths")
-        .and_then(serde_json::Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    serde_json::json!({
-        "id": value.get("id").and_then(serde_json::Value::as_str).unwrap_or_default(),
-        "short_id": value.get("short_id").and_then(serde_json::Value::as_str).unwrap_or_default(),
-        "time": value.get("time").and_then(serde_json::Value::as_str).unwrap_or_default(),
-        "paths": paths,
-        "hostname": value.get("hostname").and_then(serde_json::Value::as_str).unwrap_or_default(),
-        "summary": value.get("summary").cloned().unwrap_or(serde_json::Value::Null),
-    })
-}
-
-async fn backblaze_snapshots_route() -> Response {
-    let config = match backblaze_preflight(false) {
-        Ok(config) => config,
-        Err(reason) => {
-            return (
-                StatusCode::OK,
-                Json(serde_json::json!({"ok": false, "reason": reason})),
-            )
-                .into_response();
-        }
-    };
-    let credentials = match backblaze_credentials(&config.bucket) {
-        Ok(credentials) => credentials,
-        Err(reason) => {
-            return (
-                StatusCode::OK,
-                Json(serde_json::json!({"ok": false, "reason": reason})),
-            )
-                .into_response();
-        }
-    };
-    let mut output = Command::new("restic")
-        .args(["--repo", config.repository.as_str(), "snapshots", "--json"])
-        .env(
-            "RESTIC_PASSWORD",
-            restic_password(&credentials.application_key),
-        )
-        .env("B2_ACCOUNT_ID", &credentials.account_id)
-        .env("B2_ACCOUNT_KEY", &credentials.application_key)
-        .output();
-    if output.as_ref().is_ok_and(|result| !result.status.success() && restic_repo_uninitialized(&result.stderr)) && restic_init(&config, &credentials) {
-        output = Command::new("restic").args(["--repo", config.repository.as_str(), "snapshots", "--json"]).env("RESTIC_PASSWORD", restic_password(&credentials.application_key)).env("B2_ACCOUNT_ID", &credentials.account_id).env("B2_ACCOUNT_KEY", &credentials.application_key).output();
-    }
-    match output {
-        Ok(output) if output.status.success() => match serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-            Ok(serde_json::Value::Array(snapshots)) => (StatusCode::OK, Json(serde_json::json!({"ok": true, "snapshots": snapshots.iter().map(backblaze_snapshot).collect::<Vec<_>>()}))).into_response(),
-            _ => (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": "restic returned an unreadable snapshots response"}))).into_response(),
-        },
-        Ok(_) => (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": "restic could not read snapshots"}))).into_response(),
-        Err(_) => (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": "restic could not start"}))).into_response(),
-    }
-}
-
-fn restic_repo_uninitialized(stderr: &[u8]) -> bool {
-    let text = String::from_utf8_lossy(stderr).to_ascii_lowercase();
-    text.contains("not initialized") || text.contains("repository does not exist") || text.contains("is there a repository")
-}
-
-fn restic_init(config: &BackblazeConfig, credentials: &BackblazeCredentials) -> bool {
-    Command::new("restic").args(["--repo", config.repository.as_str(), "init"]).env("RESTIC_PASSWORD", restic_password(&credentials.application_key)).env("B2_ACCOUNT_ID", &credentials.account_id).env("B2_ACCOUNT_KEY", &credentials.application_key).output().is_ok_and(|output| output.status.success())
-}
-
-fn now_unix_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-fn restic_password(application_key: &str) -> String {
+fn restic_password(key: &str) -> String {
     let mut derived = [0u8; 32];
     pbkdf2::pbkdf2_hmac::<sha2::Sha256>(
-        application_key.as_bytes(),
+        key.as_bytes(),
         BACKBLAZE_RESTIC_SALT,
         100_000,
         &mut derived,
     );
     base64::Engine::encode(&base64::engine::general_purpose::STANDARD, derived)
 }
-
-fn restic_backup_size(output: &[u8]) -> Option<u64> {
-    String::from_utf8_lossy(output)
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .find_map(|value| {
-            value
-                .get("total_bytes_processed")
-                .and_then(serde_json::Value::as_u64)
-        })
+fn restic_init(repo: &str, credentials: &BackblazeCredentials) -> Result<(), String> {
+    let out = Command::new("restic")
+        .args(["--repo", repo, "init"])
+        .env(
+            "RESTIC_PASSWORD",
+            restic_password(&credentials.application_key),
+        )
+        .env("B2_ACCOUNT_ID", &credentials.key_id)
+        .env("B2_ACCOUNT_KEY", &credentials.application_key)
+        .output()
+        .map_err(|_| "restic init failed")?;
+    out.status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "restic init failed".into())
+}
+fn restic_uninitialized(stderr: &[u8]) -> bool {
+    let s = String::from_utf8_lossy(stderr).to_ascii_lowercase();
+    s.contains("not initialized")
+        || s.contains("repository does not exist")
+        || s.contains("is there a repository")
+}
+fn restic_backup(
+    repo: &str,
+    paths: &[String],
+    credentials: &BackblazeCredentials,
+) -> Result<(), String> {
+    let run = || {
+        Command::new("restic")
+            .args(["--repo", repo, "backup", "--json"])
+            .args(paths)
+            .env(
+                "RESTIC_PASSWORD",
+                restic_password(&credentials.application_key),
+            )
+            .env("B2_ACCOUNT_ID", &credentials.key_id)
+            .env("B2_ACCOUNT_KEY", &credentials.application_key)
+            .output()
+    };
+    let output = run().map_err(|_| "restic backup could not start")?;
+    let output = if !output.status.success() && restic_uninitialized(&output.stderr) {
+        restic_init(repo, credentials)?;
+        run().map_err(|_| "restic backup could not start")?
+    } else {
+        output
+    };
+    output
+        .status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "restic backup failed".into())
+}
+fn collect_files(path: &std::path::Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let meta = std::fs::symlink_metadata(path)
+        .map_err(|_| format!("cannot read backup path {}", path.display()))?;
+    if meta.is_file() {
+        out.push(path.to_owned());
+        return Ok(());
+    }
+    if meta.is_dir() {
+        for entry in std::fs::read_dir(path)
+            .map_err(|_| format!("cannot read backup directory {}", path.display()))?
+        {
+            collect_files(
+                &entry
+                    .map_err(|_| "cannot enumerate backup directory")?
+                    .path(),
+                out,
+            )?;
+        }
+    }
+    Ok(())
+}
+fn b2_upload_files(auth: &B2Authorization, paths: &[String], prefix: &str) -> Result<u64, String> {
+    let url = format!("{}/b2api/v2/b2_get_upload_url", auth.api_url);
+    let info = Command::new("curl")
+        .args([
+            "-fsS",
+            "-H",
+            &format!("Authorization: {}", auth.token),
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            &serde_json::json!({"bucketId": auth.bucket_id}).to_string(),
+            &url,
+        ])
+        .output()
+        .map_err(|_| "B2 upload URL failed")?;
+    if !info.status.success() {
+        return Err("B2 upload URL failed".into());
+    }
+    let v: serde_json::Value =
+        serde_json::from_slice(&info.stdout).map_err(|_| "B2 upload URL invalid")?;
+    let upload_url = v["uploadUrl"].as_str().ok_or("B2 upload URL missing")?;
+    let token = v["authorizationToken"]
+        .as_str()
+        .ok_or("B2 upload token missing")?;
+    let mut files = Vec::new();
+    for path in paths {
+        collect_files(std::path::Path::new(path), &mut files)?;
+    }
+    let mut total = 0;
+    for file in files {
+        let bytes = std::fs::read(&file).map_err(|_| "cannot read backup file")?;
+        let name = format!(
+            "{}{}",
+            prefix.trim_matches('/').to_owned() + if prefix.is_empty() { "" } else { "/" },
+            file.to_string_lossy().trim_start_matches('/')
+        );
+        let size = bytes.len().to_string();
+        let sha1_output = Command::new("sha1sum")
+            .arg(&file)
+            .output()
+            .map_err(|_| "sha1sum unavailable")?;
+        if !sha1_output.status.success() {
+            return Err("cannot hash backup file".into());
+        }
+        let sha1 = String::from_utf8_lossy(&sha1_output.stdout)
+            .split_whitespace()
+            .next()
+            .ok_or("invalid file hash")?
+            .to_owned();
+        let out = Command::new("curl")
+            .args([
+                "-fsS",
+                "-X",
+                "POST",
+                upload_url,
+                "-H",
+                &format!("Authorization: {}", token),
+                "-H",
+                &format!("X-Bz-File-Name: {}", name),
+                "-H",
+                "Content-Type: application/octet-stream",
+                "-H",
+                &format!("Content-Length: {}", size),
+                "-H",
+                &format!("X-Bz-Content-Sha1: {}", sha1),
+                "--data-binary",
+                &format!("@{}", file.display()),
+            ])
+            .output()
+            .map_err(|_| "B2 upload failed")?;
+        if !out.status.success() {
+            return Err("B2 upload failed".into());
+        }
+        total += bytes.len() as u64;
+    }
+    Ok(total)
 }
 
-fn run_backblaze_backup(config: BackblazeConfig, credentials: BackblazeCredentials) {
-    let password = restic_password(&credentials.application_key);
-    let mut output = Command::new("restic")
-        .args(["--repo", config.repository.as_str(), "backup", "--json"])
-        .args(&config.paths)
-        .env("RESTIC_PASSWORD", &password)
-        .env("B2_ACCOUNT_ID", &credentials.account_id)
-        .env("B2_ACCOUNT_KEY", &credentials.application_key)
-        .output();
-    if output.as_ref().is_ok_and(|result| !result.status.success() && restic_repo_uninitialized(&result.stderr)) && restic_init(&config, &credentials) {
-        output = Command::new("restic").args(["--repo", config.repository.as_str(), "backup", "--json"]).args(&config.paths).env("RESTIC_PASSWORD", &password).env("B2_ACCOUNT_ID", &credentials.account_id).env("B2_ACCOUNT_KEY", &credentials.application_key).output();
+fn backblaze_public(config: serde_json::Value) -> serde_json::Value {
+    let state = backblaze_state();
+    let buckets = config
+        .get("buckets")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|mut b| {
+            let name = b["bucket"].as_str().unwrap_or("");
+            b["status"] = serde_json::json!(state.buckets.get(name).cloned().unwrap_or_default());
+            b
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({"buckets": buckets})
+}
+async fn backblaze_buckets_get_route() -> Response {
+    match backblaze_config_value() {
+        Ok(c) => (StatusCode::OK, Json(backblaze_public(c))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"ok": false, "reason": e})),
+        )
+            .into_response(),
     }
-    let mut state = backblaze_state();
-    state.running = false;
-    state.last_run_at = Some(now_unix_seconds());
-    match output {
-        Ok(output) if output.status.success() => {
-            state.last_run_ok = Some(true);
-            state.last_backup_size_bytes = restic_backup_size(&output.stdout);
+}
+async fn backblaze_bucket_post_route(
+    headers: axum::http::HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let mut intent_body = body.clone();
+    if let Some(object) = intent_body.as_object_mut() {
+        object.remove("keyId");
+        object.remove("key_id");
+        object.remove("applicationKey");
+        object.remove("application_key");
+    }
+    let r = mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
+        "POST",
+        "/api/backblaze/buckets",
+        "backblaze bucket",
+        intent_body,
+    );
+    if !r.ok {
+        return (
+            mutation_response_status(&r),
+            Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal})),
+        )
+            .into_response();
+    }
+    let bucket = body["bucket"].as_str().unwrap_or("").trim().to_owned();
+    if bucket.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"ok": false, "reason": "bucket is required"})),
+        )
+            .into_response();
+    }
+    if let Err(e) = authorize_bucket(&bucket, &body) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"ok": false, "reason": e})),
+        )
+            .into_response();
+    }
+    let mut config = match backblaze_config_value() {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"ok": false, "reason": e})),
+            )
+                .into_response()
         }
-        _ => state.last_run_ok = Some(false),
+    };
+    let mut bucket_value = body;
+    if let Some(object) = bucket_value.as_object_mut() {
+        object.remove("keyId");
+        object.remove("key_id");
+        object.remove("applicationKey");
+        object.remove("application_key");
     }
+    bucket_value["bucket"] = serde_json::json!(bucket);
+    if bucket_value.get("encrypted").is_none() {
+        bucket_value["encrypted"] = serde_json::json!(true);
+    }
+    if bucket_value.get("items").is_none() {
+        bucket_value["items"] = serde_json::json!([]);
+    }
+    let mut buckets = config["buckets"].as_array().cloned().unwrap_or_default();
+    buckets.retain(|b| b["bucket"].as_str() != Some(&bucket));
+    buckets.push(bucket_value);
+    config = normalized_config(serde_json::json!({"buckets": buckets})).unwrap_or(config);
+    match save_backblaze_config(config) {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"ok": false, "reason": e})),
+        )
+            .into_response(),
+    }
+}
+async fn backblaze_bucket_delete_route(
+    headers: axum::http::HeaderMap,
+    Path(bucket): Path<String>,
+) -> Response {
+    let r = mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
+        "DELETE",
+        "/api/backblaze/buckets/:bucket",
+        "backblaze bucket",
+        serde_json::json!({"bucket": bucket}),
+    );
+    if !r.ok {
+        return (
+            mutation_response_status(&r),
+            Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal})),
+        )
+            .into_response();
+    }
+    let config = match backblaze_config_value() {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"ok": false, "reason": e})),
+            )
+                .into_response()
+        }
+    };
+    let buckets = config["buckets"]
+        .as_array()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .filter(|b| b["bucket"].as_str() != Some(bucket.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    match save_backblaze_config(serde_json::json!({"buckets": buckets})) {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"ok": false, "reason": e})),
+        )
+            .into_response(),
+    }
+}
+async fn backblaze_items_get_route(Path(bucket): Path<String>) -> Response {
+    match backblaze_config_value()
+        .ok()
+        .and_then(|c| backblaze_bucket(&c, &bucket))
+    {
+        Some(b) => (StatusCode::OK, Json(b)).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"ok": false, "reason": "bucket not configured"})),
+        )
+            .into_response(),
+    }
+}
+async fn backblaze_item_post_route(
+    headers: axum::http::HeaderMap,
+    Path(bucket): Path<String>,
+    Json(item): Json<serde_json::Value>,
+) -> Response {
+    backblaze_item_mutate(headers, bucket, item, false).await
+}
+async fn backblaze_item_delete_route(
+    headers: axum::http::HeaderMap,
+    Path(bucket): Path<String>,
+    Json(item): Json<serde_json::Value>,
+) -> Response {
+    backblaze_item_mutate(headers, bucket, item, true).await
+}
+async fn backblaze_item_mutate(
+    headers: axum::http::HeaderMap,
+    bucket: String,
+    item: serde_json::Value,
+    remove: bool,
+) -> Response {
+    let r = mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
+        "POST",
+        "/api/backblaze/buckets/:bucket/items",
+        "backblaze item",
+        item.clone(),
+    );
+    if !r.ok {
+        return (
+            mutation_response_status(&r),
+            Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal})),
+        )
+            .into_response();
+    }
+    let c = match backblaze_config_value() {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"ok": false, "reason": e})),
+            )
+                .into_response()
+        }
+    };
+    let Some(mut b) = backblaze_bucket(&c, &bucket) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"ok": false})),
+        )
+            .into_response();
+    };
+    let path = item["path"].as_str().unwrap_or("");
+    if !path.starts_with('/') {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"ok": false, "reason": "path must be absolute"})),
+        )
+            .into_response();
+    }
+    let mut items = b["items"].as_array().cloned().unwrap_or_default();
+    items.retain(|i| i["path"].as_str() != Some(path));
+    if !remove {
+        items.push(serde_json::json!({"path": path}));
+    }
+    b["items"] = serde_json::json!(items);
+    let buckets = c["buckets"]
+        .as_array()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .map(|x| {
+            if x["bucket"].as_str() == Some(bucket.as_str()) {
+                b.clone()
+            } else {
+                x.clone()
+            }
+        })
+        .collect::<Vec<_>>();
+    match save_backblaze_config(serde_json::json!({"buckets": buckets})) {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"ok": false, "reason": e})),
+        )
+            .into_response(),
+    }
+}
+async fn backblaze_toggle_route(
+    headers: axum::http::HeaderMap,
+    Path(bucket): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let r = mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
+        "POST",
+        "/api/backblaze/buckets/:bucket/toggle",
+        "backblaze encryption",
+        body.clone(),
+    );
+    if !r.ok {
+        return (
+            mutation_response_status(&r),
+            Json(serde_json::json!({"ok": false})),
+        )
+            .into_response();
+    }
+    let c = match backblaze_config_value() {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"ok": false, "reason": e})),
+            )
+                .into_response()
+        }
+    };
+    let buckets = c["buckets"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|mut b| {
+            if b["bucket"].as_str() == Some(bucket.as_str()) {
+                b["encrypted"] = serde_json::json!(body["encrypted"].as_bool().unwrap_or(true));
+            }
+            b
+        })
+        .collect::<Vec<_>>();
+    match save_backblaze_config(serde_json::json!({"buckets": buckets})) {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
+        Err(_e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"ok": false})),
+        )
+            .into_response(),
+    }
+}
+
+fn execute_backblaze_bucket(bucket: String) {
+    let _guard = BACKBLAZE_RUN_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let result = (|| -> Result<(), String> {
+        let config = backblaze_config_value()?
+            .get("buckets")
+            .and_then(|v| v.as_array())
+            .and_then(|bs| {
+                bs.iter()
+                    .find(|b| b["bucket"].as_str() == Some(bucket.as_str()))
+                    .cloned()
+            })
+            .ok_or("bucket not configured")?;
+        let credentials = keyman_credentials(&bucket)?;
+        let auth = authorize_and_list(&bucket, &credentials)?;
+        let paths = config["items"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|i| i["path"].as_str().map(str::to_owned))
+            .collect::<Vec<_>>();
+        if config["encrypted"].as_bool().unwrap_or(true) {
+            restic_backup(
+                &format!("b2:{}:{}", bucket, config["prefix"].as_str().unwrap_or("")),
+                &paths,
+                &credentials,
+            )
+        } else {
+            b2_upload_files(&auth, &paths, config["prefix"].as_str().unwrap_or("")).map(|_| ())
+        }
+    })();
+    let mut state = backblaze_state();
+    let entry = state.buckets.entry(bucket).or_default();
+    entry.running = false;
+    entry.last_run_at = Some(now_unix_seconds());
+    entry.last_run_ok = Some(result.is_ok());
+    entry.last_error = result.err();
     let _ = write_backblaze_state(&state);
 }
-
-async fn backblaze_run_route() -> Response {
-    let config = match backblaze_preflight(false) {
-        Ok(config) => config,
-        Err(reason) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "message": reason})),
-            )
-                .into_response();
-        }
-    };
-    let credentials = match backblaze_credentials(&config.bucket) {
-        Ok(credentials) => credentials,
-        Err(reason) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "message": reason})),
-            )
-                .into_response();
-        }
-    };
-    let _run_guard = BACKBLAZE_RUN_LOCK
+async fn backblaze_run_bucket_route(
+    headers: axum::http::HeaderMap,
+    Path(bucket): Path<String>,
+) -> Response {
+    let r = mutation_staff_intent(
+        &mutation_authority(),
+        &headers,
+        "POST",
+        "/api/backblaze/buckets/:bucket/run",
+        "backblaze backup",
+        serde_json::json!({"bucket": bucket}),
+    );
+    if !r.ok {
+        return (
+            mutation_response_status(&r),
+            Json(serde_json::json!({"ok": false})),
+        )
+            .into_response();
+    }
+    let _guard = BACKBLAZE_RUN_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut state = backblaze_state();
-    if state.running {
+    let entry = state.buckets.entry(bucket.clone()).or_default();
+    if entry.running {
         return (
             StatusCode::CONFLICT,
-            Json(serde_json::json!({"ok": false, "message": "a backup is already running"})),
+            Json(serde_json::json!({"ok": false, "reason": "backup already running"})),
         )
             .into_response();
     }
-    state.running = true;
-    if let Err(reason) = write_backblaze_state(&state) {
+    entry.running = true;
+    entry.last_error = None;
+    entry.last_run_at = Some(now_unix_seconds());
+    if let Err(e) = write_backblaze_state(&state) {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"ok": false, "message": reason})),
+            Json(serde_json::json!({"ok": false, "reason": e})),
         )
             .into_response();
     }
-    std::thread::spawn(move || run_backblaze_backup(config, credentials));
-    (StatusCode::ACCEPTED, Json(serde_json::json!({"ok": true, "message": "Backup started. This page will refresh its status."}))).into_response()
+    std::thread::spawn(move || execute_backblaze_bucket(bucket));
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({"ok": true, "status": "queued"})),
+    )
+        .into_response()
+}
+fn now_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }

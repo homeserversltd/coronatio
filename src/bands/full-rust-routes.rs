@@ -135,10 +135,12 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/firewall/children", get(firewall_children_route).post(firewall_register_route))
         .route("/api/firewall/children/:mac", delete(firewall_unregister_route))
         .route("/api/firewall/children/:mac/whitelist", get(firewall_whitelist_get_route).put(firewall_whitelist_set_route))
-        .route("/api/backblaze/status", get(backblaze_status_route))
-        .route("/api/backblaze/snapshots", get(backblaze_snapshots_route))
-        .route("/api/backblaze/run", post(backblaze_run_route))
-        .route("/api/backblaze/config", post(backblaze_config_route))
+        .route("/api/backblaze/buckets", get(backblaze_buckets_get_route).post(backblaze_bucket_post_route))
+        .route("/api/backblaze/buckets/:bucket", delete(backblaze_bucket_delete_route))
+        .route("/api/backblaze/buckets/:bucket/items", get(backblaze_items_get_route).post(backblaze_item_post_route).delete(backblaze_item_delete_route))
+
+        .route("/api/backblaze/buckets/:bucket/toggle", post(backblaze_toggle_route))
+        .route("/api/backblaze/buckets/:bucket/run", post(backblaze_run_bucket_route))
         .route("/api/nasLinker/browse", get(homeserver_rust_read_route))
         .route("/api/nasLinker/deploy", post(admin_class_generic_mutation_route))
         .route("/api/nasLinker/delete", delete(admin_class_generic_mutation_route))
@@ -187,30 +189,6 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/backup/restore", post(admin_class_generic_mutation_route))
         .route("/api/backup/backups/list", get(homeserver_rust_read_route))
         .route("/api/backup/uninstall", post(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/browse", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/buckets", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/buckets/:bucket_id/tree", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/buckets/:bucket_id/files", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/buckets/:bucket_id/storage", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/buckets/:bucket_id/sync/status", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/buckets/:bucket_id/sync/start", post(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/buckets/:bucket_id/sync/stop", post(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/buckets/:bucket_id/sync/config", get(homeserver_rust_read_route).post(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/buckets/:bucket_id/delete", delete(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/buckets/:bucket_id/download", post(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/ledger/events", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/ledger/jobs/:job_id", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/database/backup", post(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/database/restore", post(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/database/list", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/forgejo/status", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/forgejo/backups", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/forgejo/backup", post(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/forgejo/restore", post(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/chunk-store", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/chunks-registry", get(homeserver_rust_read_route))
-        .route("/api/backblazeTab/chunks-registry/:chunk_id", delete(admin_class_generic_mutation_route))
-        .route("/api/backblazeTab/chunks-registry/purge", post(admin_class_generic_mutation_route))
         .route("/api/miner/coins", get(homeserver_rust_read_route))
         .route("/api/miner/miners", get(homeserver_rust_read_route))
         .route("/api/miner/miners/:miner_id/claim", post(admin_class_generic_mutation_route))
@@ -525,8 +503,7 @@ fn network_identity_mutation_refusal_response(method: &str, path: &str) -> Respo
 }
 
 fn admin_class_generic_refusal_family(path: &str) -> &'static str {
-    if path.contains("/backblazeTab") { "backblazeTab" }
-    else if path.contains("/backup") { "backup" }
+    if path.contains("/backup") { "backup" }
     else if path.contains("/miner") { "miner" }
     else if path.contains("/nasLinker") { "nasLinker" }
     else if path.contains("/vpn") { "vpn" }
@@ -588,7 +565,7 @@ fn homeserver_route_family(path: &str) -> &'static str {
         "file-ingress"
     } else if path.contains("portals") || path.contains("service/control") {
         "portal-service"
-    } else if path.contains("backblazeTab") || path.contains("miner") {
+    } else if path.contains("miner") {
         "crown-pane"
     } else if path.contains("tabs") || path.contains("setstarredtab") {
         "tab-registry"
@@ -775,30 +752,6 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/backup/restore", &["post"]),
         ("/api/backup/backups/list", &["get"]),
         ("/api/backup/uninstall", &["post"]),
-        ("/api/backblazeTab/browse", &["get"]),
-        ("/api/backblazeTab/buckets", &["get"]),
-        ("/api/backblazeTab/buckets/:bucket_id/tree", &["get"]),
-        ("/api/backblazeTab/buckets/:bucket_id/files", &["get"]),
-        ("/api/backblazeTab/buckets/:bucket_id/storage", &["get"]),
-        ("/api/backblazeTab/buckets/:bucket_id/sync/status", &["get"]),
-        ("/api/backblazeTab/buckets/:bucket_id/sync/start", &["post"]),
-        ("/api/backblazeTab/buckets/:bucket_id/sync/stop", &["post"]),
-        ("/api/backblazeTab/buckets/:bucket_id/sync/config", &["get", "post"]),
-        ("/api/backblazeTab/buckets/:bucket_id/delete", &["delete"]),
-        ("/api/backblazeTab/buckets/:bucket_id/download", &["post"]),
-        ("/api/backblazeTab/ledger/events", &["get"]),
-        ("/api/backblazeTab/ledger/jobs/:job_id", &["get"]),
-        ("/api/backblazeTab/database/backup", &["post"]),
-        ("/api/backblazeTab/database/restore", &["post"]),
-        ("/api/backblazeTab/database/list", &["get"]),
-        ("/api/backblazeTab/forgejo/status", &["get"]),
-        ("/api/backblazeTab/forgejo/backups", &["get"]),
-        ("/api/backblazeTab/forgejo/backup", &["post"]),
-        ("/api/backblazeTab/forgejo/restore", &["post"]),
-        ("/api/backblazeTab/chunk-store", &["get"]),
-        ("/api/backblazeTab/chunks-registry", &["get"]),
-        ("/api/backblazeTab/chunks-registry/:chunk_id", &["delete"]),
-        ("/api/backblazeTab/chunks-registry/purge", &["post"]),
         ("/api/miner/coins", &["get"]),
         ("/api/miner/miners", &["get"]),
         ("/api/miner/miners/:miner_id/claim", &["post"]),
