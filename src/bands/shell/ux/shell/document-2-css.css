@@ -18,7 +18,9 @@
     .success { color: var(--success); }
     /* UXPORT-001: upload pane declarations live only in the document-1 LIBRARY band after declaration-diff receipts. */
     [data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"]) { display: none !important; }
+    /* No buffer element may ever sit between the tab bar and active pane content; admin reveal never touches .pane display. */
     [data-admin-mode="true"] [data-admin-only]:not([data-admin-only="false"]) { display: revert; }
+    .pane[data-admin-only]:not(.active) { display: none !important; }
     [data-admin-only]:not([data-admin-only="false"]) { }
     @media (max-width: 760px) {
       .top-bar { align-items: stretch; flex-direction: column; padding: .75rem 1rem; }

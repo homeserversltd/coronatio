@@ -231,6 +231,7 @@
     fn upload_admin_controls_are_header_enhancements_and_regular_upload_remains() {
         let html = render_crown_shell();
         assert!(html.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));
+        assert!(html.contains(r#".pane[data-admin-only]:not(.active) { display: none !important; }"#));
         let header = html.find(r#"class="directory-browser-header""#).expect("directory browser header present");
         let tree = html.find(r#"class="directory-tree-container""#).expect("directory tree present");
         let header_region = &html[header..tree];
@@ -484,6 +485,9 @@
         let fault_body = String::from_utf8(axum::body::to_bytes(missing.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(fault_body.contains("data-cartridge-fault=\"true\""));
         assert!(fault_body.contains("data-cartridge-fault-kind=\"tab-not-found\""));
+        assert!(fault_body.contains("<div hidden"));
+        assert!(!fault_body.contains("Cartridge fault"));
+        assert!(!fault_body.contains("card error-message"));
         let faults = router.clone().oneshot(Request::builder().uri("/api/faults").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(faults.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(faults.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();

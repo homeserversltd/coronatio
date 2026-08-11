@@ -252,7 +252,7 @@ fn fragment_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKi
     let receipt = record_cartridge_fault(tab_id, fault_kind);
     let fault = receipt.fault_kind.as_str();
     let body = format!(
-        r#"<section class="card error-message" data-cartridge-fault="true" data-cartridge-fault-kind="{}" data-tab-id="{}" data-cartridge-fault-occurred-at="{}"><h2>Cartridge fault</h2><p>The pane stayed inside the og shell while admission failed.</p></section>"#,
+        r#"<div hidden data-cartridge-fault="true" data-cartridge-fault-kind="{}" data-tab-id="{}" data-cartridge-fault-occurred-at="{}"></div>"#,
         fault, tab_id, receipt.occurred_at
     );
     (status, [("x-coronatio-fault", "cartridge-fragment")], Html(body)).into_response()
@@ -263,7 +263,7 @@ fn render_og_pane_fragment(tab_id: &str, session: Session) -> String {
     let fragment = extract_pane_inner_html(&shell, tab_id).unwrap_or_else(|| {
         record_cartridge_fault(tab_id, CartridgeFaultKind::TabNotFound);
         format!(
-            r#"<section class="card error-message" data-cartridge-fault="true" data-cartridge-fault-kind="tab-not-found" data-tab-id="{}"><h2>Cartridge fault</h2><p>Pane not found.</p></section>"#,
+            r#"<div hidden data-cartridge-fault="true" data-cartridge-fault-kind="tab-not-found" data-tab-id="{}"></div>"#,
             tab_id
         )
     });

@@ -264,11 +264,11 @@ fn shell_document_2() -> &'static str {
       const panel = panelFromHtmxEvent(event);
       const panelId = panel instanceof HTMLElement ? (panel.dataset.viewPanel || panel.dataset.panePanel || '') : '';
       if (panel instanceof HTMLElement) {
-        panel.innerHTML = `<section class="card error-message" data-cartridge-fault-presentation="og-pane"><h2>Cartridge fault</h2><p>${kind}</p></section>`;
         panel.dataset.viewportFaulted = 'true';
       }
       document.documentElement.dataset.cartridgeFaultReceipt = 'typed';
       document.documentElement.dataset.cartridgeFaultLast = kind;
+      showCoronatioToast(`Pane could not be loaded (${kind}).`, 'error');
       window.immortalFloor?.faultForPanel(panelId, kind);
     }
     document.body.addEventListener('htmx:timeout', event => presentCartridgeFault('timeout', event));
