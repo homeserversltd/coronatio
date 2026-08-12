@@ -437,8 +437,15 @@ fn format_duration(mut seconds: u64) -> String {
 
 async fn homeserver_rust_read_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_read_response(&headers, method.as_str(), uri.path()) }
 
-async fn disk_census_route() -> Response {
-    let readback = caduceus_http("GET", "/api/v1/disk/census");
+async fn disk_census_route(headers: axum::http::HeaderMap) -> Response {
+    let attendance = crate::caduceus_access::attendance_from_headers(&headers);
+    let document = crate::caduceus_access::document_incarnation_from_headers(&headers);
+    let readback = caduceus_http_with_attendance_and_document(
+        "GET",
+        "/api/v1/disk/census",
+        attendance.as_ref(),
+        document.as_deref(),
+    );
     if readback.ok {
         return (StatusCode::OK, Json(readback.body)).into_response();
     }
