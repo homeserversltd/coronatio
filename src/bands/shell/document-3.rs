@@ -977,6 +977,7 @@ fn shell_document_3() -> &'static str {
         if (id === 'admin' && adminDocumentPatchPendingHydration && window.htmx) {
           adminDocumentPatchPendingHydration = false;
           window.htmx.process(pane);
+          hydrateDiskCensus();
         }
         activeGuest = id; crossingGuest = null; expose('Seated', detail); applyAdminDomState(); applyTabBarVisibility();
         reconcileViewportStreamFamily();
