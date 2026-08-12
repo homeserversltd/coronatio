@@ -220,6 +220,28 @@ fn admin_fragment_caduceus_request(headers: &axum::http::HeaderMap, method: &str
     }
 }
 
+fn admin_fragment_caduceus_json_request(
+    headers: &axum::http::HeaderMap,
+    method: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> CaduceusHttpReadback {
+    let authority = mutation_authority();
+    match authority.authorize(
+        &MutationRequestContext::attended_document_from_headers(headers),
+        MutationActionTarget::caduceus("coronatio.admin.fragment", path),
+    ) {
+        Ok(attendance) => caduceus_http_json_with_attendance_and_document(
+            method,
+            path,
+            body,
+            Some(&attendance.proof),
+            Some(&attendance.document),
+        ),
+        Err(refusal) => mutation_refusal_readback(path, refusal),
+    }
+}
+
 fn admin_fragment_staff_intent(headers: &axum::http::HeaderMap, method: &str, route: &str, classification: &str) -> CaduceusHttpReadback {
     mutation_staff_intent_with_mapping(
         &mutation_authority(),
