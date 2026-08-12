@@ -826,7 +826,7 @@ async fn admin_service_card_fragment_route(headers: axum::http::HeaderMap, Path(
             admin_membrane_refusal_fragment("unknown admin service", "unknown-admin-service"),
         );
     };
-    let readback = admin_fragment_caduceus_request(&headers, "POST", path);
+    let readback = admin_fragment_caduceus_json_request(&headers, "POST", path, serde_json::json!({}));
     admin_html_fragment_response(mutation_response_status(&readback), render_admin_service_card_result_html(&toggle_id, Some(&readback), None))
 }
 
