@@ -1,22 +1,16 @@
 # Coronatio
 
-Coronatio is the living crown of HomeServer: the Rust interface that turns a household machine into one coherent appliance face.
+Coronatio is a Rust web interface for a self-hosted appliance. It puts system status, service links, file upload, network controls, and other local tools behind one consistent tabbed interface.
 
-The crown stays still while its panes can grow without end. Native panes belong to the firmware. Cartridges let installed services join at runtime. Beneath both, typed routes keep reads, sessions, and privileged actions from becoming an unmarked tangle. The household becomes visible without exposing the machinery that keeps it safe.
+The binary ships with native tabs for Admin, Portals, Upload, Stats, backBlaze, Wake on LAN, Test, Linker, DHCP, Firewall, and DNS. Some tabs are available only in admin mode, and DHCP is hidden by default.
 
-We are rebuilding the proven HomeServer control surface from Flask and React as Rust firmware. The implementation changes; the familiar face does not. Admin, Stats, Portals, and Upload retain their recognizable controls and behavior while Rust, Caduceus, and Harmonia replace the old web stack underneath.
+## Loadable cartridges
 
-## How the crown works
+Any web interface on your network can become a Coronatio tab. In admin mode, select the `+` button in the tab bar, enter a title and URL, and choose whether the tab is admin-only. Coronatio stores the cartridge through its privileged actuator and loads the target in a sandboxed iframe; no rebuild is required.
 
-- **Crown shell** — the stable header, tab bar, session controls, and pane frame served by Coronatio.
-- **Native panes** — first-party appliance surfaces compiled into the binary.
-- **Cartridges** — manifest-backed tabs loaded from the installed cartridge root without recompiling the host.
-- **Caduceus** — the narrow privileged hand. Coronatio asks it to perform admitted system changes rather than acquiring broad host power itself.
-- **Harmonia** — the keeper of installed service and configuration convergence. It carries the appliance toward its declared profile outside the browser request path.
-- **`homeserver.json`** — the household memory: theme, favorites, visible tabs, portals, upload defaults, and other shared configuration.
-- **Pulse** — a small Server-Sent Events stream that tells the browser when relevant state changed; the browser then reads the affected state through ordinary typed routes.
+The target service must allow embedding. A service that sends `X-Frame-Options: SAMEORIGIN` or `DENY`, or a restrictive Content-Security-Policy `frame-ancestors` rule, will show an empty pane. See [Loadable cartridges](docs/cartridges.md) for setup, validation rules, and troubleshooting.
 
-The metaphors are names for real boundaries, not decoration. See [the architecture guide](docs/architecture.md) for the complete map.
+A cartridge displays the target service as it is. It does not restyle that service to match Coronatio. Its value is giving you one place to view and control the web services on your network.
 
 ## Run it locally
 
@@ -26,32 +20,29 @@ You need a current Rust toolchain.
 cargo run
 ```
 
-Coronatio listens on port `8090` by default. For an isolated development run:
+Open `http://127.0.0.1:8090`. Coronatio listens on port `8090` by default and on all interfaces. Set `CORONATIO_PORT` to choose another port.
+
+A local run may not have the appliance configuration and privileged actuator used by installed systems. You can point read-only configuration and cartridge discovery at development files:
 
 ```bash
-CORONATIO_TAB_ROOT=/tmp/coronatio-tabs cargo run
+CORONATIO_HOMESERVER_JSON=/path/to/config.json \
+CORONATIO_CARTRIDGE_REGISTRY=/path/to/cartridges.json \
+cargo run
 ```
 
-Open `http://127.0.0.1:8090`. Set `CORONATIO_PORT` to choose another port. Development and tests may point `CORONATIO_HOMESERVER_JSON` at a fixture; an installed appliance reads `/etc/appliance/config.json`.
+`CORONATIO_STATIC_ROOT` can select a static asset directory.
 
-## Extend it
+## Documentation
 
-Choose the smallest lane that fits:
+- [Documentation index](docs/README.md)
+- [Loadable cartridges](docs/cartridges.md)
+- [Architecture](docs/architecture.md)
+- [Theme tokens](docs/development/theme-tokens.md)
 
-1. **Cartridge** — use a directory containing `tab.json`, static assets, and a local service boundary when a tab should load at runtime.
-2. **Native pane** — add Rust routes, state, rendering, and tests when the feature is part of the crown itself.
-3. **Source-injection recompile** — reserve whole-host rebuilds for trusted additions that truly need compile-time integration.
-
-Cartridge identifiers and manifests are validated before admission. A faulty cartridge should lose its own pane, not the crown.
-
-## Prove a change
+## Check a change
 
 ```bash
 cargo fmt --check
 cargo test
 cargo build --release
 ```
-
-Documentation starts at [docs/README.md](docs/README.md). Contributor theming guidance lives at [docs/development/theme-tokens.md](docs/development/theme-tokens.md).
-
-> Governing design: `pali:coronatio-north-star-contract` and `pali:workflow-coronatio-flask-react-visual-ux-identity-contract`. These are design authority; this README is the human map.

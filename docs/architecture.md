@@ -1,45 +1,35 @@
-# How Coronatio holds the household
+# Coronatio architecture
 
-Coronatio is the HomeServer crown: a Rust process that presents the machine as one appliance rather than a collection of unrelated services. Its stable shell holds the header, navigation, session state, and pane frame. Inside that frame, the household can open as many useful views as it needs.
+Coronatio is a Rust process that presents a self-hosted appliance through one web interface. A stable shell provides the header, tab bar, session controls, and pane frame.
 
-## The crown and its panes
+## Native tabs
 
-A **native pane** is part of Coronatio itself. Admin, Stats, Portals, and Upload are compiled with the binary because they define the appliance face. Their routes, state shapes, rendering, and tests move together.
+Native tabs are compiled into Coronatio. The current set is Admin, Portals, Upload, Stats, backBlaze, Wake on LAN, Test, Linker, DHCP, Firewall, and DNS. Admin, Wake on LAN, Linker, Firewall, and DNS require admin mode. DHCP is hidden by default.
 
-A **cartridge** is an installed extension. It contributes a validated `tab.json` manifest, static assets, and a local service boundary beneath the configured cartridge root. Coronatio can discover and serve it at runtime. A cartridge therefore adds a tab without pretending to be firmware, and its failure can be contained to its own pane.
+Each native tab has an explicit route and state source. Native tabs are the right place for features that need direct integration with Coronatio's rendering, session filtering, or typed routes.
 
-A trusted feature that needs deep compile-time integration may instead enter through a source-injection rebuild. That lane is deliberate and proven like any native change; it is not the default for an installed service.
+## Runtime cartridges
 
-## One shell, typed membranes
+Runtime cartridges add tabs without recompiling Coronatio. Their registry is `/etc/appliance/cartridges.json`, using schema `appliance.cartridges.v1`. Each row contains `id`, `title`, `url`, `guest_class: "iframe"`, and `admin_only`.
 
-The browser does not receive one giant application with silent access to everything. Coronatio serves a stable shell and admits pane fragments through explicit routes. Ordinary reads return typed JSON or server-rendered HTML. HTMX carries pane interactions where a fragment is the honest response.
+Coronatio reads valid, unique rows into the tab list. Opening a cartridge tab requests `/admit/<id>`, which returns a sandboxed iframe for the configured URL. The iframe permits scripts, same-origin access within the framed service, and forms. It does not grant popups, downloads, or top-level navigation.
 
-Admin mode is a leased server session, not a browser claim. Guest and admin views are projected from the same underlying facts, with privileged fields and controls filtered before rendering.
+Adding and removing cartridges is available from the `+` button in admin mode. The browser sends the request through Coronatio to the privileged actuator. An attended admin session is required, and Coronatio does not edit the registry file itself.
 
-## The household memory
+See [Loadable cartridges](cartridges.md) for the registry format, validation rules, and framing requirements.
 
-`config.json` is the shared household memory at `/etc/appliance/config.json`. It contains the facts that should survive a browser closing or the crown restarting: selected theme, favorite and visible tabs, portal configuration, upload defaults, and other household choices.
+## Configuration
 
-The browser may remember short-lived presentation details, but it does not become a rival configuration authority. Development fixtures can be selected with `CORONATIO_HOMESERVER_JSON`; that override exists to test the same behavior away from a live appliance. Factory portal readback uses `/etc/appliance/config.factory`.
+The installed configuration is `/etc/appliance/config.json`. It stores shared choices such as the selected theme, favorite and visible tabs, portal settings, and upload defaults. Development runs can select another file with `CORONATIO_HOMESERVER_JSON`. Factory portal readback uses `/etc/appliance/config.factory`.
 
-## Reads and actions take different lanes
+The browser may retain short-lived presentation state, but persistent appliance settings come from server-side configuration.
 
-A status card is a read. Restarting a service, changing a system setting, or writing protected configuration is an action. Coronatio keeps those paths distinct.
+## Reads and privileged actions
 
-For admitted privileged actions, the crown sends a narrow request to **Caduceus**. Caduceus is the privileged actuator: it accepts only named capabilities and returns a result the crown can show. Coronatio does not turn a web request into unrestricted shell access.
+Status and configuration reads use ordinary HTTP routes. Actions that need host privileges use a separate actuator with a limited set of named operations. Coronatio checks the admin session before forwarding protected actions; it does not turn browser requests into unrestricted shell commands.
 
-**Harmonia** works on a longer rhythm. It owns the installed profile and converges services and configuration toward that declared state. The crown may display the result, but a button click is not allowed to impersonate the system's maintenance authority.
+## Live updates
 
-## Pulse: a doorbell, not a moving van
+Coronatio uses Server-Sent Events for live notifications. The stream sends small topic changes, such as tabs or statistics changing. The browser then reloads the affected route or fragment instead of receiving the entire application state over the event stream.
 
-Coronatio uses Server-Sent Events for its pulse. The server keeps one lightweight stream open and sends small topic notifications such as “tabs changed” or “stats changed.” The notification carries the reason to look again, not the entire household state.
-
-When the browser hears the doorbell, it fetches the affected typed route or fragment. This keeps live panes current without constant polling and without coupling every state shape to one permanent stream. Leases and renewals let abandoned browser sessions fall away.
-
-## Rebuilding without making users relearn
-
-The old Flask and React application is a quarry of proven behavior. Coronatio replaces that substrate with Rust, typed state, Caduceus actions, Harmonia convergence, and explicit browser fragments. The visible appliance is meant to remain familiar: the same four primary panes, the same control meanings, and the same class of feedback under the same state.
-
-The quarry teaches what the machine already learned. The crown gives those lessons a structure that can survive.
-
-> Governing design: `pali:coronatio-north-star-contract` and `pali:workflow-coronatio-flask-react-visual-ux-identity-contract`.
+This keeps live panes current without constant polling and lets abandoned browser sessions expire.
