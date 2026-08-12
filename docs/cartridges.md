@@ -23,7 +23,7 @@ The installed registry is `/etc/appliance/cartridges.json`:
     {
       "id": "jellyfin",
       "title": "jellyfin",
-      "url": "http://192.168.1.20:8096",
+      "url": "https://media.example.net",
       "guest_class": "iframe",
       "admin_only": false
     }
@@ -50,7 +50,15 @@ The target service must allow itself to be framed. If it sends either of these p
 - `X-Frame-Options: SAMEORIGIN` or `X-Frame-Options: DENY`
 - a Content-Security-Policy with a `frame-ancestors` rule that does not allow the Coronatio origin
 
-A common fix is to use the service's direct port instead of a reverse proxy that injects those headers. Otherwise, relax the proxy's framing headers for that site. Make the smallest exception that permits your Coronatio origin; do not remove unrelated browser protections.
+The recommended setup is to place the service behind a TLS-terminating reverse proxy and set a Content-Security-Policy that names the Coronatio origin, for example `frame-ancestors 'self' https://coronatio.example.net`. Use this instead of `X-Frame-Options`, which cannot express a second allowed origin. Make the smallest exception that permits your Coronatio origin; do not remove unrelated browser protections.
+
+As a fallback, a service's direct plain-HTTP port works only when Coronatio itself is served over plain HTTP.
+
+### Mixed content and HSTS
+
+When Coronatio is served over HTTPS, browsers refuse to load HTTP iframes inside it as mixed content. Cartridge URLs must then use HTTPS.
+
+If a hostname has previously been visited over HTTPS with HSTS, the browser silently upgrades HTTP URLs for that hostname to HTTPS. If the target port does not support TLS, the pane appears empty and the browser's network log shows an SSL error. Use the HTTPS URL instead.
 
 ## How a cartridge is rendered
 
