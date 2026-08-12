@@ -11,5 +11,5 @@ fn shell_backblaze_client() -> &'static str {
     document.body.addEventListener('click',e=>{if(e.target.closest('[data-backblaze-add]'))void addBackblazeBucket();if(e.target.closest('[data-backblaze-item-add]')){const p=prompt('Absolute path to back up');if(p)fetch('/api/backblaze/buckets/'+encodeURIComponent(backblazeState.bucket)+'/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p})}).then(hydrateBackblaze);}if(e.target.closest('[data-backblaze-run]'))fetch('/api/backblaze/buckets/'+encodeURIComponent(backblazeState.bucket)+'/run',{method:'POST'}).then(hydrateBackblaze);});
     document.body.addEventListener('change',e=>{if(e.target.matches('[data-backblaze-encrypted]'))fetch('/api/backblaze/buckets/'+encodeURIComponent(backblazeState.bucket)+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({encrypted:e.target.checked})}).then(hydrateBackblaze);});
     hydrateBackblaze();
-"""####
+"####
 }
