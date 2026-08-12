@@ -1,19 +1,16 @@
 # Coronatio documentation
 
-This directory explains Coronatio to people. You do not need to know the internal planning systems used to build it.
+Coronatio is a Rust web interface that gathers a self-hosted appliance's controls and local web services into one tabbed screen.
 
-## Understand the machine
+## Use Coronatio
 
-- [Architecture](architecture.md) — what the crown, panes, cartridges, state authority, action lanes, and pulse do.
+- [Loadable cartridges](cartridges.md) — add, remove, and troubleshoot web services loaded as tabs.
+- [Architecture](architecture.md) — understand the shell, native tabs, runtime cartridges, configuration, privileged actions, and live updates.
 
-## Build with it
+## Contribute
 
-- [Theme tokens](development/theme-tokens.md) — how contributors extend the visual token catalog without creating a second theme system.
+- [Theme tokens](development/theme-tokens.md) — extend the visual token catalog without creating a second theme system.
 
-## Learn from failures
+## Engineering notes
 
-- [Page-load fetch flood](engineering/incidents/pageload-fetch-flood.md) — how two refresh loops created a request storm, how they were broken, and how tests prevent their return.
-
-## Where design authority lives
-
-These pages explain supported behavior; they do not duplicate the product constitution. Small governing-design asides may point to a `pali:<id>` design record when useful. The main product direction remains `pali:coronatio-north-star-contract`.
+- [Page-load fetch flood](engineering/incidents/pageload-fetch-flood.md) — how two refresh loops created a request storm and how the regression is tested.
