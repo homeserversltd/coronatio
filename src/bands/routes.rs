@@ -316,7 +316,7 @@ fn cartridge_mutation_proxy_response(headers: axum::http::HeaderMap, route: &str
     let body = if admitting {
         serde_json::json!({"id": id, "title": request.title.trim(), "url": request.url, "guest_class": "iframe", "admin_only": request.admin_only})
     } else { serde_json::json!({"id": id}) };
-    let readback = mutation_staff_intent_with_mapping(
+    let readback = caduceus_staff_transition_with_mapping(
         &mutation_authority(), &headers,
         MutationActionTarget::caduceus(if admitting { "coronatio.cartridges.admit" } else { "coronatio.cartridges.remove" }, route),
         "POST", route, "loadable-cartridge", body,

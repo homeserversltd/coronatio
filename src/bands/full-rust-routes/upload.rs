@@ -396,7 +396,7 @@ fn upload_force_permissions_destination(body: &serde_json::Value) -> &str {
 
 fn upload_force_permissions(headers: &axum::http::HeaderMap, body: serde_json::Value) -> Response {
     let destination = upload_force_permissions_destination(&body);
-    let caduceus = mutation_staff_intent(
+    let caduceus = caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         "POST",

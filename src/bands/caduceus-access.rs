@@ -42,7 +42,7 @@ impl CaduceusAccessClient {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AttendanceOperation { Open, Validate, Touch, ChangePin, Invalidate }
-impl AttendanceOperation { fn name(self)->&'static str { match self { Self::Open=>"attendance.open",Self::Validate=>"attendance.validate",Self::Touch=>"attendance.touch",Self::ChangePin=>"attendance.change-pin",Self::Invalidate=>"attendance.invalidate" } } fn path(self)->&'static str { match self { Self::Open=>"/api/v1/attendance/open",Self::Validate=>"/api/v1/attendance/validate",Self::Touch=>"/api/v1/attendance/touch",Self::ChangePin=>"/api/v1/attendance/change-pin",Self::Invalidate=>"/api/v1/attendance/invalidate" } } fn returns_proof(self)->bool { matches!(self,Self::Open) } }
+impl AttendanceOperation { fn name(self)->&'static str { match self { Self::Open=>"attendance.open",Self::Validate=>"attendance.validate",Self::Touch=>"attendance.touch",Self::ChangePin=>"attendance.change-pin",Self::Invalidate=>"attendance.invalidate" } } fn path(self)->&'static str { match self { Self::Open=>"/api/v1/admin-admittance/open",Self::Validate=>"/api/v1/admin-admittance/validate",Self::Touch=>"/api/v1/admin-admittance/touch",Self::ChangePin=>"/api/v1/admin-admittance/change-pin",Self::Invalidate=>"/api/v1/admin-admittance/invalidate" } } fn returns_proof(self)->bool { matches!(self,Self::Open) } }
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct AttendanceProof(pub(crate) String);
 impl std::fmt::Debug for AttendanceProof { fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result { f.write_str("AttendanceProof([redacted])") } }

@@ -228,7 +228,7 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
         );
     }
     let systemd_service = if service.ends_with(".service") { service.clone() } else { format!("{service}.service") };
-    let caduceus = mutation_staff_intent(
+    let caduceus = caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         "POST",
