@@ -296,7 +296,7 @@ async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multip
     }
     let byte_count = payload.len();
 
-    let caduceus = mutation_staff_intent(
+    let caduceus = caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         "POST",
@@ -540,7 +540,7 @@ include!("full-rust-routes/network-notes.rs");
 include!("full-rust-routes/power.rs");
 
 fn homeserver_mutation_response(headers: &axum::http::HeaderMap, method: &str, path: &str) -> Response {
-    let caduceus = mutation_staff_intent(
+    let caduceus = caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         method,
@@ -557,7 +557,7 @@ fn homeserver_mutation_response(headers: &axum::http::HeaderMap, method: &str, p
             "method": method,
             "path": path,
             "family": homeserver_route_family(path),
-            "authority": "Caduceus staff intent membrane",
+            "authority": "Caduceus staff transition membrane",
             "caduceus": caduceus,
             "firstMissingSignal": if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }
         })),

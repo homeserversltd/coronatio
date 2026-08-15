@@ -242,8 +242,8 @@ fn admin_fragment_caduceus_json_request(
     }
 }
 
-fn admin_fragment_staff_intent(headers: &axum::http::HeaderMap, method: &str, route: &str, classification: &str) -> CaduceusHttpReadback {
-    mutation_staff_intent_with_mapping(
+fn admin_fragment_caduceus_staff_transition(headers: &axum::http::HeaderMap, method: &str, route: &str, classification: &str) -> CaduceusHttpReadback {
+    caduceus_staff_transition_with_mapping(
         &mutation_authority(),
         headers,
         MutationActionTarget::caduceus("coronatio.admin.fragment", route),
@@ -254,11 +254,11 @@ fn admin_fragment_staff_intent(headers: &axum::http::HeaderMap, method: &str, ro
     )
 }
 
-fn mutation_staff_door(method: &str, route: &str, _classification: &str) -> Result<ResolvedCaduceusDoor, CaduceusDoorResolutionFailure> {
+fn caduceus_staff_door(method: &str, route: &str, _classification: &str) -> Result<ResolvedCaduceusDoor, CaduceusDoorResolutionFailure> {
     resolve_caduceus_door(method, route)
 }
 
-fn mutation_staff_intent_with_mapping(
+fn caduceus_staff_transition_with_mapping(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
     mapping: MutationActionTarget,
@@ -268,25 +268,38 @@ fn mutation_staff_intent_with_mapping(
     metadata: serde_json::Value,
 ) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
-    let attendance = match authority.authorize(&context, mapping) {
+    let attendance = match authority.authorize(&context, mapping.clone()) {
         Ok(attendance) => attendance,
         Err(refusal) => return mutation_refusal_readback(route, refusal),
     };
-    let door = match mutation_staff_door(method, route, classification) {
+    let door = match caduceus_staff_door(method, route, classification) {
         Ok(door) => door,
         Err(CaduceusDoorResolutionFailure::Unmapped) => return mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
         Err(CaduceusDoorResolutionFailure::Unavailable) => return mutation_refusal_readback(route, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 }),
     };
+    // Field names follow the Caduceus protocol/index.json seat.
+    let mut envelope = match metadata {
+        serde_json::Value::Object(fields) => fields,
+        _ => {
+            let mut fields = serde_json::Map::new();
+            fields.insert("payload".to_string(), metadata);
+            fields
+        }
+    };
+    envelope.insert("schema".to_string(), serde_json::json!("caduceus.staff.v1"));
+    envelope.insert("intent_id".to_string(), serde_json::json!(mapping.action));
+    envelope.insert("transition".to_string(), serde_json::json!(door.path));
+    envelope.insert("disk".to_string(), serde_json::json!(format!("{}{}", caduceus_base(), door.path)));
     caduceus_http_json_with_attendance_and_document(
         &door.method,
         &door.path,
-        metadata,
+        serde_json::Value::Object(envelope),
         Some(&attendance.proof),
         Some(&attendance.document),
     )
 }
 
-fn mutation_staff_intent(
+fn caduceus_staff_transition(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
     method: &str,
@@ -297,7 +310,7 @@ fn mutation_staff_intent(
     let Some(mapping) = MutationActionTarget::route(method, route) else {
         return mutation_refusal_readback(route, MutationRefusal { code: "coronatio-mutation-method-unmapped".to_string(), status: 0 });
     };
-    mutation_staff_intent_with_mapping(authority, headers, mapping, method, route, classification, metadata)
+    caduceus_staff_transition_with_mapping(authority, headers, mapping, method, route, classification, metadata)
 }
 
 fn mutation_config_set(

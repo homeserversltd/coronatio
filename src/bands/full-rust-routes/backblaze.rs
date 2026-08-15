@@ -549,7 +549,7 @@ async fn backblaze_bucket_post_route(
         object.remove("applicationKey");
         object.remove("application_key");
     }
-    let r = mutation_staff_intent(
+    let r = caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         "POST",
@@ -620,7 +620,7 @@ async fn backblaze_bucket_delete_route(
     headers: axum::http::HeaderMap,
     Path(bucket): Path<String>,
 ) -> Response {
-    let r = mutation_staff_intent(
+    let r = caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         "DELETE",
@@ -694,7 +694,7 @@ async fn backblaze_item_mutate(
     item: serde_json::Value,
     remove: bool,
 ) -> Response {
-    let r = mutation_staff_intent(
+    let r = caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         "POST",
@@ -766,7 +766,7 @@ async fn backblaze_toggle_route(
     Path(bucket): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
-    let r = mutation_staff_intent(
+    let r = caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         "POST",
@@ -859,7 +859,7 @@ async fn backblaze_run_bucket_route(
     headers: axum::http::HeaderMap,
     Path(bucket): Path<String>,
 ) -> Response {
-    let r = mutation_staff_intent(
+    let r = caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         "POST",

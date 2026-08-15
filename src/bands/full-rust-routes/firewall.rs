@@ -38,7 +38,7 @@ fn firewall_seated_mutation(
     caduceus_path: &str,
     metadata: serde_json::Value,
 ) -> CaduceusHttpReadback {
-    mutation_staff_intent_with_mapping(
+    caduceus_staff_transition_with_mapping(
         &mutation_authority(),
         headers,
         MutationActionTarget::caduceus("caduceus_staff.child_device", crown_path),
