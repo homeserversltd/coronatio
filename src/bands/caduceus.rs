@@ -772,7 +772,7 @@ async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> 
 
 async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
     let (_, limit) = admin_log_pagination(&uri);
-    let clear = admin_fragment_caduceus_request(&headers, "POST", "/api/admin/logs/homeserver/clear");
+    let clear = admin_fragment_caduceus_staff_transition(&headers, "POST", "/api/v1/log/clear", "admin-log-clear");
     if !clear.ok {
         log_admin_action_admission(&headers, "/admit/admin/action/view-logs-clear", &clear, StatusCode::OK);
         return admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&clear, 0, limit, None));
