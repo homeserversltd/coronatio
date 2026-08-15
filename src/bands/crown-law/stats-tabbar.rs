@@ -597,7 +597,7 @@ fn stats_identity_roster() -> StatsKeaLeases {
         }
     }
 
-    let roster = caduceus_http("GET", "/api/v1/network/device");
+    let roster = caduceus_http("GET", "/api/v1/network/device/list");
     let result = if !roster.ok {
         StatsKeaLeases {
             status: "unavailable".to_string(),

@@ -1,7 +1,7 @@
 async fn caduceus_status_route() -> impl IntoResponse {
-    let health = caduceus_http("GET", "/api/v1/health");
+    let health = caduceus_http("GET", "/health");
     let update = caduceus_http("GET", "/api/v1/update/status");
-    let staff = caduceus_http("GET", "/api/v1/staff/status");
+    let staff = caduceus_http("GET", "/api/v1/doors");
     let ok = health.ok && update.ok && staff.ok;
     let first_missing_signal = if ok {
         "none".to_string()
@@ -35,7 +35,7 @@ async fn caduceus_update_check_route(headers: axum::http::HeaderMap) -> impl Int
 }
 
 async fn caduceus_update_now_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    caduceus_mutation_route(&headers, "update_now", "/api/v1/harmonia/update", "harmonia update", "local")
+    caduceus_mutation_route(&headers, "update_now", "/api/v1/update/now", "harmonia update", "local")
 }
 
 #[derive(Deserialize)]
@@ -222,7 +222,7 @@ async fn caduceus_diskman_sync_schedule_route(headers: axum::http::HeaderMap) ->
 }
 
 async fn caduceus_receipts_latest_route() -> impl IntoResponse {
-    let readback = caduceus_http("GET", "/api/v1/receipts/latest");
+    let readback = caduceus_http("GET", "/api/v1/log/receipts");
     (
         if readback.ok {
             StatusCode::OK
@@ -456,7 +456,7 @@ fn caduceus_hyalos_reflect_best_effort(kind: &'static str, level: String, messag
                 while let Ok(event) = receiver.recv() {
                     let _ = caduceus_http_json_with_attendance_and_document_timeout(
                         "POST",
-                        "/api/v1/hyalos/reflect",
+                        "/api/v1/log/reflect",
                         serde_json::json!({
                             "organ": "coronatio",
                             "kind": event.kind,
@@ -591,8 +591,8 @@ fn parse_caduceus_response(path: &str, response: &str) -> CaduceusHttpReadback {
 fn hyalos_tail_path(kind: Option<&str>, count: usize) -> String {
     let count = count.clamp(1, 1000);
     match kind {
-        Some(kind) => format!("/api/v1/hyalos/tail?kind={kind}&count={count}"),
-        None => format!("/api/v1/hyalos/tail?count={count}"),
+        Some(kind) => format!("/api/v1/log/tail?kind={kind}&count={count}"),
+        None => format!("/api/v1/log/tail?count={count}"),
     }
 }
 
@@ -708,8 +708,8 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
     }
 }
 
-fn admin_staff_intent(headers: &axum::http::HeaderMap, method: &str, path: &str, classification: &str) -> CaduceusHttpReadback {
-    mutation_staff_intent(
+fn admin_caduceus_staff_transition(headers: &axum::http::HeaderMap, method: &str, path: &str, classification: &str) -> CaduceusHttpReadback {
+    caduceus_staff_transition(
         &mutation_authority(),
         &headers,
         method,
@@ -764,7 +764,7 @@ fn admin_logs_modal_fragment(readback: &CaduceusHttpReadback, offset: usize, lim
 
 async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
     let (offset, limit) = admin_log_pagination(&uri);
-    let path = format!("/api/admin/logs/homeserver?offset={offset}&limit={limit}");
+    let path = format!("/api/v1/log/read?offset={offset}&limit={limit}");
     let readback = admin_fragment_caduceus_request(&headers, "GET", &path);
     log_admin_action_admission(&headers, "/admit/admin/action/view-logs", &readback, StatusCode::OK);
     admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&readback, offset, limit, None))
@@ -777,7 +777,7 @@ async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap, uri: Ur
         log_admin_action_admission(&headers, "/admit/admin/action/view-logs-clear", &clear, StatusCode::OK);
         return admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&clear, 0, limit, None));
     }
-    let path = format!("/api/admin/logs/homeserver?offset=0&limit={limit}");
+    let path = format!("/api/v1/log/read?offset=0&limit={limit}");
     let readback = admin_fragment_caduceus_request(&headers, "GET", &path);
     log_admin_action_admission(&headers, "/admit/admin/action/view-logs-clear", &readback, StatusCode::OK);
     admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&readback, 0, limit, Some("Appliance logs cleared.")))
@@ -786,7 +786,7 @@ async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap, uri: Ur
 
 async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
     if let Some(refusal) = admin_fragment_context_refusal(&headers) {
-        let readback = mutation_refusal_readback("/api/v1/staff/intent", refusal);
+        let readback = mutation_refusal_readback("/api/v1/appliance/report", refusal);
         return admin_html_fragment_response(
             mutation_response_status(&readback),
             admin_membrane_refusal_fragment(&toggle_id, &readback.first_missing_signal),
@@ -798,7 +798,7 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
             admin_membrane_refusal_fragment("unknown admin toggle", "unknown-admin-toggle"),
         );
     };
-    let readback = admin_fragment_staff_intent(&headers, "POST", path, "admin-service-toggle");
+    let readback = admin_fragment_caduceus_staff_transition(&headers, "POST", path, "admin-service-toggle");
     let status_readback = admin_service_status_target(&toggle_id)
         .map(|status_path| admin_fragment_caduceus_request(&headers, "POST", status_path))
         .unwrap_or_else(|| mutation_refusal_readback(path, MutationRefusal { code: "unknown-admin-toggle".to_string(), status: 404 }));
@@ -814,7 +814,7 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
 
 async fn admin_service_card_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
     if let Some(refusal) = admin_fragment_context_refusal(&headers) {
-        let readback = mutation_refusal_readback("/api/v1/staff/intent", refusal);
+        let readback = mutation_refusal_readback("/api/v1/appliance/report", refusal);
         return admin_html_fragment_response(
             mutation_response_status(&readback),
             admin_membrane_refusal_fragment(&toggle_id, &readback.first_missing_signal),
@@ -833,7 +833,7 @@ async fn admin_service_card_fragment_route(headers: axum::http::HeaderMap, Path(
 async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>) -> impl IntoResponse {
     let route = format!("/admit/admin/action/{action_id}");
     if let Some(refusal) = admin_fragment_context_refusal(&headers) {
-        let readback = mutation_refusal_readback("/api/v1/staff/intent", refusal);
+        let readback = mutation_refusal_readback("/api/v1/appliance/report", refusal);
         log_admin_action_admission(&headers, &route, &readback, mutation_response_status(&readback));
         return admin_html_fragment_response(
             mutation_response_status(&readback),
@@ -841,7 +841,7 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
         );
     }
     let Some((title, method, path, mutation)) = admin_action_target(&action_id) else {
-        let readback = mutation_refusal_readback("/api/v1/staff/intent", MutationRefusal { code: "unknown-admin-action".to_string(), status: 404 });
+        let readback = mutation_refusal_readback("/api/v1/appliance/report", MutationRefusal { code: "unknown-admin-action".to_string(), status: 404 });
         log_admin_action_admission(&headers, &route, &readback, StatusCode::NOT_FOUND);
         return admin_html_fragment_response(
             StatusCode::NOT_FOUND,
@@ -851,7 +851,7 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
     let readback = if action_id == "update" {
         caduceus_mutation_readback(&headers, path, "update now", "local")
     } else if mutation {
-        admin_fragment_staff_intent(&headers, method, path, homeserver_route_family(path))
+        admin_fragment_caduceus_staff_transition(&headers, method, path, homeserver_route_family(path))
     } else {
         admin_fragment_caduceus_request(&headers, method, path)
     };
