@@ -14,8 +14,6 @@ struct LinkerForm {
 enum LinkerMode {
     Browsing,
     Naming,
-    DeleteReview,
-    DeployReview,
     Result,
     Fault,
 }
@@ -24,8 +22,6 @@ impl LinkerMode {
         match self {
             Self::Browsing => "Browsing",
             Self::Naming => "Naming",
-            Self::DeleteReview => "DeleteReview",
-            Self::DeployReview => "DeployReview",
             Self::Result => "Result",
             Self::Fault => "Fault",
         }
@@ -42,9 +38,9 @@ struct LinkerEntry {
 #[derive(Debug, Clone)]
 struct LinkerState {
     path: String,
-    destination: Option<String>,
     filter: String,
     selected: Vec<String>,
+    selected_delete_eligible: BTreeMap<String, bool>,
     entries: Vec<LinkerEntry>,
     mode: LinkerMode,
     rename_naming: bool,
@@ -54,9 +50,9 @@ impl Default for LinkerState {
     fn default() -> Self {
         Self {
             path: "/mnt/nas".into(),
-            destination: None,
             filter: String::new(),
             selected: Vec::new(),
+            selected_delete_eligible: BTreeMap::new(),
             entries: Vec::new(),
             mode: LinkerMode::Browsing,
             rename_naming: false,
@@ -78,11 +74,15 @@ fn linker_escape(v: &str) -> String {
         .replace('"', "&quot;")
 }
 fn linker_url(v: &str) -> String {
-    linker_escape(
-        &v.replace(' ', "%20")
-            .replace('#', "%23")
-            .replace('?', "%3F"),
-    )
+    let mut encoded = String::new();
+    for byte in v.as_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(*byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    linker_escape(&encoded)
 }
 fn linker_entries(body: &serde_json::Value, filter: &str) -> Vec<LinkerEntry> {
     let Some(items) = body
@@ -129,79 +129,71 @@ fn linker_receipt_html(r: &CaduceusHttpReadback) -> String {
     )
 }
 fn linker_fragment(s: &LinkerState, readback: Option<&CaduceusHttpReadback>) -> String {
-    let dest = s.destination.as_deref().unwrap_or("unset");
     let rows = if s.entries.is_empty() {
-        "<p>No entries observed.</p>".into()
+        "<p>No entries observed.</p>".to_string()
     } else {
-        s.entries.iter().map(|e|{let checked=s.selected.iter().any(|p|p==&e.path);let linked=e.is_hardlink||e.nlink>1;format!("<div class=\"linker-row\"><form method=\"post\" action=\"/admit/linker/select\" hx-post=\"/admit/linker/select\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><input type=\"hidden\" name=\"path\" value=\"{}\"><input type=\"checkbox\" name=\"checked\" value=\"on\" aria-label=\"Select {}\" {} hx-post=\"/admit/linker/select\" hx-include=\"closest form\"><span>{}</span>{}</form></div>",linker_escape(&e.path),linker_escape(&e.name),if checked{"checked"}else{""},linker_escape(&e.name),if linked{format!("<span class=\"linker-linked\">LINKED ×{}</span>",e.nlink)}else{String::new()})}).collect::<Vec<_>>().join("")
+        s.entries.iter().map(|e| {
+        let checked=if s.selected.iter().any(|p|p==&e.path){"checked"}else{""}; let nav=if e.is_dir{format!("hx-get=\"/admit/linker?path={}\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"",linker_url(&e.path))}else{String::new()}; let linked=if e.is_hardlink||e.nlink>1{format!("<span class=\"linker-linked\">LINKED ×{}</span>",e.nlink)}else{String::new()};
+        format!("<div class=\"{}\" data-linker-entry data-linker-directory=\"{}\" data-linker-path=\"{}\" tabindex=\"-1\" {}><span class=\"linker-cursor\">›</span><form method=\"post\" action=\"/admit/linker/select\"><input type=\"hidden\" name=\"path\" value=\"{}\"><input type=\"checkbox\" name=\"checked\" value=\"on\" aria-label=\"Select {}\" {} hx-post=\"/admit/linker/select\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\" hx-trigger=\"click consume\" hx-include=\"closest form\" onclick=\"event.stopPropagation()\"></form><span class=\"entry-icon\">{}</span><span class=\"entry-name\">{}</span>{}</div>",if e.is_dir{"linker-row linker-directory"}else{"linker-row"},e.is_dir,linker_escape(&e.path),nav,linker_escape(&e.path),linker_escape(&e.name),checked,if e.is_dir{"📁"}else{"📄"},linker_escape(&e.name),linked)
+    }).collect::<Vec<_>>().join("")
     };
     let segments = s
         .path
-        .split(char::from_u32(47).unwrap())
+        .split('/')
         .filter(|p| !p.is_empty())
         .collect::<Vec<_>>();
     let mut prefix = String::new();
-    let trail=segments.iter().enumerate().map(|(i,n)|{prefix.push(char::from_u32(47).unwrap());prefix.push_str(n);if i+1==segments.len(){linker_escape(n)}else{format!("<a href=\"/admit/linker?path={}\" hx-get=\"/admit/linker?path={}\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\">{}</a>",linker_url(&prefix),linker_url(&prefix),linker_escape(n))}}).collect::<Vec<_>>().join(" / ");
+    let trail=segments.iter().enumerate().map(|(i,n)|{prefix.push('/');prefix.push_str(n);if i+1==segments.len(){linker_escape(n)}else{format!("<a href=\"/admit/linker?path={}\" hx-get=\"/admit/linker?path={}\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\">{}</a>",linker_url(&prefix),linker_url(&prefix),linker_escape(n))}}).collect::<Vec<_>>().join(" / ");
+    let tree=s.entries.iter().filter(|e|e.is_dir).map(|e|format!("<div class=\"directory-entry\" role=\"treeitem\" hx-get=\"/admit/linker?path={}\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><span class=\"entry-icon\">📁</span><span class=\"entry-name\">{}</span></div>",linker_url(&e.path),linker_escape(&e.name))).collect::<Vec<_>>().join("");
     let naming = if s.mode == LinkerMode::Naming {
         if s.rename_naming {
-            "<form class=\"linker-inline-form\" method=\"post\" action=\"/admit/linker/rename\" hx-post=\"/admit/linker/rename\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><label>New name <input name=\"new_name\" required></label><button>Rename</button><button formaction=\"/admit/linker/cancel\">Cancel</button></form>".into()
+            "<form class=\"linker-inline-form\" method=\"post\" action=\"/admit/linker/rename\" hx-post=\"/admit/linker/rename\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><input name=\"new_name\" required><button>Rename</button><button formaction=\"/admit/linker/cancel\" hx-post=\"/admit/linker/cancel\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\">Cancel</button></form>".into()
         } else {
-            "<form class=\"linker-inline-form\" method=\"post\" action=\"/admit/linker/mkdir\" hx-post=\"/admit/linker/mkdir\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><label>New directory <input name=\"new_dir_name\" required></label><button>Create</button><button formaction=\"/admit/linker/cancel\">Cancel</button></form>".into()
+            "<form class=\"linker-inline-form\" method=\"post\" action=\"/admit/linker/mkdir\" hx-post=\"/admit/linker/mkdir\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><input name=\"new_dir_name\" required><button>Create</button><button formaction=\"/admit/linker/cancel\" hx-post=\"/admit/linker/cancel\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\">Cancel</button></form>".into()
         }
     } else {
         String::new()
     };
-    let delete_review = if s.mode == LinkerMode::DeleteReview {
-        format!("<section class=\"linker-review\"><p>Targets: {}</p><p>A file may be deleted. An empty directory may be deleted. A directory may be deleted only when it contains hardlink files only. A directory containing non-hardlink content is refused.</p><form method=\"post\" action=\"/admit/linker/delete\" hx-post=\"/admit/linker/delete\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><button>Delete</button><button formaction=\"/admit/linker/cancel\">Cancel</button></form></section>",linker_escape(&s.selected.join(", ")))
-    } else {
-        String::new()
-    };
-    let deploy_review = if s.mode == LinkerMode::DeployReview {
-        format!("<section class=\"linker-review\"><p>Sources: {}</p><p>Destination: {}</p><p>Policy: rename</p><p>Rename applies recursively to files only. A top-level directory conflict is refused.</p><form method=\"post\" action=\"/admit/linker/deploy\" hx-post=\"/admit/linker/deploy\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><button {}>Deploy</button><button formaction=\"/admit/linker/cancel\">Cancel</button></form></section>",linker_escape(&s.selected.join(", ")),linker_escape(dest),if s.destination.is_none()||s.selected.is_empty(){"disabled title=\"Select sources and set a destination first\""}else{""})
-    } else {
-        String::new()
-    };
-    let result = if s.mode == LinkerMode::Result {
-        "<form method=\"get\" action=\"/admit/linker\" hx-get=\"/admit/linker\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><button>Refresh listing</button></form>"
-    } else {
+    let disabled_one = if s.selected.len() == 1 {
         ""
-    };
-    let disabled_select = if s.selected.is_empty() {
-        "disabled title=\"Select at least one entry\""
     } else {
-        ""
-    };
-    let disabled_one = if s.selected.len() != 1 {
         "disabled title=\"Select exactly one entry\""
+    };
+    let disabled_delete = if s.selected.is_empty() {
+        "disabled title=\"Select at least one entry to delete\""
+    } else if s
+        .selected
+        .iter()
+        .any(|p| !s.selected_delete_eligible.get(p).copied().unwrap_or(false))
+    {
+        "disabled title=\"Delete disabled: selected files must be hardlinked; directories are allowed\""
     } else {
         ""
     };
-    let disabled_deploy = if s.selected.is_empty() || s.destination.is_none() {
-        "disabled title=\"Select sources and set a destination first\""
-    } else {
-        ""
-    };
-    let receipt = readback.map(linker_receipt_html).unwrap_or_default();
+    let script = r#"<style>.linker-cursor{visibility:hidden}.linker-row.cursor{outline:2px solid currentColor;background:color-mix(in srgb,currentColor 10%,transparent)}.linker-row.cursor>.linker-cursor{visibility:visible}</style><script>(function(){const x=document.getElementById('linker-fragment');if(!x)return;let r=[...x.querySelectorAll('[data-linker-entry]')],i=0;const next=window.__linkerCursorNext;if(next){const n=r.findIndex(z=>z.dataset.linkerPath===next);if(n>=0)i=(n+1)%r.length;window.__linkerCursorNext=null;}const f=()=>{r=[...x.querySelectorAll('[data-linker-entry]')];if(r.length){i=(i+r.length)%r.length;r.forEach((z,n)=>z.classList.toggle('cursor',n===i));r[i].focus()}};f();x.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select,button,[contenteditable]'))return;r=[...x.querySelectorAll('[data-linker-entry]')];if(!r.length)return;const k=e.key.toLowerCase(),cur=r[i],go=p=>htmx.ajax('GET','/admit/linker?path='+encodeURIComponent(p),{target:'#linker-fragment',swap:'outerHTML'});if(k==='j'||k==='arrowdown'){e.preventDefault();i=(i+1)%r.length;f()}else if(k==='k'||k==='arrowup'){e.preventDefault();i=(i+r.length-1)%r.length;f()}else if(k==='h'||k==='arrowleft'){e.preventDefault();const p=x.dataset.linkerPath||'/';if(p!=='/'){const q=p.replace(/\/+$/,'').split('/');q.pop();go(q.join('/')||'/')}}else if((k==='l'||k==='arrowright'||k==='enter')&&cur.dataset.linkerDirectory==='true'){e.preventDefault();cur.click()}else if(k===' '){e.preventDefault();window.__linkerCursorNext=cur.dataset.linkerPath;cur.querySelector('input[type=checkbox]').click()}})})();</script>"#;
     format!(
-        r###"<section id="linker-fragment" data-linker-state="{}"><header><h2>Linker</h2><nav aria-label="Ancestor trail"><a href="/admit/linker">/</a>{}</nav><p>Current path: {} · Visible: {} · Selected: {} · Destination: {} · Last feedback: <span aria-live="polite">{}</span></p></header><form method="get" action="/admit/linker" hx-get="/admit/linker" hx-target="#linker-fragment" hx-swap="outerHTML"><label>Name filter <input name="filter" type="search" value="{}"></label><input type="hidden" name="path" value="{}"><button>Filter</button></form><div class="linker-list" role="list">{}</div>{}<form class="linker-action-shelf" method="post"><button formaction="/admit/linker/destination" hx-post="/admit/linker/destination" hx-target="#linker-fragment" hx-swap="outerHTML">Set current directory as destination</button><button formaction="/admit/linker/deploy-review" hx-post="/admit/linker/deploy-review" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Deploy selected</button><button formaction="/admit/linker/naming" hx-post="/admit/linker/naming" hx-target="#linker-fragment" hx-swap="outerHTML">New directory</button><button formaction="/admit/linker/rename" hx-post="/admit/linker/rename" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Rename selected</button><button formaction="/admit/linker/delete-review" hx-post="/admit/linker/delete-review" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Delete selected</button></form>{}{}{}{}<p hidden>Browsing Naming DeleteReview DeployReview Result Fault</p></section>"###,
+        r###"<section id="linker-fragment" data-linker-state="{}" data-linker-path="{}"><header><h2>Linker</h2><nav aria-label="Ancestor trail"><a href="/admit/linker" hx-get="/admit/linker" hx-target="#linker-fragment" hx-swap="outerHTML">/</a>{}</nav><p>Current path: {} · Visible: {} · Selected: {} · Last feedback: <span aria-live="polite">{}</span></p></header><nav class="directory-tree-container" role="tree" data-linker-tree aria-label="Child directories">{}</nav><form method="get" action="/admit/linker" hx-get="/admit/linker" hx-target="#linker-fragment" hx-swap="outerHTML"><label>Name filter <input name="filter" type="search" value="{}"></label><input type="hidden" name="path" value="{}"><button>Filter</button></form><div class="linker-list" role="list">{}</div>{}<form class="linker-action-shelf" method="post"><button formaction="/admit/linker/deploy" hx-post="/admit/linker/deploy" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Deploy selected</button><button formaction="/admit/linker/naming" hx-post="/admit/linker/naming" hx-target="#linker-fragment" hx-swap="outerHTML">New directory</button><button formaction="/admit/linker/rename" hx-post="/admit/linker/rename" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Rename selected</button><button formaction="/admit/linker/delete" hx-post="/admit/linker/delete" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Delete selected</button></form>{}{}<p hidden>Browsing Naming Result Fault</p></section>"###,
         s.mode.as_str(),
+        linker_escape(&s.path),
         trail,
         linker_escape(&s.path),
         s.entries.len(),
         s.selected.len(),
-        linker_escape(dest),
         linker_escape(&s.feedback),
+        tree,
         linker_escape(&s.filter),
         linker_escape(&s.path),
         rows,
         naming,
-        disabled_deploy,
+        if s.selected.is_empty() {
+            "disabled title=\"Select sources first\""
+        } else {
+            ""
+        },
         disabled_one,
-        disabled_select,
-        delete_review,
-        deploy_review,
-        result,
-        receipt
+        disabled_delete,
+        readback.map(linker_receipt_html).unwrap_or_default(),
+        script
     )
 }
 fn linker_response(
@@ -228,7 +220,11 @@ fn linker_call(
         b,
     )
 }
-fn linker_read(h: &axum::http::HeaderMap, path: &str, query: &[(&str, &str)]) -> CaduceusHttpReadback {
+fn linker_read(
+    h: &axum::http::HeaderMap,
+    path: &str,
+    query: &[(&str, &str)],
+) -> CaduceusHttpReadback {
     let mut encoded = url::form_urlencoded::Serializer::new(String::new());
     for (name, value) in query {
         encoded.append_pair(name, value);
@@ -261,6 +257,12 @@ fn linker_browse(
             e.nlink = e.nlink.max(x.nlink)
         }
     }
+    for e in &s.entries {
+        if s.selected.iter().any(|p| p == &e.path) {
+            s.selected_delete_eligible
+                .insert(e.path.clone(), e.is_dir || e.nlink > 1);
+        }
+    }
     Ok(r)
 }
 async fn linker_fragment_route(h: axum::http::HeaderMap, Query(q): Query<LinkerQuery>) -> Response {
@@ -287,6 +289,7 @@ async fn linker_fragment_route(h: axum::http::HeaderMap, Query(q): Query<LinkerQ
     }
 }
 fn linker_finish(
+    h: &axum::http::HeaderMap,
     s: &mut LinkerState,
     r: CaduceusHttpReadback,
     label: &str,
@@ -294,7 +297,13 @@ fn linker_finish(
 ) -> Response {
     if r.ok {
         if clear_selection {
-            s.selected.clear()
+            s.selected.clear();
+            s.selected_delete_eligible.clear();
+            if let Err(browse) = linker_browse(h, s) {
+                s.mode = LinkerMode::Fault;
+                s.feedback = browse.first_missing_signal.clone();
+                return linker_response(s, Some(&browse), mutation_response_status(&browse));
+            }
         }
         s.mode = LinkerMode::Result;
         s.feedback = format!("{} completed.", label)
@@ -330,30 +339,36 @@ async fn linker_transition_route(
             };
             if f.checked.as_deref() == Some("on") {
                 if !s.selected.iter().any(|x| x == &p) {
-                    s.selected.push(p)
+                    let eligible = s
+                        .entries
+                        .iter()
+                        .find(|e| e.path == p)
+                        .map(|e| e.is_dir || e.nlink > 1)
+                        .unwrap_or(false);
+                    s.selected.push(p.clone());
+                    s.selected_delete_eligible.insert(p, eligible);
                 }
             } else {
-                s.selected.retain(|x| x != &p)
+                s.selected.retain(|x| x != &p);
+                s.selected_delete_eligible.remove(&p);
             }
             s.mode = LinkerMode::Browsing;
             match linker_browse(&h, s) {
                 Ok(r) => linker_response(s, Some(&r), StatusCode::OK),
                 Err(r) => {
                     s.mode = LinkerMode::Fault;
+                    s.feedback = r.first_missing_signal.clone();
                     linker_response(s, Some(&r), mutation_response_status(&r))
                 }
             }
         }
-        "browse" | "destination" => {
-            if action == "destination" {
-                s.destination = Some(s.path.clone());
-                s.feedback = format!("Destination set to {}.", s.path)
-            }
+        "browse" => {
             s.mode = LinkerMode::Browsing;
             match linker_browse(&h, s) {
                 Ok(r) => linker_response(s, Some(&r), StatusCode::OK),
                 Err(r) => {
                     s.mode = LinkerMode::Fault;
+                    s.feedback = r.first_missing_signal.clone();
                     linker_response(s, Some(&r), mutation_response_status(&r))
                 }
             }
@@ -363,18 +378,10 @@ async fn linker_transition_route(
             s.rename_naming = false;
             linker_response(s, None, StatusCode::OK)
         }
-        "delete-review" => {
-            s.mode = LinkerMode::DeleteReview;
-            linker_response(s, None, StatusCode::OK)
-        }
-        "deploy-review" => {
-            s.mode = LinkerMode::DeployReview;
-            linker_response(s, None, StatusCode::OK)
-        }
         "cancel" => {
             s.mode = LinkerMode::Browsing;
             s.rename_naming = false;
-            s.feedback = "Review cancelled.".into();
+            s.feedback = "Cancelled.".into();
             linker_response(s, None, StatusCode::OK)
         }
         "mkdir" => {
@@ -384,7 +391,7 @@ async fn linker_transition_route(
                 "/api/v1/linker/mkdir",
                 serde_json::json!({"path":s.path,"new_dir_name":f.new_dir_name.unwrap_or_default()}),
             );
-            linker_finish(s, r, "New directory", false)
+            linker_finish(&h, s, r, "New directory", false)
         }
         "rename" => {
             if f.new_name.is_none() {
@@ -406,11 +413,18 @@ async fn linker_transition_route(
                 "/api/v1/linker/rename",
                 serde_json::json!({"path":s.selected[0],"new_name":f.new_name.unwrap_or_default()}),
             );
-            linker_finish(s, r, "Rename", true)
+            linker_finish(&h, s, r, "Rename", true)
         }
         "delete" => {
             if s.selected.is_empty() {
                 s.feedback = "Delete requires at least one selected entry.".into();
+                return linker_response(s, None, StatusCode::BAD_REQUEST);
+            }
+            if s.selected
+                .iter()
+                .any(|p| !s.selected_delete_eligible.get(p).copied().unwrap_or(false))
+            {
+                s.feedback = "Delete is disabled for a selected entry that is not eligible.".into();
                 return linker_response(s, None, StatusCode::BAD_REQUEST);
             }
             let mut last = None;
@@ -429,20 +443,20 @@ async fn linker_transition_route(
                     last = Some(r);
                 }
             }
-            linker_finish(s, last.unwrap(), "Delete", all_succeeded)
+            linker_finish(&h, s, last.unwrap(), "Delete", all_succeeded)
         }
         "deploy" => {
-            if s.selected.is_empty() || s.destination.is_none() {
-                s.feedback = "Select sources and set a destination first.".into();
+            if s.selected.is_empty() {
+                s.feedback = "Select sources first.".into();
                 return linker_response(s, None, StatusCode::BAD_REQUEST);
             }
             let r = linker_call(
                 &h,
                 "coronatio.linker.deploy",
                 "/api/v1/linker/deploy",
-                serde_json::json!({"sources":s.selected,"destination":s.destination,"conflict_strategy":"rename"}),
+                serde_json::json!({"sources":s.selected,"destination":s.path,"conflict_strategy":"rename"}),
             );
-            linker_finish(s, r, "Deploy", true)
+            linker_finish(&h, s, r, "Deploy", true)
         }
         _ => {
             s.mode = LinkerMode::Fault;
