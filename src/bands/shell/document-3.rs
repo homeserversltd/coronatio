@@ -779,7 +779,12 @@ fn shell_document_3() -> &'static str {
         morphAttributes(current, next);
         // Stats owns chart canvases and live readouts between element-fact pulls. Its
         // element wrapper carries the fact attributes; preserve its live descendants.
-        if (current.hasAttribute('data-stat-element-id')) return;
+        if (current.hasAttribute('data-stat-element-id')) {
+          const currentHeader = Array.from(current.children).find(child => child.classList.contains('stat-header'));
+          const nextHeader = Array.from(next.children).find(child => child.classList.contains('stat-header'));
+          if (currentHeader && nextHeader) morphNode(currentHeader, nextHeader);
+          return;
+        }
         const keyed = new Map(Array.from(current.children).filter(child => child.id).map(child => [child.id, child]));
         Array.from(next.childNodes).forEach((nextChild, index) => {
           const currentChild = nextChild.nodeType === Node.ELEMENT_NODE && nextChild.id ? keyed.get(nextChild.id) : current.childNodes[index];
