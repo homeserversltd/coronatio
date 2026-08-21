@@ -215,91 +215,50 @@ fn shell_document_4() -> &'static str {
     }
     function metricPercent(value) { return value === null || value === undefined ? '—' : Number(value).toFixed(1) + '%'; }
     function loadToPercent(load) {
+      if (load === null || load === undefined || !Number.isFinite(Number(load))) return null;
       const cores = navigator.hardwareConcurrency || 4;
-      return Math.max(0, Math.min(100, (Number(load || 0) / cores) * 100));
+      return Math.max(0, Math.min(100, (Number(load) / cores) * 100));
     }
-    const statsChartState = { labels: [], cpu: [], temp: [], upload: [], download: [], lastRx: null, lastTx: null, lastIo: {}, lastStamp: null, ioSeries: {}, seeded: false };
-    function seedSeries(value, count = 24) {
-      return Array.from({ length: count }, (_, index) => Math.max(0, Number(value || 0) * (0.92 + (index % 6) * 0.025)));
-    }
+    const statsChartState = { labels: [], cpu: [], temp: [], upload: [], download: [], lastRx: null, lastTx: null, lastIo: {}, lastStamp: null, ioSeries: {}, skipNextChartPoint: false };
+    function optionalNumber(value) { return value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value); }
     function statsNetworkTotals(data) {
       const network = data.network || {};
-      if (network.receivedBytes !== undefined || network.sentBytes !== undefined) return { rx: Number(network.receivedBytes || 0), tx: Number(network.sentBytes || 0) };
+      const directRx = optionalNumber(network.receivedBytes), directTx = optionalNumber(network.sentBytes);
+      const interfaces = Array.isArray(network.interfaces) ? network.interfaces : [];
       return {
-        rx: (network.interfaces || []).reduce((sum, iface) => sum + Number(iface.rxBytes || 0), 0),
-        tx: (network.interfaces || []).reduce((sum, iface) => sum + Number(iface.txBytes || 0), 0)
+        rx: directRx !== null ? directRx : interfaces.reduce((sum, iface) => { const value = optionalNumber(iface.rxBytes); return value === null ? sum : (sum === null ? value : sum + value); }, null),
+        tx: directTx !== null ? directTx : interfaces.reduce((sum, iface) => { const value = optionalNumber(iface.txBytes); return value === null ? sum : (sum === null ? value : sum + value); }, null)
       };
     }
-    function seedStatsHistory(label, data) {
-      if (statsChartState.seeded) return;
-      const cpu = loadToPercent(data.resources?.load?.one);
-      const temp = Number(data.resources?.load?.cpuTemperatureCelsius || 0);
-      const now = Date.now();
-      statsChartState.labels = Array.from({ length: 24 }, (_, index) => formatChartTime(now - (23 - index) * 5000));
-      statsChartState.cpu = seedSeries(cpu);
-      statsChartState.temp = seedSeries(temp);
-      statsChartState.upload = seedSeries(0);
-      statsChartState.download = seedSeries(0);
-      (data.io?.devices || []).forEach(device => {
-        const key = device.device || device.mount;
-        statsChartState.ioSeries[key] = { read: seedSeries(0), write: seedSeries(0), label: key };
-      });
-      statsChartState.seeded = true;
-    }
     function pushChartPoint(label, data) {
-      seedStatsHistory(label, data);
-      const now = Date.now();
-      const totals = statsNetworkTotals(data);
-      const totalRx = totals.rx;
-      const totalTx = totals.tx;
-      const seconds = statsChartState.lastStamp ? Math.max(1, (now - statsChartState.lastStamp) / 1000) : 1;
-      const downloadRate = statsChartState.lastRx === null ? 0 : Math.max(0, (totalRx - statsChartState.lastRx) / seconds);
-      const uploadRate = statsChartState.lastTx === null ? 0 : Math.max(0, (totalTx - statsChartState.lastTx) / seconds);
-      statsChartState.lastRx = totalRx;
-      statsChartState.lastTx = totalTx;
-      statsChartState.lastStamp = now;
-      statsChartState.labels.push(label);
-      statsChartState.cpu.push(loadToPercent(data.resources?.load?.one));
-      statsChartState.temp.push(Number(data.resources?.load?.cpuTemperatureCelsius || 0));
-      statsChartState.upload.push(uploadRate);
-      statsChartState.download.push(downloadRate);
-      (data.io?.devices || []).forEach(device => {
-        const key = device.device || device.mount;
-        const previous = statsChartState.lastIo[key];
-        const read = previous ? Math.max(0, (Number(device.readBytes || 0) - previous.readBytes) / seconds) : 0;
-        const write = previous ? Math.max(0, (Number(device.writeBytes || 0) - previous.writeBytes) / seconds) : 0;
-        statsChartState.lastIo[key] = { readBytes: Number(device.readBytes || 0), writeBytes: Number(device.writeBytes || 0) };
-        if (!statsChartState.ioSeries[key]) statsChartState.ioSeries[key] = { read: seedSeries(read), write: seedSeries(write), label: key };
-        statsChartState.ioSeries[key].read.push(read);
-        statsChartState.ioSeries[key].write.push(write);
+      const now = Date.now(), totals = statsNetworkTotals(data);
+      const seconds = statsChartState.lastStamp ? Math.max(1, (now - statsChartState.lastStamp) / 1000) : null;
+      const downloadRate = statsChartState.lastRx === null || totals.rx === null || seconds === null ? null : Math.max(0, (totals.rx - statsChartState.lastRx) / seconds);
+      const uploadRate = statsChartState.lastTx === null || totals.tx === null || seconds === null ? null : Math.max(0, (totals.tx - statsChartState.lastTx) / seconds);
+      statsChartState.lastRx = totals.rx; statsChartState.lastTx = totals.tx; statsChartState.lastStamp = now;
+      if (statsChartState.skipNextChartPoint) { statsChartState.skipNextChartPoint = false; return; }
+      statsChartState.labels.push(label); statsChartState.cpu.push(loadToPercent(data.resources?.load?.one)); statsChartState.temp.push(optionalNumber(data.resources?.load?.cpuTemperatureCelsius)); statsChartState.upload.push(uploadRate); statsChartState.download.push(downloadRate);
+      const devices = Array.isArray(data.io?.devices) ? data.io.devices : [], seen = new Set();
+      devices.forEach(device => {
+        const key = device.device || device.mount; if (!key) return; seen.add(key);
+        const previous = statsChartState.lastIo[key], readBytes = optionalNumber(device.readBytes), writeBytes = optionalNumber(device.writeBytes);
+        const read = previous && previous.readBytes !== null && readBytes !== null && seconds !== null ? Math.max(0, (readBytes - previous.readBytes) / seconds) : null;
+        const write = previous && previous.writeBytes !== null && writeBytes !== null && seconds !== null ? Math.max(0, (writeBytes - previous.writeBytes) / seconds) : null;
+        statsChartState.lastIo[key] = { readBytes, writeBytes };
+        if (!statsChartState.ioSeries[key]) statsChartState.ioSeries[key] = { read: Array(statsChartState.labels.length - 1).fill(null), write: Array(statsChartState.labels.length - 1).fill(null), label: key };
+        statsChartState.ioSeries[key].read.push(read); statsChartState.ioSeries[key].write.push(write);
       });
-      if (statsChartState.labels.length > 60) {
-        ['labels', 'cpu', 'temp', 'upload', 'download'].forEach(key => statsChartState[key].shift());
-        Object.values(statsChartState.ioSeries).forEach(series => { series.read.shift(); series.write.shift(); });
-      }
+      Object.entries(statsChartState.ioSeries).forEach(([key, series]) => { if (!seen.has(key)) { series.read.push(null); series.write.push(null); } });
+      if (statsChartState.labels.length > 60) { ['labels', 'cpu', 'temp', 'upload', 'download'].forEach(key => statsChartState[key].shift()); Object.values(statsChartState.ioSeries).forEach(series => { series.read.shift(); series.write.shift(); }); }
     }
     const statsCharts = { cpu: null, network: null, io: null };
-    function destroyStatsChart(key) {
-      if (statsCharts[key]) { statsCharts[key].destroy(); statsCharts[key] = null; }
-    }
+    function destroyStatsChart(key) { if (statsCharts[key]) { statsCharts[key].destroy(); statsCharts[key] = null; } }
     function themeCssColor(token, fallback) { const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim(); return value || fallback; }
     function chartTicks(tokenOrColor, callback) { const color = tokenOrColor.startsWith('--') ? themeCssColor(tokenOrColor, '#4A5568') : tokenOrColor; return { color, maxTicksLimit: 10, autoSkip: true, callback }; }
     function chartGrid() { return { color: themeCssColor('--border', '#1E293B'), borderDash: [3, 3] }; }
-    function chartTooltip(labelFormatter) {
-      return { enabled: true, mode: 'index', intersect: false, callbacks: { label: labelFormatter } };
-    }
-    function chartCommonOptions() {
-      return {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        layout: { padding: { left: 10, right: 10, top: 20, bottom: 20 } },
-        animation: { duration: 250 }
-      };
-    }
-    function lineDataset(label, data, color, yAxisID) {
-      return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4, yAxisID };
-    }
+    function chartTooltip(labelFormatter) { return { enabled: true, mode: 'index', intersect: false, callbacks: { label: labelFormatter } }; }
+    function chartCommonOptions() { return { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, layout: { padding: { left: 10, right: 10, top: 20, bottom: 20 } }, animation: { duration: 250 } }; }
+    function lineDataset(label, data, color, yAxisID) { return { label, data, borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4, yAxisID }; }
     function createCPUChart(ctx, labels, cpuData, tempData) {
       if (statsCharts.cpu) return statsCharts.cpu;
       statsCharts.cpu = new Chart(ctx, {
@@ -309,7 +268,7 @@ fn shell_document_4() -> &'static str {
           lineDataset('Temperature', tempData, themeCssColor('--accent', '#90cff3'), 'y-temp')
         ] },
         options: Object.assign(chartCommonOptions(), {
-          plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + Number(context.parsed.y || 0).toFixed(1) + (context.dataset.yAxisID === 'y-temp' ? '°C' : '%')), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
+          plugins: { tooltip: chartTooltip(context => context.dataset.label + ': ' + (context.parsed.y === null || context.parsed.y === undefined ? '—' : Number(context.parsed.y).toFixed(1)) + (context.dataset.yAxisID === 'y-temp' ? '°C' : '%')), legend: { position: 'bottom', align: 'center', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 } } },
           scales: {
             x: { ticks: chartTicks('--hiddenTabText', value => labels[value] || value), grid: { display: false } },
             'y-cpu': { type: 'linear', display: true, position: 'left', beginAtZero: true, max: 100, ticks: chartTicks('--hiddenTabText', value => Number(value).toFixed(0) + '%'), grid: chartGrid() },
@@ -353,7 +312,7 @@ fn shell_document_4() -> &'static str {
         type: 'line',
         data: { labels, datasets },
         options: Object.assign(chartCommonOptions(), {
-          plugins: { legend: { display: false }, tooltip: chartTooltip(context => context.dataset.label + ': ' + fmtBytes(context.parsed.y || 0) + '/s') },
+          plugins: { legend: { display: false }, tooltip: chartTooltip(context => context.dataset.label + ': ' + fmtBytes(context.parsed.y) + '/s') },
           scales: {
             x: { ticks: chartTicks('--hiddenTabText', value => labels[value] || value), grid: { display: false } },
             y: { beginAtZero: true, suggestedMin: 0, suggestedMax: Math.max(1, ...datasets.flatMap(dataset => dataset.data)) * 1.1, ticks: chartTicks('--hiddenTabText', value => fmtBytes(value) + '/s'), grid: chartGrid() }
@@ -496,11 +455,63 @@ fn shell_document_4() -> &'static str {
       const processes = data.processes || [];
       target.innerHTML = processes.length ? processes.map(process => `<div class="process-bar" title="Process: ${process.name}\nMemory: ${fmtBytes(process.memoryBytes)}\nCPU: ${Number(process.cpuPercent || 0).toFixed(1)}%\nInstances: ${process.processCount || 1}"><div class="process-bar-fill" style="width:${Math.max(Number(process.cpuPercent || 0), 1)}%"></div><div class="process-text-container"><span class="process-name">${process.name}</span><span class="process-usage">${Number(process.cpuPercent || 0).toFixed(1)}%</span></div></div>`).join('') : '<div class="process-usage-empty"><p>No process data available</p></div>';
     }
+    function historyTimestamp(sample, bucket) {
+      const raw = optionalNumber(sample?.ts);
+      if (raw !== null) return raw > 100000000000 ? raw : raw * 1000;
+      const minute = optionalNumber(bucket);
+      if (minute === null) return null;
+      return minute > 100000000000 ? minute : (minute > 1000000000 ? minute * 1000 : minute * 60000);
+    }
+    function historyPoint(sample, timestamp) {
+      const load = sample?.load || {}, throughput = sample?.network?.throughput || {}, diskThroughput = sample?.disk?.throughput || {};
+      return { timestamp, cpu: loadToPercent(load.one), temp: optionalNumber(sample?.temperature?.celsius), download: optionalNumber(throughput.rxBytesPerSecond), upload: optionalNumber(throughput.txBytesPerSecond), io: { read: optionalNumber(diskThroughput.readBytesPerSecond), write: optionalNumber(diskThroughput.writeBytesPerSecond), devices: Array.isArray(sample?.disk?.io) ? sample.disk.io : [] } };
+    }
+    function appendHistoryPoint(point) {
+      const length = statsChartState.labels.length;
+      statsChartState.labels.push(formatChartTime(point.timestamp));
+      statsChartState.cpu.push(point.cpu); statsChartState.temp.push(point.temp); statsChartState.download.push(point.download); statsChartState.upload.push(point.upload);
+      const seen = new Set();
+      point.io.devices.forEach(device => {
+        const key = device.device || device.mount;
+        if (!key) return;
+        seen.add(key);
+        if (!statsChartState.ioSeries[key]) statsChartState.ioSeries[key] = { read: Array(length).fill(null), write: Array(length).fill(null), label: key };
+        statsChartState.ioSeries[key].read.push(point.io.read); statsChartState.ioSeries[key].write.push(point.io.write);
+      });
+      Object.entries(statsChartState.ioSeries).forEach(([key, series]) => { if (!seen.has(key)) { series.read.push(null); series.write.push(null); } });
+    }
+    async function hydrateStatsHistory() {
+      try {
+        const response = await fetch('/api/stats/history', { cache: 'no-store' });
+        if (!response.ok) return;
+        const history = await response.json();
+        const raw = (Array.isArray(history?.tiers?.raw) ? history.tiers.raw : []).map(sample => ({ sample, timestamp: historyTimestamp(sample) })).filter(point => point.timestamp !== null);
+        const firstRaw = raw.length ? Math.min(...raw.map(point => point.timestamp)) : Infinity;
+        const minuteRows = Array.isArray(history?.tiers?.minute) ? history.tiers.minute : [];
+        const minuteByTimestamp = new Map();
+        minuteRows.forEach(row => {
+          const sample = row?.last;
+          const timestamp = historyTimestamp(sample, row?.bucket);
+          if (sample && timestamp !== null && timestamp < firstRaw) minuteByTimestamp.set(timestamp, sample);
+        });
+        const points = [...Array.from(minuteByTimestamp, ([timestamp, sample]) => ({ sample, timestamp })), ...raw].sort((a, b) => a.timestamp - b.timestamp);
+        const selected = points.length <= 60 ? points : Array.from({ length: 60 }, (_, index) => points[Math.round(index * (points.length - 1) / 59)]);
+        selected.forEach(point => appendHistoryPoint(historyPoint(point.sample, point.timestamp)));
+        const newest = points[points.length - 1];
+        if (newest) { statsChartState.lastStamp = newest.timestamp; statsChartState.skipNextChartPoint = true; }
+        const latest = (raw.reduce((newest, point) => !newest || point.timestamp > newest.timestamp ? point : newest, null) || points[points.length - 1])?.sample;
+        if (latest) {
+          const totals = statsNetworkTotals({ network: latest.network });
+          statsChartState.lastRx = totals.rx; statsChartState.lastTx = totals.tx;
+          (latest.disk?.io || []).forEach(device => { const key = device.device || device.mount; if (key) statsChartState.lastIo[key] = { readBytes: optionalNumber(device.readBytes), writeBytes: optionalNumber(device.writeBytes) }; });
+        }
+      } catch (_) { /* sparse history is truthful when Caduceus has no samples */ }
+    }
     async function hydrateStats() {
       if (statsHydrationInFlight) return; statsHydrationInFlight = true;
       try {
-        const statsResponse = await fetch('/api/stats', { cache: 'no-store' }); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
-        const data = await statsResponse.json(), label = formatChartTime(), roster = identityRows(data.keaLeases?.entries); identityState.roster = roster; identityState.notes = Object.fromEntries(roster.map(row => [canonicalNetworkNoteMac(row.mac), row.note ?? '']).filter(([mac]) => mac)); pushChartPoint(label, data); if (data.resources?.load) renderCpuChart(data); if (data.network) renderNetwork(data); if (data.io) renderDiskIo(data); if (data.resources?.memory) renderMemory(data); if (data.storage) renderDiskUsage(data); if (data.keaLeases) renderStatsRoster(); if (data.processes) renderProcesses(data);
+        if (!statsChartState.lastStamp) await hydrateStatsHistory();
+        const statsResponse = await fetch('/api/stats', { cache: 'no-store' }); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`); const data = await statsResponse.json(), label = formatChartTime(), roster = identityRows(data.keaLeases?.entries); identityState.roster = roster; identityState.notes = Object.fromEntries(roster.map(row => [canonicalNetworkNoteMac(row.mac), row.note ?? '']).filter(([mac]) => mac)); pushChartPoint(label, data); if (data.resources?.load) renderCpuChart(data); if (data.network) renderNetwork(data); if (data.io) renderDiskIo(data); if (data.resources?.memory) renderMemory(data); if (data.storage) renderDiskUsage(data); if (data.keaLeases) renderStatsRoster(); if (data.processes) renderProcesses(data);
       } catch (_) { /* OG has no Stats-family error face; retain the last truthful frame. */ }
       finally { statsHydrationInFlight = false; }
     }
