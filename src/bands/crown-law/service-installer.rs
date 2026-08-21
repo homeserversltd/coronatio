@@ -255,210 +255,23 @@ fn installer_lane_mapping() -> Vec<InstallerLaneMapping> {
     ]
 }
 
-const STATS_COLLECTOR_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+fn caduceus_stats_value(path: &str) -> serde_json::Value { caduceus_http("GET", path).body }
 
-async fn bounded_stats_collector<T>(
-    handle: tokio::task::JoinHandle<T>,
-    timed_out: T,
-    unavailable: T,
-) -> T
-where
-    T: Send + 'static,
-{
-    match tokio::time::timeout(STATS_COLLECTOR_TIMEOUT, handle).await {
-        Ok(Ok(value)) => value,
-        Ok(Err(_)) => unavailable,
-        Err(_) => timed_out,
-    }
+fn stats_number(value: Option<&serde_json::Value>) -> Option<f64> { value.and_then(|value| value.as_f64().or_else(|| value.as_u64().map(|value| value as f64))) }
+fn stats_u64(value: Option<&serde_json::Value>) -> Option<u64> { value.and_then(|value| value.as_u64().or_else(|| value.as_f64().and_then(|value| (value >= 0.0).then_some(value as u64)))) }
+fn stats_memory(memory: Option<&serde_json::Value>, total_key: &str, free_key: &str, used_key: Option<&str>) -> StatsMemory {
+    let total=stats_u64(memory.and_then(|v|v.get(total_key))); let free=stats_u64(memory.and_then(|v|v.get(free_key))); let used=used_key.and_then(|k|stats_u64(memory.and_then(|v|v.get(k)))).or_else(||total.zip(free).map(|(t,f)|t.saturating_sub(f))); let percent=total.filter(|t|*t>0).and_then(|t|used.map(|u|((u.saturating_mul(100)/t).min(100)) as u8)); StatsMemory{total_bytes:total,used_bytes:used,free_bytes:free,percent}
 }
-
-fn unavailable_resources() -> StatsResources {
-    StatsResources {
-        load: StatsLoad { one: None, five: None, fifteen: None, cpu_temperature_celsius: None },
-        memory: StatsMemory { total_bytes: None, used_bytes: None, free_bytes: None, percent: None },
-        swap: StatsMemory { total_bytes: None, used_bytes: None, free_bytes: None, percent: None },
-    }
+fn stats_caduceus_snapshot(body: serde_json::Value) -> StatsSnapshot {
+    let load=body.get("load"); let memory=body.get("memory"); let temperature=body.pointer("/temperature/celsius");
+    let resources=StatsResources{load:StatsLoad{one:stats_number(load.and_then(|v|v.get("one"))),five:stats_number(load.and_then(|v|v.get("five"))),fifteen:stats_number(load.and_then(|v|v.get("fifteen"))),cpu_temperature_celsius:stats_number(temperature)},memory:stats_memory(memory,"MemTotal","MemAvailable",Some("usedBytes")),swap:stats_memory(memory,"SwapTotal","SwapFree",Some("usedBytesSwap"))};
+    let interfaces=body.pointer("/network/interfaces").and_then(serde_json::Value::as_array).map(|rows|rows.iter().filter_map(|row|Some(StatsNetworkInterface{name:row.get("name")?.as_str()?.to_string(),status:row.get("operstate").and_then(|v|v.as_str()).unwrap_or("unknown").to_string(),rx_bytes:stats_u64(row.get("rxBytes")).unwrap_or(0),tx_bytes:stats_u64(row.get("txBytes")).unwrap_or(0)})).collect()).unwrap_or_default();
+    let tcp=body.get("tcp"); let established=stats_u64(tcp.and_then(|v|v.get("established"))).unwrap_or(0); let listening=stats_u64(tcp.and_then(|v|v.get("listen"))).unwrap_or(0); let total=tcp.and_then(serde_json::Value::as_object).map(|v|v.values().filter_map(serde_json::Value::as_u64).sum()).unwrap_or(0);
+    let storage: Vec<StatsDrive>=body.pointer("/disk/usage").and_then(serde_json::Value::as_array).map(|rows|rows.iter().map(|r|StatsDrive{name:r.get("filesystem").and_then(|v|v.as_str()).unwrap_or("storage").to_string(),mount:r.get("path").and_then(|v|v.as_str()).unwrap_or("").to_string(),total_bytes:stats_u64(r.get("totalBytes")),used_bytes:stats_u64(r.get("usedBytes")),free_bytes:stats_u64(r.get("availableBytes")),usage_percent:r.get("usePercent").and_then(|v|v.as_str()).and_then(|v|v.trim_end_matches('%').parse().ok()),source:"Caduceus appliance stats".to_string()}).collect()).unwrap_or_default();
+    let io=StatsIo{devices:body.pointer("/disk/io").and_then(serde_json::Value::as_array).map(|rows|rows.iter().map(|r|StatsIoDevice{device:r.get("device").and_then(|v|v.as_str()).unwrap_or("disk").to_string(),mount:r.get("mount").and_then(|v|v.as_str()).unwrap_or("").to_string(),read_bytes:stats_u64(r.get("readBytes")).unwrap_or(0),write_bytes:stats_u64(r.get("writeBytes")).unwrap_or(0)}).collect()).unwrap_or_default()};
+    let processes=body.get("processes").and_then(serde_json::Value::as_array).map(|rows|rows.iter().map(|r|StatsProcess{name:r.get("command").or_else(||r.get("name")).and_then(|v|v.as_str()).unwrap_or("process").to_string(),cpu_percent:stats_number(r.get("cpuPercent")).unwrap_or(0.0),memory_bytes:stats_u64(r.get("rssBytes").or_else(||r.get("memoryBytes"))).unwrap_or(0),process_count:stats_u64(r.get("processCount")).unwrap_or(1)}).collect()).unwrap_or_default();
+    let network=StatsNetwork{interfaces,connections:StatsConnectionCounts{established,listening,total}}; let services=stats_services();
+    StatsSnapshot{schema:"coronatio.stats.snapshot.v1".to_string(),pane_id:"stats".to_string(),product:"Coronatio".to_string(),doctrine:StatsViewportDoctrine{quarry_sources:vec!["Caduceus appliance stats readback".to_string()],preserved_sections:vec!["cpu-chart".to_string(),"network".to_string(),"io-section".to_string(),"memory".to_string(),"disk-usage".to_string(),"kea-leases".to_string(),"process-usage".to_string()],refresh_seconds:5,authority:"read-only Caduceus appliance stats snapshot".to_string()},transport:StatsTransport{snapshot_route:"/api/stats".to_string(),event_route:"/api/stats/pulse".to_string(),renew_route:"/api/stats/pulse/renew".to_string(),stream_status:"available".to_string(),stream_reason:"persistent SSE pulse stream and renewal route are registered; pokes carry no stats payload".to_string()},resources,storage:storage.clone(),network,io,leases:stats_kea_leases(),kea_leases:stats_identity_roster(),processes,services:services.clone(),telemetry:StatsTelemetry{load1:stats_number(load.and_then(|v|v.get("one"))),cpu_temperature_celsius:stats_number(temperature),service_health:Some(service_health_summary(&services)),storage_posture:Some(storage_posture_summary(&storage)),first_missing_signal:String::new()},next_routes:StatsNextRoutes{snapshot:"/api/stats".to_string(),events:"/api/stats/pulse".to_string(),renew:"/api/stats/pulse/renew".to_string()}}
 }
-
-fn unavailable_storage(source: &str) -> Vec<StatsDrive> {
-    vec![StatsDrive {
-        name: "root".to_string(), mount: "/".to_string(), total_bytes: None, used_bytes: None,
-        free_bytes: None, usage_percent: None, source: source.to_string(),
-    }]
-}
-
-fn unavailable_network(reason: &str) -> StatsNetwork {
-    StatsNetwork {
-        interfaces: vec![StatsNetworkInterface { name: "unavailable".to_string(), status: reason.to_string(), rx_bytes: 0, tx_bytes: 0 }],
-        connections: StatsConnectionCounts { established: 0, listening: 0, total: 0 },
-    }
-}
-
-fn unavailable_io(reason: &str) -> StatsIo {
-    StatsIo { devices: vec![StatsIoDevice { device: "unavailable".to_string(), mount: reason.to_string(), read_bytes: 0, write_bytes: 0 }] }
-}
-
-fn unavailable_leases(reason: &str) -> Vec<StatsKeaLease> {
-    vec![StatsKeaLease { hostname: "unavailable".to_string(), ip: reason.to_string(), mac: String::new(), note: String::new() }]
-}
-
-fn unavailable_roster(reason: &str) -> StatsKeaLeases {
-    StatsKeaLeases { status: reason.to_string(), entries: Vec::new() }
-}
-
-fn unavailable_processes(reason: &str) -> Vec<StatsProcess> {
-    vec![StatsProcess { name: reason.to_string(), cpu_percent: 0.0, memory_bytes: 0, process_count: 0 }]
-}
-
-fn unavailable_services(reason: &str) -> Vec<StatsService> {
-    vec![StatsService {
-        name: "Stats collector".to_string(), status: reason.to_string(),
-        details: "service collector unavailable".to_string(), route: String::new(),
-    }]
-}
-
-async fn stats_snapshot() -> StatsSnapshot {
-    let resources_task = tokio::task::spawn_blocking(stats_resources);
-    let storage_task = tokio::task::spawn_blocking(stats_storage);
-    let network_task = tokio::task::spawn_blocking(stats_network);
-    let leases_task = tokio::task::spawn_blocking(stats_kea_leases);
-    let kea_leases_task = tokio::task::spawn_blocking(stats_identity_roster);
-    let processes_task = tokio::task::spawn_blocking(stats_processes);
-    let services_task = tokio::task::spawn_blocking(stats_services);
-
-    let (resources, storage, network, leases, kea_leases, processes, services) = tokio::join!(
-        bounded_stats_collector(resources_task, unavailable_resources(), unavailable_resources()),
-        bounded_stats_collector(storage_task, unavailable_storage("df timeout (>1s)"), unavailable_storage("df unavailable")),
-        bounded_stats_collector(network_task, unavailable_network("timed out (>1s)"), unavailable_network("unavailable")),
-        bounded_stats_collector(leases_task, unavailable_leases("timed out (>1s)"), unavailable_leases("unavailable")),
-        bounded_stats_collector(kea_leases_task, unavailable_roster("timed out (>1s)"), unavailable_roster("unavailable")),
-        bounded_stats_collector(processes_task, unavailable_processes("timed out (>1s)"), unavailable_processes("unavailable")),
-        bounded_stats_collector(services_task, unavailable_services("timed out (>1s)"), unavailable_services("unavailable")),
-    );
-    let io_task = tokio::task::spawn_blocking({
-        let storage = storage.clone();
-        move || stats_io(&storage)
-    });
-    let io = bounded_stats_collector(io_task, unavailable_io("timed out (>1s)"), unavailable_io("unavailable")).await;
-    let first_missing_signal = stats_first_missing_signal(&storage, &services);
-    StatsSnapshot {
-        schema: "coronatio.stats.snapshot.v1".to_string(),
-        pane_id: "stats".to_string(),
-        product: "Coronatio".to_string(),
-        doctrine: StatsViewportDoctrine {
-            quarry_sources: vec![
-                "Flask/React src/tablets/stats/index.tsx".to_string(),
-                "Flask/React Stats component files".to_string(),
-                "Coronatio Rust one-to-one replacement lane".to_string(),
-            ],
-            preserved_sections: vec![
-                "cpu-chart".to_string(),
-                "network".to_string(),
-                "io-section".to_string(),
-                "memory".to_string(),
-                "disk-usage".to_string(),
-                "kea-leases".to_string(),
-                "process-usage".to_string(),
-            ],
-            refresh_seconds: 5,
-            authority: "read-only Rust snapshot from /proc and df; host mutation remains behind Caduceus".to_string(),
-        },
-        transport: StatsTransport {
-            snapshot_route: "/api/stats".to_string(),
-            event_route: "/api/stats/pulse".to_string(),
-            renew_route: "/api/stats/pulse/renew".to_string(),
-            stream_status: "available".to_string(),
-            stream_reason: "persistent SSE pulse stream and renewal route are registered; pokes carry no stats payload".to_string(),
-        },
-        resources: resources.clone(),
-        storage: storage.clone(),
-        network: network.clone(),
-        io,
-        leases,
-        kea_leases,
-        processes,
-        services: services.clone(),
-        telemetry: StatsTelemetry {
-            load1: resources.load.one,
-            cpu_temperature_celsius: resources.load.cpu_temperature_celsius,
-            service_health: Some(service_health_summary(&services)),
-            storage_posture: Some(storage_posture_summary(&storage)),
-            first_missing_signal,
-        },
-        next_routes: StatsNextRoutes {
-            snapshot: "/api/stats".to_string(),
-            events: "/api/stats/pulse".to_string(),
-            renew: "/api/stats/pulse/renew".to_string(),
-        },
-    }
-}
-
-fn stats_resources() -> StatsResources {
-    let load = std::fs::read_to_string("/proc/loadavg")
-        .ok()
-        .map(|raw| {
-            let mut parts = raw.split_whitespace();
-            StatsLoad {
-                one: parts.next().and_then(|value| value.parse().ok()),
-                five: parts.next().and_then(|value| value.parse().ok()),
-                fifteen: parts.next().and_then(|value| value.parse().ok()),
-                cpu_temperature_celsius: read_cpu_temperature_celsius(),
-            }
-        })
-        .unwrap_or(StatsLoad {
-            one: None,
-            five: None,
-            fifteen: None,
-            cpu_temperature_celsius: read_cpu_temperature_celsius(),
-        });
-    let meminfo = parse_meminfo();
-    StatsResources {
-        load,
-        memory: memory_from_meminfo(&meminfo, "MemTotal", "MemAvailable"),
-        swap: memory_from_meminfo(&meminfo, "SwapTotal", "SwapFree"),
-    }
-}
-
-fn parse_meminfo() -> BTreeMap<String, u64> {
-    let mut map = BTreeMap::new();
-    if let Ok(raw) = std::fs::read_to_string("/proc/meminfo") {
-        for line in raw.lines() {
-            if let Some((key, rest)) = line.split_once(':') {
-                if let Some(value) = rest.split_whitespace().next().and_then(|v| v.parse::<u64>().ok()) {
-                    map.insert(key.to_string(), value * 1024);
-                }
-            }
-        }
-    }
-    map
-}
-
-fn memory_from_meminfo(meminfo: &BTreeMap<String, u64>, total_key: &str, free_key: &str) -> StatsMemory {
-    let total = meminfo.get(total_key).copied();
-    let free = meminfo.get(free_key).copied();
-    let used = match (total, free) {
-        (Some(total), Some(free)) if total >= free => Some(total - free),
-        _ => None,
-    };
-    let percent = match (used, total) {
-        (Some(used), Some(total)) if total > 0 => Some(((used.saturating_mul(100)) / total).min(100) as u8),
-        _ => None,
-    };
-    StatsMemory { total_bytes: total, used_bytes: used, free_bytes: free, percent }
-}
-
-fn read_cpu_temperature_celsius() -> Option<f64> {
-    for path in [
-        "/sys/class/thermal/thermal_zone0/temp",
-        "/sys/class/hwmon/hwmon0/temp1_input",
-        "/sys/class/hwmon/hwmon1/temp1_input",
-    ] {
-        if let Ok(raw) = std::fs::read_to_string(path) {
-            if let Ok(value) = raw.trim().parse::<f64>() {
-                return Some((value / 1000.0 * 10.0).round() / 10.0);
-            }
-        }
-    }
-    None
-}
-
+async fn stats_snapshot() -> StatsSnapshot { stats_caduceus_snapshot(caduceus_stats_value("/api/v1/appliance/stats")) }
+async fn stats_history() -> impl IntoResponse { let readback=caduceus_http("GET","/api/v1/appliance/stats/history"); (StatusCode::from_u16(readback.status).unwrap_or(StatusCode::BAD_GATEWAY),Json(readback.body)) }

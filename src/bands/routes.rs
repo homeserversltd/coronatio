@@ -107,6 +107,8 @@ async fn panes_route() -> impl IntoResponse {
     }))
 }
 
+async fn stats_history_route() -> impl IntoResponse { stats_history().await }
+
 async fn stats_route(headers: axum::http::HeaderMap) -> Response {
     let raw = stats_snapshot().await;
     match session_from_headers(&headers) {

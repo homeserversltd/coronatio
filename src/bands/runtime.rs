@@ -145,6 +145,7 @@ fn app(state: AppState) -> Router {
         .route("/api/stats/pulse/upgrade", post(pulse::stats_pulse_upgrade_route))
         .route("/api/stats/pulse/downgrade", post(pulse::stats_pulse_downgrade_route))
         .route("/api/stats", get(stats_route))
+        .route("/api/stats/history", get(stats_history_route))
         .route("/api/faults", get(faults_route))
         .route("/api/v1/cartridges", get(cartridges_read_proxy_route))
         .route("/api/v1/cartridges/admit", post(cartridges_admit_proxy_route))
