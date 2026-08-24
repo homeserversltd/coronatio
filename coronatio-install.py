@@ -23,6 +23,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent
 BINARY_DEST = Path("/usr/local/bin/coronatio")
 RUNTIME_ROOT = Path("/opt/coronatio")
+WORKSPACE_ROOT = Path("/var/opt/hermes/workspace")
 SOURCE_SHA_NAME = ".coronatio-installed-source-sha"
 BINARY_SHA_NAME = ".coronatio-installed-binary-sha"
 MANIFEST_NAME = ".coronatio-release-manifest.json"
@@ -110,13 +111,13 @@ def durable_copy(source: Path, destination: Path) -> None:
     fsync_dir(destination.parent)
 
 
-def acquire_install_lock(runtime_root: Path) -> int:
+def acquire_install_lock(runtime_root: Path, *, expected_uid: int) -> int:
     """Acquire the fixed, nofollow process lock; caller owns the descriptor lifetime."""
     lock = runtime_root / LOCK_NAME
     try:
         fd = os.open(lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0:
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != expected_uid:
             raise RuntimeError("unsafe installer lock file")
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -423,43 +424,61 @@ def recover_transaction(runtime_root: Path, binary_dest: Path, *, restart: bool 
     return True
 
 
-def probe_health(url: str, expected_sha: str, timeout_seconds: float) -> tuple[bool, str]:
+def fetch_health(url: str, expected_sha: str, timeout_seconds: float) -> tuple[bool, str, dict[str, Any] | None]:
     try:
         with urllib.request.urlopen(urllib.request.Request(url), timeout=timeout_seconds) as response:
-            if not 200 <= response.status < 300:
-                return False, f"HTTP {response.status}"
-            value = json.loads(response.read().decode("utf-8"))
-        if not isinstance(value, dict) or value.get("schema") != "coronatio.health.v1" or value.get("ok") is not True or value.get("service") != "coronatio":
-            return False, "invalid health schema"
+            status = response.status
+            body = response.read().decode("utf-8")
+        value = json.loads(body)
+        if isinstance(value, dict):
+            value = {**value, "http_status": status}
+        if not 200 <= status < 300:
+            return False, f"HTTP {status}", value if isinstance(value, dict) else None
+        if (
+            not isinstance(value, dict)
+            or value.get("schema") != "coronatio.health.v1"
+            or value.get("ok") is not True
+            or value.get("service") != "coronatio"
+        ):
+            return False, "invalid health schema", value if isinstance(value, dict) else None
         source_sha, build_sha = value.get("source_sha"), value.get("build_sha")
         valid = all(isinstance(item, str) and SHA_RE.fullmatch(item) for item in (source_sha, build_sha))
-        return (bool(valid and source_sha == expected_sha and build_sha == expected_sha), "health JSON")
+        return bool(valid and source_sha == expected_sha and build_sha == expected_sha), "health JSON", value
     except (urllib.error.URLError, TimeoutError, OSError, ValueError, UnicodeDecodeError) as exc:
-        return False, str(exc)
+        return False, str(exc), None
 
 
-def health_gate(url: str, expected_sha: str, retries: int, delay_seconds: float, timeout_seconds: float) -> None:
+def probe_health(url: str, expected_sha: str, timeout_seconds: float) -> tuple[bool, str]:
+    ok, detail, _ = fetch_health(url, expected_sha, timeout_seconds)
+    return ok, detail
+
+
+def health_gate(url: str, expected_sha: str, retries: int, delay_seconds: float, timeout_seconds: float) -> dict[str, Any]:
+    last_detail = "health gate failed exact source-SHA attestation"
     for attempt in range(retries):
-        ok, _ = probe_health(url, expected_sha, timeout_seconds)
-        if ok: return
-        if attempt + 1 < retries: time.sleep(delay_seconds)
-    raise RuntimeError("health gate failed exact source-SHA attestation")
+        ok, detail, value = fetch_health(url, expected_sha, timeout_seconds)
+        last_detail = detail
+        if ok:
+            return value or {}
+        if attempt + 1 < retries:
+            time.sleep(delay_seconds)
+    raise RuntimeError(last_detail)
 
 
-def ensure_runtime_parents(runtime_root: Path, binary_dest: Path) -> None:
+def ensure_owned_directory(path: Path, expected_uid: int, label: str) -> None:
+    st = path.lstat()
+    if path.is_symlink() or not stat.S_ISDIR(st.st_mode) or st.st_uid != expected_uid:
+        raise RuntimeError(f"unsafe {label}: {path}")
+
+
+def ensure_runtime_parents(runtime_root: Path, binary_dest: Path, *, expected_uid: int) -> None:
     """Refuse symlink/non-directory parents before creating transaction stages."""
     for parent in (runtime_root.parent, binary_dest.parent):
         if parent.exists() or parent.is_symlink():
-            st = parent.lstat()
-            if parent.is_symlink() or not stat.S_ISDIR(st.st_mode):
-                raise RuntimeError(f"unsafe fixed product parent: {parent}")
-            if st.st_uid != 0:
-                raise RuntimeError(f"fixed product parent is not root-owned: {parent}")
+            ensure_owned_directory(parent, expected_uid, "fixed product parent")
         else:
             parent.mkdir(parents=True, mode=0o755)
-            st = parent.lstat()
-            if st.st_uid != 0 or not stat.S_ISDIR(st.st_mode):
-                raise RuntimeError(f"failed to create safe fixed product parent: {parent}")
+            ensure_owned_directory(parent, expected_uid, "created product parent")
 
 
 def result_from_manifest(status: str, manifest: dict[str, str]) -> ConvergeResult:
@@ -469,9 +488,10 @@ def result_from_manifest(status: str, manifest: dict[str, str]) -> ConvergeResul
     return ConvergeResult(status, values[0], values[1], values[2], values[3])
 
 
-def converge(*, runtime_root: Path, binary_dest: Path, health_url: str, retries: int, delay_seconds: float, timeout_seconds: float, cargo: str | None = None) -> ConvergeResult:
-    ensure_runtime_parents(runtime_root, binary_dest)
+def converge(*, runtime_root: Path, binary_dest: Path, health_url: str, retries: int, delay_seconds: float, timeout_seconds: float, cargo: str | None = None, expected_uid: int = 0) -> ConvergeResult:
+    ensure_runtime_parents(runtime_root, binary_dest, expected_uid=expected_uid)
     runtime_root.mkdir(parents=False, exist_ok=True)
+    ensure_owned_directory(runtime_root, expected_uid, "runtime root")
     recover_transaction(runtime_root, binary_dest)
     head = source_head(); assert_clean_snapshot(head)
     installed = read_manifest(runtime_root / MANIFEST_NAME)
@@ -527,6 +547,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--build-only", action="store_true")
     mode.add_argument("--health-only", action="store_true")
+    parser.add_argument("--scratch-root", type=Path, help="safe non-production root; uses ROOT/runtime and ROOT/bin/coronatio")
     parser.add_argument("--health-url", default=HEALTH_URL)
     parser.add_argument("--health-retries", type=int, default=30)
     parser.add_argument("--health-delay", type=float, default=1.0)
@@ -534,38 +555,116 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.health_retries < 1 or args.health_delay < 0 or args.health_timeout <= 0:
         parser.error("health retries must be >= 1, delay >= 0, and timeout > 0")
+    if args.scratch_root is not None and (args.build_only or args.health_only):
+        parser.error("--scratch-root is only valid for the real installer")
     return args
 
 
-def install_receipt(ok: bool, status: str, *, result: ConvergeResult | None = None, source_sha: str | None = None,
-                    manifest: dict[str, str] | None = None, error: str | None = None,
-                    rollback_files: str = "not-needed", rollback_service: str = "not-attempted") -> dict[str, object]:
+def install_receipt(
+    ok: bool,
+    status: str,
+    *,
+    result: ConvergeResult | None = None,
+    source_sha: str | None = None,
+    manifest: dict[str, str] | None = None,
+    error: str | None = None,
+    rollback_files: str = "not-needed",
+    rollback_service: str = "not-attempted",
+) -> dict[str, object]:
     manifest = result.manifest() if result else manifest or {}
     source_sha = result.source_sha if result else source_sha or manifest.get("source_sha")
-    return {"schema": "coronatio.install.receipt.v1", "ok": ok, "status": status,
-            "source_sha": source_sha, "source_tree_sha256": manifest.get("source_tree_sha256"),
-            "static_sha256": manifest.get("static_sha256"), "binary_sha256": manifest.get("binary_sha256"),
-            "firstMissingSignal": error, "rollback": rollback_files, "rollbackFiles": rollback_files,
-            "rollbackService": rollback_service}
+    return {
+        "schema": "coronatio.install.receipt.v1",
+        "ok": ok,
+        "status": status,
+        "source_sha": source_sha,
+        "source_tree_sha256": manifest.get("source_tree_sha256"),
+        "static_sha256": manifest.get("static_sha256"),
+        "binary_sha256": manifest.get("binary_sha256"),
+        "firstMissingSignal": error,
+        "rollback": rollback_files,
+        "rollbackFiles": rollback_files,
+        "rollbackService": rollback_service,
+    }
+
+
+def health_receipt(
+    ok: bool,
+    status: str,
+    *,
+    observed: dict[str, Any] | None = None,
+    manifest: dict[str, str] | None = None,
+    error: str | None = None,
+    health_url: str = HEALTH_URL,
+) -> dict[str, object]:
+    observed = observed or {}
+    manifest = manifest or {}
+    return {
+        "schema": "coronatio.health.v1",
+        "ok": ok,
+        "status": status,
+        "service": "coronatio",
+        "health_url": health_url,
+        "http_status": observed.get("http_status"),
+        "source_sha": observed.get("source_sha"),
+        "build_sha": observed.get("build_sha"),
+        "source_tree_sha256": manifest.get("source_tree_sha256"),
+        "static_sha256": manifest.get("static_sha256"),
+        "binary_sha256": manifest.get("binary_sha256"),
+        "firstMissingSignal": error,
+    }
 
 
 def valid_success_receipt(receipt: object, head: str) -> bool:
     """Fulcrum-equivalent success parser: exact head plus all lowerhex artifact hashes."""
-    return bool(isinstance(receipt, dict) and receipt.get("schema") == "coronatio.install.receipt.v1" and
-                receipt.get("ok") is True and receipt.get("status") in {"no-op", "converged"} and
-                receipt.get("source_sha") == head and SHA_RE.fullmatch(head) and
-                all(isinstance(receipt.get(key), str) and SHA256_RE.fullmatch(receipt[key]) for key in
-                    ("source_tree_sha256", "static_sha256", "binary_sha256")))
+    return bool(
+        isinstance(receipt, dict)
+        and receipt.get("schema") == "coronatio.install.receipt.v1"
+        and receipt.get("ok") is True
+        and receipt.get("status") in {"no-op", "converged"}
+        and receipt.get("source_sha") == head
+        and SHA_RE.fullmatch(head)
+        and all(
+            isinstance(receipt.get(key), str) and SHA256_RE.fullmatch(receipt[key])
+            for key in ("source_tree_sha256", "static_sha256", "binary_sha256")
+        )
+    )
+
+
+def scratch_destinations(root: Path) -> tuple[Path, Path]:
+    if not root.is_absolute():
+        raise RuntimeError("--scratch-root must be an absolute path")
+    if WORKSPACE_ROOT.is_symlink() or not WORKSPACE_ROOT.is_dir():
+        raise RuntimeError("workspace root is unavailable or symlinked")
+    try:
+        relative = root.relative_to(WORKSPACE_ROOT)
+    except ValueError as exc:
+        raise RuntimeError("scratch root must be beneath /var/opt/hermes/workspace") from exc
+    if not relative.parts:
+        raise RuntimeError("scratch root cannot be the workspace root")
+    current = WORKSPACE_ROOT
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            raise RuntimeError("scratch root contains a symlinked ancestor")
+        if current.exists() and not current.is_dir():
+            raise RuntimeError("scratch root contains a non-directory ancestor")
+    resolved = root.resolve(strict=False)
+    if resolved == WORKSPACE_ROOT or WORKSPACE_ROOT not in resolved.parents:
+        raise RuntimeError("resolved scratch root must be beneath workspace root")
+    return resolved / "runtime", resolved / "bin" / BINARY_DEST.name
 
 
 def main(argv: list[str] | None = None) -> int:
     source_sha: str | None = None
     lock_fd: int | None = None
+    health = health_receipt(False, "not-attempted")
     try:
         args = parse_args(argv)
         source_sha = source_head()
         if args.health_only:
-            health_gate(args.health_url, source_sha, args.health_retries, args.health_delay, args.health_timeout)
+            observed = health_gate(args.health_url, source_sha, args.health_retries, args.health_delay, args.health_timeout)
+            health = health_receipt(True, "diagnostic", observed=observed, health_url=args.health_url)
             result = install_receipt(True, "diagnostic", source_sha=source_sha)
         elif args.build_only:
             root = Path(tempfile.mkdtemp(prefix="coronatio-build-"))
@@ -577,21 +676,64 @@ def main(argv: list[str] | None = None) -> int:
                 shutil.rmtree(root, ignore_errors=True)
             result = install_receipt(True, "diagnostic", source_sha=source_sha)
         else:
-            ensure_runtime_parents(RUNTIME_ROOT, BINARY_DEST)
-            RUNTIME_ROOT.mkdir(parents=False, exist_ok=True)
-            lock_fd = acquire_install_lock(RUNTIME_ROOT)
-            converged = converge(runtime_root=RUNTIME_ROOT, binary_dest=BINARY_DEST, health_url=args.health_url, retries=args.health_retries, delay_seconds=args.health_delay, timeout_seconds=args.health_timeout)
+            scratch = args.scratch_root is not None
+            expected_uid = os.geteuid() if scratch else 0
+            runtime_root, binary_dest = (
+                scratch_destinations(args.scratch_root) if scratch else (RUNTIME_ROOT, BINARY_DEST)
+            )
+            ensure_runtime_parents(runtime_root, binary_dest, expected_uid=expected_uid)
+            runtime_root.mkdir(parents=False, exist_ok=True)
+            ensure_owned_directory(runtime_root, expected_uid, "runtime root")
+            lock_fd = acquire_install_lock(runtime_root, expected_uid=expected_uid)
+            converged = converge(
+                runtime_root=runtime_root,
+                binary_dest=binary_dest,
+                health_url=args.health_url,
+                retries=args.health_retries,
+                delay_seconds=args.health_delay,
+                timeout_seconds=args.health_timeout,
+                expected_uid=expected_uid,
+            )
+            observed = health_gate(args.health_url, source_sha, args.health_retries, args.health_delay, args.health_timeout)
+            health = health_receipt(
+                True,
+                "verified",
+                observed=observed,
+                manifest=converged.manifest(),
+                health_url=args.health_url,
+            )
             result = install_receipt(True, converged.status, result=converged)
             if not valid_success_receipt(result, source_sha):
                 raise RuntimeError("installer generated an invalid success receipt")
+        print(json.dumps(health, sort_keys=True))
         print(json.dumps(result, sort_keys=True))
         return 0
     except ConvergeFailure as exc:
-        print(json.dumps(install_receipt(False, "failed", source_sha=exc.source_sha, manifest=exc.manifest,
-              error=str(exc), rollback_files=exc.rollback_files, rollback_service=exc.rollback_service), sort_keys=True))
+        health = health_receipt(False, "failed", manifest=exc.manifest, error=str(exc))
+        result = install_receipt(
+            False,
+            "failed",
+            source_sha=exc.source_sha,
+            manifest=exc.manifest,
+            error=str(exc),
+            rollback_files=exc.rollback_files,
+            rollback_service=exc.rollback_service,
+        )
+        print(json.dumps(health, sort_keys=True))
+        print(json.dumps(result, sort_keys=True))
         return 1
     except (FileNotFoundError, RuntimeError, subprocess.CalledProcessError, OSError) as exc:
-        print(json.dumps(install_receipt(False, "failed", source_sha=source_sha, error=str(exc), rollback_files="not-attempted", rollback_service="not-attempted"), sort_keys=True))
+        health["firstMissingSignal"] = str(exc)
+        result = install_receipt(
+            False,
+            "failed",
+            source_sha=source_sha,
+            error=str(exc),
+            rollback_files="not-attempted",
+            rollback_service="not-attempted",
+        )
+        print(json.dumps(health, sort_keys=True))
+        print(json.dumps(result, sort_keys=True))
         return 1
     finally:
         if lock_fd is not None:
