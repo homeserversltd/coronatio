@@ -12,7 +12,7 @@
   --motion-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
 }
-#pane-test * { animation: none !important; }
+#pane-test [data-animation-lab] * { animation: none !important; }
 .animation-band { margin-block: 1.25rem; padding: 1rem; border: 1px solid var(--border); border-radius: 10px; }
 .animation-band > header { margin-bottom: 1rem; }
 .animation-band > header h3, .animation-specimen h4 { margin: 0 0 .35rem; }
