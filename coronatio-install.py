@@ -65,7 +65,7 @@ def _fallback_data_member(member: tarfile.TarInfo, destination: Path) -> tarfile
             mode &= ~0o111
         mode |= 0o600
     elif member.isdir() or member.issym():
-        mode = None
+        mode = (mode & 0o755) | 0o700
     else:
         raise ValueError(f"unsupported archive member type: {member.name}")
 
@@ -88,8 +88,8 @@ def _fallback_data_member(member: tarfile.TarInfo, destination: Path) -> tarfile
 
     sanitized = copy.copy(member)
     sanitized.mode = mode
-    sanitized.uid = sanitized.gid = None
-    sanitized.uname = sanitized.gname = None
+    sanitized.uid = sanitized.gid = 0
+    sanitized.uname = sanitized.gname = ""
     sanitized.linkname = linkname
     return sanitized
 
