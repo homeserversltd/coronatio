@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import fcntl
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -36,6 +38,73 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 TOKEN_RE = re.compile(r"^[0-9a-f]{16}$")
 FORWARD_STATES = {"prepared", "stopped", "old_source_moved", "new_source_moved", "old_binary_moved", "new_binary_moved", "old_manifest_moved", "new_manifest_written", "old_binary_sha_moved", "witness_updated", "service_started", "health_verified", "committed"}
+
+
+def tarfile_extractall_supports_filter() -> bool:
+    """Report whether this interpreter exposes TarFile.extractall(filter=...)."""
+    try:
+        return "filter" in inspect.signature(tarfile.TarFile.extractall).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _fallback_data_member(member: tarfile.TarInfo, destination: Path) -> tarfile.TarInfo:
+    """Validate and sanitize one member with Python 3.12 data-filter rules."""
+    destination_real = os.path.realpath(destination)
+    name = member.name
+    if os.path.isabs(name):
+        raise ValueError(f"absolute archive member: {member.name}")
+    target = os.path.realpath(os.path.join(destination_real, name))
+    if os.path.commonpath((target, destination_real)) != destination_real:
+        raise ValueError(f"archive member escapes destination: {member.name}")
+
+    mode = member.mode
+    if member.isreg() or member.islnk():
+        mode = (mode & 0o755)
+        if not mode & 0o100:
+            mode &= ~0o111
+        mode |= 0o600
+    elif member.isdir() or member.issym():
+        mode = None
+    else:
+        raise ValueError(f"unsupported archive member type: {member.name}")
+
+    linkname = member.linkname
+    if member.islnk() or member.issym():
+        if os.path.isabs(linkname):
+            raise ValueError(f"absolute archive link: {member.name}")
+        if target == destination_real:
+            raise ValueError(f"archive member escapes destination: {member.name}")
+        normalized = os.path.normpath(linkname)
+        if member.issym():
+            link_dir = os.path.dirname(name.rstrip("/" + os.sep))
+            link_target = os.path.join(destination_real, link_dir, normalized)
+        else:
+            link_target = os.path.join(destination_real, normalized)
+        link_target = os.path.realpath(link_target)
+        if os.path.commonpath((link_target, destination_real)) != destination_real:
+            raise ValueError(f"archive link escapes destination: {member.name}")
+        linkname = normalized
+
+    sanitized = copy.copy(member)
+    sanitized.mode = mode
+    sanitized.uid = sanitized.gid = None
+    sanitized.uname = sanitized.gname = None
+    sanitized.linkname = linkname
+    return sanitized
+
+
+def extract_tar_data(tf: tarfile.TarFile, destination: Path) -> str:
+    """Extract using native data filtering or a complete preflight fallback."""
+    if tarfile_extractall_supports_filter():
+        print("+ tar extraction: native filter=data", flush=True)
+        tf.extractall(destination, filter="data")
+        return "native"
+
+    members = [_fallback_data_member(member, destination) for member in tf.getmembers()]
+    print("+ tar extraction: fallback data-filter preflight", flush=True)
+    tf.extractall(destination, members=members)
+    return "fallback"
 
 
 class ConvergeResult:
@@ -303,7 +372,7 @@ def snapshot_and_build(runtime_root: Path, binary_dest: Path, head: str, cargo: 
     try:
         with archive.open("wb") as out:
             subprocess.run(["git", "archive", "--format=tar", head], cwd=REPO_ROOT, stdout=out, check=True); out.flush(); os.fsync(out.fileno())
-        with tarfile.open(archive) as tf: tf.extractall(source, filter="data")
+        with tarfile.open(archive) as tf: extract_tar_data(tf, source)
         fsync_tree(source)
         durable_unlink(archive)
         env = dict(os.environ)
