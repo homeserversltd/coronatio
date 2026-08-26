@@ -159,14 +159,14 @@
         assert!(body.contains("data-pane=\"portals\""));
         assert!(body.contains("data-pane=\"upload\""));
         assert!(body.contains("data-pane-panel=\"admin\""));
-        for pane in ["firewall", "unbound"] {
+        for pane in ["backblaze", "firewall", "unbound"] {
             assert!(!body.contains(&format!("data-pane-panel=\"{}\"", pane)), "guest must omit protected pane {pane}");
         }
         for pane in ["stats", "portals", "upload", "dhcp"] {
             assert!(body.contains(&format!("data-pane-panel=\"{}\"", pane)));
         }
         let admin = render_crown_shell_for_session(Session::Admin);
-        for pane in ["firewall", "unbound"] {
+        for pane in ["backblaze", "firewall", "unbound"] {
             assert!(admin.contains(&format!("data-pane-panel=\"{}\"", pane)), "admin must contain protected pane {pane}");
         }
         assert!(body.contains("function showPane(id, options)"));
@@ -193,9 +193,11 @@
         let admin_shell = render_crown_shell_for_session(Session::Admin);
         assert!(admin_shell.contains("data-pane-panel=\"firewall\""));
         assert!(admin_shell.contains("data-pane-panel=\"unbound\""));
-        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
+        for pane in ["portals", "upload", "stats", "wake-on-lan", "test"] {
             assert!(shell.contains(&format!("data-tab-id=\"{}\"", pane)));
         }
+        assert!(!shell.contains("data-tab-id=\"backblaze\""));
+        assert!(admin_shell.contains("data-tab-id=\"backblaze\""));
         assert!(!shell.contains("data-tab-id=\"admin\""));
         assert!(shell.contains("data-stats-viewport"));
         assert!(shell.contains(r#"class="stats-tablet""#));
@@ -216,7 +218,7 @@
     #[test]
     fn normal_mode_keeps_primary_tabs_visible_and_admin_only_enhances_controls() {
         let shell = render_crown_shell();
-        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
+        for pane in ["portals", "upload", "stats", "wake-on-lan", "test"] {
             let marker = format!(r#"data-tab-id="{}""#, pane);
             let start = shell.find(&marker).expect("normal tab marker present");
             let tab_start = shell[..start]
@@ -240,8 +242,11 @@
                 "{pane} keeps normal star/default control"
             );
         }
+        assert!(!shell.contains(r#"data-tab-id="backblaze""#), "guest projection omits Backblaze tab markup entirely");
+        let admin_shell = render_crown_shell_for_session(Session::Admin);
+        assert!(admin_shell.contains(r#"data-tab-id="backblaze""#), "admin projection includes Backblaze tab markup");
         assert!(!shell.contains(r#"data-tab-id="admin""#), "guest projection omits admin tab markup entirely");
-        for pane in ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"] {
+        for pane in ["portals", "upload", "stats", "wake-on-lan", "test"] {
             assert!(!shell.contains(&format!(r#"data-tab-visibility-toggle="{}""#, pane)), "guest projection omits admin eye controls");
         }
         assert!(shell.contains(r#"[data-admin-mode="false"] [data-admin-only]:not([data-admin-only="false"])"#));

@@ -50,7 +50,7 @@ fn native_crown_panes() -> Vec<CrownPane> {
             role: "backup service tab".to_string(),
             summary: "Two-pane Backblaze B2 bucket and item backup management with encrypted restic or plain B2 uploads.".to_string(),
             order: 40,
-            admin_only: false,
+            admin_only: true,
             install_mode: InstallMode::FirstPartyNative,
             route: "/#backblaze".to_string(),
             state_route: "/api/panes/backblaze".to_string(),

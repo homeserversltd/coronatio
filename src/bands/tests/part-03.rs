@@ -20,7 +20,7 @@
         assert_eq!(registry.schema, "coronatio.registry.v1");
         assert_eq!(registry.starred_tab, "stats");
         assert_eq!(registry.default_route_tab, "stats");
-        assert_eq!(registry.visible_tabs_user, ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test"]);
+        assert_eq!(registry.visible_tabs_user, ["portals", "upload", "stats", "wake-on-lan", "test"]);
         assert_eq!(
             registry.visible_tabs_admin,
             ["portals", "upload", "stats", "backblaze", "wake-on-lan", "test", "admin", "dhcp", "firewall", "unbound"]
