@@ -125,7 +125,16 @@ fn normalized_config(raw: serde_json::Value) -> Result<serde_json::Value, String
                 (!p.is_empty() && p.starts_with('/')).then(|| serde_json::json!({"path": p}))
             })
             .collect::<Vec<_>>();
-        out.push(serde_json::json!({"bucket": bucket, "prefix": prefix, "encrypted": encrypted, "items": items}));
+        let forgejo = b
+            .get("managers")
+            .and_then(|v| v.get("forgejo"))
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        let managers = serde_json::json!({"forgejo": {
+            "localNas": forgejo.get("localNas").and_then(|v| v.as_bool()).unwrap_or(false),
+            "backblazeBackup": forgejo.get("backblazeBackup").and_then(|v| v.as_bool()).unwrap_or(false),
+        }});
+        out.push(serde_json::json!({"bucket": bucket, "prefix": prefix, "encrypted": encrypted, "items": items, "managers": managers}));
     }
     Ok(serde_json::json!({"buckets": out}))
 }
@@ -521,8 +530,11 @@ fn backblaze_public(config: serde_json::Value) -> serde_json::Value {
         .unwrap_or_default()
         .into_iter()
         .map(|mut b| {
-            let name = b["bucket"].as_str().unwrap_or("");
-            b["status"] = serde_json::json!(state.buckets.get(name).cloned().unwrap_or_default());
+            let name = b["bucket"].as_str().unwrap_or("").to_owned();
+            b["status"] = serde_json::json!(state.buckets.get(&name).cloned().unwrap_or_default());
+            b["connected"] = serde_json::json!(keyman_credentials(&name)
+                .and_then(|credentials| authorize_and_list(&name, &credentials))
+                .is_ok());
             b
         })
         .collect::<Vec<_>>();
