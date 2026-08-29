@@ -148,6 +148,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/backblaze/config", get(backblaze_config_get_route).post(backblaze_config_post_route))
         .route("/api/backblaze/buckets", get(backblaze_buckets_get_route).post(backblaze_bucket_post_route))
         .route("/api/backblaze/buckets/:bucket", delete(backblaze_bucket_delete_route))
+        .route("/api/backblaze/buckets/:bucket/verify", post(backblaze_bucket_verify_route))
         .route("/api/backblaze/buckets/:bucket/items", get(backblaze_items_get_route).post(backblaze_item_post_route).delete(backblaze_item_delete_route))
 
         .route("/api/backblaze/buckets/:bucket/toggle", post(backblaze_toggle_route))

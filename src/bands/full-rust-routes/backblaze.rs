@@ -16,6 +16,8 @@ struct BackblazeBucketState {
     last_run_at: Option<u64>,
     last_run_ok: Option<bool>,
     #[serde(default)]
+    connected: Option<bool>,
+    #[serde(default)]
     last_error: Option<String>,
 }
 #[derive(Debug, Clone)]
@@ -531,10 +533,9 @@ fn backblaze_public(config: serde_json::Value) -> serde_json::Value {
         .into_iter()
         .map(|mut b| {
             let name = b["bucket"].as_str().unwrap_or("").to_owned();
-            b["status"] = serde_json::json!(state.buckets.get(&name).cloned().unwrap_or_default());
-            b["connected"] = serde_json::json!(keyman_credentials(&name)
-                .and_then(|credentials| authorize_and_list(&name, &credentials))
-                .is_ok());
+            let cached = state.buckets.get(&name).cloned().unwrap_or_default();
+            b["status"] = serde_json::json!(cached);
+            b["connected"] = serde_json::json!(cached.connected);
             b
         })
         .collect::<Vec<_>>();
@@ -627,6 +628,59 @@ async fn backblaze_bucket_post_route(
         )
             .into_response(),
     }
+}
+async fn backblaze_bucket_verify_route(
+    headers: axum::http::HeaderMap,
+    Path(bucket): Path<String>,
+) -> Response {
+    let r = caduceus_staff_transition(
+        &mutation_authority(),
+        &headers,
+        "POST",
+        "/api/backblaze/buckets/:bucket/verify",
+        "backblaze verification",
+        serde_json::json!({"bucket": bucket}),
+    );
+    if !r.ok {
+        return (
+            mutation_response_status(&r),
+            Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal})),
+        )
+            .into_response();
+    }
+    let _guard = BACKBLAZE_RUN_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if backblaze_config_value()
+        .ok()
+        .and_then(|config| backblaze_bucket(&config, &bucket))
+        .is_none()
+    {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"ok": false, "connected": false, "reason": "bucket not configured"})),
+        )
+            .into_response();
+    }
+    let result = keyman_credentials(&bucket)
+        .and_then(|credentials| authorize_and_list(&bucket, &credentials));
+    let connected = result.is_ok();
+    let reason = result.err();
+    let mut state = backblaze_state();
+    state.buckets.entry(bucket).or_default().connected = Some(connected);
+    if let Err(error) = write_backblaze_state(&state) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"ok": false, "connected": connected, "reason": error})),
+        )
+            .into_response();
+    }
+    let mut response = serde_json::json!({"ok": true, "connected": connected});
+    if let Some(reason) = reason {
+        response["reason"] = serde_json::json!(reason);
+    }
+    (StatusCode::OK, Json(response)).into_response()
 }
 async fn backblaze_bucket_delete_route(
     headers: axum::http::HeaderMap,
