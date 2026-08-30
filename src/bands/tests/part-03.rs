@@ -83,7 +83,7 @@
             && policy.failure_contract.contains("tab-local error")));
         assert!(lanes.policies.iter().any(|policy| policy.install_mode
             == InstallMode::SourceInjectionRecompile
-            && policy.success_contract.contains("Cibation admits")));
+            && policy.success_contract.contains("internal review pipeline admits source")));
         assert!(lanes.policies.iter().any(|policy| policy.install_mode
             == InstallMode::FirstPartyNative
             && policy.failure_contract.contains("build/test failure")));

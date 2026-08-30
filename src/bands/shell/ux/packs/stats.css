@@ -4,7 +4,6 @@
    Holding-pen drain: stats selectors moved byte-identical from ux/shell/document-2-css.css into this pack; shell/document-2-css.css keeps only non-stats shell/admin/mobile substrate.
    Chart vendor note: Coronatio currently renders Chart.js canvases, so unused og recharts tooltip/grid vendor overrides are historical quarry and are not dead CSS here. */
 
-/* og stylesheet section: byte-identical from /fulcrum/attachments/homeserver/initialization/flask/inject/src/tablets/stats/stats.css */
 .stats-tablet {
   display: flex;
   flex-direction: column;

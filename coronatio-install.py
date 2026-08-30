@@ -685,7 +685,7 @@ def health_receipt(
 
 
 def valid_success_receipt(receipt: object, head: str) -> bool:
-    """Fulcrum-equivalent success parser: exact head plus all lowerhex artifact hashes."""
+    """Requires the exact source head and lowercase hexadecimal artifact hashes."""
     return bool(
         isinstance(receipt, dict)
         and receipt.get("schema") == "coronatio.install.receipt.v1"

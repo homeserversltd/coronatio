@@ -140,7 +140,6 @@ fn portal_image_roots() -> Vec<PathBuf> {
     }
     vec![
         PathBuf::from("/var/www/homeserver/src/tablets/portals/images"),
-        PathBuf::from("/fulcrum/attachments/homeserver/initialization/flask/inject/src/tablets/portals/images"),
     ]
 }
 
