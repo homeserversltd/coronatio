@@ -93,8 +93,9 @@
         let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         let root = test_tab_root("dns-status-document-forward");
         let _origin = note_test_origin(&root);
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
+        let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
         let witness = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -122,7 +123,7 @@
                 .unwrap();
             request
         });
-        let _base = ScopedEnv::set("CADUCEUS_BASE_URL", format!("http://{address}"));
+        let _base = ScopedEnv::set("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
         let response = app(AppState { tab_root: Arc::new(root) })
             .oneshot(successor_admin_request(
                 Request::builder()
@@ -148,9 +149,10 @@
         let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
         let root = test_tab_root("dns-status-refusal");
         let _origin = note_test_origin(&root);
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let address = listener.local_addr().unwrap();
         let outbound = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let observed = outbound.clone();
         let witness = std::thread::spawn(move || {
@@ -167,7 +169,7 @@
                 }
             }
         });
-        let _base = ScopedEnv::set("CADUCEUS_BASE_URL", format!("http://{address}"));
+        let _base = ScopedEnv::set("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
         let router = app(AppState { tab_root: Arc::new(root) });
         let guest = router
             .clone()

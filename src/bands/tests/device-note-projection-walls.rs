@@ -35,8 +35,9 @@ async fn device_note_put_forwards_exact_json_document_and_attendance_to_caduceus
     let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
     let root = test_tab_root("device-note-put");
     let _origin = note_test_origin(&root);
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
     let witness = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -66,7 +67,7 @@ async fn device_note_put_forwards_exact_json_document_and_attendance_to_caduceus
             .unwrap();
         request
     });
-    let _base = ScopedEnv::set("CADUCEUS_BASE_URL", format!("http://{address}"));
+    let _base = ScopedEnv::set("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState { tab_root: Arc::new(root) })
         .oneshot(successor_admin_request(
             Request::builder()
@@ -95,8 +96,9 @@ async fn device_note_put_refuses_accepted_only_caduceus_readback() {
     let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
     let root = test_tab_root("device-note-accepted-only");
     let _origin = note_test_origin(&root);
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
     let witness = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let response_body = r#"{"ok":true,"completed":true,"notes":{"aa:bb:cc:dd:ee:ff":"Desk"}}"#;
@@ -106,7 +108,7 @@ async fn device_note_put_refuses_accepted_only_caduceus_readback() {
             )
             .unwrap();
     });
-    let _base = ScopedEnv::set("CADUCEUS_BASE_URL", format!("http://{address}"));
+    let _base = ScopedEnv::set("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState { tab_root: Arc::new(root) })
         .oneshot(successor_admin_request(
             Request::builder()
@@ -132,9 +134,10 @@ async fn device_note_put_refuses_guest_before_outbound_caduceus_call() {
     let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
     let root = test_tab_root("device-note-guest-refusal");
     let _origin = note_test_origin(&root);
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
     listener.set_nonblocking(true).unwrap();
-    let address = listener.local_addr().unwrap();
     let outbound = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let observed = outbound.clone();
     let witness = std::thread::spawn(move || {
@@ -150,7 +153,7 @@ async fn device_note_put_refuses_guest_before_outbound_caduceus_call() {
             }
         }
     });
-    let _base = ScopedEnv::set("CADUCEUS_BASE_URL", format!("http://{address}"));
+    let _base = ScopedEnv::set("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState { tab_root: Arc::new(root) })
         .oneshot(successor_session_request(
             Request::builder()
@@ -175,9 +178,10 @@ async fn device_note_put_refuses_guest_before_outbound_caduceus_call() {
 #[tokio::test]
 async fn device_note_put_refuses_invalid_mac_before_outbound_caduceus_call() {
     let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
     listener.set_nonblocking(true).unwrap();
-    let address = listener.local_addr().unwrap();
     let outbound = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let observed = outbound.clone();
     let witness = std::thread::spawn(move || {
@@ -193,7 +197,7 @@ async fn device_note_put_refuses_invalid_mac_before_outbound_caduceus_call() {
             }
         }
     });
-    let _base = ScopedEnv::set("CADUCEUS_BASE_URL", format!("http://{address}"));
+    let _base = ScopedEnv::set("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState { tab_root: Arc::new(test_tab_root("device-note-invalid-mac")) })
         .oneshot(
             Request::builder()
@@ -215,8 +219,9 @@ async fn device_note_put_refuses_invalid_mac_before_outbound_caduceus_call() {
 #[tokio::test]
 async fn device_note_get_projects_caduceus_notes_and_stats_liveness_roster_keeps_the_note_capability() {
     let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
     let witness = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -237,7 +242,7 @@ async fn device_note_get_projects_caduceus_notes_and_stats_liveness_roster_keeps
             .unwrap();
         request
     });
-    let _base = ScopedEnv::set("CADUCEUS_BASE_URL", format!("http://{address}"));
+    let _base = ScopedEnv::set("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState { tab_root: Arc::new(test_tab_root("device-note-get")) })
         .oneshot(Request::builder().uri("/api/network/notes").body(Body::empty()).unwrap())
         .await

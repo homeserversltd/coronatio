@@ -81,14 +81,11 @@ fn persist_caduceus_door_seat(raw_seat_bytes: &[u8]) {
 }
 
 fn refresh_caduceus_door_seat() -> Option<CaduceusDoorCache> {
-    let Some(authority) = caduceus_authority() else {
-        return cached_caduceus_door_seat();
-    };
-    let mut stream = TcpStream::connect(&authority).ok()?;
+    let mut stream = UnixStream::connect(caduceus_socket_path()).ok()?;
     let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
     let request = format!(
-        "GET /api/v1/doors HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+        "GET /api/v1/doors HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
     );
     stream.write_all(request.as_bytes()).ok()?;
     let mut response = Vec::new();

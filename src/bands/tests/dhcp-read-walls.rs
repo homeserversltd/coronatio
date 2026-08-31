@@ -39,7 +39,7 @@
     #[tokio::test]
     async fn dhcp_guest_identity_routes_refuse_without_contacting_caduceus() {
         let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
-        std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", guaranteed_absent_caduceus_socket());
         let router = app(AppState { tab_root: Arc::new(test_tab_root("dhcp-guest-refusal")) });
         for route in ["/api/dhcp/leases", "/api/dhcp/reservations", "/api/dhcp/config", "/api/dhcp/pool-boundary"] {
             let response = router.clone().oneshot(Request::builder().uri(route).body(Body::empty()).unwrap()).await.unwrap();
@@ -48,7 +48,7 @@
             assert!(body.contains("coronatio.dhcp.read.refusal.v1"), "{route}: {body}");
             assert!(body.contains("admin-session-required"), "{route}: {body}");
         }
-        std::env::remove_var("CADUCEUS_URL");
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     }
 
     #[tokio::test]

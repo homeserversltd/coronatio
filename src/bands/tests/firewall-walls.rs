@@ -61,7 +61,7 @@ fn firewall_policy_requests_are_canonical_and_bounded() {
 #[tokio::test]
 async fn firewall_guest_routes_refuse_before_caduceus_contact() {
     let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
-    std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", guaranteed_absent_caduceus_socket());
     let router = app(AppState { tab_root: Arc::new(test_tab_root("firewall-guest-refusal")) });
     for route in ["/api/firewall/status", "/api/firewall/policies", "/api/firewall/policies/AA:BB:CC:DD:EE:FF"] {
         let response = router.clone().oneshot(Request::builder().uri(route).body(Body::empty()).unwrap()).await.unwrap();
@@ -69,7 +69,7 @@ async fn firewall_guest_routes_refuse_before_caduceus_contact() {
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("admin-session-required"));
     }
-    std::env::remove_var("CADUCEUS_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
 }
 
 #[tokio::test]
@@ -124,8 +124,9 @@ async fn firewall_delete_forwards_exact_revision_document_after_authorization() 
     let config = root.join("homeserver.json");
     std::fs::write(&config, r#"{"global":{"cors":{"allowed_origins":["https://home.arpa"]}}}"#).unwrap();
     let _origin = ScopedEnv::set("CORONATIO_HOMESERVER_JSON", config.as_os_str());
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
     let witness = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -147,7 +148,7 @@ async fn firewall_delete_forwards_exact_revision_document_after_authorization() 
         stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response).as_bytes()).unwrap();
         request
     });
-    let _base = ScopedEnv::set("CADUCEUS_BASE_URL", format!("http://{address}"));
+    let _base = ScopedEnv::set("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState { tab_root: Arc::new(root) }).oneshot(successor_admin_request(Request::builder().method("DELETE").uri("/api/firewall/policies/aa-bb-cc-dd-ee-ff").header("content-type", "application/json").body(Body::from(r#"{"schema":"caduceus.network.firewall.policy.delete.v1","mac":"aa-bb-cc-dd-ee-ff","expectedRevision":"ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD"}"#)).unwrap())).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let request = witness.join().unwrap();

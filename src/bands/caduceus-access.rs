@@ -1,39 +1,34 @@
 // Document-attendance projection seam. Coronatio never owns a session, ticket, or capability.
 // PIN material crosses this membrane once to Caduceus; the returned attendance proof is
 // retained only in the current document's memory and is forwarded to Caduceus actions.
-const CADUCEUS_ACCESS_DEFAULT_BASE: &str = "http://127.0.0.1:3014";
+const CADUCEUS_STAFF_SOCKET_DEFAULT: &str = "/run/caduceus/staff.sock";
 const CADUCEUS_ACCESS_TIMEOUT: Duration = Duration::from_secs(3);
 const CADUCEUS_ACCESS_MAX_RESPONSE: usize = 16 * 1024;
 
 #[derive(Clone)]
-pub(crate) struct CaduceusAccessClient { base: String, timeout: Duration }
+pub(crate) struct CaduceusAccessClient { socket: PathBuf, timeout: Duration }
 impl Default for CaduceusAccessClient {
     fn default() -> Self {
-        #[cfg(test)] { return Self::new(test_fixture::base()); }
-        #[cfg(not(test))]
-        Self::new(env::var("CADUCEUS_ACCESS_BASE_URL").or_else(|_| env::var("CADUCEUS_BASE_URL")).unwrap_or_else(|_| CADUCEUS_ACCESS_DEFAULT_BASE.to_string()))
+        Self::new(staff_socket_path())
     }
 }
 impl CaduceusAccessClient {
-    pub(crate) fn new(base: impl Into<String>) -> Self { Self { base: normalize_access_base(base.into()), timeout: CADUCEUS_ACCESS_TIMEOUT } }
+    pub(crate) fn new(socket: impl Into<PathBuf>) -> Self { Self { socket: socket.into(), timeout: CADUCEUS_ACCESS_TIMEOUT } }
     pub(crate) fn attendance_open(&self, pin: &str, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Open, serde_json::json!({"pin":pin,"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_validate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Validate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_touch(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Touch, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_change_pin(&self, attendance: &AttendanceProof, document: &str, current_pin: &str, new_pin: &str) -> AttendanceCall { self.call(AttendanceOperation::ChangePin, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document,"currentPin":current_pin,"newPin":new_pin})) }
     pub(crate) fn attendance_invalidate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Invalidate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
-        #[cfg(test)]
-        if self.base == test_fixture::base() { return test_fixture::attendance_call(operation, &body); }
         let encoded = match serde_json::to_vec(&body) { Ok(v) if v.len() <= 4096 => v, _ => return AttendanceCall::refused(operation, 0, "caduceus-attendance-request-invalid") };
-        let Some(authority) = access_authority(&self.base) else { return AttendanceCall::refused(operation, 0, "caduceus-attendance-base-invalid") };
-        let mut stream = match TcpStream::connect_timeout(&authority, self.timeout) {
+        let mut stream = match UnixStream::connect(&self.socket) {
             Ok(stream) => stream,
             Err(error) => return AttendanceCall::refused(operation, 0, attendance_io_code("connect", &error)),
         };
         if stream.set_read_timeout(Some(self.timeout)).is_err() || stream.set_write_timeout(Some(self.timeout)).is_err() {
             return AttendanceCall::refused(operation, 0, "caduceus-attendance-socket-config-failed");
         }
-        let request = format!("POST {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\n\r\n", operation.path(), access_host_header(&self.base), encoded.len());
+        let request = format!("POST {} HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\n\r\n", operation.path(), encoded.len());
         if let Err(error) = stream.write_all(request.as_bytes()).and_then(|_| stream.write_all(&encoded)) {
             return AttendanceCall::refused(operation, 0, attendance_io_code("write", &error));
         }
@@ -70,7 +65,7 @@ fn read_failure_code(error: &std::io::Error) -> &'static str {
     }
 }
 
-fn parse_attendance_response(op: AttendanceOperation, stream: &mut TcpStream) -> AttendanceCall {
+fn parse_attendance_response(op: AttendanceOperation, stream: &mut UnixStream) -> AttendanceCall {
     let mut reader = BufReader::new(stream);
     let mut status_line = String::new();
     match reader.read_line(&mut status_line) {
@@ -133,9 +128,20 @@ fn parse_attendance_response(op: AttendanceOperation, stream: &mut TcpStream) ->
     }
     AttendanceCall { receipt: AttendanceReceipt { operation: op.name(), ok: true, status, code: "none".to_string() }, proof }
 }
-fn normalize_access_base(base:String)->String{base.trim().trim_end_matches('/').to_string()}
-fn access_authority(base:&str)->Option<SocketAddr>{let raw=base.strip_prefix("http://")?;if raw.contains('/') {return None} let address:SocketAddr=raw.parse().ok()?;address.ip().is_loopback().then_some(address)}
-fn access_host_header(base:&str)->&str{base.strip_prefix("http://").unwrap_or("127.0.0.1:3014")}
+pub(crate) fn staff_socket_path() -> PathBuf {
+    if let Some(path) = env::var_os("CADUCEUS_STAFF_SOCKET").filter(|value| !value.is_empty()) {
+        return PathBuf::from(path);
+    }
+    #[cfg(test)]
+    {
+        return test_fixture::socket_path();
+    }
+    #[cfg(not(test))]
+    {
+        PathBuf::from(CADUCEUS_STAFF_SOCKET_DEFAULT)
+    }
+}
+
 pub(crate) fn document_incarnation_from_headers(headers:&axum::http::HeaderMap)->Option<String>{headers.get("x-caduceus-document").and_then(|v|v.to_str().ok()).map(str::trim).filter(|v|!v.is_empty()&&v.len()<=128&&v.bytes().all(|b|b.is_ascii_alphanumeric()||matches!(b,b'-'|b'_'|b'.'))).map(ToOwned::to_owned)}
 pub(crate) fn attendance_from_headers(headers:&axum::http::HeaderMap)->Option<AttendanceProof>{headers.get("x-caduceus-attendance").and_then(|v|v.to_str().ok()).and_then(AttendanceProof::parse)}
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -217,21 +223,135 @@ mod mutation_origin_policy_tests {
     #[test]
     fn malformed_absent_or_empty_configuration_is_refused() { for value in [serde_json::json!({}), serde_json::json!({"global":{"cors":{"allowed_origins":[]}}}), serde_json::json!({"global":{"cors":{"allowed_origins":["https://home.arpa/path"]}}})] { assert!(mutation_origin_policy_from_homeserver(&value).is_err()); } }
 }
-
 #[cfg(test)]
 pub(crate) mod test_fixture {
     use super::*;
-    pub(crate) fn base() -> String { "http://127.0.0.1:9".to_string() }
-    pub(super) fn attendance_call(operation: AttendanceOperation, body: &serde_json::Value) -> AttendanceCall {
-        let document_id = body.get("documentId").and_then(|v| v.as_str());
-        let document_incarnation = body.get("documentIncarnation").and_then(|v| v.as_str());
-        let attendance = body.get("attendance").and_then(|v| v.as_str());
-        let valid = document_id == Some("test-document") && document_incarnation == Some("test-document") && match operation {
-            AttendanceOperation::Open => body.get("pin").and_then(|v| v.as_str()).is_some_and(|pin| !pin.is_empty()),
-            AttendanceOperation::Validate | AttendanceOperation::Touch | AttendanceOperation::Invalidate => attendance == Some("test-attendance"),
-            AttendanceOperation::ChangePin => attendance == Some("test-attendance") && body.get("currentPin").and_then(|v| v.as_str()).is_some_and(|pin| !pin.is_empty()) && body.get("newPin").and_then(|v| v.as_str()).is_some_and(|pin| !pin.is_empty()),
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::sync::{Mutex, OnceLock};
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub(crate) struct TestRecord {
+        pub(crate) path: String,
+        pub(crate) action: Option<String>,
+        pub(crate) target: Option<String>,
+    }
+
+    struct Fixture {
+        path: PathBuf,
+        records: std::sync::Arc<Mutex<Vec<TestRecord>>>,
+    }
+
+    static FIXTURE: OnceLock<Fixture> = OnceLock::new();
+
+    fn fixture() -> &'static Fixture {
+        FIXTURE.get_or_init(|| {
+            let path = std::env::temp_dir().join(format!(
+                "coronatio-caduceus-fixture-{}-{}.sock",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock before unix epoch")
+                    .as_nanos()
+            ));
+            let _ = std::fs::remove_file(&path);
+            let listener = UnixListener::bind(&path).expect("bind caduceus test fixture socket");
+            let records = std::sync::Arc::new(Mutex::new(Vec::new()));
+            let fixture = Fixture { path, records: std::sync::Arc::clone(&records) };
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let Ok(stream) = stream else { continue };
+                    serve(stream, records.as_ref());
+                }
+            });
+            fixture
+        })
+    }
+
+    pub(crate) fn socket_path() -> PathBuf { fixture().path.clone() }
+
+    pub(crate) fn same_origin_headers(with_attendance: bool) -> axum::http::HeaderMap {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("origin", axum::http::HeaderValue::from_static("https://home.arpa"));
+        headers.insert("host", axum::http::HeaderValue::from_static("home.arpa"));
+        headers.insert("x-caduceus-document", axum::http::HeaderValue::from_static("test-document"));
+        if with_attendance {
+            headers.insert("x-caduceus-attendance", axum::http::HeaderValue::from_static("test-attendance"));
+        }
+        headers
+    }
+
+    pub(crate) fn mark() -> usize { fixture().records.lock().unwrap().len() }
+
+    pub(crate) fn records_since(mark: usize) -> Vec<TestRecord> {
+        fixture().records.lock().unwrap().get(mark..).unwrap_or(&[]).to_vec()
+    }
+
+    fn serve(stream: UnixStream, records: &Mutex<Vec<TestRecord>>) {
+        let mut reader = BufReader::new(stream);
+        let mut head = String::new();
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line).ok().filter(|count| *count > 0).is_none() { return; }
+            head.push_str(&line);
+            if line == "\r\n" { break; }
+        }
+        let length = head.lines().find_map(|line| {
+            line.split_once(':').and_then(|(name, value)|
+                name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().ok()).flatten())
+        }).unwrap_or(0);
+        let mut body = vec![0; length];
+        if reader.read_exact(&mut body).is_err() { return; }
+        let path = head.split_whitespace().nth(1).unwrap_or("/").to_string();
+        let value = serde_json::from_slice::<serde_json::Value>(&body).ok();
+        let (action, target) = if path == "/api/v1/config/set" {
+            (Some("coronatio.config.set".to_string()), value.as_ref().and_then(|v| v.get("path")).and_then(|v| v.as_str()).map(str::to_string))
+        } else { (None, None) };
+        records.lock().unwrap().push(TestRecord { path: path.clone(), action, target });
+        let response = if path == "/api/v1/exousia/open" {
+            r#"{"ok":true,"attendance":"test-attendance"}"#
+        } else {
+            r#"{"ok":true,"firstMissingSignal":"none"}"#
         };
-        if !valid { return AttendanceCall::refused(operation, 401, "caduceus-attendance-refused"); }
-        AttendanceCall { receipt: AttendanceReceipt { operation: operation.name(), ok: true, status: 200, code: "none".to_string() }, proof: operation.returns_proof().then(|| AttendanceProof("test-attendance".to_string())) }
+        let mut stream = reader.into_inner();
+        let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}", response.len(), response);
+    }
+}
+
+#[cfg(test)]
+mod attendance_uds_tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::os::unix::net::UnixListener;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn attendance_open_uses_http_over_uds_and_parses_proof() {
+        let socket = std::env::temp_dir().join(format!("coronatio-attendance-{}-{}.sock", std::process::id(), uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).unwrap();
+        let request = Arc::new(Mutex::new(String::new()));
+        let captured = Arc::clone(&request);
+        let worker = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut head = String::new();
+            loop { let mut line = String::new(); reader.read_line(&mut line).unwrap(); head.push_str(&line); if line == "\r\n" { break; } }
+            let length = head.lines().find_map(|line| line.strip_prefix("Content-Length: ").and_then(|v| v.parse::<usize>().ok())).unwrap();
+            let mut body = vec![0; length]; reader.read_exact(&mut body).unwrap();
+            head.push_str(std::str::from_utf8(&body).unwrap()); *captured.lock().unwrap() = head;
+            let response = b"{\"ok\":true,\"attendance\":\"real-attendance-proof\"}";
+            let mut stream = reader.into_inner(); write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", response.len()).unwrap(); stream.write_all(response).unwrap();
+        });
+        let result = CaduceusAccessClient::new(&socket).attendance_open("1234", "document-1");
+        worker.join().unwrap();
+        let text = request.lock().unwrap().clone();
+        assert!(text.starts_with("POST /api/v1/exousia/open HTTP/1.1\r\n")); assert!(text.contains("Host: caduceus.local\r\n")); assert!(text.contains("Content-Length: ")); assert!(text.ends_with("{\"pin\":\"1234\",\"documentId\":\"document-1\",\"documentIncarnation\":\"document-1\"}"));
+        assert!(result.receipt.ok); assert_eq!(result.take_proof().unwrap().expose(), "real-attendance-proof"); let _ = std::fs::remove_file(socket);
+    }
+
+    #[test]
+    fn attendance_open_refuses_guaranteed_absent_socket() {
+        let socket = std::env::temp_dir().join(format!("coronatio-attendance-absent-{}-{}.sock", std::process::id(), uuid::Uuid::new_v4())); let _ = std::fs::remove_file(&socket);
+        let result = CaduceusAccessClient::new(socket).attendance_open("1234", "document-1"); assert!(!result.receipt.ok); assert_eq!(result.receipt.code, "caduceus-attendance-connect-failed");
     }
 }

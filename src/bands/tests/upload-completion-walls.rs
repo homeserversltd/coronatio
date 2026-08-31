@@ -61,14 +61,14 @@ async fn upload_mutation_refusals_and_downstream_fault_leave_config_bytes_unchan
     assert!(missing_body.contains("caduceus-access-origin-refused"));
     assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
     assert_eq!(std::fs::read(&config).unwrap(), bytes);
-    std::env::set_var("CADUCEUS_BASE_URL", "http://127.0.0.1:9");
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", guaranteed_absent_caduceus_socket());
     let fault = router.oneshot(successor_admin_request(Request::builder().method("POST").uri("/api/upload/default-directory").header("content-type", "application/json").body(Body::from(r#"{"directory":"/mnt/nas/media"}"#)).unwrap())).await.unwrap();
     assert_eq!(fault.status(), StatusCode::SERVICE_UNAVAILABLE);
     let fault_body = String::from_utf8(axum::body::to_bytes(fault.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
     assert!(fault_body.contains("caduceus-unreachable"));
     assert!(!fault_body.contains("\"ok\":true"));
     assert_eq!(std::fs::read(&config).unwrap(), bytes);
-    std::env::remove_var("CADUCEUS_BASE_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     std::env::remove_var("CORONATIO_HOMESERVER_JSON");
 }
 
@@ -77,7 +77,7 @@ async fn upload_force_permissions_post_accepts_directory_as_caduceus_destination
     let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
     let body = serde_json::json!({"directory":"/mnt/nas/media"});
     assert_eq!(upload_force_permissions_destination(&body), "/mnt/nas/media");
-    std::env::set_var("CADUCEUS_URL", "http://127.0.0.1:9");
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", guaranteed_absent_caduceus_socket());
     let response = app(AppState { tab_root: Arc::new(test_tab_root("upload-force-permissions-post")) })
         .oneshot(
             successor_admin_request(
@@ -92,5 +92,5 @@ async fn upload_force_permissions_post_accepts_directory_as_caduceus_destination
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    std::env::remove_var("CADUCEUS_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
 }

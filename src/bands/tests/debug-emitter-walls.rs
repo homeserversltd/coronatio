@@ -52,12 +52,14 @@ fn immortal_floor_uses_crown_debug_as_first_consumer_without_new_machine_state()
 async fn debug_emit_route_forwards_unsigned_hyalos_reflect_with_trimmed_payload() {
     let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
     use std::io::{Read, Write};
-    use std::net::{Shutdown, TcpListener};
+    use std::net::Shutdown;
+    use std::os::unix::net::UnixListener;
     use std::sync::{Arc, Mutex};
     use std::thread;
 
-    let listener = TcpListener::bind("127.0.0.1:0").expect("mock caduceus bind");
-    let port = listener.local_addr().expect("mock caduceus addr").port();
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+            let _ = std::fs::remove_file(&socket);
+            let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
     let captured = Arc::new(Mutex::new(String::new()));
     let captured_thread = captured.clone();
     let handle = thread::spawn(move || {
@@ -71,7 +73,7 @@ async fn debug_emit_route_forwards_unsigned_hyalos_reflect_with_trimmed_payload(
             let _ = stream.shutdown(Shutdown::Write);
         }
     });
-    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{}", port));
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState { tab_root: Arc::new(test_tab_root("debug-emitter-app")) })
         .oneshot(
             Request::builder()
@@ -99,7 +101,7 @@ async fn debug_emit_route_forwards_unsigned_hyalos_reflect_with_trimmed_payload(
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     handle.join().unwrap();
-    std::env::remove_var("CADUCEUS_BASE_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     let request = captured.lock().unwrap().clone();
     assert!(request.starts_with("POST /api/v1/hyalos/reflect HTTP/1.1"), "debug reflect must use the Hyalos route");
     assert!(!request.to_ascii_lowercase().contains("x-caduceus-capability:"), "debug reflect must be unsigned");

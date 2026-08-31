@@ -21,7 +21,7 @@ async fn caduceus_status_route() -> impl IntoResponse {
         Json(serde_json::json!({
             "schema": "coronatio.caduceus.status.v1",
             "ok": ok,
-            "caduceusBase": caduceus_safe_base_readback(),
+            "caduceusBase": caduceus_transport_readback(),
             "health": health,
             "update": update,
             "staff": staff,
@@ -294,45 +294,11 @@ struct CaduceusHttpReadback {
     first_missing_signal: String,
 }
 
-fn caduceus_base() -> String {
-    #[cfg(test)]
-    {
-        return env::var("CADUCEUS_BASE_URL")
-            .or_else(|_| env::var("CADUCEUS_URL"))
-            .unwrap_or_else(|_| crate::caduceus_access::test_fixture::base());
-    }
-    #[cfg(not(test))]
-    env::var("CADUCEUS_BASE_URL")
-        .or_else(|_| env::var("CADUCEUS_URL"))
-        .unwrap_or_else(|_| "http://127.0.0.1:3014".to_string())
+fn caduceus_socket_path() -> std::path::PathBuf {
+    crate::caduceus_access::staff_socket_path()
 }
 
-fn caduceus_authority() -> Option<String> {
-    caduceus_authority_from_base(&caduceus_base())
-}
-
-fn caduceus_authority_from_base(base: &str) -> Option<String> {
-    let authority = base.strip_prefix("http://")?;
-    if authority.contains(['/', '?', '#', '@']) {
-        return None;
-    }
-    let address = authority.parse::<SocketAddr>().ok()?;
-    address.ip().is_loopback().then(|| address.to_string())
-}
-
-fn caduceus_safe_base_readback() -> &'static str {
-    if caduceus_authority().is_some() { "caduceus-loopback" } else { "caduceus-loopback-required" }
-}
-
-fn caduceus_loopback_refusal(path: &str) -> CaduceusHttpReadback {
-    CaduceusHttpReadback {
-        ok: false,
-        status: 0,
-        path: path.to_string(),
-        body: serde_json::json!({"error": "caduceus-loopback-required"}),
-        first_missing_signal: "caduceus-loopback-required".to_string(),
-    }
-}
+fn caduceus_transport_readback() -> &'static str { "caduceus-uds" }
 
 fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
     caduceus_http_with_attendance(method, path, None)
@@ -343,14 +309,7 @@ fn caduceus_http_with_attendance(method: &str, path: &str, attendance: Option<&c
 }
 
 fn caduceus_http_with_attendance_and_document(method: &str, path: &str, attendance: Option<&crate::caduceus_access::AttendanceProof>, document: Option<&str>) -> CaduceusHttpReadback {
-    let Some(authority) = caduceus_authority() else {
-        return caduceus_loopback_refusal(path);
-    };
-    #[cfg(test)]
-    if authority == "127.0.0.1:9" {
-        return CaduceusHttpReadback { ok: true, status: 200, path: path.to_string(), body: serde_json::json!({"ok": true}), first_missing_signal: "none".to_string() };
-    }
-    let mut stream = match TcpStream::connect(&authority) {
+    let mut stream = match UnixStream::connect(caduceus_socket_path()) {
         Ok(stream) => stream,
         Err(_err) => {
             return CaduceusHttpReadback {
@@ -371,7 +330,7 @@ fn caduceus_http_with_attendance_and_document(method: &str, path: &str, attendan
         .map(|value| format!("x-caduceus-document: {value}\r\n"))
         .unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n{document_header}{attendance_header}Content-Length: 0\r\n\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\n{document_header}{attendance_header}Content-Length: 0\r\n\r\n"
     );
     if let Err(_err) = stream.write_all(request.as_bytes()) {
         return CaduceusHttpReadback {
@@ -499,14 +458,7 @@ fn caduceus_http_json_with_attendance_and_document_timeout(
     document: Option<&str>,
     timeout: Duration,
 ) -> CaduceusHttpReadback {
-    let Some(authority) = caduceus_authority() else {
-        return caduceus_loopback_refusal(path);
-    };
-    #[cfg(test)]
-    if authority == "127.0.0.1:9" {
-        return CaduceusHttpReadback { ok: true, status: 200, path: path.to_string(), body: serde_json::json!({"ok": true}), first_missing_signal: "none".to_string() };
-    }
-    let mut stream = match TcpStream::connect(&authority) {
+    let mut stream = match UnixStream::connect(caduceus_socket_path()) {
         Ok(stream) => stream,
         Err(_err) => {
             return CaduceusHttpReadback {
@@ -528,7 +480,7 @@ fn caduceus_http_json_with_attendance_and_document_timeout(
         .map(|value| format!("x-caduceus-document: {value}\r\n"))
         .unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nContent-Type: application/json\r\n{document_header}{attendance_header}Content-Length: {}\r\n\r\n{}",
+        "{method} {path} HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\nContent-Type: application/json\r\n{document_header}{attendance_header}Content-Length: {}\r\n\r\n{}",
         body_text.len(), body_text
     );
     if let Err(_err) = stream.write_all(request.as_bytes()) {
@@ -889,26 +841,50 @@ fn log_admin_action_admission(headers: &axum::http::HeaderMap, route: &str, read
     }));
 }
 
+
 #[cfg(test)]
-mod caduceus_loopback_tests {
+mod caduceus_uds_tests {
     use super::*;
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+    use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn caduceus_status_route_uses_three_general_uds_requests() {
+        let _guard = crate::CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let socket = std::env::temp_dir().join(format!("coronatio-status-{}-{}.sock", std::process::id(), uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).unwrap();
+        let requests = Arc::new(Mutex::new(Vec::new())); let captured = Arc::clone(&requests);
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let worker = std::thread::spawn(move || {
+            for _ in 0..3 {
+                let (stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream);
+                let mut head = String::new();
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    head.push_str(&line);
+                    if line == "\r\n" { break; }
+                }
+                captured.lock().unwrap().push(head);
+                let mut stream = reader.into_inner();
+                let body = b"{\"ok\":true}";
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).unwrap();
+                stream.write_all(body).unwrap();
+            }
+        });
+        let response = caduceus_status_route().await.into_response();
+        worker.join().unwrap(); std::env::remove_var("CADUCEUS_STAFF_SOCKET"); let _ = std::fs::remove_file(socket);
+        assert_eq!(response.status(), StatusCode::OK); let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap(); let value: serde_json::Value = serde_json::from_slice(&body).unwrap(); assert_eq!(value["ok"], true); assert_eq!(value["caduceusBase"], "caduceus-uds");
+        let requests = requests.lock().unwrap(); assert_eq!(requests.len(), 3); assert!(requests[0].starts_with("GET /health HTTP/1.1")); assert!(requests[0].contains("Host: caduceus.local"));
+    }
 
     #[test]
-    fn raw_actuator_accepts_only_literal_loopback_socket_authorities() {
-        for base in ["http://127.0.0.1:3014", "http://[::1]:3014"] {
-            assert!(caduceus_authority_from_base(base).is_some(), "{base}");
-        }
-        for base in [
-            "http://localhost:3014",
-            "http://user@127.0.0.1:3014",
-            "http://127.0.0.1:3014/path",
-            "http://127.0.0.1:3014?query",
-            "http://127.0.0.1:3014#fragment",
-            "https://127.0.0.1:3014",
-            "http://127.0.0.1",
-            "http://192.0.2.1:3014",
-        ] {
-            assert!(caduceus_authority_from_base(base).is_none(), "{base}");
-        }
+    fn caduceus_general_request_reports_missing_socket() {
+        let _guard = crate::CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let socket = std::env::temp_dir().join(format!("coronatio-status-absent-{}-{}.sock", std::process::id(), uuid::Uuid::new_v4())); let _ = std::fs::remove_file(&socket); std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let readback = caduceus_http("GET", "/health"); std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        assert!(!readback.ok); assert_eq!(readback.body["error"], "caduceus-upstream-failed"); assert_eq!(readback.first_missing_signal, "caduceus-unreachable");
     }
 }

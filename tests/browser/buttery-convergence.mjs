@@ -33,7 +33,7 @@ async function stop(child) {
   clearTimeout(killer);
 }
 async function closeServer(server) { if (server) await new Promise(resolve => server.close(resolve)); }
-async function startCaduceusFixture(port) {
+async function startCaduceusFixture(socketPath) {
   const current = new Map(), requests = [];
   const fixture = net.createServer(socket => {
     let raw = Buffer.alloc(0);
@@ -62,7 +62,7 @@ async function startCaduceusFixture(port) {
       socket.end(`HTTP/1.1 ${ok ? '200 OK' : '401 Unauthorized'}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(payload)}\r\nConnection: close\r\n\r\n${payload}`);
     });
   });
-  await new Promise((resolve, reject) => { fixture.once('error', reject); fixture.listen(port, '127.0.0.1', resolve); });
+  await new Promise((resolve, reject) => { fixture.once('error', reject); fixture.listen(socketPath, resolve); });
   return { fixture, requests };
 }
 function run(label, command, args, options = {}) {
@@ -82,13 +82,14 @@ class Cdp {
 
 async function main() {
   temp = await mkdtemp(join(tmpdir(), 'coronatio-buttery-'));
-  const [port, debugPort, caduceusPort] = await Promise.all([freePort(), freePort(), freePort()]);
-  caduceus = await startCaduceusFixture(caduceusPort);
+  const [port, debugPort] = await Promise.all([freePort(), freePort()]);
+  const caduceusSocket = join(temp, 'caduceus.sock');
+  caduceus = await startCaduceusFixture(caduceusSocket);
   const config = join(temp, 'homeserver.json'), systemctl = join(temp, 'systemctl.json'), tabs = join(temp, 'tabs'), uploadRoot = join(temp, 'uploads'), profile = join(temp, 'chromium');
   await Promise.all([mkdir(tabs, { recursive: true }), mkdir(uploadRoot, { recursive: true })]);
   await writeFile(config, JSON.stringify({ global: { admin: { pin: '1234' }, cors: { allowed_origins: [`http://127.0.0.1:${port}`] } }, tabs: { starred: 'portals', portals: { config: { displayName: 'Portals', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: { Jellyfin: true, Transmission: true, Relay: true, Docs: true } }, data: { portals: [ { name: 'Jellyfin', description: 'Media', type: 'systemd', localURL: 'https://jellyfin.home.arpa', port: 8096, services: ['jellyfin'] }, { name: 'Transmission', description: 'Downloads', type: 'systemd', localURL: 'https://transmission.home.arpa', port: 9091, services: ['transmission'] }, { name: 'Relay', description: 'Mixed', type: 'systemd', localURL: 'https://relay.home.arpa', port: 4040, services: ['relay', 'vpn'] }, { name: 'Docs', description: 'Reference', type: 'link', localURL: 'https://docs.home.arpa', services: [] } ] } }, stats: { config: { displayName: 'Stats', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: {} } }, upload: { config: { displayName: 'Upload', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: {} }, data: { isPinRequired: true } }, admin: { config: { displayName: 'Admin', isEnabled: true, adminOnly: true }, visibility: { tab: true, elements: {} } }, test: { config: { displayName: 'Test', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: {} } }, dhcp: { config: { displayName: 'DHCP', isEnabled: true, adminOnly: true }, visibility: { tab: true, elements: {} } }, unbound: { config: { displayName: 'DNS', isEnabled: true, adminOnly: true }, visibility: { tab: true, elements: {} } }, backblaze: { config: { displayName: 'Chia Mining', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: {} } }, 'wake-on-lan': { config: { displayName: 'YouTube', isEnabled: true, adminOnly: false }, visibility: { tab: true, elements: {} } } } }));
   await writeFile(systemctl, JSON.stringify({ jellyfin: 'active', transmission: 'inactive', relay: 'inactive', vpn: 'active' }));
-  server = run('coronatio', binary, [], { env: { ...process.env, CORONATIO_PORT: String(port), CORONATIO_TAB_ROOT: tabs, CORONATIO_HOMESERVER_JSON: config, CORONATIO_SYSTEMCTL_FIXTURE: systemctl, CORONATIO_STATIC_ROOT: join(root, 'static'), CORONATIO_UPLOAD_ROOT: uploadRoot, CADUCEUS_ACCESS_BASE_URL: `http://127.0.0.1:${caduceusPort}` } });
+  server = run('coronatio', binary, [], { env: { ...process.env, CORONATIO_PORT: String(port), CORONATIO_TAB_ROOT: tabs, CORONATIO_HOMESERVER_JSON: config, CORONATIO_SYSTEMCTL_FIXTURE: systemctl, CORONATIO_STATIC_ROOT: join(root, 'static'), CORONATIO_UPLOAD_ROOT: uploadRoot, CADUCEUS_STAFF_SOCKET: caduceusSocket } });
   let serverLog = ''; server.stdout.on('data', d => { serverLog += d; }); server.stderr.on('data', d => { serverLog += d; });
   await eventually('server health', async () => (await fetch(`http://127.0.0.1:${port}/health`)).ok);
   browser = run('chromium', chromium, [`--headless=new`, '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-background-networking', '--disable-component-update', '--disable-default-apps', '--disable-sync', '--metrics-recording-only', '--no-first-run', `--user-data-dir=${profile}`, `--remote-debugging-port=${debugPort}`, 'about:blank']);

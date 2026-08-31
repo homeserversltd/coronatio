@@ -251,8 +251,9 @@
     #[tokio::test]
     async fn field_005b_admin_upload_history_crosses_og_gate() {
         let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| std::sync::Mutex::new(())).lock().unwrap();
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
+        let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
         let payload = serde_json::json!({
             "schema": "caduceus.hyalos.tail.v1",
             "ok": true,
@@ -271,12 +272,12 @@
                 let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
             }
         });
-        std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
         let router = app(AppState { tab_root: Arc::new(test_tab_root("field-005b-admin-upload-history")) });
         let response = router.oneshot(successor_admin_request(Request::builder().uri("/api/upload/history").body(Body::empty()).unwrap())).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(body.contains("coronatio.upload.history.v1"), "{body}");
-        std::env::remove_var("CADUCEUS_BASE_URL");
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
         let _ = server.join();
     }

@@ -1,17 +1,19 @@
     use std::io::{Read, Write};
-    use std::net::{Shutdown, TcpListener};
+    use std::net::Shutdown;
+    use std::os::unix::net::UnixListener;
     use std::sync::Arc;
     use std::thread;
 
     struct MockCaduceusHyalosServer {
-        port: u16,
+        socket: std::path::PathBuf,
         _handle: thread::JoinHandle<()>,
     }
 
     impl MockCaduceusHyalosServer {
         fn spawn(events: serde_json::Value) -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0").expect("mock caduceus bind");
-            let port = listener.local_addr().expect("mock caduceus addr").port();
+            let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+            let _ = std::fs::remove_file(&socket);
+            let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
             let body = Arc::new(
                 serde_json::json!({
                     "schema": "caduceus.hyalos.tail.v1",
@@ -35,7 +37,7 @@
                     let _ = stream.shutdown(Shutdown::Write);
                 }
             });
-            Self { port, _handle: handle }
+            Self { socket, _handle: handle }
         }
     }
 
@@ -49,7 +51,7 @@
             {"kind": "upload", "organ": "file-ingress", "message": "[SYSTEM] rotate", "ok": true},
             {"kind": "upload", "organ": "file-ingress", "message": "new success", "ok": true},
         ]));
-        std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{}", server.port));
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", server.socket.to_string_lossy().to_string());
         let response = app(AppState {
             tab_root: Arc::new(test_tab_root("hyalos-upload-history-app")),
         })
@@ -66,7 +68,7 @@
             serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
         assert_eq!(body["schema"], "coronatio.upload.history.v1");
         assert_eq!(body["history"], serde_json::json!(["new success", "old success"]));
-        std::env::remove_var("CADUCEUS_BASE_URL");
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     }
 
     #[tokio::test]
@@ -111,7 +113,7 @@
             {"kind": "system", "organ": "coronatio", "message": "boot complete", "ok": true},
             {"kind": "upload", "organ": "file-ingress", "message": "file saved", "ok": true},
         ]));
-        std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{}", server.port));
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", server.socket.to_string_lossy().to_string());
         let response = app(AppState {
             tab_root: Arc::new(test_tab_root("hyalos-homeserver-logs-app")),
         })
@@ -129,5 +131,5 @@
         assert_eq!(body["schema"], "coronatio.admin.logs.homeserver.v1");
         assert_eq!(body["logs"], "boot complete\nfile saved");
         assert_eq!(body["events"].as_array().map(Vec::len), Some(2));
-        std::env::remove_var("CADUCEUS_BASE_URL");
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     }

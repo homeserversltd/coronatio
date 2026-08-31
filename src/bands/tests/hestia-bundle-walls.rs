@@ -8,10 +8,11 @@ fn hestia_mock_response(status: &str, headers: &[(&str, &str)], body: &[u8]) -> 
     response
 }
 
-fn spawn_hestia_mock(response: Vec<u8>) -> (u16, Arc<Mutex<Vec<u8>>>, std::thread::JoinHandle<()>) {
-    use std::net::TcpListener;
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+fn spawn_hestia_mock(response: Vec<u8>) -> (std::path::PathBuf, Arc<Mutex<Vec<u8>>>, std::thread::JoinHandle<()>) {
+    use std::os::unix::net::UnixListener;
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
     let request = Arc::new(Mutex::new(Vec::new()));
     let captured = request.clone();
     let handle = std::thread::spawn(move || {
@@ -31,12 +32,15 @@ fn spawn_hestia_mock(response: Vec<u8>) -> (u16, Arc<Mutex<Vec<u8>>>, std::threa
         *captured.lock().unwrap() = bytes;
         stream.write_all(&response).unwrap();
     });
-    (port, request, handle)
+    (socket, request, handle)
 }
 
-fn unused_hestia_port() -> u16 {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    listener.local_addr().unwrap().port()
+fn unused_hestia_socket() -> std::path::PathBuf {
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
+    drop(listener);
+    socket
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -61,8 +65,8 @@ async fn hestia_windows_proxy_preserves_der_bytes_and_attachment_headers_only() 
         ],
         &der,
     );
-    let (port, request, handle) = spawn_hestia_mock(response);
-    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+    let (socket, request, handle) = spawn_hestia_mock(response);
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState {
         tab_root: Arc::new(test_tab_root("hestia-windows")),
     })
@@ -74,7 +78,7 @@ async fn hestia_windows_proxy_preserves_der_bytes_and_attachment_headers_only() 
     )
     .await
     .unwrap();
-    std::env::remove_var("CADUCEUS_BASE_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     handle.join().unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
@@ -116,10 +120,11 @@ async fn hestia_platform_defaults_to_linux_and_path_shaped_values_never_connect(
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap();
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
     listener.set_nonblocking(true).unwrap();
-    let port = listener.local_addr().unwrap().port();
-    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let router = app(AppState {
         tab_root: Arc::new(test_tab_root("hestia-invalid")),
     });
@@ -150,7 +155,7 @@ async fn hestia_platform_defaults_to_linux_and_path_shaped_values_never_connect(
 
     let body = b"linux-ca";
     let length = body.len().to_string();
-    let (port, request, handle) = spawn_hestia_mock(hestia_mock_response(
+    let (socket, request, handle) = spawn_hestia_mock(hestia_mock_response(
         "200 OK",
         &[
             ("Content-Type", "application/x-x509-ca-cert"),
@@ -162,7 +167,7 @@ async fn hestia_platform_defaults_to_linux_and_path_shaped_values_never_connect(
         ],
         body,
     ));
-    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = router
         .oneshot(
             Request::builder()
@@ -172,7 +177,7 @@ async fn hestia_platform_defaults_to_linux_and_path_shaped_values_never_connect(
         )
         .await
         .unwrap();
-    std::env::remove_var("CADUCEUS_BASE_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     handle.join().unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     assert!(String::from_utf8(request.lock().unwrap().clone())
@@ -186,8 +191,8 @@ async fn hestia_upstream_absence_and_error_have_safe_public_readback() {
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap();
-    let port = unused_hestia_port();
-    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+    let socket = unused_hestia_socket();
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let router = app(AppState {
         tab_root: Arc::new(test_tab_root("hestia-upstream-failure")),
     });
@@ -214,12 +219,12 @@ async fn hestia_upstream_absence_and_error_have_safe_public_readback() {
 
     let secret = b"internal upstream diagnostics must not cross";
     let length = secret.len().to_string();
-    let (port, _, handle) = spawn_hestia_mock(hestia_mock_response(
+    let (socket, _, handle) = spawn_hestia_mock(hestia_mock_response(
         "403 Forbidden",
         &[("Content-Length", &length)],
         secret,
     ));
-    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let refused = router
         .oneshot(
             Request::builder()
@@ -229,7 +234,7 @@ async fn hestia_upstream_absence_and_error_have_safe_public_readback() {
         )
         .await
         .unwrap();
-    std::env::remove_var("CADUCEUS_BASE_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     handle.join().unwrap();
     assert_eq!(refused.status(), StatusCode::FORBIDDEN);
     let refused_body = String::from_utf8(
@@ -251,7 +256,7 @@ async fn hestia_proxy_refuses_malformed_success_response() {
         .unwrap();
     let body = b"not-an-attachment";
     let length = body.len().to_string();
-    let (port, _, handle) = spawn_hestia_mock(hestia_mock_response(
+    let (socket, _, handle) = spawn_hestia_mock(hestia_mock_response(
         "200 OK",
         &[
             ("Content-Type", "application/x-x509-ca-cert"),
@@ -259,7 +264,7 @@ async fn hestia_proxy_refuses_malformed_success_response() {
         ],
         body,
     ));
-    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState {
         tab_root: Arc::new(test_tab_root("hestia-malformed")),
     })
@@ -271,7 +276,7 @@ async fn hestia_proxy_refuses_malformed_success_response() {
     )
     .await
     .unwrap();
-    std::env::remove_var("CADUCEUS_BASE_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     handle.join().unwrap();
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     let body = String::from_utf8(
@@ -292,7 +297,7 @@ async fn hestia_proxy_refuses_oversized_certificate_response() {
         .lock()
         .unwrap();
     let length = (HESTIA_BUNDLE_BODY_LIMIT + 1).to_string();
-    let (port, _, handle) = spawn_hestia_mock(hestia_mock_response(
+    let (socket, _, handle) = spawn_hestia_mock(hestia_mock_response(
         "200 OK",
         &[
             ("Content-Type", "application/x-x509-ca-cert"),
@@ -304,7 +309,7 @@ async fn hestia_proxy_refuses_oversized_certificate_response() {
         ],
         b"",
     ));
-    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
     let response = app(AppState {
         tab_root: Arc::new(test_tab_root("hestia-oversized")),
     })
@@ -316,7 +321,7 @@ async fn hestia_proxy_refuses_oversized_certificate_response() {
     )
     .await
     .unwrap();
-    std::env::remove_var("CADUCEUS_BASE_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     handle.join().unwrap();
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     let body = String::from_utf8(

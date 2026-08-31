@@ -111,7 +111,7 @@ fn hestia_parse_head(
     Ok((status, forwarded, content_length))
 }
 
-fn hestia_read_upstream(stream: &mut TcpStream) -> Result<HestiaUpstreamResponse, &'static str> {
+fn hestia_read_upstream(stream: &mut UnixStream) -> Result<HestiaUpstreamResponse, &'static str> {
     let mut raw = Vec::new();
     let mut buffer = [0_u8; 8192];
     let head_end = loop {
@@ -172,15 +172,14 @@ fn hestia_read_upstream(stream: &mut TcpStream) -> Result<HestiaUpstreamResponse
 fn caduceus_hestia_bundle_get(
     platform: HestiaPlatform,
 ) -> Result<HestiaUpstreamResponse, &'static str> {
-    let authority = caduceus_authority().ok_or("caduceus-loopback-required")?;
-    let mut stream = TcpStream::connect(&authority).map_err(|_| "caduceus-unreachable")?;
+    let mut stream = UnixStream::connect(caduceus_socket_path()).map_err(|_| "caduceus-unreachable")?;
     let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
     let path = format!(
         "/api/v1/cert/bundle/download?platform={}",
         platform.as_str()
     );
-    let request = format!("GET {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\nAccept: application/x-x509-ca-cert\r\n\r\n");
+    let request = format!("GET {path} HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\nAccept: application/x-x509-ca-cert\r\n\r\n");
     stream
         .write_all(request.as_bytes())
         .map_err(|_| "caduceus-write-failed")?;

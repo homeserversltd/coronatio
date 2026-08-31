@@ -367,7 +367,7 @@ mod mutation_authority_tests {
 
     #[test]
     fn successor_refuses_missing_origin_or_cookie_without_ticket_leak() {
-        let authority = MutationAuthority { access: CaduceusAccessClient::new("http://127.0.0.1:9") };
+        let authority = MutationAuthority { access: CaduceusAccessClient::new(std::env::temp_dir().join(format!("coronatio-caduceus-absent-{}-{}.sock", std::process::id(), line!()))) };
         let mapping = MutationActionTarget::caduceus("caduceus.update.now", "/api/v1/update/now");
         for context in [
             MutationRequestContext { same_origin: false, document: Some("test-document".to_string()), attendance: AttendanceProof::parse("test-attendance") },

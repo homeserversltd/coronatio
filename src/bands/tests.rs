@@ -4,8 +4,6 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
-    static CADUCEUS_ENV_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
-        std::sync::OnceLock::new();
     static HX_EXEMPLAR_ENV_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
         std::sync::OnceLock::new();
 
@@ -13,6 +11,12 @@ mod tests {
         let root = std::env::temp_dir().join(format!("coronatio-test-{name}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    pub(crate) fn guaranteed_absent_caduceus_socket() -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("coronatio-caduceus-absent-{}-{}.sock", std::process::id(), uuid::Uuid::new_v4()));
+        let _ = std::fs::remove_file(&path);
+        path
     }
 
     fn successor_admin_request(mut request: Request<Body>) -> Request<Body> {

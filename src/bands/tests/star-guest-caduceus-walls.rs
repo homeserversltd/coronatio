@@ -9,7 +9,8 @@ async fn guest_star_set_reaches_caduceus_without_capability_or_attendance() {
         .lock()
         .unwrap();
     use std::io::{Read, Write};
-    use std::net::{Shutdown, TcpListener};
+    use std::net::Shutdown;
+    use std::os::unix::net::UnixListener;
     use std::sync::{Arc, Mutex};
     use std::thread;
 
@@ -27,8 +28,9 @@ async fn guest_star_set_reaches_caduceus_without_capability_or_attendance() {
         .to_string(),
     )
     .unwrap();
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+    let socket = std::env::temp_dir().join(format!("coronatio-caduceus-{}-{}.sock", std::process::id(), line!()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
     let captured = Arc::new(Mutex::new(String::new()));
     let captured_thread = captured.clone();
     let server = thread::spawn(move || {
@@ -49,7 +51,7 @@ async fn guest_star_set_reaches_caduceus_without_capability_or_attendance() {
         stream.shutdown(Shutdown::Write).unwrap();
     });
     std::env::set_var("CORONATIO_HOMESERVER_JSON", &config);
-    std::env::set_var("CADUCEUS_BASE_URL", format!("http://127.0.0.1:{port}"));
+    std::env::set_var("CADUCEUS_STAFF_SOCKET", socket.to_string_lossy().to_string());
 
     let response = app(AppState { tab_root: Arc::new(root) })
         .oneshot(
@@ -64,7 +66,7 @@ async fn guest_star_set_reaches_caduceus_without_capability_or_attendance() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     server.join().unwrap();
-    std::env::remove_var("CADUCEUS_BASE_URL");
+    std::env::remove_var("CADUCEUS_STAFF_SOCKET");
     std::env::remove_var("CORONATIO_HOMESERVER_JSON");
 
     let request = captured.lock().unwrap().clone();

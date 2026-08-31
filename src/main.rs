@@ -7,18 +7,25 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::os::unix::net::UnixListener;
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     env,
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
+    os::unix::net::UnixStream,
     path::{Path as FsPath, PathBuf},
     process::Command,
     sync::{Arc, Mutex, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
 use tokio::fs;
 use tower_http::services::ServeDir;
+
+#[cfg(test)]
+static CADUCEUS_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 include!("bands/contracts.rs");
 include!("bands/runtime.rs");
