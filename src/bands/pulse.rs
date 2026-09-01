@@ -2,7 +2,7 @@ mod pulse {
     use super::*;
     use axum::response::sse::{Event, KeepAlive, Sse};
     use futures_util::{stream, StreamExt};
-    use std::{collections::HashMap, convert::Infallible, sync::atomic::{AtomicBool, Ordering}, time::Instant};
+    use std::{collections::HashMap, convert::Infallible, sync::{atomic::{AtomicBool, Ordering}, Arc, OnceLock, RwLock}, time::Instant};
     use tokio::sync::{broadcast, mpsc};
     use tokio::time::{interval, sleep_until, Instant as TokioInstant};
 
@@ -12,6 +12,39 @@ mod pulse {
     static STATS_TICKER_STARTED: AtomicBool = AtomicBool::new(false);
     #[cfg(test)]
     static STATS_TICKER_TEST_ENABLED: AtomicBool = AtomicBool::new(false);
+
+    pub(crate) struct HeldStats {
+        pub(crate) stats: serde_json::Value,
+        pub(crate) stats_at: Instant,
+        pub(crate) history: serde_json::Value,
+        pub(crate) history_at: Instant,
+        pub(crate) history_status: u16,
+        pub(crate) roster: StatsKeaLeases,
+        pub(crate) roster_at: Instant,
+    }
+    static HELD_STATS: OnceLock<Arc<RwLock<Option<HeldStats>>>> = OnceLock::new();
+    static STATS_REFRESH_GUARD: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
+    fn held_stats() -> &'static Arc<RwLock<Option<HeldStats>>> { HELD_STATS.get_or_init(|| Arc::new(RwLock::new(None))) }
+    fn refresh_stats_pool(seed_only: bool) {
+        let _guard=STATS_REFRESH_GUARD.get_or_init(Default::default).lock().unwrap();
+        if seed_only && held_stats().read().unwrap().is_some() { return; }
+        let (refresh_history,now)={let held=held_stats().read().unwrap(); let now=Instant::now(); (held.as_ref().is_none_or(|h| h.history_at.elapsed()>=Duration::from_secs(60)),now)};
+        let stats=super::caduceus_stats_value("/api/v1/appliance/stats");
+        let history=refresh_history.then(||super::caduceus_http("GET","/api/v1/appliance/stats/history"));
+        let (roster_at,roster)=super::stats_identity_roster_cached();
+        let mut held=held_stats().write().unwrap();
+        let held=held.get_or_insert_with(||HeldStats{stats:serde_json::Value::Null,stats_at:now,history:serde_json::Value::Null,history_at:now,history_status:502,roster:StatsKeaLeases{status:"unavailable".to_string(),entries:Vec::new()},roster_at:now});
+        held.stats=stats; held.stats_at=now; if let Some(history)=history { held.history=history.body; held.history_status=history.status; held.history_at=now; } held.roster=roster; held.roster_at=roster_at;
+    }
+    pub(crate) async fn stats_snapshot() -> StatsSnapshot {
+        if held_stats().read().unwrap().is_none() { let _=tokio::task::spawn_blocking(|| refresh_stats_pool(true)).await; }
+        let held=held_stats().read().unwrap(); let held=held.as_ref().expect("stats pool seeded"); super::stats_caduceus_snapshot(held.stats.clone(),held.roster.clone())
+    }
+    pub(crate) async fn stats_history() -> impl IntoResponse {
+        if held_stats().read().unwrap().is_none() { let _=tokio::task::spawn_blocking(|| refresh_stats_pool(true)).await; }
+        let held=held_stats().read().unwrap(); let held=held.as_ref().expect("stats pool seeded"); (StatusCode::from_u16(held.history_status).unwrap_or(StatusCode::BAD_GATEWAY),Json(held.history.clone()))
+    }
+    async fn collect_stats() { if tokio::task::spawn_blocking(|| refresh_stats_pool(false)).await.is_ok() { poke(PokeTopic::StatsTick); } }
 
     #[allow(dead_code)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,7 +137,8 @@ mod pulse {
                     STATS_TICKER_STARTED.store(false, Ordering::SeqCst);
                     break;
                 }
-                poke(PokeTopic::StatsTick);
+                let live=bus().memberships.lock().unwrap().values().any(|m|m.deadline>Instant::now());
+                if live { collect_stats().await; }
             }
         });
     }
@@ -112,10 +146,10 @@ mod pulse {
     #[cfg(test)]
     pub(crate) fn set_stats_ticker_enabled_for_test(enabled: bool) {
         STATS_TICKER_TEST_ENABLED.store(enabled, Ordering::SeqCst);
-        if !enabled {
-            STATS_TICKER_STARTED.store(false, Ordering::SeqCst);
-        }
     }
+
+    #[cfg(test)]
+    pub(crate) fn reset_stats_pool_for_test() { *held_stats().write().unwrap()=None; }
 
     #[derive(Debug, Clone)]
     pub(crate) struct PulseWireFrame {

@@ -34,6 +34,7 @@
             },
             io: StatsIo { devices: vec![StatsIoDevice { device: "DENY-nvme0n1".to_string(), mount: "DENY-/io/mount".to_string(), read_bytes: 333, write_bytes: 444 }] },
             leases: vec![StatsKeaLease { hostname: "DENY-lease-hostname".to_string(), ip: "DENY-192.0.2.10".to_string(), mac: "DENY-aa:bb:cc:dd:ee:ff".to_string(), note: "DENY-lease-note".to_string() }],
+            kea_leases: StatsKeaLeases { status: "DENY-roster-status".to_string(), entries: Vec::new() },
             processes: vec![StatsProcess { name: "DENY-process-name".to_string(), cpu_percent: 88.8, memory_bytes: 9999, process_count: 3 }],
             services: vec![StatsService { name: "DENY-service-name".to_string(), status: "DENY-service-status".to_string(), details: "DENY-service-details".to_string(), route: "DENY-service-route".to_string() }],
             telemetry: StatsTelemetry {
@@ -76,10 +77,36 @@
         out
     }
 
+    fn guest_stats_allowlist_facts() -> IrisFacts {
+        IrisFacts {
+            tabs: vec![IrisTabFact {
+                id: "stats".to_string(),
+                order: 0,
+                admin_only: false,
+                is_enabled: true,
+                visibility_tab: Some(true),
+                elements: [
+                    "cpu-chart",
+                    "network-chart",
+                    "io-section",
+                    "memory-usage",
+                    "disk-usage",
+                    "kea-leases",
+                    "process-usage",
+                ]
+                .into_iter()
+                .map(|id| IrisElementFact { id: id.to_string(), visibility: Some(false) })
+                .collect(),
+            }],
+            starred: "stats".to_string(),
+        }
+    }
+
     #[test]
     fn stats_projection_wall_guest_contains_only_allowlisted_constructed_fields() {
         let raw = maximal_stats_snapshot_fixture();
-        let guest = project_system_stats_guest(&raw);
+        let facts = guest_stats_allowlist_facts();
+        let guest = project_system_stats_guest(&raw, &facts);
         let body = serde_json::to_string(&guest).unwrap();
         for marker in [
             "DENY-quarry-source-marker",
@@ -101,6 +128,7 @@
             "DENY-192.0.2.10",
             "DENY-aa:bb:cc:dd:ee:ff",
             "DENY-lease-note",
+            "DENY-roster-status",
             "DENY-process-name",
             "DENY-service-name",
             "DENY-service-status",
@@ -131,20 +159,24 @@
 
         let value = serde_json::to_value(&guest).unwrap();
         let census = json_field_census(&value);
-        let expected = vec![
-            "keaLeases", "keaLeases.entries", "keaLeases.status", "network", "network.receivedBytes", "network.sentBytes",
-            "nextRoutes", "nextRoutes.events", "nextRoutes.renew", "nextRoutes.snapshot", "resources", "resources.load",
-            "resources.load.cpuTemperatureCelsius", "resources.load.fifteen", "resources.load.five", "resources.load.one",
-            "resources.memory", "resources.memory.freeBytes", "resources.memory.percent", "resources.memory.totalBytes", "resources.memory.usedBytes",
-            "resources.swap", "resources.swap.freeBytes", "resources.swap.percent", "resources.swap.totalBytes", "resources.swap.usedBytes",
-            "schema", "storage", "storage[].freeBytes", "storage[].productLabel", "storage[].totalBytes", "storage[].usagePercent", "storage[].usedBytes",
-            "telemetry", "telemetry.cpuTemperatureCelsius", "telemetry.currentness", "telemetry.load1", "telemetry.storagePosture", "topic",
-        ].into_iter().map(String::from).collect::<Vec<_>>();
-        assert_eq!(census, expected);
-        assert_eq!(guest.network.received_bytes, 1123);
-        assert_eq!(guest.network.sent_bytes, 2456);
-        assert_eq!(guest.kea_leases.status, "unavailable");
-        assert!(guest.kea_leases.entries.is_empty());
+        assert_eq!(
+            census,
+            vec![
+                "nextRoutes".to_string(),
+                "nextRoutes.events".to_string(),
+                "nextRoutes.renew".to_string(),
+                "nextRoutes.snapshot".to_string(),
+                "schema".to_string(),
+                "topic".to_string(),
+            ]
+        );
+        assert!(guest.resources.is_none());
+        assert!(guest.storage.is_none());
+        assert!(guest.network.is_none());
+        assert!(guest.io.is_none());
+        assert!(guest.processes.is_none());
+        assert!(guest.telemetry.is_none());
+        assert!(guest.kea_leases.is_none());
     }
 
     #[test]
@@ -160,11 +192,13 @@
             "DENY-/dev/mapper/raw-root",
             "DENY-/raw/mount",
             "DENY-df-source",
-            "DENY-tailscale0",
-            "DENY-nvme0n1",
             "DENY-lease-hostname",
             "DENY-192.0.2.10",
             "DENY-aa:bb:cc:dd:ee:ff",
+            "DENY-lease-note",
+            "DENY-roster-status",
+            "DENY-tailscale0",
+            "DENY-nvme0n1",
             "DENY-process-name",
             "DENY-service-name",
             "DENY-service-health",
@@ -178,9 +212,10 @@
     }
 
     #[test]
-    fn stats_projection_wall_guest_type_cannot_represent_denied_fields() {
+    fn stats_projection_wall_guest_projection_structurally_omits_denied_fields() {
         let raw = maximal_stats_snapshot_fixture();
-        let value = serde_json::to_value(project_system_stats_guest(&raw)).unwrap();
+        let facts = guest_stats_allowlist_facts();
+        let value = serde_json::to_value(project_system_stats_guest(&raw, &facts)).unwrap();
         let census = json_field_census(&value);
         for denied in [
             "doctrine", "transport.streamReason", "network.interfaces", "network.connections", "io", "leases", "processes", "services",

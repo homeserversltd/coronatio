@@ -255,14 +255,24 @@ fn installer_lane_mapping() -> Vec<InstallerLaneMapping> {
     ]
 }
 
-fn caduceus_stats_value(path: &str) -> serde_json::Value { caduceus_http("GET", path).body }
+pub(crate) fn caduceus_stats_value(path: &str) -> serde_json::Value {
+    #[cfg(test)]
+    STATS_CURRENT_PULLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    caduceus_http("GET", path).body
+}
+#[cfg(test)]
+static STATS_CURRENT_PULLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+#[cfg(test)]
+pub(crate) fn reset_stats_current_pull_count_for_test() { STATS_CURRENT_PULLS.store(0, std::sync::atomic::Ordering::SeqCst); }
+#[cfg(test)]
+pub(crate) fn stats_current_pull_count_for_test() -> usize { STATS_CURRENT_PULLS.load(std::sync::atomic::Ordering::SeqCst) }
 
 fn stats_number(value: Option<&serde_json::Value>) -> Option<f64> { value.and_then(|value| value.as_f64().or_else(|| value.as_u64().map(|value| value as f64))) }
 fn stats_u64(value: Option<&serde_json::Value>) -> Option<u64> { value.and_then(|value| value.as_u64().or_else(|| value.as_f64().and_then(|value| (value >= 0.0).then_some(value as u64)))) }
 fn stats_memory(memory: Option<&serde_json::Value>, total_key: &str, free_key: &str, used_key: Option<&str>) -> StatsMemory {
     let total=stats_u64(memory.and_then(|v|v.get(total_key))); let free=stats_u64(memory.and_then(|v|v.get(free_key))); let used=used_key.and_then(|k|stats_u64(memory.and_then(|v|v.get(k)))).or_else(||total.zip(free).map(|(t,f)|t.saturating_sub(f))); let percent=total.filter(|t|*t>0).and_then(|t|used.map(|u|((u.saturating_mul(100)/t).min(100)) as u8)); StatsMemory{total_bytes:total,used_bytes:used,free_bytes:free,percent}
 }
-fn stats_caduceus_snapshot(body: serde_json::Value) -> StatsSnapshot {
+pub(crate) fn stats_caduceus_snapshot(body: serde_json::Value, roster: StatsKeaLeases) -> StatsSnapshot {
     let load=body.get("load"); let memory=body.get("memory"); let temperature=body.pointer("/temperature/celsius");
     let resources=StatsResources{load:StatsLoad{one:stats_number(load.and_then(|v|v.get("one"))),five:stats_number(load.and_then(|v|v.get("five"))),fifteen:stats_number(load.and_then(|v|v.get("fifteen"))),cpu_temperature_celsius:stats_number(temperature)},memory:stats_memory(memory,"MemTotal","MemAvailable",Some("usedBytes")),swap:stats_memory(memory,"SwapTotal","SwapFree",Some("usedBytesSwap"))};
     let interfaces=body.pointer("/network/interfaces").and_then(serde_json::Value::as_array).map(|rows|rows.iter().filter_map(|row|Some(StatsNetworkInterface{name:row.get("name")?.as_str()?.to_string(),status:row.get("operstate").and_then(|v|v.as_str()).unwrap_or("unknown").to_string(),rx_bytes:stats_u64(row.get("rxBytes")).unwrap_or(0),tx_bytes:stats_u64(row.get("txBytes")).unwrap_or(0)})).collect()).unwrap_or_default();
@@ -271,7 +281,7 @@ fn stats_caduceus_snapshot(body: serde_json::Value) -> StatsSnapshot {
     let io=StatsIo{devices:body.pointer("/disk/io").and_then(serde_json::Value::as_array).map(|rows|rows.iter().map(|r|StatsIoDevice{device:r.get("device").and_then(|v|v.as_str()).unwrap_or("disk").to_string(),mount:r.get("mount").and_then(|v|v.as_str()).unwrap_or("").to_string(),read_bytes:stats_u64(r.get("readBytes")).unwrap_or(0),write_bytes:stats_u64(r.get("writeBytes")).unwrap_or(0)}).collect()).unwrap_or_default()};
     let processes=body.get("processes").and_then(serde_json::Value::as_array).map(|rows|rows.iter().map(|r|StatsProcess{name:r.get("command").or_else(||r.get("name")).and_then(|v|v.as_str()).unwrap_or("process").to_string(),cpu_percent:stats_number(r.get("cpuPercent")).unwrap_or(0.0),memory_bytes:stats_u64(r.get("rssBytes").or_else(||r.get("memoryBytes"))).unwrap_or(0),process_count:stats_u64(r.get("processCount")).unwrap_or(1)}).collect()).unwrap_or_default();
     let network=StatsNetwork{interfaces,connections:StatsConnectionCounts{established,listening,total}}; let services=stats_services();
-    StatsSnapshot{schema:"coronatio.stats.snapshot.v1".to_string(),pane_id:"stats".to_string(),product:"Coronatio".to_string(),doctrine:StatsViewportDoctrine{quarry_sources:vec!["Caduceus appliance stats readback".to_string()],preserved_sections:vec!["cpu-chart".to_string(),"network".to_string(),"io-section".to_string(),"memory".to_string(),"disk-usage".to_string(),"kea-leases".to_string(),"process-usage".to_string()],refresh_seconds:5,authority:"read-only Caduceus appliance stats snapshot".to_string()},transport:StatsTransport{snapshot_route:"/api/stats".to_string(),event_route:"/api/stats/pulse".to_string(),renew_route:"/api/stats/pulse/renew".to_string(),stream_status:"available".to_string(),stream_reason:"persistent SSE pulse stream and renewal route are registered; pokes carry no stats payload".to_string()},resources,storage:storage.clone(),network,io,leases:stats_kea_leases(),kea_leases:stats_identity_roster(),processes,services:services.clone(),telemetry:StatsTelemetry{load1:stats_number(load.and_then(|v|v.get("one"))),cpu_temperature_celsius:stats_number(temperature),service_health:Some(service_health_summary(&services)),storage_posture:Some(storage_posture_summary(&storage)),first_missing_signal:String::new()},next_routes:StatsNextRoutes{snapshot:"/api/stats".to_string(),events:"/api/stats/pulse".to_string(),renew:"/api/stats/pulse/renew".to_string()}}
+    StatsSnapshot{schema:"coronatio.stats.snapshot.v1".to_string(),pane_id:"stats".to_string(),product:"Coronatio".to_string(),doctrine:StatsViewportDoctrine{quarry_sources:vec!["Caduceus appliance stats readback".to_string()],preserved_sections:vec!["cpu-chart".to_string(),"network".to_string(),"io-section".to_string(),"memory".to_string(),"disk-usage".to_string(),"kea-leases".to_string(),"process-usage".to_string()],refresh_seconds:5,authority:"read-only Caduceus appliance stats snapshot".to_string()},transport:StatsTransport{snapshot_route:"/api/stats".to_string(),event_route:"/api/stats/pulse".to_string(),renew_route:"/api/stats/pulse/renew".to_string(),stream_status:"available".to_string(),stream_reason:"persistent SSE pulse stream and renewal route are registered; pokes carry no stats payload".to_string()},resources,storage:storage.clone(),network,io,leases:stats_kea_leases(),kea_leases:roster,processes,services:services.clone(),telemetry:StatsTelemetry{load1:stats_number(load.and_then(|v|v.get("one"))),cpu_temperature_celsius:stats_number(temperature),service_health:Some(service_health_summary(&services)),storage_posture:Some(storage_posture_summary(&storage)),first_missing_signal:String::new()},next_routes:StatsNextRoutes{snapshot:"/api/stats".to_string(),events:"/api/stats/pulse".to_string(),renew:"/api/stats/pulse/renew".to_string()}}
 }
-async fn stats_snapshot() -> StatsSnapshot { stats_caduceus_snapshot(caduceus_stats_value("/api/v1/appliance/stats")) }
-async fn stats_history() -> impl IntoResponse { let readback=caduceus_http("GET","/api/v1/appliance/stats/history"); (StatusCode::from_u16(readback.status).unwrap_or(StatusCode::BAD_GATEWAY),Json(readback.body)) }
+async fn stats_snapshot() -> StatsSnapshot { pulse::stats_snapshot().await }
+async fn stats_history() -> impl IntoResponse { pulse::stats_history().await }

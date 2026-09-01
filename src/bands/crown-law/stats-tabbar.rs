@@ -444,7 +444,7 @@ const STATS_IDENTITY_ROSTER_FAILED_TTL: std::time::Duration = std::time::Duratio
 static STATS_IDENTITY_ROSTER_CACHE: OnceLock<Mutex<Option<(std::time::Instant, StatsKeaLeases)>>> =
     OnceLock::new();
 
-fn stats_identity_roster() -> StatsKeaLeases {
+pub(crate) fn stats_identity_roster_cached() -> (std::time::Instant, StatsKeaLeases) {
     let mut cache = STATS_IDENTITY_ROSTER_CACHE
         .get_or_init(Default::default)
         .lock()
@@ -456,7 +456,7 @@ fn stats_identity_roster() -> StatsKeaLeases {
             STATS_IDENTITY_ROSTER_FAILED_TTL
         };
         if cached_at.elapsed() < ttl {
-            return cached_roster.clone();
+            return (*cached_at, cached_roster.clone());
         }
     }
 
@@ -513,8 +513,9 @@ fn stats_identity_roster() -> StatsKeaLeases {
             }
         }
     };
-    *cache = Some((std::time::Instant::now(), result.clone()));
-    result
+    let taken_at = std::time::Instant::now();
+    *cache = Some((taken_at, result.clone()));
+    (taken_at, result)
 }
 
 

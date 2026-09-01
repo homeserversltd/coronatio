@@ -366,3 +366,30 @@
         assert!(chrome.contains("if (!window.EventSource || !viewportFamilyAdmitted('stats')) return;"));
         assert!(chrome.contains("document.addEventListener('visibilitychange', reconcileViewportStreamFamily)"));
     }
+
+
+    #[tokio::test]
+    async fn pulse_wall_stats_collector_pools_one_current_pull_for_three_streams() {
+        let _guard = pulse_test_lock().lock().await;
+        use futures_util::StreamExt;
+        pulse::set_stats_ticker_enabled_for_test(false);
+        tokio::time::sleep(Duration::from_millis(pulse::STATS_INTERVAL_SECONDS * 1000 + 100)).await;
+        pulse::reset_stats_pool_for_test();
+        reset_stats_current_pull_count_for_test();
+        let mut streams = (0..3).map(|_| pulse::subscribe_stream(Session::Guest, Duration::from_secs(5)).1).collect::<Vec<_>>();
+        for stream in &mut streams { assert_eq!(stream.next().await.unwrap().event, "pulse.open"); }
+        pulse::set_stats_ticker_enabled_for_test(true);
+        let _router = app(AppState { tab_root: Arc::new(test_tab_root("pulse-held-stats-pool")) });
+        for stream in &mut streams {
+            for _ in 0..2 {
+                let frame = tokio::time::timeout(Duration::from_millis(1800), stream.next()).await.unwrap().unwrap();
+                assert_eq!(frame.event, "stats.tick");
+                assert_eq!(frame.data, "{}");
+            }
+        }
+        assert_eq!(stats_current_pull_count_for_test(), 2);
+        pulse::set_stats_ticker_enabled_for_test(false);
+        tokio::time::sleep(Duration::from_millis(pulse::STATS_INTERVAL_SECONDS * 1000 + 100)).await;
+        pulse::reset_stats_pool_for_test();
+        reset_stats_current_pull_count_for_test();
+    }
