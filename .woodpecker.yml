@@ -119,7 +119,25 @@ steps:
       FORGEJO_TOKEN:
         from_secret: FORGEJO_TOKEN
     commands:
-      - python3 ci/release_publish.py
+      - |
+        set -eu
+        python3 - <<PY
+        import urllib.error
+        import urllib.request
+        try:
+            with urllib.request.urlopen("http://192.168.123.1:7100/v1/trust/ca-bundle", timeout=30) as response:
+                status = response.status
+                body = response.read()
+        except urllib.error.HTTPError as error:
+            status = error.code
+            body = error.read()
+        print(f"publish-coronatio-release: CA bundle HTTP {status}")
+        if status != 200:
+            raise SystemExit(1)
+        with open("/tmp/house-ca-bundle.pem", "wb") as bundle:
+            bundle.write(body)
+        PY
+        SSL_CERT_FILE=/tmp/house-ca-bundle.pem python3 ci/release_publish.py
 
   - name: make-modern-coronatio
     image: python:3.12-alpine
