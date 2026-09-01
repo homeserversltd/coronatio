@@ -3,12 +3,6 @@ when:
     - push
     - manual
 
-clone:
-  - name: git
-    image: woodpeckerci/plugin-git
-    settings:
-      custom_ssl_url: http://192.168.123.1:7100/v1/trust/ca-bundle
-
 workspace:
   base: /tmp/homeserver-woodpecker
   path: ws/homeserversltd-coronatio
