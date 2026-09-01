@@ -1,1 +1,3 @@
 /target
+# Cibation/Fulcrum worktrees are local execution surfaces, not source dirt
+.worktrees/
