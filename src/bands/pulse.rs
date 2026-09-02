@@ -146,6 +146,9 @@ mod pulse {
     #[cfg(test)]
     pub(crate) fn set_stats_ticker_enabled_for_test(enabled: bool) {
         STATS_TICKER_TEST_ENABLED.store(enabled, Ordering::SeqCst);
+        if !enabled {
+            STATS_TICKER_STARTED.store(false, Ordering::SeqCst);
+        }
     }
 
     #[cfg(test)]
