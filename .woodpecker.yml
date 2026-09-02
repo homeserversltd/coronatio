@@ -119,7 +119,20 @@ steps:
       FORGEJO_TOKEN:
         from_secret: FORGEJO_TOKEN
     commands:
-      - python3 ci/release_publish.py
+      - |
+        set -eu
+        python3 - <<PY
+        import urllib.request
+
+        with urllib.request.urlopen("http://192.168.123.1:7100/v1/trust/ca-bundle") as response:
+            ca_bundle = response.read()
+        assert ca_bundle, "CA bundle response is empty"
+        with open("/tmp/house-ca.pem", "wb") as output:
+            written = output.write(ca_bundle)
+        assert written > 0, "CA bundle write is empty"
+        PY
+        export SSL_CERT_FILE=/tmp/house-ca.pem
+        python3 ci/release_publish.py
 
   - name: make-modern-coronatio
     image: python:3.12-alpine
