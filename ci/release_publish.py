@@ -30,9 +30,8 @@ def assets_of(release):
         result[name] = asset
     return result
 def download(asset, token, name):
-    asset_id = asset.get("id")
-    if not isinstance(asset_id, int): fail(f"asset {name} has no numeric id")
-    url = f"{API_ROOT}/repos/{OWNER}/{REPO}/releases/assets/{asset_id}"
+    url = asset.get("browser_download_url")
+    if not isinstance(url, str) or not url: fail(f"asset {name} has no browser download URL")
     status, raw = request("GET", url, token, accept="application/octet-stream")
     if status != 200: fail(f"download of {name} returned HTTP {status}")
     return raw
