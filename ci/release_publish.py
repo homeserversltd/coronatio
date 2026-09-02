@@ -56,6 +56,10 @@ def verify_fresh(release, token, binary_name, sidecar_name, digest, sidecar):
     assets = expected_assets(release, binary_name, sidecar_name)
     if hashlib.sha256(download(assets[binary_name], token, binary_name)).hexdigest() != digest: fail(f"downloaded {binary_name} has a conflicting digest")
     if download(assets[sidecar_name], token, sidecar_name) != sidecar: fail(f"downloaded {sidecar_name} has conflicting contents")
+
+def release_identity(sha, binary_decl):
+    tag = sha; name = f"coronatio {sha[:8]}"; binary_name = f"{binary_decl}-x86_64"
+    return tag, name, binary_name, f"{binary_name}.sha256"
 def main():
     token = os.environ.get("FORGEJO_TOKEN", "")
     if not token: fail("FORGEJO_TOKEN is required")
@@ -75,22 +79,24 @@ def main():
         binary_decl = package.get("name")
     if not isinstance(version, str) or not version or not isinstance(binary_decl, str) or not binary_decl: fail("Cargo package version or binary declaration is missing")
     target_directory = os.environ.get("CARGO_TARGET_DIR", "target")
-    binary_name = f"{binary_decl}-{version}-x86_64"; sidecar_name = f"{binary_name}.sha256"
+    tag, name, binary_name, sidecar_name = release_identity(sha, binary_decl)
     binary_path = os.path.join(target_directory, "release", binary_decl)
     if not os.path.isfile(binary_path): fail(f"release binary does not exist: {binary_path}")
     with open(binary_path, "rb") as binary_file: binary = binary_file.read()
     digest = hashlib.sha256(binary).hexdigest(); sidecar = f"{digest}  {binary_name}\n".encode("ascii")
-    tag_url = f"{RELEASES}/tags/{urllib.parse.quote(version, safe='')}"; status, raw = request("GET", tag_url, token)
+    tag_url = f"{RELEASES}/tags/{urllib.parse.quote(tag, safe='')}"; status, raw = request("GET", tag_url, token)
     if status == 200:
         existing_digest = verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name)
-        print(json.dumps({"schema":"coronatio.release_publish.v1", "ok":True, "status":"no-op", "changed":False, "project":PROJECT, "tag":version, "commit":sha, "assets":[binary_name, sidecar_name], "sha256":existing_digest, "release_url":tag_url}, separators=(",", ":"))); return
+        if existing_digest != digest: fail(f"immutable release digest conflict for {sha}")
+        print(json.dumps({"schema":"coronatio.release_publish.v1", "ok":True, "status":"no-op", "changed":False, "project":PROJECT, "tag":sha, "commit":sha, "cargo_version":version, "assets":[binary_name, sidecar_name], "sha256":existing_digest, "release_url":tag_url}, separators=(",", ":"))); return
     if status != 404: fail(f"GET release tag returned HTTP {status}")
-    payload = {"tag_name":version, "name":version, "target_commitish":sha, "draft":False, "prerelease":False}; status, raw = request("POST", RELEASES, token, payload)
+    payload = {"tag_name":tag, "name":name, "target_commitish":sha, "draft":False, "prerelease":False}; status, raw = request("POST", RELEASES, token, payload)
     if status == 409:
         status, raw = request("GET", tag_url, token)
         if status != 200: fail(f"release collision reread returned HTTP {status}")
         existing_digest = verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name)
-        print(json.dumps({"schema":"coronatio.release_publish.v1", "ok":True, "status":"no-op", "changed":False, "project":PROJECT, "tag":version, "commit":sha, "assets":[binary_name, sidecar_name], "sha256":existing_digest, "release_url":tag_url}, separators=(",", ":"))); return
+        if existing_digest != digest: fail(f"immutable release digest conflict for {sha}")
+        print(json.dumps({"schema":"coronatio.release_publish.v1", "ok":True, "status":"no-op", "changed":False, "project":PROJECT, "tag":sha, "commit":sha, "cargo_version":version, "assets":[binary_name, sidecar_name], "sha256":existing_digest, "release_url":tag_url}, separators=(",", ":"))); return
     if status not in (200, 201): fail(f"release creation returned HTTP {status}")
     release = decode(raw, "release creation"); release_id = release.get("id")
     if not isinstance(release_id, int): fail("created release has no numeric id")
@@ -102,5 +108,5 @@ def main():
     status, raw = request("GET", tag_url, token)
     if status != 200: fail(f"reread of release returned HTTP {status}")
     verify_fresh(decode(raw, "release reread"), token, binary_name, sidecar_name, digest, sidecar)
-    print(json.dumps({"schema":"coronatio.release_publish.v1", "ok":True, "status":"published", "changed":True, "project":PROJECT, "tag":version, "commit":sha, "assets":[binary_name, sidecar_name], "sha256":digest, "release_url":tag_url}, separators=(",", ":")))
+    print(json.dumps({"schema":"coronatio.release_publish.v1", "ok":True, "status":"published", "changed":True, "project":PROJECT, "tag":sha, "commit":sha, "cargo_version":version, "assets":[binary_name, sidecar_name], "sha256":digest, "release_url":tag_url}, separators=(",", ":")))
 if __name__ == "__main__": main()
