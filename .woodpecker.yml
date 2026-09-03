@@ -108,7 +108,7 @@ steps:
       - event: push
         branch: main
     commands:
-      - CORONATIO_BUILD_SHA="$CI_COMMIT_SHA" cargo build --release --locked
+      - CORONATIO_SOURCE_SHA="$CI_COMMIT_SHA" CORONATIO_BUILD_SHA="$CI_COMMIT_SHA" cargo build --release --locked
 
   - name: publish-coronatio-release
     image: python:3.12-alpine
