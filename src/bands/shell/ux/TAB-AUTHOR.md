@@ -66,6 +66,28 @@ border-color
 
 The machine-readable source is `author-face.json`; the focused Rust wall tests enforce it across `packs/**/*.css`. If a repeated quarry-shaped name is needed, add one shell rebind and this list in the same change. Rewrite one-off names to an existing author-face variable instead.
 
+## Raising a toast from a fragment
+
+Return a request beside the pane's HTML in the same HTMX response:
+
+```html
+<div hx-swap-oob="beforeend:[data-coronatio-toast-stack]">
+  <span hidden data-coronatio-toast-request data-toast-kind="success" data-toast-timeout-ms="5000">Saved &amp; ready.</span>
+</div>
+```
+
+Keep the outer swap wrapper separate: HTMX `beforeend` strips that wrapper and
+appends its children to the crown stack. The crown consumes every nested request
+on `htmx:afterSettle`, removes it, and constructs its own toast. Emit only escaped
+message text in the marker, never a guest toast element or script; the crown reads
+`textContent`, not HTML. Empty messages create no toast.
+
+`data-toast-kind` supports `info`, `success`, `warning`, and `error`; missing or
+unknown kinds use `info`. Optional `data-toast-timeout-ms` is a whole number from
+1 through 2147483647 milliseconds (the browser's signed 32-bit timer range).
+Missing, empty, nonnumeric, fractional, or out-of-range values use the existing
+3000ms default. Existing hover-pause and dismissal behavior stays crown-owned.
+
 ## One-to-one port
 
 Coronatio remains the HOMESERVER one-to-one port (`pali:coronatio-original-website-firmware-port-law`). Familiar paint names are allowed here so small authors can build a tab without learning the deep lattice. The shallow face is the only public paint membrane; the Theme Net remains alive beneath it.

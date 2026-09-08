@@ -11,11 +11,14 @@ fn shell_document_4_tail() -> &'static str {
       toast.dataset.toastStartedAt = String(Date.now());
       toast.dataset.toastTimer = String(window.setTimeout(() => dismissCoronatioToast(toast), duration));
     }
-    function showCoronatioToast(message, variant = 'info') {
+    // Fragment requests use data-coronatio-toast-request textContent, data-toast-kind,
+    // and optional data-toast-timeout-ms inside data-coronatio-toast-stack; chrome stays crown-owned.
+    function showCoronatioToast(message, variant = 'info', timeout = 3000) {
       const stack = document.querySelector('[data-coronatio-toast-stack]');
       if (!stack || !message) return;
       const allowed = ['info', 'success', 'warning', 'error'];
       const resolvedVariant = allowed.includes(variant) ? variant : 'info';
+      const duration = Number.isInteger(timeout) && timeout >= 1 && timeout <= 2147483647 ? timeout : 3000;
       const icons = { info: 'ℹ️', success: '✅', warning: '⚠️', error: '❌' };
       const toast = document.createElement('div');
       toast.className = `toast ${resolvedVariant}`;
@@ -23,7 +26,7 @@ fn shell_document_4_tail() -> &'static str {
       toast.setAttribute('role', 'alert');
       const icon = document.createElement('span'); icon.className = 'toast-icon'; icon.setAttribute('aria-hidden', 'true'); icon.textContent = icons[resolvedVariant];
       const text = document.createElement('span'); text.className = 'toast-message'; text.textContent = String(message);
-      toast.append(icon, text); stack.appendChild(toast); startCoronatioToastTimer(toast, 3000);
+      toast.append(icon, text); stack.appendChild(toast); startCoronatioToastTimer(toast, duration);
     }
     // UX-MIGRATION-SLICE-09A: delegated so these bindings survive Caduceus HTMX card swaps.
     const adminActionLabels = Object.freeze({
@@ -79,6 +82,13 @@ fn shell_document_4_tail() -> &'static str {
       actionButton.innerHTML = '<span class="loading-spinner small" role="progressbar" aria-label="Starting action"></span><span>Starting...</span>';
     });
     document.body.addEventListener('htmx:afterSettle', event => {
+      document.querySelectorAll('[data-coronatio-toast-stack] [data-coronatio-toast-request]').forEach(request => {
+        const message = request.textContent;
+        const variant = request.getAttribute('data-toast-kind');
+        const timeout = Number(request.getAttribute('data-toast-timeout-ms'));
+        request.remove();
+        showCoronatioToast(message, variant, timeout);
+      });
       const target = event.detail?.target;
       if (!(target instanceof Element)) return;
       const actionResult = target.matches('[data-admin-action-result]') ? target.querySelector('[data-admin-action-result-fragment]') : null;
