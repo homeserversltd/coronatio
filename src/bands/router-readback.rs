@@ -241,8 +241,11 @@ async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<Stri
     } else if let Some(cartridge) = appliance_cartridge(&tab_id) {
         let facts = load_iris_facts_sync().unwrap_or_else(|| iris_facts_from_homeserver_value(&serde_json::json!({})));
         let visible = iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == tab_id && grant.state == RenderState::Visible);
-        if visible { Html(render_cartridge_iframe_fragment(&cartridge)).into_response() }
-        else { fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound) }
+        if !visible { fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound) }
+        else if tab_id == "my-devices" && my_devices_proxy::is_target(&cartridge.url)
+            && (!my_devices_proxy::admitted() || !my_devices_proxy::activation_ready().await) {
+            fragment_fault(StatusCode::SERVICE_UNAVAILABLE, &tab_id, CartridgeFaultKind::ProxyUnreachable)
+        } else { Html(render_cartridge_iframe_fragment(&cartridge)).into_response() }
     } else if native_crown_panes().into_iter().any(|pane| pane.id == tab_id) {
         Html(render_og_pane_fragment(&tab_id, session)).into_response()
     } else {
@@ -262,7 +265,7 @@ fn render_cartridge_pane_hosts() -> String {
 
 fn render_cartridge_iframe_fragment(cartridge: &ApplianceCartridge) -> String {
     format!(r#"<div class="cartridge-viewport" data-cartridge-id="{}"><iframe src="{}" title="{}" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="same-origin"></iframe></div>"#,
-        html_escape(&cartridge.id), html_escape(&cartridge.url), html_escape(&cartridge.title))
+        html_escape(&cartridge.id), html_escape(if cartridge.id == "my-devices" && my_devices_proxy::is_target(&cartridge.url) { my_devices_proxy::PATH } else { &cartridge.url }), html_escape(&cartridge.title))
 }
 
 fn fragment_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKind) -> Response {

@@ -12,7 +12,7 @@ pbkdf2 = "0.12"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "fs", "sync", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "fs", "sync", "time", "process", "io-util", "net"] }
 tower-http = { version = "0.5", features = ["fs", "trace"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

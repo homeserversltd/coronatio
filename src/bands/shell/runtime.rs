@@ -6,6 +6,12 @@ fn is_safe_tab_id(tab_id: &str) -> bool {
 }
 
 async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("install termination signal");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {},
+        _ = terminate.recv() => {},
+    }
+    my_devices_proxy::stop().await;
 }
 

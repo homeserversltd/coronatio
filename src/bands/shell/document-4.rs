@@ -563,8 +563,17 @@ fn shell_document_4() -> &'static str {
       try { const response = await fetch('/api/v1/cartridges', { cache: 'no-store' }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.firstMissingSignal || 'Cartridges unavailable'); const rows = cartridgeRows(payload); list.innerHTML = rows.length ? rows.map(row => `<li data-cartridge-row="${escapeHtml(row.id)}"><span>${escapeHtml(row.title || row.id)}</span><button type="button" class="secondary" data-cartridge-remove="${escapeHtml(row.id)}">Remove</button></li>`).join('') : '<li>No loadable cartridges admitted.</li>'; }
       catch (error) { list.textContent = error.message || 'Cartridges unavailable'; } }
     async function refreshCartridgeTabs() { const active = currentActiveTabId(); const selected = await refreshTabBar(active); if (selected) showPane(selected); }
+    document.addEventListener('change', event => {
+      if (event.target.name !== 'cartridgeChoice') return;
+      const form = event.target.form; if (!form?.matches('[data-cartridge-add-form]')) return;
+      const devices = event.target.value === 'my-devices';
+      form.elements.title.value = devices ? 'My Devices' : '';
+      form.elements.url.value = devices ? new URL('/cartridge/my-devices', window.location.origin).href : '';
+      form.elements.title.readOnly = devices; form.elements.url.readOnly = devices;
+      form.elements.adminOnly.checked = false; form.elements.adminOnly.disabled = devices;
+    });
     async function submitCartridgeForm(event) { event.preventDefault(); const form = event.currentTarget; const title = form.elements.title.value.trim(), url = form.elements.url.value.trim(), id = cartridgeIdFromTitle(title); if (!id || !url) { showCoronatioToast('Title and URL are required', 'error'); return; } const submit = form.querySelector('[type="submit"]'); if (submit) submit.disabled = true;
-      try { const response = await fetch('/api/v1/cartridges/admit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, title, url, guest_class: 'iframe', admin_only: Boolean(form.elements.adminOnly.checked) }) }); const payload = await response.json().catch(() => ({})); if (!response.ok || payload.ok === false) throw new Error(payload.firstMissingSignal || 'Could not add tab'); form.reset(); closeAddTabModal(); showCoronatioToast(`Added ${title}`, 'success'); await refreshCartridgeTabs(); }
+      try { const response = await fetch('/api/v1/cartridges/admit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, title, url, guest_class: 'iframe', admin_only: Boolean(form.elements.adminOnly.checked) }) }); const payload = await response.json().catch(() => ({})); if (!response.ok || payload.ok === false) throw new Error(payload.firstMissingSignal || 'Could not add tab'); form.reset(); form.elements.title.readOnly = false; form.elements.url.readOnly = false; form.elements.adminOnly.disabled = false; closeAddTabModal(); showCoronatioToast(`Added ${title}`, 'success'); await refreshCartridgeTabs(); }
       catch (error) { showCoronatioToast(error.message || 'Could not add tab', 'error'); } finally { if (submit) submit.disabled = false; } }
     async function removeCartridge(id) { if (!id) return;
       try { const response = await fetch('/api/v1/cartridges/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); const payload = await response.json().catch(() => ({})); if (!response.ok || payload.ok === false) throw new Error(payload.firstMissingSignal || 'Could not remove tab'); showCoronatioToast(`Removed ${id}`, 'success'); await loadCartridgeManagement(); await refreshCartridgeTabs(); }

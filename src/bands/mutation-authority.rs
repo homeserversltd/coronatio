@@ -255,6 +255,9 @@ fn admin_fragment_caduceus_staff_transition(headers: &axum::http::HeaderMap, met
 }
 
 fn caduceus_staff_door(method: &str, route: &str, _classification: &str) -> Result<ResolvedCaduceusDoor, CaduceusDoorResolutionFailure> {
+    if method == "POST" && matches!(route, "/api/v1/cartridges/admit" | "/api/v1/cartridges/remove") {
+        return resolve_cartridge_door(method, route);
+    }
     resolve_caduceus_door(method, route)
 }
 
