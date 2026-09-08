@@ -46,6 +46,8 @@ where
             "tracing-event",
             metadata.level().as_str().to_ascii_lowercase(),
             fields.message.unwrap_or_else(|| metadata.name().to_string()),
+            None,
+            None,
         );
     }
 
@@ -58,6 +60,8 @@ where
             "tracing-span",
             metadata.level().as_str().to_ascii_lowercase(),
             metadata.name().to_string(),
+            None,
+            None,
         );
     }
 }

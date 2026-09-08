@@ -408,12 +408,20 @@ fn caduceus_http_json_with_attendance(method: &str, path: &str, body: serde_json
     caduceus_http_json_with_attendance_and_document(method, path, body, attendance, None)
 }
 
-fn caduceus_hyalos_reflect_best_effort(kind: &'static str, level: String, message: String) {
+fn caduceus_hyalos_reflect_best_effort(
+    kind: &'static str,
+    level: String,
+    message: String,
+    correlation_id: Option<String>,
+    attributes_redacted: Option<serde_json::Value>,
+) {
     #[derive(Debug)]
     struct HyalosReflect {
         kind: &'static str,
         level: String,
         message: String,
+        correlation_id: Option<String>,
+        attributes_redacted: Option<serde_json::Value>,
     }
 
     static SENDER: OnceLock<std::sync::mpsc::SyncSender<HyalosReflect>> = OnceLock::new();
@@ -423,15 +431,22 @@ fn caduceus_hyalos_reflect_best_effort(kind: &'static str, level: String, messag
             .name("coronatio-hyalos".to_string())
             .spawn(move || {
                 while let Ok(event) = receiver.recv() {
+                    let mut body = serde_json::json!({
+                        "organ": "coronatio",
+                        "kind": event.kind,
+                        "level": event.level,
+                        "message": event.message,
+                    });
+                    if let Some(correlation_id) = event.correlation_id {
+                        body["correlation_id"] = serde_json::Value::String(correlation_id);
+                    }
+                    if let Some(attributes_redacted) = event.attributes_redacted {
+                        body["attributes_redacted"] = attributes_redacted;
+                    }
                     let _ = caduceus_http_json_with_attendance_and_document_timeout(
                         "POST",
                         "/api/v1/log/reflect",
-                        serde_json::json!({
-                            "organ": "coronatio",
-                            "kind": event.kind,
-                            "level": event.level,
-                            "message": event.message,
-                        }),
+                        body,
                         None,
                         None,
                         Duration::from_secs(2),
@@ -440,7 +455,7 @@ fn caduceus_hyalos_reflect_best_effort(kind: &'static str, level: String, messag
             });
         sender
     });
-    let _ = sender.try_send(HyalosReflect { kind, level, message });
+    let _ = sender.try_send(HyalosReflect { kind, level, message, correlation_id, attributes_redacted });
 }
 
 fn caduceus_http_json_with_attendance_and_document(

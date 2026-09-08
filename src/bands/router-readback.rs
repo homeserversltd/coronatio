@@ -211,6 +211,21 @@ fn record_cartridge_fault(tab_id: &str, fault_kind: CartridgeFaultKind) -> Cartr
             .map(|duration| duration.as_secs())
             .unwrap_or(0),
     };
+    caduceus_hyalos_reflect_best_effort(
+        if native_crown_panes().into_iter().any(|pane| pane.id == tab_id) {
+            "crown-cartridge-fault"
+        } else {
+            "xenia"
+        },
+        "error".to_string(),
+        format!("cartridge fault: {}", receipt.fault_kind.as_str()),
+        Some(tab_id.to_string()),
+        Some(serde_json::json!({
+            "fault_kind": receipt.fault_kind.as_str(),
+            "occurred_at": receipt.occurred_at,
+            "phase": "cartridge-fault",
+        })),
+    );
     let mut receipts = cartridge_fault_receipts().lock().expect("cartridge fault receipts lock");
     while receipts.len() >= CARTRIDGE_FAULT_RECEIPT_CAPACITY { receipts.pop_front(); }
     receipts.push_back(receipt.clone());
