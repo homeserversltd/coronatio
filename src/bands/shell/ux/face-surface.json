@@ -1,0 +1,182 @@
+{
+  "schema": "coronatio.face-surface.v1",
+  "face": "Coronatio",
+  "source_sha": "6bf0972afcdcf2320c45abd4d4c690bea1919b87",
+  "primitives": [
+    "badge",
+    "breadcrumbs",
+    "button",
+    "calendar",
+    "card",
+    "checkbox",
+    "collapsible",
+    "editable-field",
+    "file-input",
+    "icon-button",
+    "input",
+    "ip-calendar",
+    "loading-spinner",
+    "modal",
+    "plus-button",
+    "progress-bar",
+    "row-info-tile",
+    "select",
+    "slider",
+    "table",
+    "tabs",
+    "text-box",
+    "time-picker",
+    "toast",
+    "toggle",
+    "visibility-toggle"
+  ],
+  "author_face": [
+    "accent",
+    "accent-soft",
+    "background",
+    "background-alt",
+    "background-alt-hover",
+    "background-rgb",
+    "border",
+    "border-color",
+    "border-radius",
+    "disabled",
+    "error",
+    "font-size-sm",
+    "hiddenTabBackground",
+    "hiddenTabText",
+    "info",
+    "monoFont",
+    "primary",
+    "primary-rgb",
+    "primaryHover",
+    "secondary",
+    "shadow",
+    "status-down",
+    "status-partial",
+    "status-unknown",
+    "status-up",
+    "statusDown",
+    "statusPartial",
+    "statusUnknown",
+    "statusUp",
+    "success",
+    "surface",
+    "surface-soft",
+    "tabBorder",
+    "tabContentBackground",
+    "text",
+    "text-muted",
+    "text-secondary",
+    "transition-fast",
+    "warning"
+  ],
+  "showcase": {
+    "badge": {
+      "path": "src/bands/shell/ux/showcase/badge.html",
+      "sha256": "b668735103beccd06dd5e0a7840a5c378c2a1747ea943c3c4e32bc1c5a386553"
+    },
+    "breadcrumbs": {
+      "path": "src/bands/shell/ux/showcase/breadcrumbs.html",
+      "sha256": "a4724df67c77b22ef35faed7e7d302fe4223cdb0c94dce9e4eda0a6b0dc3a7e7"
+    },
+    "button": {
+      "path": "src/bands/shell/ux/showcase/button.html",
+      "sha256": "226c0b3ca20b27d67afa157a19babd029a338bf7d1c917503135a880a313cedb"
+    },
+    "calendar": {
+      "path": "src/bands/shell/ux/showcase/calendar.html",
+      "sha256": "68295ef2d4c7ec002bd4d6b7183588f0429e443a9677e87a0f3572518aaec374"
+    },
+    "card": {
+      "path": "src/bands/shell/ux/showcase/card.html",
+      "sha256": "787608e2a089682c0e704fc66ba99fe70de2cfef9cd85170d3d0e68c3e216f09"
+    },
+    "checkbox": {
+      "path": "src/bands/shell/ux/showcase/checkbox.html",
+      "sha256": "d80a61e19b5996c866bfbd66d1c41f7d746406353e619c183d780d8ddb58731d"
+    },
+    "collapsible": {
+      "path": "src/bands/shell/ux/showcase/collapsible.html",
+      "sha256": "adc20cac4cbf34bc47bc5a22e337a171647dfa6ab2e4367f5263a99c6fab1bb4"
+    },
+    "editable-field": {
+      "path": "src/bands/shell/ux/showcase/editable-field.html",
+      "sha256": "f38fe42c0acd1385c0db6f3fa659cbc7b06871c56e0be6a6226b85c939bb10cf"
+    },
+    "file-input": {
+      "path": "src/bands/shell/ux/showcase/file-input.html",
+      "sha256": "bb5c849f6479e5c525fa97fe54ffa3cd29a4d6be0d3d1fdd53bd18d3e80bbeb8"
+    },
+    "icon-button": {
+      "path": "src/bands/shell/ux/showcase/icon-button.html",
+      "sha256": "b79398c69c9886e42c6c1bb74c51bda06d815fc2b6240635271ceff5b5eea8b9"
+    },
+    "input": {
+      "path": "src/bands/shell/ux/showcase/input.html",
+      "sha256": "a7cf26d49f4bc83699eddb5838931d7b1444254bd9fade0eb545b0515f360bb3"
+    },
+    "ip-calendar": {
+      "path": "src/bands/shell/ux/showcase/ip-calendar.html",
+      "sha256": "258ac3e3b79dd3c93e26a397bd17140654ed23aac2c4f0bf9828bc02d0876e34"
+    },
+    "loading-spinner": {
+      "path": "src/bands/shell/ux/showcase/loading-spinner.html",
+      "sha256": "e3957de51ec8f1c0238666669048ebac1b2303d7d976b2cb6bf5bb20896ae16a"
+    },
+    "modal": {
+      "path": "src/bands/shell/ux/showcase/modal.html",
+      "sha256": "4fefd20e695b780a875247796f27b70881b238736745962d52908a9416068f21"
+    },
+    "plus-button": {
+      "path": "src/bands/shell/ux/showcase/plus-button.html",
+      "sha256": "c7e91fac70a1d158c1e3fd2d7d668a279641cd21c8d7871b54f11d07910568ba"
+    },
+    "progress-bar": {
+      "path": "src/bands/shell/ux/showcase/progress-bar.html",
+      "sha256": "420844ab8eed4cc4ff685f2dee0427449fb3ab9a1301658f4d661cb031c88b74"
+    },
+    "row-info-tile": {
+      "path": "src/bands/shell/ux/showcase/row-info-tile.html",
+      "sha256": "6fe20ab37aa3287fbe9903915f8cf2c931213c30a9f45e9bea76addc21221dbf"
+    },
+    "select": {
+      "path": "src/bands/shell/ux/showcase/select.html",
+      "sha256": "c6f30243d7e9f06a5d690d42ef3ccf1ecc08bdac73da224b4f4ffc834e0cb2c9"
+    },
+    "slider": {
+      "path": "src/bands/shell/ux/showcase/slider.html",
+      "sha256": "ce18f7cf04c9f464e658eae479b67108e7e42ef92c355b466302867eefde0758"
+    },
+    "table": {
+      "path": "src/bands/shell/ux/showcase/table.html",
+      "sha256": "8af101e3f164c1dbb819edc1beedfecbfd27216957fca9fb1e400f670d3b7a7c"
+    },
+    "tabs": {
+      "path": "src/bands/shell/ux/showcase/tabs.html",
+      "sha256": "4c70b6a217c815a9f192303a392a7fce25149460c9c9c836c15712c33bd0c320"
+    },
+    "text-box": {
+      "path": "src/bands/shell/ux/showcase/text-box.html",
+      "sha256": "d2ff3f435d274d28249cbc790ebab2c93bc0906ed89b178eb472c6897391fd67"
+    },
+    "time-picker": {
+      "path": "src/bands/shell/ux/showcase/time-picker.html",
+      "sha256": "cde9d5f959d4fbc3b4da0ac62ff0f980b8c04901b281fc625f85497dc926f621"
+    },
+    "toast": {
+      "path": "src/bands/shell/ux/showcase/toast.html",
+      "origin": "browser-constructed",
+      "constructor": "src/bands/shell/document-4-tail.rs:14-26",
+      "sha256": "2030dde518456cb2d2a4d17a13acae27fe28a032cae6cb15751240f2a31ff407"
+    },
+    "toggle": {
+      "path": "src/bands/shell/ux/showcase/toggle.html",
+      "sha256": "fb0122b20c1a00169911481e3f96607952a9fb3e0c5081fd0d62a4a37119971c"
+    },
+    "visibility-toggle": {
+      "path": "src/bands/shell/ux/showcase/visibility-toggle.html",
+      "sha256": "a1ad802fc2f48eb295906d3c9021e228a3f095150a1548d70d110598fad0361c"
+    }
+  }
+}

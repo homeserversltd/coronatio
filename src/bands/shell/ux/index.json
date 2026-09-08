@@ -44,5 +44,9 @@
     "packs/headless.css",
     "shell/document-2-css.css"
   ],
+  "artifacts": [
+    "face-surface.json",
+    "showcase/index.json"
+  ],
   "authority": "Serve-time concatenation order IS this list; adding a file means adding it here."
 }
