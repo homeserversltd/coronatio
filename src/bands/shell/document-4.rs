@@ -480,9 +480,9 @@ fn shell_document_4() -> &'static str {
       });
       Object.entries(statsChartState.ioSeries).forEach(([key, series]) => { if (!seen.has(key)) { series.read.push(null); series.write.push(null); } });
     }
-    async function hydrateStatsHistory() {
+    async function hydrateStatsHistory(signal) {
       try {
-        const response = await fetch('/api/stats/history', { cache: 'no-store' });
+        const response = await fetch('/api/stats/history', { cache: 'no-store', signal });
         if (!response.ok) return;
         const history = await response.json();
         const raw = (Array.isArray(history?.tiers?.raw) ? history.tiers.raw : []).map(sample => ({ sample, timestamp: historyTimestamp(sample) })).filter(point => point.timestamp !== null);
@@ -507,13 +507,17 @@ fn shell_document_4() -> &'static str {
         }
       } catch (_) { /* sparse history is truthful when Caduceus has no samples */ }
     }
+    const statsPullTimeoutMs = 8000;
     async function hydrateStats() {
-      if (statsHydrationInFlight) return; statsHydrationInFlight = true;
+      if (statsHydrationInFlight) { console.warn('[coronatio] stats tick dropped: a stats pull is still in flight'); return; }
+      statsHydrationInFlight = true;
+      const pullAbort = new AbortController();
+      const pullTimer = window.setTimeout(() => pullAbort.abort(), statsPullTimeoutMs);
       try {
-        if (!statsChartState.lastStamp) await hydrateStatsHistory();
-        const statsResponse = await fetch('/api/stats', { cache: 'no-store' }); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`); const data = await statsResponse.json(), label = formatChartTime(), roster = identityRows(data.keaLeases?.entries); identityState.roster = roster; identityState.notes = Object.fromEntries(roster.map(row => [canonicalNetworkNoteMac(row.mac), row.note ?? '']).filter(([mac]) => mac)); pushChartPoint(label, data); if (data.resources?.load) renderCpuChart(data); if (data.network) renderNetwork(data); if (data.io) renderDiskIo(data); if (data.resources?.memory) renderMemory(data); if (data.storage) renderDiskUsage(data); if (data.keaLeases) renderStatsRoster(); if (data.processes) renderProcesses(data);
-      } catch (_) { /* OG has no Stats-family error face; retain the last truthful frame. */ }
-      finally { statsHydrationInFlight = false; }
+        if (!statsChartState.lastStamp) await hydrateStatsHistory(pullAbort.signal);
+        const statsResponse = await fetch('/api/stats', { cache: 'no-store', signal: pullAbort.signal }); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`); const data = await statsResponse.json(), label = formatChartTime(), roster = identityRows(data.keaLeases?.entries); identityState.roster = roster; identityState.notes = Object.fromEntries(roster.map(row => [canonicalNetworkNoteMac(row.mac), row.note ?? '']).filter(([mac]) => mac)); pushChartPoint(label, data); if (data.resources?.load) renderCpuChart(data); if (data.network) renderNetwork(data); if (data.io) renderDiskIo(data); if (data.resources?.memory) renderMemory(data); if (data.storage) renderDiskUsage(data); if (data.keaLeases) renderStatsRoster(); if (data.processes) renderProcesses(data);
+      } catch (error) { if (error?.name === 'AbortError') console.warn('[coronatio] stats pull aborted after ' + statsPullTimeoutMs + 'ms; next tick pulls again'); /* OG has no Stats-family error face; retain the last truthful frame. */ }
+      finally { window.clearTimeout(pullTimer); statsHydrationInFlight = false; }
     }
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
