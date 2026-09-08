@@ -2,8 +2,8 @@
 #[serde(rename_all = "camelCase")]
 struct HomeserverReadGuestResponse { schema: &'static str, ok: bool, success: bool, status: &'static str, first_missing_signal: &'static str }
 
-fn homeserver_logs_hyalos_response(headers: &axum::http::HeaderMap, method: &str, path: &str) -> Response {
-    match session_from_headers(headers) {
+async fn homeserver_logs_hyalos_response(headers: &axum::http::HeaderMap, method: &str, path: &str) -> Response {
+    match session_projection_from_headers(headers).await {
         Session::Admin => {
             let readback = hyalos_tail_readback(None, 100);
             let events = readback
@@ -50,12 +50,12 @@ fn homeserver_logs_hyalos_response(headers: &axum::http::HeaderMap, method: &str
     }
 }
 
-fn homeserver_read_response(headers: &axum::http::HeaderMap, method: &str, path: &str) -> Response {
+async fn homeserver_read_response(headers: &axum::http::HeaderMap, method: &str, path: &str) -> Response {
     if path == "/api/status/power/usage" || path == "/status/power/usage" {
         return power_usage_response(method, path);
     }
     if path == "/api/admin/logs/homeserver" {
-        return homeserver_logs_hyalos_response(headers, method, path);
+        return homeserver_logs_hyalos_response(headers, method, path).await;
     }
     let topic = match path {
         "/api/status/services" => Some("services.status"),
@@ -64,7 +64,7 @@ fn homeserver_read_response(headers: &axum::http::HeaderMap, method: &str, path:
         _ => None,
     };
     if let Some(topic) = topic {
-        return match collect_indicator_topic(topic, session_from_headers(headers)) {
+        return match collect_indicator_topic(topic, session_projection_from_headers(headers).await) {
             Ok(snapshot) => (StatusCode::OK, Json(snapshot)).into_response(),
             Err(fault) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
                 "schema": "coronatio.indicator.topic.fault.v1",
@@ -77,7 +77,7 @@ fn homeserver_read_response(headers: &axum::http::HeaderMap, method: &str, path:
         };
     }
 
-    match session_from_headers(headers) {
+    match session_projection_from_headers(headers).await {
         Session::Admin => (
             StatusCode::OK,
             Json(serde_json::json!({

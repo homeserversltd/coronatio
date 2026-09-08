@@ -32,7 +32,7 @@ struct CoreStreamState {
 impl Drop for CoreStreamState { fn drop(&mut self) { core_memberships().lock().unwrap().remove(&self.stream_id); } }
 
 pub(crate) async fn core_pulse_route(headers: axum::http::HeaderMap) -> Response {
-    let session = session_from_headers(&headers);
+    let session = session_projection_from_headers(&headers).await;
     let (_id, frames) = subscribe_core_stream(session, Duration::from_secs(CORE_LEASE_SECONDS));
     Sse::new(frames.map(|frame| Ok::<Event, Infallible>(Event::default().event(frame.0).id(frame.1).data(frame.2))))
         .keep_alive(KeepAlive::new().interval(Duration::from_secs(10)).text("core.keepalive"))
@@ -40,7 +40,7 @@ pub(crate) async fn core_pulse_route(headers: axum::http::HeaderMap) -> Response
 }
 
 pub(crate) async fn core_pulse_renew_route(headers: axum::http::HeaderMap, Query(query): Query<CoreRenewQuery>) -> Response {
-    if !validate_core_host_membership(&query.stream_id, &headers) {
+    if !validate_core_host_membership(&query.stream_id, &headers).await {
         return core_membership_response(StatusCode::UNAUTHORIZED, &query.stream_id, "attendance-refused");
     }
     if renew_core_stream(&query.stream_id, Duration::from_secs(CORE_LEASE_SECONDS)) {
@@ -54,7 +54,7 @@ pub(crate) async fn core_pulse_upgrade_route(headers: axum::http::HeaderMap, Que
     let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else {
         return core_membership_response(StatusCode::BAD_REQUEST, &query.stream_id, "document-required");
     };
-    if session_from_headers(&headers) != Session::Admin {
+    if session_projection_from_headers(&headers).await != Session::Admin {
         downgrade_core_stream(&query.stream_id, None);
         return core_membership_response(StatusCode::UNAUTHORIZED, &query.stream_id, "attendance-refused");
     }
@@ -69,6 +69,7 @@ pub(crate) async fn core_pulse_downgrade_route(headers: axum::http::HeaderMap, Q
     let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else {
         return core_membership_response(StatusCode::BAD_REQUEST, &query.stream_id, "document-required");
     };
+    if let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) { crate::caduceus_access::bust_attendance_projection(&attendance, &document, "stream-downgraded"); }
     if downgrade_core_stream(&query.stream_id, Some(&document)) {
         core_membership_response(StatusCode::OK, &query.stream_id, "downgraded")
     } else {
@@ -166,9 +167,9 @@ pub(crate) fn downgrade_core_document(document: &str) {
     }
 }
 
-fn validate_core_host_membership(stream_id: &str, headers: &axum::http::HeaderMap) -> bool {
+async fn validate_core_host_membership(stream_id: &str, headers: &axum::http::HeaderMap) -> bool {
     let is_host = core_memberships().lock().unwrap().get(stream_id).is_some_and(|membership| membership.session == Session::Admin);
-    if is_host && session_from_headers(headers) != Session::Admin {
+    if is_host && session_projection_from_headers(headers).await != Session::Admin {
         downgrade_core_stream(stream_id, None);
         false
     } else {

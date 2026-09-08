@@ -111,7 +111,7 @@ async fn stats_history_route() -> impl IntoResponse { stats_history().await }
 
 async fn stats_route(headers: axum::http::HeaderMap) -> Response {
     let raw = stats_snapshot().await;
-    match session_from_headers(&headers) {
+    match session_projection_from_headers(&headers).await {
         Session::Admin => Json(project_system_stats_admin(&raw)).into_response(),
         Session::Guest => {
             let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
@@ -267,7 +267,7 @@ async fn tab_bar_fragment_route(
     headers: axum::http::HeaderMap,
     Query(query): Query<TabBarFragmentQuery>,
 ) -> impl IntoResponse {
-    tab_bar_html_response_with_active(session_from_headers(&headers), query.active.as_deref())
+    tab_bar_html_response_with_active(session_projection_from_headers(&headers).await, query.active.as_deref())
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

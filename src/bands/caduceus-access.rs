@@ -1,8 +1,11 @@
 // Document-attendance projection seam. Coronatio never owns a session, ticket, or capability.
 // PIN material crosses this membrane once to Caduceus; the returned attendance proof is
-// retained only in the current document's memory and is forwarded to Caduceus actions.
+// carried by the current document and its opaque value may appear only in a short-lived,
+// non-authoritative process-memory projection key—never persistent storage or mutation authority.
+use std::collections::HashMap;
 const CADUCEUS_STAFF_SOCKET_DEFAULT: &str = "/run/caduceus/staff.sock";
 const CADUCEUS_ACCESS_TIMEOUT: Duration = Duration::from_secs(3);
+const ATTENDANCE_PROJECTION_TTL: Duration = Duration::from_secs(5);
 const CADUCEUS_ACCESS_MAX_RESPONSE: usize = 16 * 1024;
 
 #[derive(Clone)]
@@ -19,6 +22,42 @@ impl CaduceusAccessClient {
     pub(crate) fn attendance_touch(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Touch, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_change_pin(&self, attendance: &AttendanceProof, document: &str, current_pin: &str, new_pin: &str) -> AttendanceCall { self.call(AttendanceOperation::ChangePin, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document,"currentPin":current_pin,"newPin":new_pin})) }
     pub(crate) fn attendance_invalidate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Invalidate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
+    async fn call_async(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
+        let client = self.clone();
+        tokio::task::spawn_blocking(move || client.call(operation, body))
+            .await
+            .unwrap_or_else(|_| AttendanceCall::refused(operation, 0, "caduceus-attendance-task-failed"))
+    }
+    pub(crate) async fn attendance_open_async(&self, pin: String, document: String) -> AttendanceCall {
+        self.call_async(AttendanceOperation::Open, serde_json::json!({"pin":pin,"documentId":document,"documentIncarnation":document})).await
+    }
+    pub(crate) async fn attendance_validate_async(&self, attendance: AttendanceProof, document: String) -> AttendanceCall {
+        self.call_async(AttendanceOperation::Validate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})).await
+    }
+    pub(crate) async fn attendance_touch_and_bust_async(&self, attendance: AttendanceProof, document: String) -> AttendanceCall {
+        let client = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let call = client.attendance_touch(&attendance, &document);
+            if !call.receipt.ok { bust_attendance_projection(&attendance, &document, "attendance-ended"); }
+            call
+        }).await.unwrap_or_else(|_| AttendanceCall::refused(AttendanceOperation::Touch, 0, "caduceus-attendance-task-failed"))
+    }
+    pub(crate) async fn attendance_change_pin_and_bust_async(&self, attendance: AttendanceProof, document: String, current_pin: String, new_pin: String) -> AttendanceCall {
+        let client = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let call = client.attendance_change_pin(&attendance, &document, &current_pin, &new_pin);
+            if call.receipt.ok { bust_all_attendance_projections("attendance-ended"); }
+            call
+        }).await.unwrap_or_else(|_| AttendanceCall::refused(AttendanceOperation::ChangePin, 0, "caduceus-attendance-task-failed"))
+    }
+    pub(crate) async fn attendance_invalidate_and_bust_async(&self, attendance: AttendanceProof, document: String) -> AttendanceCall {
+        let client = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let call = client.attendance_invalidate(&attendance, &document);
+            bust_attendance_projection(&attendance, &document, "attendance-invalidated");
+            call
+        }).await.unwrap_or_else(|_| AttendanceCall::refused(AttendanceOperation::Invalidate, 0, "caduceus-attendance-task-failed"))
+    }
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
         let encoded = match serde_json::to_vec(&body) { Ok(v) if v.len() <= 4096 => v, _ => return AttendanceCall::refused(operation, 0, "caduceus-attendance-request-invalid") };
         let mut stream = match UnixStream::connect(&self.socket) {
@@ -48,6 +87,156 @@ pub(crate) struct AttendanceReceipt { pub(crate) operation:&'static str,pub(crat
 #[derive(Debug,Clone)]
 pub(crate) struct AttendanceCall { pub(crate) receipt:AttendanceReceipt,pub(crate) proof:Option<AttendanceProof> }
 impl AttendanceCall { fn refused(op:AttendanceOperation,status:u16,code:&str)->Self{Self{receipt:AttendanceReceipt{operation:op.name(),ok:false,status,code:safe_access_code(code)},proof:None}} pub(crate) fn take_proof(self)->Option<AttendanceProof>{self.proof} }
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct AttendanceProjectionKey { document: String, attendance: String }
+
+struct AttendanceProjectionEntry { receipt: AttendanceReceipt, expires_at: std::time::Instant }
+
+#[derive(Clone)]
+struct AttendanceProjectionResult { receipt: AttendanceReceipt, generation: u64 }
+
+struct AttendanceProjectionFlight { sender: tokio::sync::watch::Sender<Option<AttendanceProjectionResult>> }
+
+struct AttendanceProjectionSlot {
+    entry: Option<AttendanceProjectionEntry>,
+    flight: Option<Arc<AttendanceProjectionFlight>>,
+    generation: u64,
+}
+
+static ATTENDANCE_PROJECTION_CACHE: OnceLock<Mutex<HashMap<AttendanceProjectionKey, AttendanceProjectionSlot>>> = OnceLock::new();
+
+fn attendance_projection_cache() -> &'static Mutex<HashMap<AttendanceProjectionKey, AttendanceProjectionSlot>> {
+    ATTENDANCE_PROJECTION_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn projection_event(action: &str, reason: &str, document: &str) {
+    let safe_reason = match reason {
+        "ttl-expired" | "validation-refused" | "attendance-invalidated" | "attendance-ended" | "stream-downgraded" => reason,
+        _ => "projection-state-change",
+    };
+    let safe_document = if document.len() <= 128 && document.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')) { document } else { "redacted" };
+    eprintln!("{}", serde_json::json!({"event":"coronatio.attendance.projection","action":action,"reason":safe_reason,"documentId":safe_document}));
+}
+
+fn purge_expired_projection_entries(cache: &mut HashMap<AttendanceProjectionKey, AttendanceProjectionSlot>) {
+    let now = std::time::Instant::now();
+    let expired_documents = cache.iter_mut().filter_map(|(key, slot)| {
+        let expired = slot.entry.as_ref().is_some_and(|entry| entry.expires_at <= now);
+        if expired { slot.entry = None; Some(key.document.clone()) } else { None }
+    }).collect::<Vec<_>>();
+    cache.retain(|_, slot| slot.entry.is_some() || slot.flight.is_some());
+    for document in expired_documents { projection_event("expiry", "ttl-expired", &document); }
+}
+
+fn clear_attendance_projection(attendance: &AttendanceProof, document: &str) {
+    let key = AttendanceProjectionKey { document: document.to_string(), attendance: attendance.expose().to_string() };
+    let mut cache = attendance_projection_cache().lock().expect("attendance projection cache lock");
+    purge_expired_projection_entries(&mut cache);
+    let remove = if let Some(slot) = cache.get_mut(&key) {
+        slot.entry = None;
+        slot.generation = slot.generation.wrapping_add(1);
+        slot.flight.is_none()
+    } else {
+        false
+    };
+    if remove { cache.remove(&key); }
+}
+
+pub(crate) fn fence_attendance_projection(attendance: &AttendanceProof, document: &str) {
+    clear_attendance_projection(attendance, document);
+}
+
+pub(crate) fn bust_attendance_projection(attendance: &AttendanceProof, document: &str, reason: &str) {
+    clear_attendance_projection(attendance, document);
+    projection_event("bust", reason, document);
+}
+
+pub(crate) fn bust_all_attendance_projections(reason: &str) {
+    let mut cache = attendance_projection_cache().lock().expect("attendance projection cache lock");
+    purge_expired_projection_entries(&mut cache);
+    for slot in cache.values_mut() {
+        slot.entry = None;
+        slot.generation = slot.generation.wrapping_add(1);
+    }
+    cache.retain(|_, slot| slot.flight.is_some());
+    projection_event("bust", reason, "all");
+}
+
+fn projection_is_current(key: &AttendanceProjectionKey, generation: u64) -> bool {
+    let mut cache = attendance_projection_cache().lock().expect("attendance projection cache lock");
+    purge_expired_projection_entries(&mut cache);
+    cache.get(key).is_some_and(|slot| slot.generation == generation && slot.entry.is_some())
+}
+
+async fn complete_attendance_projection(
+    key: AttendanceProjectionKey,
+    attendance: AttendanceProof,
+    document: String,
+    flight: Arc<AttendanceProjectionFlight>,
+    generation: u64,
+) {
+    let call = CaduceusAccessClient::default().attendance_validate_async(attendance, document.clone()).await;
+    let mut returned = call.clone();
+    let result_generation;
+    {
+        let mut cache = attendance_projection_cache().lock().expect("attendance projection cache lock");
+        let mut remove = false;
+        if let Some(slot) = cache.get_mut(&key) {
+            let same_flight = slot.flight.as_ref().is_some_and(|current| Arc::ptr_eq(current, &flight));
+            if same_flight && slot.generation == generation && call.receipt.ok {
+                slot.entry = Some(AttendanceProjectionEntry { receipt: call.receipt.clone(), expires_at: std::time::Instant::now() + ATTENDANCE_PROJECTION_TTL });
+            } else if same_flight && slot.generation == generation && !call.receipt.ok {
+                slot.entry = None;
+                slot.generation = slot.generation.wrapping_add(1);
+                projection_event("bust", "validation-refused", &key.document);
+            } else if call.receipt.ok {
+                returned = AttendanceCall::refused(AttendanceOperation::Validate, 401, "caduceus-attendance-invalidated");
+            }
+            result_generation = slot.generation;
+            if same_flight { slot.flight = None; }
+            remove = slot.entry.is_none() && slot.flight.is_none();
+        } else {
+            result_generation = generation;
+            returned = AttendanceCall::refused(AttendanceOperation::Validate, 401, "caduceus-attendance-invalidated");
+        }
+        if remove { cache.remove(&key); }
+    }
+    flight.sender.send_replace(Some(AttendanceProjectionResult { receipt: returned.receipt, generation: result_generation }));
+}
+
+pub(crate) async fn attendance_projection_call(attendance: AttendanceProof, document: String) -> AttendanceCall {
+    let key = AttendanceProjectionKey { document: document.clone(), attendance: attendance.expose().to_string() };
+    let (flight, leader, generation) = {
+        let mut cache = attendance_projection_cache().lock().expect("attendance projection cache lock");
+        purge_expired_projection_entries(&mut cache);
+        let slot = cache.entry(key.clone()).or_insert_with(|| AttendanceProjectionSlot { entry: None, flight: None, generation: 0 });
+        if let Some(entry) = slot.entry.as_ref().filter(|entry| entry.expires_at > std::time::Instant::now()) {
+            return AttendanceCall { receipt: entry.receipt.clone(), proof: None };
+        }
+        if let Some(flight) = slot.flight.as_ref() {
+            (Arc::clone(flight), false, slot.generation)
+        } else {
+            let (sender, _) = tokio::sync::watch::channel(None);
+            let flight = Arc::new(AttendanceProjectionFlight { sender });
+            let generation = slot.generation;
+            slot.flight = Some(Arc::clone(&flight));
+            (flight, true, generation)
+        }
+    };
+    if leader {
+        let flight_for_task = Arc::clone(&flight);
+        tokio::spawn(complete_attendance_projection(key.clone(), attendance, document, flight_for_task, generation));
+    }
+    let mut receiver = flight.sender.subscribe();
+    let pending = receiver.borrow().is_none();
+    if pending && receiver.changed().await.is_err() {
+        return AttendanceCall::refused(AttendanceOperation::Validate, 503, "caduceus-attendance-projection-coalescing-failed");
+    }
+    let Some(result) = receiver.borrow().clone() else { return AttendanceCall::refused(AttendanceOperation::Validate, 503, "caduceus-attendance-projection-coalescing-failed"); };
+    let receipt = if result.receipt.ok && !projection_is_current(&key, result.generation) { AttendanceCall::refused(AttendanceOperation::Validate, 401, "caduceus-attendance-invalidated").receipt } else { result.receipt };
+    AttendanceCall { receipt, proof: None }
+}
 pub(crate) fn safe_access_code(value:&str)->String { if value.len()<=100&&value.bytes().all(|b|b.is_ascii_alphabetic()||b.is_ascii_digit()||b==b'-'){value.to_string()}else{"caduceus-attendance-refused".to_string()} }
 fn attendance_io_code(stage: &str, error: &std::io::Error) -> &'static str {
     match error.kind() {

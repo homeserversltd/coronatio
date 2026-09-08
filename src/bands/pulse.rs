@@ -202,7 +202,7 @@ mod pulse {
     }
 
     pub(crate) async fn stats_pulse_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-        let session = session_from_headers(&headers);
+        let session = session_projection_from_headers(&headers).await;
         let (_stream_id, frames) = subscribe_stream(session, Duration::from_secs(PULSE_LEASE_SECONDS));
         Sse::new(frames.map(|frame| Ok::<Event, Infallible>(frame.into_event())))
             .keep_alive(
@@ -214,7 +214,7 @@ mod pulse {
     }
 
     pub(crate) async fn stats_pulse_renew_route(headers: axum::http::HeaderMap, Query(query): Query<PulseRenewQuery>) -> impl IntoResponse {
-        if !validate_host_membership(&query.stream_id, &headers) {
+        if !validate_host_membership(&query.stream_id, &headers).await {
             return membership_response(StatusCode::UNAUTHORIZED, &query.stream_id, "attendance-refused");
         }
         if renew_stream(&query.stream_id, Duration::from_secs(PULSE_LEASE_SECONDS)) {
@@ -244,7 +244,7 @@ mod pulse {
         let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else {
             return membership_response(StatusCode::BAD_REQUEST, &query.stream_id, "document-required");
         };
-        if session_from_headers(&headers) != Session::Admin {
+        if session_projection_from_headers(&headers).await != Session::Admin {
             downgrade_stream(&query.stream_id, None);
             return membership_response(StatusCode::UNAUTHORIZED, &query.stream_id, "attendance-refused");
         }
@@ -259,6 +259,7 @@ mod pulse {
         let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else {
             return membership_response(StatusCode::BAD_REQUEST, &query.stream_id, "document-required");
         };
+        if let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) { crate::caduceus_access::bust_attendance_projection(&attendance, &document, "stream-downgraded"); }
         if downgrade_stream(&query.stream_id, Some(&document)) {
             membership_response(StatusCode::OK, &query.stream_id, "downgraded")
         } else {
@@ -352,9 +353,9 @@ mod pulse {
         }
     }
 
-    fn validate_host_membership(stream_id: &str, headers: &axum::http::HeaderMap) -> bool {
+    async fn validate_host_membership(stream_id: &str, headers: &axum::http::HeaderMap) -> bool {
         let is_host = bus().memberships.lock().unwrap().get(stream_id).is_some_and(|membership| membership.session == Session::Admin);
-        if is_host && session_from_headers(headers) != Session::Admin {
+        if is_host && session_projection_from_headers(headers).await != Session::Admin {
             downgrade_stream(stream_id, None);
             false
         } else {

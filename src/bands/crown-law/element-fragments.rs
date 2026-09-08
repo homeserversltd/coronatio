@@ -46,16 +46,16 @@ async fn element_visibility_route(headers: axum::http::HeaderMap, Json(request):
 }
 
 async fn element_fragment_route(headers: axum::http::HeaderMap, Path(tab_id): Path<String>) -> impl IntoResponse {
-    element_fragment_response(session_from_headers(&headers), &normalize_tab_id(&tab_id))
+    element_fragment_response(session_projection_from_headers(&headers).await, &normalize_tab_id(&tab_id))
 }
 
 async fn stats_elements_fragment_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    element_fragment_response(session_from_headers(&headers), "stats")
+    element_fragment_response(session_projection_from_headers(&headers).await, "stats")
 }
 
 async fn portals_elements_fragment_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
     let host = request_access_host(&headers);
-    element_fragment_response_with_host(session_from_headers(&headers), "portals", &host)
+    element_fragment_response_with_host(session_projection_from_headers(&headers).await, "portals", &host)
 }
 
 fn element_refusal_fragment(reason: &str) -> Response {

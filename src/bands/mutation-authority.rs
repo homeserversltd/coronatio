@@ -112,7 +112,10 @@ impl MutationAuthority {
         };
         let call = self.access.attendance_validate(attendance, document);
         if call.receipt.ok { Ok(MutationAttendance { proof: attendance.clone(), document: document.clone() }) }
-        else { Err(MutationRefusal { code: call.receipt.code, status: call.receipt.status }) }
+        else {
+            crate::caduceus_access::bust_attendance_projection(attendance, document, "validation-refused");
+            Err(MutationRefusal { code: call.receipt.code, status: call.receipt.status })
+        }
     }
 }
 

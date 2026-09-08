@@ -368,7 +368,7 @@ async fn upload_default_directory_update_route(headers: axum::http::HeaderMap, J
 }
 
 async fn upload_blacklist_admin_route(headers: axum::http::HeaderMap) -> Response {
-    if session_from_headers(&headers) != Session::Admin { return upload_admin_read_refusal_response("/api/upload/blacklist/list"); }
+    if session_projection_from_headers(&headers).await != Session::Admin { return upload_admin_read_refusal_response("/api/upload/blacklist/list"); }
     Json(serde_json::json!({"schema":"coronatio.upload.blacklist.v1","ok":true,"blacklist":upload_blacklist(),"firstMissingSignal":"none"})).into_response()
 }
 

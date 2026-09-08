@@ -55,7 +55,7 @@ fn strip_dhcp_identity(value: &serde_json::Value) -> serde_json::Value {
 
 async fn dhcp_read_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
     let path = uri.path();
-    let session = session_from_headers(&headers);
+    let session = session_projection_from_headers(&headers).await;
     if session == Session::Guest
         && matches!(
             path,

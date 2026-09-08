@@ -339,7 +339,7 @@ fn upload_admin_read_refusal_response(path: &str) -> Response {
 }
 
 async fn upload_history_admin_route(headers: axum::http::HeaderMap) -> Response {
-    if session_from_headers(&headers) != Session::Admin { return upload_admin_read_refusal_response("/api/upload/history"); }
+    if session_projection_from_headers(&headers).await != Session::Admin { return upload_admin_read_refusal_response("/api/upload/history"); }
     upload_history_route().await.into_response()
 }
 
@@ -366,7 +366,7 @@ fn clear_upload_history_route() -> Response {
 
 async fn internet_status_route(headers: axum::http::HeaderMap) -> Response {
     let raw = internet_status_snapshot();
-    match session_from_headers(&headers) {
+    match session_projection_from_headers(&headers).await {
         Session::Admin => Json(project_internet_status_admin(&raw)).into_response(),
         Session::Guest => Json(project_internet_status_guest(&raw)).into_response(),
     }
@@ -440,7 +440,7 @@ fn format_duration(mut seconds: u64) -> String {
     }
 }
 
-async fn homeserver_rust_read_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_read_response(&headers, method.as_str(), uri.path()) }
+async fn homeserver_rust_read_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_read_response(&headers, method.as_str(), uri.path()).await }
 
 async fn disk_census_route(headers: axum::http::HeaderMap) -> Response {
     let attendance = crate::caduceus_access::attendance_from_headers(&headers);
