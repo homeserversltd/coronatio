@@ -228,11 +228,94 @@ fn shell_document_4_tail() -> &'static str {
     function diskCensusDevices(payload) { const root = payload?.census || payload?.data || payload || {}; return Array.isArray(root.devices) ? root.devices : Array.isArray(root.drives) ? root.drives : Array.isArray(root.entries) ? root.entries : []; }
     function diskCensusDeviceName(device) { return String(device?.device || device?.path || device?.name || device?.id || 'Unknown device'); }
     function renderDiskCensusDevice(device) { const name = diskCensusDeviceName(device); const label = String(device?.label || device?.model || device?.name || name); const detail = [device?.size || device?.sizeHuman || device?.capacity, device?.filesystem || device?.fsType, device?.state].filter(Boolean).join(' · '); return `<button type="button" class="disk-item available" data-disk-select="device" data-disk-device="${escapeDiskHtml(name)}"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">${escapeDiskHtml(label)}</div><div class="disk-details">${escapeDiskHtml(name)}${detail ? ` · ${escapeDiskHtml(detail)}` : ''}</div></div></button>`; }
-    async function hydrateDiskCensus() { const host = document.querySelector('[data-disk-census-readback]'); if (!host) return []; try { const response = await fetch('/api/v1/disk/census', { cache: 'no-store' }); const payload = await response.json(); const devices = response.ok && payload?.schema === 'caduceus.disk.census.v1' ? diskCensusDevices(payload) : []; host.innerHTML = devices.length ? devices.map(renderDiskCensusDevice).join('') : '<div class="disk-item empty"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">No NAS drives available</div></div></div>'; return devices; } catch (_) { host.innerHTML = '<div class="disk-item empty"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">Available devices could not be read</div></div></div>'; return []; } }
+    function admittedAdminDiskHost() {
+      const family = adminDiskSnapshotFamily;
+      if (adminDiskPageHidden || family.authClass !== 'admin' || !headerState.isAdmin || !coronatioAttendanceRuntime.currentAttendance || !sessionLawfulTab(family.paneId) || !viewportFamilyAdmitted(family.paneId)) return null;
+      const pane = document.querySelector(`[data-pane-panel="${family.paneId}"]`);
+      if (!pane?.isConnected || !pane.classList.contains('active') || pane.hidden || pane.getAttribute('aria-hidden') === 'true' || pane.dataset.viewportFaulted === 'true') return null;
+      return pane.querySelector('[data-disk-census-readback]');
+    }
+    function adminDiskSnapshotCurrent(owner) {
+      return Boolean(owner && adminDiskSnapshotOwner === owner && owner.host.isConnected && admittedAdminDiskHost() === owner.host && owner.attendance === coronatioAttendanceRuntime.currentAttendance);
+    }
+    function retireAdminDiskSnapshot() {
+      const owner = adminDiskSnapshotOwner;
+      adminDiskSnapshotOwner = null; // Revoke write ownership before abort can settle an old promise.
+      if (!owner) return;
+      if (owner.timer !== null) window.clearTimeout(owner.timer);
+      owner.timer = null;
+      owner.controller.abort();
+    }
+    function paintAdminDiskMessage(owner, message) {
+      if (!adminDiskSnapshotCurrent(owner)) return;
+      owner.host.innerHTML = `<div class="disk-item empty"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">${escapeDiskHtml(message)}</div></div></div>`;
+    }
+    function reconcileAdminDiskSnapshot() {
+      const host = admittedAdminDiskHost();
+      if (adminDiskSnapshotOwner && (!host || !adminDiskSnapshotCurrent(adminDiskSnapshotOwner))) retireAdminDiskSnapshot();
+      if (host) return hydrateDiskCensus();
+      return Promise.resolve([]);
+    }
+    function hydrateDiskCensus() {
+      const host = admittedAdminDiskHost();
+      if (!host) { retireAdminDiskSnapshot(); return Promise.resolve([]); }
+      if (adminDiskSnapshotCurrent(adminDiskSnapshotOwner)) return adminDiskSnapshotOwner.promise;
+      retireAdminDiskSnapshot();
+      const owner = { host, attendance: coronatioAttendanceRuntime.currentAttendance, controller: new AbortController(), timer: null, timedOut: false, error: '', promise: null };
+      adminDiskSnapshotOwner = owner;
+      paintAdminDiskMessage(owner, 'Reading available devices…');
+      // Coronatio's upstream has separate 4s write/read waits. Allow 15s for
+      // cold reads and transport, without borrowing the pane admission budget.
+      owner.timer = window.setTimeout(() => {
+        owner.timer = null;
+        owner.timedOut = true;
+        owner.controller.abort();
+      }, adminDiskSnapshotFamily.timeoutMs);
+      owner.promise = (async () => {
+        try {
+          const response = await fetch(adminDiskSnapshotFamily.snapshotRoutes[0], { cache: 'no-store', signal: owner.controller.signal });
+          if (!adminDiskSnapshotCurrent(owner)) return [];
+          if (!response.ok) throw new Error('Available devices could not be read (HTTP ' + response.status + ').');
+          let payload;
+          try { payload = await response.json(); }
+          catch (_) { throw new Error('Available devices could not be read: invalid response.'); }
+          if (!adminDiskSnapshotCurrent(owner)) return [];
+          if (owner.controller.signal.aborted) throw new Error('Available devices took too long to respond.');
+          if (payload?.schema !== 'caduceus.disk.census.v1') throw new Error('Available devices could not be read: unexpected response schema.');
+          const devices = diskCensusDevices(payload);
+          if (devices.length) owner.host.innerHTML = devices.map(renderDiskCensusDevice).join('');
+          else paintAdminDiskMessage(owner, 'No NAS drives available');
+          return devices;
+        } catch (error) {
+          if (!adminDiskSnapshotCurrent(owner)) return [];
+          owner.error = owner.timedOut ? 'Available devices took too long to respond.' : (error?.message || 'Available devices could not be read.');
+          paintAdminDiskMessage(owner, owner.error);
+          return [];
+        } finally {
+          if (owner.timer !== null) window.clearTimeout(owner.timer);
+          owner.timer = null;
+        }
+      })();
+      // Retain the settled promise too: repeat reconciliation/modal opens do
+      // not retry failures or fetch again until this activation is retired.
+      return owner.promise;
+    }
+    const adminDiskHostObserver = new MutationObserver(records => {
+      const owner = adminDiskSnapshotOwner;
+      if (owner && records.some(record => [...record.removedNodes].some(node => node === owner.host || node.contains?.(owner.host)))) retireAdminDiskSnapshot();
+      reconcileAdminDiskSnapshot();
+    });
+    if (immortalFloorGuestSlot) adminDiskHostObserver.observe(immortalFloorGuestSlot, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden', 'data-viewport-faulted'] });
+    document.body.addEventListener('htmx:beforeCleanupElement', event => {
+      const target = event.detail?.elt;
+      const host = adminDiskSnapshotOwner?.host;
+      if (host && (target === host || target?.contains?.(host))) retireAdminDiskSnapshot();
+    });
+    window.addEventListener('pagehide', () => { adminDiskPageHidden = true; retireAdminDiskSnapshot(); });
+    window.addEventListener('pageshow', () => { adminDiskPageHidden = false; reconcileAdminDiskSnapshot(); });
     function diskSelection(item) { const actions = document.querySelector('[data-disk-actions-state]'); if (!actions) return; document.querySelectorAll('[data-disk-select]').forEach(node => node.classList.toggle('selected', node === item)); const label = item.dataset.diskDevice || item.dataset.diskDestination || 'selection'; actions.dataset.diskActionsState = 'blocked'; actions.querySelector('[data-disk-action-reading]').textContent = `${label} selected. Actions without an admitted Caduceus door remain unavailable.`; actions.querySelectorAll('[data-disk-action]:not([data-disk-action-live])').forEach(button => { button.disabled = true; button.title = 'Unavailable: no Crown Caduceus door is admitted'; }); }
-    function hardDriveTestModal() { const modal = managerModal('hard-drive-test', 'Hard Drive Test', '<p>Choose a NAS drive and the test depth.</p><label>Device<select class="ui-input ui-input--medium" data-hard-drive-test-device><option value="">Reading available devices…</option></select></label><label>Test type<select class="ui-input ui-input--medium" data-hard-drive-test-type><option value="quick">Quick</option><option value="full">Full</option><option value="ultimate">Ultimate</option></select></label><p data-hard-drive-test-state aria-live="polite">Choose a device to begin.</p>', 'Start Test'); const device = modal.querySelector('[data-hard-drive-test-device]'); const type = modal.querySelector('[data-hard-drive-test-type]'); const state = modal.querySelector('[data-hard-drive-test-state]'); const confirm = modal.querySelector('[data-manager-confirm]'); const ready = () => { confirm.disabled = !device.value; }; hydrateDiskCensus().then(devices => { device.innerHTML = `<option value="">Choose a NAS drive</option>${devices.map(item => `<option value="${escapeDiskHtml(diskCensusDeviceName(item))}">${escapeDiskHtml(diskCensusDeviceName(item))}</option>`).join('')}`; ready(); }); device.addEventListener('change', ready); confirm.addEventListener('click', async () => { confirm.disabled = true; state.textContent = 'Starting drive test…'; try { const response = await fetch('/api/admin/hard-drive-test/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: device.value, testType: type.value }) }); if (!response.ok) throw new Error('start-refused'); state.textContent = 'Drive test started. Reading progress…'; const timer = window.setInterval(async () => { try { const progress = await fetch('/api/admin/hard-drive-test/progress', { cache: 'no-store' }).then(result => result.json()); const results = await fetch('/api/admin/hard-drive-test/results', { cache: 'no-store' }).then(result => result.json()); state.textContent = String(progress?.message || progress?.status || results?.message || results?.status || 'Running'); if (progress?.complete || progress?.done || results?.complete || results?.done) { window.clearInterval(timer); confirm.disabled = false; } } catch (_) {} }, 1000); } catch (_) { state.textContent = 'Hard Drive Test could not be started.'; confirm.disabled = false; } }); }
+    function hardDriveTestModal() { const modal = managerModal('hard-drive-test', 'Hard Drive Test', '<p>Choose a NAS drive and the test depth.</p><label>Device<select class="ui-input ui-input--medium" data-hard-drive-test-device><option value="">Reading available devices…</option></select></label><label>Test type<select class="ui-input ui-input--medium" data-hard-drive-test-type><option value="quick">Quick</option><option value="full">Full</option><option value="ultimate">Ultimate</option></select></label><p data-hard-drive-test-state aria-live="polite">Choose a device to begin.</p>', 'Start Test'); const device = modal.querySelector('[data-hard-drive-test-device]'); const type = modal.querySelector('[data-hard-drive-test-type]'); const state = modal.querySelector('[data-hard-drive-test-state]'); const confirm = modal.querySelector('[data-manager-confirm]'); const ready = () => { confirm.disabled = !device.value; }; const census = hydrateDiskCensus(); const censusOwner = adminDiskSnapshotOwner; census.then(devices => { if (!modal.isConnected || !adminDiskSnapshotCurrent(censusOwner)) return; const message = censusOwner.error || (devices.length ? 'Choose a NAS drive' : 'No NAS drives available'); device.innerHTML = `<option value="">${escapeDiskHtml(message)}</option>${devices.map(item => `<option value="${escapeDiskHtml(diskCensusDeviceName(item))}">${escapeDiskHtml(diskCensusDeviceName(item))}</option>`).join('')}`; if (censusOwner.error || !devices.length) state.textContent = message; ready(); }); device.addEventListener('change', ready); confirm.addEventListener('click', async () => { confirm.disabled = true; state.textContent = 'Starting drive test…'; try { const response = await fetch('/api/admin/hard-drive-test/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: device.value, testType: type.value }) }); if (!response.ok) throw new Error('start-refused'); state.textContent = 'Drive test started. Reading progress…'; const timer = window.setInterval(async () => { try { const progress = await fetch('/api/admin/hard-drive-test/progress', { cache: 'no-store' }).then(result => result.json()); const results = await fetch('/api/admin/hard-drive-test/results', { cache: 'no-store' }).then(result => result.json()); state.textContent = String(progress?.message || progress?.status || results?.message || results?.status || 'Running'); if (progress?.complete || progress?.done || results?.complete || results?.done) { window.clearInterval(timer); confirm.disabled = false; } } catch (_) {} }, 1000); } catch (_) { state.textContent = 'Hard Drive Test could not be started.'; confirm.disabled = false; } }); }
     document.body.addEventListener('click', event => { const manager = event.target.closest('[data-manager-open]'); if (manager) { const kind = manager.dataset.managerOpen; if (kind === 'key-guide') managerGuideModal(); else managerKeyModal(kind); return; } if (event.target.closest('[data-hard-drive-test-open]')) { hardDriveTestModal(); return; } const disk = event.target.closest('[data-disk-select]'); if (disk) diskSelection(disk); });
-    hydrateDiskCensus();
     __DHCP_CLIENT__
     __UNBOUND_CLIENT__
     __FIREWALL_CLIENT__

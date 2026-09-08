@@ -33,6 +33,9 @@ fn shell_document_3() -> &'static str {
       document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === headerState.theme)));
       if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]') && powerChartState.chart) renderPowerModal();
     }
+    const adminDiskSnapshotFamily = Object.freeze({ paneId: 'admin', topics: [], snapshotRoutes: ['/api/v1/disk/census'], authClass: 'admin', timeoutMs: 15000 });
+    let adminDiskSnapshotOwner = null;
+    let adminDiskPageHidden = false;
     function applyAdminDomState() {
       if (adminButton) {
         adminButton.dataset.adminState = headerState.isAdmin ? 'logged-in' : 'logged-out';
@@ -48,6 +51,7 @@ fn shell_document_3() -> &'static str {
     function setAdminMode(value, options = {}) {
       const previousActive = currentActiveTabId();
       headerState.isAdmin = Boolean(value);
+      if (!headerState.isAdmin) retireAdminDiskSnapshot();
       saveHeaderState();
       applyAdminDomState();
       if (headerState.isAdmin) void upgradeOpenStreams();
@@ -75,6 +79,7 @@ fn shell_document_3() -> &'static str {
       return true;
     }
     function removeAdminDocumentPatch() {
+      retireAdminDiskSnapshot();
       document.querySelector('[data-admin-document-patch="true"]')?.remove();
       panes = [...document.querySelectorAll('[data-pane-panel]')];
       adminDocumentPatchPendingHydration = false;
@@ -825,7 +830,8 @@ fn shell_document_3() -> &'static str {
         .map(([, pull]) => pull());
       return Promise.allSettled(pulls).then(() => activePane);
     }
-    function closeViewportStreamFamily() {
+    function closeViewportStreamFamily(preserveDiskSnapshot = false) {
+      if (!preserveDiskSnapshot) retireAdminDiskSnapshot();
       clearPulseRenewal();
       if (pulseStream) pulseStream.close();
       pulseStream = null;
@@ -840,7 +846,8 @@ fn shell_document_3() -> &'static str {
       portalCurrentnessTimer = window.setInterval(() => { if (viewportFamilyAdmitted('portals')) refreshPortalCurrentness(); else stopPortalCurrentnessCadence(); }, 5000);
     }
     function reconcileViewportStreamFamily() {
-      closeViewportStreamFamily();
+      closeViewportStreamFamily(true);
+      reconcileAdminDiskSnapshot();
       stopPortalCurrentnessCadence();
       if (window.getImmortalFloorState?.() !== 'Seated') return;
       const active = currentActiveTabId();
@@ -915,6 +922,7 @@ fn shell_document_3() -> &'static str {
       function expose(next, detail = '') {
         if (!immortalFloorStates.includes(next)) throw new Error('Invalid Immortal Floor state: ' + next);
         state = next;
+        if (next !== 'Seated') retireAdminDiskSnapshot();
         document.documentElement.dataset.immortalFloorState = next;
         if (immortalFloorShell) immortalFloorShell.dataset.immortalFloorState = next;
         if (immortalFloorGuestSlot) immortalFloorGuestSlot.dataset.slotEmpty = String(!activeGuest && next !== 'Seated');
@@ -982,7 +990,6 @@ fn shell_document_3() -> &'static str {
         if (id === 'admin' && adminDocumentPatchPendingHydration && window.htmx) {
           adminDocumentPatchPendingHydration = false;
           window.htmx.process(pane);
-          hydrateDiskCensus();
         }
         activeGuest = id; crossingGuest = null; expose('Seated', detail); applyAdminDomState(); applyTabBarVisibility();
         reconcileViewportStreamFamily();
