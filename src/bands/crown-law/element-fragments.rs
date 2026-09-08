@@ -112,7 +112,7 @@ fn normalize_element_id_for_tab(tab: &str, raw: &str) -> String {
 }
 
 fn render_stats_elements_fragment(session: Session) -> String {
-    let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
+    let facts = load_iris_facts_cached_status_sync();
     render_stats_elements_fragment_from_facts(session, &facts)
 }
 
@@ -184,7 +184,7 @@ fn render_stat_element_from_grant(session: Session, facts: &IrisFacts, element_i
 }
 
 fn render_portals_elements_fragment(session: Session, host: &str) -> String {
-    let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
+    let facts = load_iris_facts_cached_status_sync();
     render_portals_elements_fragment_from_facts(session, host, &facts)
 }
 

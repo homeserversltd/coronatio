@@ -73,6 +73,7 @@ async fn tabs_route(State(state): State<AppState>) -> impl IntoResponse {
             tab_root: state.tab_root.display().to_string(),
             native_panes: native_crown_panes(),
             tabs,
+            native_tab_contracts: registry_readback().native_tab_contracts,
         })
         .into_response(),
         Err(error) => (
@@ -254,7 +255,7 @@ async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<Stri
     } else if !is_safe_tab_id(&tab_id) {
         fragment_fault(StatusCode::BAD_REQUEST, &tab_id, CartridgeFaultKind::UpstreamError)
     } else if let Some(cartridge) = appliance_cartridge(&tab_id) {
-        let facts = load_iris_facts_sync().unwrap_or_else(|| iris_facts_from_homeserver_value(&serde_json::json!({})));
+        let facts = load_iris_facts_sync();
         let visible = iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == tab_id && grant.state == RenderState::Visible);
         if !visible { fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound) }
         else if tab_id == "my-devices" && my_devices_proxy::is_target(&cartridge.url)

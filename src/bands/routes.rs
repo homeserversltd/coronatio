@@ -114,7 +114,7 @@ async fn stats_route(headers: axum::http::HeaderMap) -> Response {
     match session_projection_from_headers(&headers).await {
         Session::Admin => Json(project_system_stats_admin(&raw)).into_response(),
         Session::Guest => {
-            let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
+            let facts = load_iris_facts_cached_status_sync();
             Json(project_system_stats_guest(&raw, &facts)).into_response()
         }
     }
@@ -470,21 +470,97 @@ fn appliance_cartridge(tab_id: &str) -> Option<ApplianceCartridge> {
     load_appliance_cartridges().into_iter().find(|cartridge| cartridge.id == tab_id)
 }
 
-fn merged_tab_contracts_from_homeserver(value: &serde_json::Value) -> Vec<CoronatioTabContract> {
+// Cache successes and failures: a missing staff must not cause a socket call
+// for every viewer. Pulse pulls consume held facts only, even on a cold cache.
+const XENIA_STATUS_TTL: Duration = Duration::from_secs(30);
+static XENIA_STATUS_CACHE: OnceLock<Mutex<Option<(std::time::Instant, serde_json::Value)>>> = OnceLock::new();
+
+fn xenia_status_cache() -> &'static Mutex<Option<(std::time::Instant, serde_json::Value)>> {
+    XENIA_STATUS_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn invalidate_xenia_status_cache() {
+    *xenia_status_cache().lock().unwrap_or_else(|error| error.into_inner()) = None;
+}
+
+fn xenia_status(refresh: bool) -> serde_json::Value {
+    if !refresh {
+        return xenia_status_cache().try_lock().ok()
+            .and_then(|cache| cache.as_ref().filter(|(at, _)| at.elapsed() < XENIA_STATUS_TTL).map(|(_, value)| value.clone()))
+            .unwrap_or(serde_json::Value::Null);
+    }
+    // Coalesce concurrent pane entries across the existing bounded UDS read.
+    let mut cache = xenia_status_cache().lock().unwrap_or_else(|error| error.into_inner());
+    if let Some((at, value)) = cache.as_ref() {
+        if at.elapsed() < XENIA_STATUS_TTL { return value.clone(); }
+    }
+    let readback = caduceus_http("GET", "/api/v1/xenia/status");
+    let value = if readback.ok { readback.body } else { serde_json::Value::Null };
+    *cache = Some((std::time::Instant::now(), value.clone()));
+    value
+}
+
+fn registry_config_value() -> serde_json::Value {
+    load_homeserver_json_sync().map(|(_, value)| value).unwrap_or_else(|_| serde_json::json!({}))
+}
+
+fn registry_starred(value: &serde_json::Value) -> &str {
+    value.get("tabs").and_then(|tabs| tabs.get("starred")).and_then(serde_json::Value::as_str).unwrap_or("stats")
+}
+
+// One composition point; execution routing and discovery belong to R1.
+fn build_tab_contracts(value: &serde_json::Value, status: &serde_json::Value) -> Vec<CoronatioTabContract> {
     let mut tabs = native_tab_contracts();
     let next_order = tabs.iter().map(|tab| tab.order).max().unwrap_or(0) + 1;
     for (offset, cartridge) in load_appliance_cartridges().into_iter().enumerate() {
         if tabs.iter().any(|tab| tab.id == cartridge.id) { continue; }
-        tabs.push(CoronatioTabContract { id: cartridge.id.clone(), display_name: cartridge.title, order: next_order + offset as i64, enabled: true, admin_only: cartridge.admin_only, visibility: TabVisibility::default(), install_mode: InstallMode::DynamicCartridge, route: format!("/#{}", cartridge.id), state_route: format!("/admit/{}", cartridge.id) });
+        tabs.push(CoronatioTabContract { id: cartridge.id.clone(), display_name: cartridge.title, order: next_order + offset as i64, enabled: true, admin_only: cartridge.admin_only, visibility: TabVisibility::default(), install_mode: InstallMode::DynamicCartridge, route: format!("/#{}", cartridge.id), state_route: format!("/admit/{}", cartridge.id), data: None, kind: None, client_class: None, transport: None, granted: None, installed: None, discovered: None, listeners: None, runtime: None, xenia_entry: None });
     }
     if let Some(tabs_obj) = value.get("tabs").and_then(serde_json::Value::as_object) {
+        if let Some(xenoi) = status.get("xenoi").and_then(serde_json::Value::as_object) {
+            for (id, entry) in xenoi {
+                // Pending entries and dangling presentation rows are not guests.
+                if !is_safe_tab_id(id) || !entry.is_object()
+                    || entry.get("id").is_some_and(|entry_id| entry_id.as_str() != Some(id.as_str()))
+                    || !tabs_obj.get(id).is_some_and(serde_json::Value::is_object)
+                    || tabs.iter().any(|tab| &tab.id == id) { continue; }
+                let runtime = status.get("runtime").and_then(|runtime| runtime.get(id)).cloned();
+                tabs.push(CoronatioTabContract {
+                    id: id.clone(), display_name: id.clone(), order: 100,
+                    enabled: entry.get("enabled").and_then(serde_json::Value::as_bool).unwrap_or(true),
+                    admin_only: false, visibility: TabVisibility::default(),
+                    install_mode: InstallMode::DynamicCartridge,
+                    route: format!("/#{id}"), state_route: format!("/admit/{id}"),
+                    data: None,
+                    kind: entry.get("kind").cloned(),
+                    client_class: entry.get("client_class").cloned(),
+                    transport: entry.get("transport").cloned(),
+                    granted: entry.get("granted").cloned(),
+                    installed: entry.get("installed").cloned(),
+                    discovered: entry.get("discovered").cloned(),
+                    listeners: runtime.as_ref().and_then(|runtime| runtime.get("listeners")).or_else(|| entry.get("listeners")).cloned(),
+                    runtime,
+                    // Unknown additive execution facts survive for R1.
+                    xenia_entry: Some(entry.clone()),
+                });
+            }
+        }
         for tab in tabs.iter_mut() {
             let Some(raw) = tabs_obj.get(&tab.id) else { continue; };
-            if let Some(config) = raw.get("config").and_then(serde_json::Value::as_object) {
+            if tab.xenia_entry.is_some() {
+                let config = raw.get("config");
+                let presentation = |key: &str| raw.get(key).or_else(|| config.and_then(|config| config.get(key)));
+                if let Some(name) = presentation("displayName").and_then(serde_json::Value::as_str) { tab.display_name = name.to_string(); }
+                if let Some(order) = presentation("order").and_then(serde_json::Value::as_i64) { tab.order = order; }
+                if let Some(admin_only) = presentation("adminOnly").and_then(serde_json::Value::as_bool) { tab.admin_only = admin_only; }
+                if let Some(enabled) = config.and_then(|config| config.get("isEnabled")).and_then(serde_json::Value::as_bool) { tab.enabled &= enabled; }
+            } else if let Some(config) = raw.get("config").and_then(serde_json::Value::as_object) {
+                // Keep native and cartridges.json presentation behavior unchanged.
                 if let Some(name) = config.get("displayName").and_then(serde_json::Value::as_str) { tab.display_name = name.to_string(); }
                 if let Some(enabled) = config.get("isEnabled").and_then(serde_json::Value::as_bool) { tab.enabled = enabled; }
                 if let Some(admin_only) = config.get("adminOnly").and_then(serde_json::Value::as_bool) { tab.admin_only = admin_only; }
             }
+            tab.data = raw.get("data").cloned();
             if let Some(visibility) = raw.get("visibility").and_then(serde_json::Value::as_object) {
                 if let Some(visible) = visibility.get("tab").and_then(serde_json::Value::as_bool) { tab.visibility.tab = visible; }
                 if let Some(elements) = visibility.get("elements").and_then(serde_json::Value::as_object) {
@@ -493,6 +569,7 @@ fn merged_tab_contracts_from_homeserver(value: &serde_json::Value) -> Vec<Corona
             }
         }
     }
+    tabs.sort_by(|left, right| left.order.cmp(&right.order).then(left.id.cmp(&right.id)));
     tabs
 }
 
@@ -582,12 +659,7 @@ fn canonical_stats_element_id(id: &str) -> &str {
 }
 
 fn iris_facts_from_homeserver_value(value: &serde_json::Value) -> IrisFacts {
-    let starred = value.get("tabs").and_then(serde_json::Value::as_object)
-        .and_then(|tabs| tabs.get("starred"))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("stats")
-        .to_string();
-    iris::from_coronatio_contracts(&merged_tab_contracts_from_homeserver(value), &starred)
+    iris::from_coronatio_contracts(&build_tab_contracts(value, &xenia_status(true)), registry_starred(value))
 }
 
 fn caduceus_config_failure_response(readback: CaduceusHttpReadback) -> Response {

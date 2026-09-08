@@ -301,6 +301,8 @@ struct TabList {
     tab_root: String,
     native_panes: Vec<CrownPane>,
     tabs: Vec<TabManifest>,
+    #[serde(default)]
+    native_tab_contracts: Vec<CoronatioTabContract>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -352,6 +354,26 @@ struct CoronatioTabContract {
     install_mode: InstallMode,
     route: String,
     state_route: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    data: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kind: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client_class: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    transport: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    granted: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    installed: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    discovered: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    listeners: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    xenia_entry: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

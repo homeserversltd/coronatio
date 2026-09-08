@@ -572,7 +572,7 @@ fn render_plan_tabbar_fragment_with_active(session: Session, active: Option<&str
 }
 
 fn render_plan_tabbar_projection(session: Session, active: Option<&str>, active_load_trigger: bool) -> String {
-    let facts = load_iris_facts_sync().unwrap_or_else(|| iris::from_coronatio_contracts(&native_tab_contracts(), "stats"));
+    let facts = load_iris_facts_sync();
     render_plan_tabbar_projection_from_facts(&facts, session, active, active_load_trigger)
 }
 
@@ -593,27 +593,20 @@ fn render_plan_tabbar_projection_from_facts(facts: &IrisFacts, session: Session,
         .join("")
 }
 
-fn load_iris_facts_sync() -> Option<IrisFacts> {
-    let value = std::fs::read_to_string(homeserver_json_path())
-        .ok()
-        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    Some(iris_facts_from_homeserver_value(&value))
+fn load_iris_facts_sync() -> IrisFacts {
+    iris_facts_from_homeserver_value(&registry_config_value())
+}
+
+fn load_iris_facts_cached_status_sync() -> IrisFacts {
+    // Preserve local presentation reads, but never refresh status on a stats pull.
+    let value = registry_config_value();
+    iris::from_coronatio_contracts(&build_tab_contracts(&value, &xenia_status(false)), registry_starred(&value))
 }
 
 fn tab_display_names_from_facts(facts: &IrisFacts) -> BTreeMap<String, String> {
-    let mut names = native_crown_panes().into_iter().map(|pane| (pane.id, pane.title)).collect::<BTreeMap<_, _>>();
-    for cartridge in load_appliance_cartridges() { names.insert(cartridge.id, cartridge.title); }
-    if let Ok(raw) = std::fs::read_to_string(homeserver_json_path()) {
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
-            if let Some(tabs) = value.get("tabs").and_then(serde_json::Value::as_object) {
-                for fact in &facts.tabs {
-                    if let Some(name) = tabs.get(&fact.id).and_then(|tab| tab.get("config")).and_then(|config| config.get("displayName")).and_then(serde_json::Value::as_str) { names.insert(fact.id.clone(), name.to_string()); }
-                }
-            }
-        }
-    }
-    names
+    build_tab_contracts(&registry_config_value(), &xenia_status(false)).into_iter()
+        .filter(|tab| facts.tabs.iter().any(|fact| fact.id == tab.id))
+        .map(|tab| (tab.id, tab.display_name)).collect()
 }
 
 fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, active_tab: &str, _active_load_trigger: bool) -> String {

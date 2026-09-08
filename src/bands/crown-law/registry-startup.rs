@@ -159,12 +159,14 @@ fn validate_tab_manifest(manifest: &TabManifest) -> Result<(), String> {
 }
 
 fn registry_readback() -> RegistryReadback {
-    let native_tab_contracts = native_tab_contracts();
+    let value = registry_config_value();
+    let native_tab_contracts = build_tab_contracts(&value, &xenia_status(true));
+    let facts = iris::from_coronatio_contracts(&native_tab_contracts, registry_starred(&value));
     RegistryReadback {
         schema: "coronatio.registry.v1".to_string(),
-        source_contract: "homeserver.json tabs.{config,visibility,data,starred}".to_string(),
-        starred_tab: "stats".to_string(),
-        default_route_tab: initial_tab(true, None, false),
+        source_contract: "/etc/appliance/config.json tabs{} presentation + native crown panes + /etc/appliance/cartridges.json legacy lane + Caduceus GET /api/v1/xenia/status paired execution facts".to_string(),
+        starred_tab: registry_starred(&value).to_string(),
+        default_route_tab: iris::initial_tab(&iris::plan(&facts, Session::Guest)),
         force_tab_bar_visibility: false,
         visible_tabs_user: visible_tab_ids(&native_tab_contracts, false),
         visible_tabs_admin: visible_tab_ids(&native_tab_contracts, true),
@@ -191,6 +193,16 @@ fn native_tab_contracts() -> Vec<CoronatioTabContract> {
                 install_mode: pane.install_mode,
                 route: pane.route,
                 state_route: pane.state_route,
+                data: None,
+                kind: None,
+                client_class: None,
+                transport: None,
+                granted: None,
+                installed: None,
+                discovered: None,
+                listeners: None,
+                runtime: None,
+                xenia_entry: None,
             }
         })
         .collect()
@@ -258,24 +270,16 @@ fn initial_tab(connection_ok: bool, forced_tab: Option<&str>, is_admin: bool) ->
     if !connection_ok {
         return "fallback".to_string();
     }
-    let contracts = native_tab_contracts();
-    let selectable = selectable_tab_ids(&contracts, is_admin);
+    let facts = load_iris_facts_sync();
+    let plan = iris::plan(&facts, registry_session(is_admin));
+    let selectable = plan.tabs.iter().filter(|grant| grant.state == RenderState::Visible).map(|grant| grant.tab_id.clone()).collect::<Vec<_>>();
     if let Some(tab) = forced_tab {
         let normalized = normalize_tab_id(tab);
         if selectable.iter().any(|candidate| candidate == &normalized) {
             return normalized;
         }
     }
-    let starred = normalize_tab_id("stats");
-    let starred_candidates = eligible_starred_tab_ids(&contracts);
-    if starred_candidates.iter().any(|tab| tab == &starred) {
-        starred
-    } else {
-        selectable
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "fallback".to_string())
-    }
+    iris::initial_tab(&plan)
 }
 
 fn registry_transaction_readback() -> RegistryTransactionReadback {
