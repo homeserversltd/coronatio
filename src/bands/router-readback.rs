@@ -87,13 +87,24 @@ async fn tabs_route(State(state): State<AppState>) -> impl IntoResponse {
 async fn tab_manifest_route(
     State(state): State<AppState>,
     Path(tab_id): Path<String>,
-) -> impl IntoResponse {
+    method: Method,
+    uri: Uri,
+    headers: axum::http::HeaderMap,
+    body: Bytes,
+) -> Response {
     if !is_safe_tab_id(&tab_id) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "invalid tab id"})),
         )
             .into_response();
+    }
+
+    if paired_xenos(&tab_id).await.is_some() {
+        return xenia_proxy_response(tab_id, "/manifest".to_string(), method, uri, headers, body).await;
+    }
+    if method != Method::GET {
+        return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
 
     match load_tab_manifest(&state.tab_root, &tab_id).await {
@@ -166,6 +177,7 @@ enum CartridgeFaultKind {
     UpstreamError,
     TabNotFound,
     ProxyUnreachable,
+    PackCssRefused,
 }
 
 impl CartridgeFaultKind {
@@ -175,6 +187,7 @@ impl CartridgeFaultKind {
             Self::UpstreamError => "upstream-error",
             Self::TabNotFound => "tab-not-found",
             Self::ProxyUnreachable => "proxy-unreachable",
+            Self::PackCssRefused => "pack-css-refused",
         }
     }
 }
@@ -185,6 +198,7 @@ struct CartridgeFaultReceipt {
     tab_id: String,
     fault_kind: CartridgeFaultKind,
     occurred_at: u64,
+    first_missing_signal: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -204,6 +218,11 @@ fn cartridge_fault_receipts() -> &'static Mutex<VecDeque<CartridgeFaultReceipt>>
 }
 
 fn record_cartridge_fault(tab_id: &str, fault_kind: CartridgeFaultKind) -> CartridgeFaultReceipt {
+    let signal = fault_kind.as_str().to_string();
+    record_cartridge_fault_signal(tab_id, fault_kind, &signal)
+}
+
+fn record_cartridge_fault_signal(tab_id: &str, fault_kind: CartridgeFaultKind, first_missing_signal: &str) -> CartridgeFaultReceipt {
     let receipt = CartridgeFaultReceipt {
         tab_id: tab_id.to_string(),
         fault_kind,
@@ -211,6 +230,7 @@ fn record_cartridge_fault(tab_id: &str, fault_kind: CartridgeFaultKind) -> Cartr
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
             .unwrap_or(0),
+        first_missing_signal: first_missing_signal.to_string(),
     };
     caduceus_hyalos_reflect_best_effort(
         if native_crown_panes().into_iter().any(|pane| pane.id == tab_id) {
@@ -223,6 +243,7 @@ fn record_cartridge_fault(tab_id: &str, fault_kind: CartridgeFaultKind) -> Cartr
         Some(tab_id.to_string()),
         Some(serde_json::json!({
             "fault_kind": receipt.fault_kind.as_str(),
+            "first_missing_signal": receipt.first_missing_signal,
             "occurred_at": receipt.occurred_at,
             "phase": "cartridge-fault",
         })),
@@ -248,6 +269,125 @@ async fn faults_route() -> impl IntoResponse {
     })
 }
 
+fn xenia_text(tab: &CoronatioTabContract, field: &str) -> Option<String> {
+    tab.xenia_entry.as_ref()?.get(field)?.as_str().map(str::to_string)
+}
+
+fn xenia_kind(tab: &CoronatioTabContract) -> Option<String> {
+    tab.kind.as_ref().and_then(serde_json::Value::as_str).map(str::to_string)
+}
+
+fn xenia_client_class(tab: &CoronatioTabContract) -> Option<String> {
+    tab.client_class.as_ref().and_then(serde_json::Value::as_str).map(str::to_string)
+}
+
+fn xenia_static_dir(tab: &CoronatioTabContract) -> Option<String> {
+    let entry = tab.xenia_entry.as_ref()?;
+    entry.get("static_dir").or_else(|| entry.get("staticDir"))
+        .or_else(|| entry.get("install").and_then(|install| install.get("static_dir").or_else(|| install.get("staticDir"))))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && !value.starts_with('/') && !value.split('/').any(|part| part == ".."))
+        .map(str::to_string)
+}
+
+fn xenia_row_url(tab_id: &str) -> Option<String> {
+    let value = registry_config_value();
+    let row = value.get("tabs")?.get(tab_id)?;
+    row.get("url").or_else(|| row.get("config").and_then(|config| config.get("url")))
+        .and_then(serde_json::Value::as_str).and_then(safe_cartridge_url)
+}
+
+fn xenia_static_url(tab_id: &str, static_dir: &str, leaf: &str) -> String {
+    let leaf = leaf.trim_start_matches('/');
+    format!("/tabs/{}/{}/{}", tab_id, static_dir, leaf)
+}
+
+fn xenia_visible_recovery(tab_id: &str, rung: &str, message: &str) -> Response {
+    record_cartridge_fault_signal(tab_id, CartridgeFaultKind::ProxyUnreachable, rung);
+    let body = format!(
+        r#"<section class="pane-content" data-cartridge-fault="true" data-cartridge-fault-kind="proxy-unreachable" data-first-missing-signal="{}"><h1>{} is unavailable</h1><p>{}</p><button class="ui-button ui-button--secondary" type="button" hx-get="/admit/{}" hx-target="closest [data-view-panel]" hx-swap="innerHTML">Try again</button></section>"#,
+        html_escape(rung), html_escape(tab_id), html_escape(message), html_escape(tab_id),
+    );
+    (StatusCode::SERVICE_UNAVAILABLE, [("x-coronatio-fault", "cartridge-fragment")], Html(body)).into_response()
+}
+
+fn xenia_static_admission(tab: &CoronatioTabContract, static_dir: &str, client_class: &str) -> Response {
+    match client_class {
+        "fragment" => Html(format!(
+            r#"<div class="cartridge-viewport" data-cartridge-id="{}" hx-get="{}" hx-trigger="load" hx-swap="innerHTML"></div>"#,
+            html_escape(&tab.id), html_escape(&xenia_static_url(&tab.id, static_dir, "fragment")),
+        )).into_response(),
+        "iframe" => Html(format!(
+            r#"<div class="cartridge-viewport" data-cartridge-id="{}"><iframe src="{}" title="{}" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="same-origin"></iframe></div>"#,
+            html_escape(&tab.id), html_escape(&xenia_static_url(&tab.id, static_dir, "")), html_escape(&tab.display_name),
+        )).into_response(),
+        _ => xenia_visible_recovery(&tab.id, "client-class", "The guest presentation class is not renderable."),
+    }
+}
+
+async fn paired_xenos(tab_id: &str) -> Option<CoronatioTabContract> {
+    let tab_id = tab_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        let value = registry_config_value();
+        let status = xenia_status(true);
+        build_tab_contracts(&value, &status).into_iter()
+            .find(|tab| tab.id == tab_id && tab.xenia_entry.is_some())
+    }).await.ok().flatten()
+}
+
+async fn admit_xenos(tab: CoronatioTabContract) -> Response {
+    let kind = xenia_kind(&tab).unwrap_or_default();
+    let client_class = xenia_client_class(&tab).unwrap_or_else(|| "fragment".to_string());
+    match kind.as_str() {
+        "iframe" => match (client_class.as_str(), xenia_row_url(&tab.id)) {
+            ("iframe", Some(url)) => Html(format!(
+                r#"<div class="cartridge-viewport" data-cartridge-id="{}"><iframe src="{}" title="{}" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="same-origin"></iframe></div>"#,
+                html_escape(&tab.id), html_escape(&url), html_escape(&tab.display_name),
+            )).into_response(),
+            ("iframe", None) => xenia_visible_recovery(&tab.id, "iframe-row-url", "The guest row has no usable URL."),
+            _ => xenia_visible_recovery(&tab.id, "iframe-client-class", "An iframe guest must use the iframe presentation class."),
+        },
+        "cartridge-static" => match xenia_static_dir(&tab) {
+            Some(static_dir) => xenia_static_admission(&tab, &static_dir, &client_class),
+            None => xenia_visible_recovery(&tab.id, "static-dir", "The static guest has no safe static directory."),
+        },
+        "cartridge-process" => {
+            let discovery = xenia_discovery::discover(&tab).await;
+            if discovery.content_kind == "static" {
+                return discovery.static_dir.as_deref()
+                    .map(|static_dir| xenia_static_admission(&tab, static_dir, &client_class))
+                    .unwrap_or_else(|| xenia_visible_recovery(&tab.id, "static-dir", "Static fallback has no safe directory."));
+            }
+            let Some(endpoint) = discovery.endpoint.as_deref() else {
+                return xenia_visible_recovery(&tab.id, &discovery.rung, discovery.health.as_deref().unwrap_or("No process transport answered."));
+            };
+            if let Some(signal) = discovery.health.as_deref() {
+                return xenia_visible_recovery(&tab.id, "health", signal);
+            }
+            if discovery.content_kind != "html" {
+                return xenia_visible_recovery(&tab.id, &discovery.rung, "The discovered application or event stream is not renderable as a pane.");
+            }
+            match client_class.as_str() {
+                "iframe" => Html(format!(
+                    r#"<div class="cartridge-viewport" data-cartridge-id="{}"><iframe src="/api/tabs/{}/" title="{}" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="same-origin"></iframe></div>"#,
+                    html_escape(&tab.id), html_escape(&tab.id), html_escape(&tab.display_name),
+                )).into_response(),
+                "fragment" => {
+                    let path = xenia_text(&tab, "fragment_path").or_else(|| xenia_text(&tab, "fragmentPath")).unwrap_or_else(|| "/fragment".to_string());
+                    match xenia_discovery::proxy(&tab.id, endpoint, Method::GET, &path, &axum::http::HeaderMap::new(), Bytes::new()).await {
+                        Ok(response) if response.status().is_success() && response.headers().get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()).is_some_and(|value| value.to_ascii_lowercase().starts_with("text/html")) => response,
+                        Ok(_) => xenia_visible_recovery(&tab.id, "fragment-nonrenderable", "The fragment route did not return renderable HTML."),
+                        Err(signal) => xenia_visible_recovery(&tab.id, signal, "The fragment route did not answer within its boundary."),
+                    }
+                }
+                _ => xenia_visible_recovery(&tab.id, "client-class", "The guest presentation class is not renderable."),
+            }
+        }
+        _ => xenia_visible_recovery(&tab.id, "kind", "The guest installation kind is not supported."),
+    }
+}
+
 async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<String>) -> impl IntoResponse {
     let session = session_projection_from_headers(&headers).await;
     let mut response = if tab_id == "linker" {
@@ -262,6 +402,10 @@ async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<Stri
             && (!my_devices_proxy::admitted() || !my_devices_proxy::activation_ready().await) {
             fragment_fault(StatusCode::SERVICE_UNAVAILABLE, &tab_id, CartridgeFaultKind::ProxyUnreachable)
         } else { Html(render_cartridge_iframe_fragment(&cartridge)).into_response() }
+    } else if let Some(xenos) = paired_xenos(&tab_id).await {
+        let facts = load_iris_facts_sync();
+        let visible = iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == tab_id && grant.state == RenderState::Visible);
+        if visible { admit_xenos(xenos).await } else { fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound) }
     } else if native_crown_panes().into_iter().any(|pane| pane.id == tab_id) {
         Html(render_og_pane_fragment(&tab_id, session)).into_response()
     } else {
@@ -270,6 +414,50 @@ async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<Stri
     response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
     response
+}
+
+async fn xenia_proxy_response(tab_id: String, path: String, method: Method, uri: Uri, headers: axum::http::HeaderMap, body: Bytes) -> Response {
+    if !is_safe_tab_id(&tab_id) { return StatusCode::BAD_REQUEST.into_response(); }
+    let Some(tab) = paired_xenos(&tab_id).await else { return StatusCode::NOT_FOUND.into_response(); };
+    let session = session_projection_from_headers(&headers).await;
+    let facts = load_iris_facts_sync();
+    if !iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == tab_id && grant.state == RenderState::Visible) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if xenia_kind(&tab).as_deref() != Some("cartridge-process") { return StatusCode::NOT_FOUND.into_response(); }
+    let discovery = xenia_discovery::discover(&tab).await;
+    let Some(endpoint) = discovery.endpoint.as_deref() else {
+        return xenia_visible_recovery(&tab_id, &discovery.rung, discovery.health.as_deref().unwrap_or("No process transport answered."));
+    };
+    if let Some(signal) = discovery.health.as_deref() {
+        return xenia_visible_recovery(&tab_id, "health", signal);
+    }
+    let mut path_and_query = path;
+    if let Some(query) = uri.query() { path_and_query.push('?'); path_and_query.push_str(query); }
+    let fragment_response = path_and_query.split('?').next() == Some("/fragment");
+    match xenia_discovery::proxy(&tab_id, endpoint, method, &path_and_query, &headers, body).await {
+        Ok(mut response) => {
+            if fragment_response {
+                response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+                response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
+            }
+            response
+        }
+        Err(signal) => xenia_visible_recovery(&tab_id, signal, "The guest route did not answer within its boundary."),
+    }
+}
+
+async fn xenia_proxy_default_route(Path(tab_id): Path<String>, method: Method, uri: Uri, headers: axum::http::HeaderMap, body: Bytes) -> Response {
+    xenia_proxy_response(tab_id, "/fragment".to_string(), method, uri, headers, body).await
+}
+
+async fn xenia_proxy_root_route(Path(tab_id): Path<String>, method: Method, uri: Uri, headers: axum::http::HeaderMap, body: Bytes) -> Response {
+    xenia_proxy_response(tab_id, "/".to_string(), method, uri, headers, body).await
+}
+
+async fn xenia_proxy_path_route(Path((tab_id, path)): Path<(String, String)>, method: Method, uri: Uri, headers: axum::http::HeaderMap, body: Bytes) -> Response {
+    let path = if path.is_empty() { "/".to_string() } else { format!("/{}", path.trim_start_matches('/')) };
+    xenia_proxy_response(tab_id, path, method, uri, headers, body).await
 }
 
 fn render_cartridge_pane_hosts() -> String {

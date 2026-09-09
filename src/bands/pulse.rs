@@ -106,6 +106,7 @@ mod pulse {
     pub(crate) fn poke(topic: PokeTopic) {
         if matches!(topic, PokeTopic::TabsChanged) {
             super::invalidate_xenia_status_cache();
+            super::xenia_discovery::invalidate();
         }
         let bus = bus();
         if topic.admin_only() {

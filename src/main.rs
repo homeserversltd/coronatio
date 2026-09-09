@@ -3,7 +3,7 @@ use axum::{
     extract::{Form, Multipart, Path, Query, State},
     http::{header, HeaderValue, Method, StatusCode, Uri},
     response::{Html, IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{any, delete, get, post, put},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,8 @@ mod cartridge_http;
 mod my_devices_proxy;
 #[path = "bands/my-devices-worker.rs"]
 mod my_devices_worker;
+#[path = "bands/xenia-discovery.rs"]
+mod xenia_discovery;
 include!("bands/runtime.rs");
 include!("bands/routes.rs");
 include!("bands/caduceus.rs");
