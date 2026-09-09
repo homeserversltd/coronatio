@@ -4,7 +4,6 @@
 import hashlib
 import json
 import os
-import subprocess
 import sys
 import tomllib
 import urllib.parse
@@ -155,20 +154,43 @@ def load_surface_names():
     return sorted(set(names))
 
 
-def commit_count():
-    try:
-        completed = subprocess.run(
-            ["git", "rev-list", "--count", "HEAD"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        count = int(completed.stdout.strip())
-    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
-        fail(f"cannot derive git commit count: {exc}")
-    if count < 1:
-        fail("git commit count must be positive")
-    return count
+def commit_count(sha, token):
+    commits_url = f"{publisher.API_ROOT}/repos/{publisher.OWNER}/{publisher.REPO}/commits"
+    query = urllib.parse.urlencode({"sha": sha, "limit": 1, "page": 1})
+    status, raw, headers = publisher.request(
+        "GET", f"{commits_url}?{query}", token, return_headers=True,
+    )
+    if status != 200:
+        fail(f"Coronatio commit count returned HTTP {status}")
+    commits = publisher.decode(raw, "Coronatio commit count")
+    if not isinstance(commits, list):
+        fail("Coronatio commit list is not an array")
+    total = {key.lower(): value for key, value in headers.items()}.get("x-total-count")
+    if total is not None:
+        try:
+            count = int(total)
+        except ValueError as exc:
+            fail(f"Coronatio commit count header is invalid: {exc}")
+        if count < 1:
+            fail("Coronatio commit count header is not positive")
+        return count
+
+    count = 0
+    page = 1
+    while True:
+        query = urllib.parse.urlencode({"sha": sha, "limit": 50, "page": page})
+        status, raw = publisher.request("GET", f"{commits_url}?{query}", token)
+        if status != 200:
+            fail(f"Coronatio commit count page {page} returned HTTP {status}")
+        batch = publisher.decode(raw, f"Coronatio commit count page {page}")
+        if not isinstance(batch, list):
+            fail("Coronatio commit list page is not an array")
+        count += len(batch)
+        if len(batch) < 50:
+            if count < 1:
+                fail("Coronatio commit history is empty")
+            return count
+        page += 1
 
 
 def release_for_sha(sha, token):
@@ -297,7 +319,7 @@ def derive_lineage(names, previous, revision_count):
     previous_major, previous_minor, previous_patch = previous["version"]
     if revision_count <= previous_patch:
         fail(
-            "git commit count does not move monotonically beyond the previous lineage patch "
+            "Coronatio commit count does not move monotonically beyond the previous lineage patch "
             f"({revision_count} <= {previous_patch})"
         )
     previous_names = set(previous["surface_names"])
@@ -421,7 +443,7 @@ def main():
         fail("local release binary conflicts with its published digest")
 
     names = load_surface_names()
-    lineage = derive_lineage(names, previous_lineage(token, sha), commit_count())
+    lineage = derive_lineage(names, previous_lineage(token, sha), commit_count(sha, token))
     if flag_asset(release, token, sha, digest, pipeline_url, lineage):
         receipt("no-op", sha, binary_name, sidecar_name, digest, pipeline_url, tag_url, lineage)
         return

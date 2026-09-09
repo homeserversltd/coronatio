@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 import hashlib, json, os, re, sys, tomllib, urllib.error, urllib.parse, urllib.request
+from typing import Literal, overload
 API_ROOT = "https://git.home.arpa/api/v1"
 OWNER, REPO = "HOMESERVERSLTD", "coronatio"
 PROJECT = f"{OWNER}/{REPO}"
 RELEASES = f"{API_ROOT}/repos/{OWNER}/{REPO}/releases"
 def fail(message):
     print(f"release_publish: {message}", file=sys.stderr); raise SystemExit(1)
-def request(method, url, token, body=None, content_type=None, accept=None):
+@overload
+def request(method, url, token, body=None, content_type=None, accept=None, return_headers: Literal[False] = False) -> tuple[int, bytes]: ...
+@overload
+def request(method, url, token, body=None, content_type=None, accept=None, *, return_headers: Literal[True]) -> tuple[int, bytes, dict[str, str]]: ...
+def request(method, url, token, body=None, content_type=None, accept=None, return_headers=False):
     headers = {"Authorization": f"token {token}", "User-Agent": "coronatio-woodpecker-release"}
     if content_type: headers["Content-Type"] = content_type
     if accept: headers["Accept"] = accept
@@ -14,8 +19,12 @@ def request(method, url, token, body=None, content_type=None, accept=None):
         body = json.dumps(body, separators=(",", ":")).encode(); headers["Content-Type"] = "application/json"
     try:
         req = urllib.request.Request(url, data=body, headers=headers, method=method)
-        with urllib.request.urlopen(req, timeout=180) as response: return response.status, response.read()
-    except urllib.error.HTTPError as exc: return exc.code, exc.read()
+        with urllib.request.urlopen(req, timeout=180) as response:
+            result = response.status, response.read()
+            return (*result, dict(response.headers.items())) if return_headers else result
+    except urllib.error.HTTPError as exc:
+        result = exc.code, exc.read()
+        return (*result, dict(exc.headers.items())) if return_headers else result
     except (urllib.error.URLError, TimeoutError, OSError) as exc: fail(f"{method} {url} transport failure: {exc}")
 def decode(raw, description):
     try: return json.loads(raw)
