@@ -171,7 +171,7 @@ fn content_kind(headers: &hyper::HeaderMap) -> Option<&'static str> {
         Some("stream")
     } else if content_type == "text/html" || content_type == "application/xhtml+xml" {
         Some("html")
-    } else if content_type == "application/json" || content_type.ends_with("+json") {
+    } else if content_type.starts_with("application/") {
         Some("api")
     } else {
         None
@@ -568,16 +568,21 @@ pub(super) async fn proxy(
     {
         return Err("request-body-too-large");
     }
-    let mut request_body = Vec::new();
-    while let Some(frame) = body.frame().await {
-        let frame = frame.map_err(|_| "request-body-read-failed")?;
-        if let Ok(data) = frame.into_data() {
-            if request_body.len().saturating_add(data.len()) > MAX_BODY {
-                return Err("request-body-too-large");
+    let request_body = tokio::time::timeout(PROXY_TIMEOUT, async {
+        let mut request_body = Vec::new();
+        while let Some(frame) = body.frame().await {
+            let frame = frame.map_err(|_| "request-body-read-failed")?;
+            if let Ok(data) = frame.into_data() {
+                if request_body.len().saturating_add(data.len()) > MAX_BODY {
+                    return Err("request-body-too-large");
+                }
+                request_body.extend_from_slice(&data);
             }
-            request_body.extend_from_slice(&data);
         }
-    }
+        Ok::<Vec<u8>, &'static str>(request_body)
+    })
+    .await
+    .map_err(|_| "request-body-timeout")??;
     let mut builder = Request::builder().method(method.as_str()).uri(uri);
     for (name, value) in headers {
         if safe_request_header(name) {
@@ -593,6 +598,9 @@ pub(super) async fn proxy(
         .map_err(|_| "proxy-timeout")?
         .map_err(|_| "proxy-unreachable")?;
     let status = response.status();
+    if status.is_redirection() {
+        return Err("redirect-refused");
+    }
     let response_kind = content_kind(response.headers());
     if response
         .headers()
@@ -610,11 +618,13 @@ pub(super) async fn proxy(
             && !sensitive_response_header(name)
             && name != hyper::header::CACHE_CONTROL
             && name != hyper::header::CONTENT_SECURITY_POLICY
+            && name.as_str() != "x-content-type-options"
         {
             response_builder = response_builder.header(name, value);
         }
     }
     response_builder = response_builder.header(hyper::header::CACHE_CONTROL, "no-store");
+    response_builder = response_builder.header("x-content-type-options", "nosniff");
     if response_kind == Some("html") {
         response_builder = response_builder.header(
             hyper::header::CONTENT_SECURITY_POLICY,
@@ -685,6 +695,7 @@ pub(super) async fn proxy(
                     ("content-type", "text/plain; charset=utf-8"),
                     ("x-coronatio-fault", "pack-css-refused"),
                     ("cache-control", "no-store"),
+                    ("x-content-type-options", "nosniff"),
                 ],
                 format!("PackCssRefused: {offender}\n"),
             )

@@ -566,7 +566,7 @@ fn build_tab_contracts(value: &serde_json::Value, status: &serde_json::Value) ->
                     Some(serde_json::Value::Object(installed)) => {
                         installed.insert("health".to_string(), serde_json::Value::String("degraded".to_string()));
                     }
-                    None => {
+                    Some(serde_json::Value::Null) | None => {
                         tab.installed = Some(serde_json::json!({"health": "degraded"}));
                     }
                     Some(_) => {}

@@ -406,6 +406,7 @@ async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<Stri
         fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound)
     };
     response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert("x-content-type-options", HeaderValue::from_static("nosniff"));
     response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
     response
 }
@@ -504,12 +505,14 @@ fn fragment_fault_with_signal(status: StatusCode, tab_id: &str, fault_kind: Cart
     );
     let mut response = (status, [("x-coronatio-fault", "cartridge-fragment")], Html(body)).into_response();
     response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert("x-content-type-options", HeaderValue::from_static("nosniff"));
     response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CROWN_CONTENT_SECURITY_POLICY));
     response
 }
 
 fn no_store(mut response: Response) -> Response {
     response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert("x-content-type-options", HeaderValue::from_static("nosniff"));
     response
 }
 
