@@ -253,6 +253,31 @@ steps:
         PY
         export SSL_CERT_FILE=/tmp/house-ca.pem
         python3 ci/release_flag.py
+
+  - name: release-xenia-kit
+    image: python:3.12-alpine
+    when:
+      - event: push
+        branch: main
+    environment:
+      FORGEJO_TOKEN:
+        from_secret: FORGEJO_TOKEN
+    commands:
+      - |
+        set -eu
+        python3 - <<PY
+        import urllib.request
+
+        with urllib.request.urlopen("http://192.168.123.1:7100/v1/trust/ca-bundle") as response:
+            ca_bundle = response.read()
+        assert ca_bundle, "CA bundle response is empty"
+        with open("/tmp/house-ca.pem", "wb") as output:
+            written = output.write(ca_bundle)
+        assert written > 0, "CA bundle write is empty"
+        PY
+        export SSL_CERT_FILE=/tmp/house-ca.pem
+        python3 ci/release_xenia_kit.py
+
   - name: ci-outcome-coronatio
     image: python:3.12-alpine
     backend_options:

@@ -4,10 +4,12 @@
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import tomllib
 import urllib.parse
 from datetime import datetime, timedelta, timezone
+from typing import NoReturn
 
 try:
     from . import release_publish as publisher
@@ -18,17 +20,28 @@ except ImportError:  # pragma: no cover - exercised when run as a script
 FLAG_NAME = "release.flag"
 SCHEMA = "estate.release-flag.v1"
 COMPONENT = "coronatio"
-FLAG_KEYS = frozenset({
+SURFACE_PATH = "src/bands/shell/ux/face-surface.json"
+SEAT_URL = (
+    "https://git.home.arpa/HOMESERVERSLTD/caduceus/raw/branch/main/"
+    "schema/estate.release-flag.v1.json"
+)
+REQUIRED_FLAG_KEYS = frozenset({
     "schema",
     "component",
     "source_sha",
-    "sha256",
     "flagged_at",
     "pipeline_url",
 })
+LINEAGE_KEYS = frozenset({
+    "version",
+    "surface_names",
+    "surface_sha256",
+    "derived_from",
+    "bump",
+})
 
 
-def fail(message):
+def fail(message) -> NoReturn:
     print(f"release_flag: {message}", file=sys.stderr)
     raise SystemExit(1)
 
@@ -50,7 +63,15 @@ def current_utc_timestamp():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def flag_bytes(source_sha, digest, flagged_at, pipeline_url):
+def canonical_json_bytes(payload):
+    return (json.dumps(payload, indent=2) + "\n").encode("utf-8")
+
+
+def surface_digest(names):
+    return hashlib.sha256(("\n".join(names) + "\n").encode("utf-8")).hexdigest()
+
+
+def flag_bytes(source_sha, digest, flagged_at, pipeline_url, lineage=None):
     payload = {
         "schema": SCHEMA,
         "component": COMPONENT,
@@ -59,7 +80,9 @@ def flag_bytes(source_sha, digest, flagged_at, pipeline_url):
         "flagged_at": canonical_utc_timestamp(flagged_at),
         "pipeline_url": pipeline_url,
     }
-    return (json.dumps(payload, indent=2) + "\n").encode("utf-8")
+    if lineage is not None:
+        payload["lineage"] = lineage
+    return canonical_json_bytes(payload)
 
 
 def load_cargo():
@@ -90,6 +113,64 @@ def load_cargo():
     return version, binary_decl
 
 
+def load_seat(token):
+    status, raw = publisher.request("GET", SEAT_URL, token)
+    if status != 200:
+        fail(f"release flag schema seat returned HTTP {status}")
+    seat = publisher.decode(raw, "release flag schema seat")
+    if not isinstance(seat, dict) or seat.get("schema") != SCHEMA:
+        fail("release flag schema seat has a foreign schema id")
+    fields = seat.get("fields")
+    required = seat.get("required")
+    if not isinstance(fields, dict) or not isinstance(required, list):
+        fail("release flag schema seat has an invalid field declaration")
+    if not REQUIRED_FLAG_KEYS.issubset(required) or any(key not in fields for key in required):
+        fail("release flag schema seat is missing the frozen kernel")
+    lineage = fields.get("lineage")
+    lineage_fields = lineage.get("fields") if isinstance(lineage, dict) else None
+    if (
+        not isinstance(lineage, dict)
+        or lineage.get("type") != "object"
+        or not isinstance(lineage_fields, dict)
+        or not LINEAGE_KEYS.issubset(lineage_fields)
+    ):
+        fail("release flag schema seat has a desynchronized lineage declaration")
+    return seat
+
+
+def load_surface_names():
+    try:
+        with open(SURFACE_PATH, "rb") as surface_file:
+            surface = json.load(surface_file, object_pairs_hook=_strict_json_object)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        fail(f"cannot read Coronatio face surface: {exc}")
+    if not isinstance(surface, dict) or surface.get("schema") != "coronatio.face-surface.v1":
+        fail("Coronatio face surface has a foreign schema")
+    names = []
+    for field in ("primitives", "author_face"):
+        values = surface.get(field)
+        if not isinstance(values, list) or any(not isinstance(value, str) or not value for value in values):
+            fail(f"Coronatio face surface {field} must be a list of nonempty names")
+        names.extend(values)
+    return sorted(set(names))
+
+
+def commit_count():
+    try:
+        completed = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        count = int(completed.stdout.strip())
+    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+        fail(f"cannot derive git commit count: {exc}")
+    if count < 1:
+        fail("git commit count must be positive")
+    return count
+
+
 def release_for_sha(sha, token):
     tag_url = f"{publisher.RELEASES}/tags/{urllib.parse.quote(sha, safe='')}"
     status, raw = publisher.request("GET", tag_url, token)
@@ -110,41 +191,169 @@ def _strict_json_object(pairs):
     return result
 
 
-def verify_existing_flag(actual, source_sha, digest, pipeline_url):
+def parse_flag(actual, description):
     try:
         payload = json.loads(actual, object_pairs_hook=_strict_json_object)
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
-        fail("existing release.flag is not valid JSON")
+        fail(f"{description} is not valid JSON")
     if not isinstance(payload, dict):
-        fail("existing release.flag is not a JSON object")
-    if set(payload) != FLAG_KEYS:
-        fail("existing release.flag has invalid keys")
-    if any(not isinstance(value, str) for value in payload.values()):
-        fail("existing release.flag values must be strings")
-    if payload["schema"] != SCHEMA:
-        fail("existing release.flag has an invalid schema")
-    if payload["component"] != COMPONENT:
+        fail(f"{description} is not a JSON object")
+    if not REQUIRED_FLAG_KEYS.issubset(payload):
+        fail(f"{description} is missing a frozen kernel field")
+    if payload.get("schema") != SCHEMA:
+        fail(f"{description} has an invalid schema")
+    if any(not isinstance(payload[key], str) or not payload[key] for key in REQUIRED_FLAG_KEYS):
+        fail(f"{description} frozen kernel values must be nonempty strings")
+    if actual != canonical_json_bytes(payload):
+        fail(f"{description} has non-canonical contents")
+    return payload
+
+
+def parse_version(version, description):
+    if not isinstance(version, str):
+        fail(f"{description} lineage version is missing")
+    parts = version.split(".")
+    if len(parts) != 3 or any(not part.isdigit() or (len(part) > 1 and part.startswith("0")) for part in parts):
+        fail(f"{description} lineage version is invalid")
+    return tuple(int(part) for part in parts)
+
+
+def parse_lineage(payload, description, optional=False):
+    lineage = payload.get("lineage")
+    if lineage is None and optional:
+        return None
+    if not isinstance(lineage, dict):
+        fail(f"{description} lineage is missing or invalid")
+    missing = LINEAGE_KEYS.difference(lineage)
+    if missing:
+        if optional:
+            return None
+        fail(f"{description} lineage is missing fields: {', '.join(sorted(missing))}")
+    version = parse_version(lineage.get("version"), description)
+    names = lineage.get("surface_names")
+    if not isinstance(names, list) or any(not isinstance(name, str) or not name for name in names):
+        fail(f"{description} lineage surface_names is invalid")
+    if names != sorted(set(names)):
+        fail(f"{description} lineage surface_names is not sorted unique")
+    if lineage.get("surface_sha256") != surface_digest(names):
+        fail(f"{description} lineage surface digest conflicts with its names")
+    derived_from = lineage.get("derived_from")
+    if derived_from is not None and (
+        not isinstance(derived_from, str)
+        or len(derived_from) != 40
+        or any(character not in "0123456789abcdef" for character in derived_from)
+    ):
+        fail(f"{description} lineage derived_from is invalid")
+    if lineage.get("bump") not in {"major", "minor", "patch", "initial"}:
+        fail(f"{description} lineage bump is invalid")
+    source_sha = payload.get("source_sha")
+    if len(source_sha) != 40 or any(character not in "0123456789abcdef" for character in source_sha):
+        fail(f"{description} source_sha is invalid")
+    return {
+        "version": version,
+        "surface_names": names,
+        "source_sha": source_sha,
+    }
+
+
+def previous_lineage(token, current_sha):
+    page = 1
+    while True:
+        query = urllib.parse.urlencode({"limit": 50, "page": page})
+        status, raw = publisher.request("GET", f"{publisher.RELEASES}?{query}", token)
+        if status != 200:
+            fail(f"GET release list returned HTTP {status}")
+        releases = publisher.decode(raw, "release list")
+        if not isinstance(releases, list):
+            fail("release list response is not an array")
+        for release in releases:
+            if not isinstance(release, dict):
+                fail("release list contains a non-object")
+            if release.get("tag_name") == current_sha:
+                continue
+            asset = publisher.assets_of(release).get(FLAG_NAME)
+            if asset is None:
+                continue
+            actual = publisher.download(asset, token, FLAG_NAME)
+            payload = parse_flag(actual, "previous release.flag")
+            if payload.get("component") != COMPONENT:
+                fail("previous release.flag has a conflicting component")
+            return parse_lineage(payload, "previous release.flag", optional=True)
+        if len(releases) < 50:
+            return None
+        page += 1
+
+
+def derive_lineage(names, previous, revision_count):
+    if previous is None:
+        return {
+            "version": "0.0.1",
+            "surface_names": names,
+            "surface_sha256": surface_digest(names),
+            "derived_from": None,
+            "bump": "initial",
+        }
+
+    previous_major, previous_minor, previous_patch = previous["version"]
+    if revision_count <= previous_patch:
+        fail(
+            "git commit count does not move monotonically beyond the previous lineage patch "
+            f"({revision_count} <= {previous_patch})"
+        )
+    previous_names = set(previous["surface_names"])
+    current_names = set(names)
+    if previous_names - current_names:
+        bump = "major"
+        major, minor = previous_major + 1, 0
+    elif current_names - previous_names:
+        bump = "minor"
+        major, minor = previous_major, previous_minor + 1
+    else:
+        bump = "patch"
+        major, minor = previous_major, previous_minor
+    return {
+        "version": f"{major}.{minor}.{revision_count}",
+        "surface_names": names,
+        "surface_sha256": surface_digest(names),
+        "derived_from": previous["source_sha"],
+        "bump": bump,
+    }
+
+
+def verify_existing_flag(actual, source_sha, digest, pipeline_url, lineage):
+    payload = parse_flag(actual, "existing release.flag")
+    if payload.get("component") != COMPONENT:
         fail("existing release.flag has an invalid component")
-    if payload["source_sha"] != source_sha:
+    if payload.get("source_sha") != source_sha:
         fail("existing release.flag has a conflicting source SHA")
-    if payload["sha256"] != digest:
+    if payload.get("sha256") != digest:
         fail("existing release.flag has a conflicting digest")
-    if payload["pipeline_url"] != pipeline_url:
+    if payload.get("pipeline_url") != pipeline_url:
         fail("existing release.flag has a conflicting pipeline URL")
+    actual_lineage = parse_lineage(payload, "existing release.flag")
+    expected_lineage = {
+        "version": parse_version(lineage["version"], "expected release.flag"),
+        "surface_names": lineage["surface_names"],
+        "source_sha": source_sha,
+    }
+    if actual_lineage != expected_lineage:
+        fail("existing release.flag has conflicting lineage")
+    if payload["lineage"].get("surface_sha256") != lineage["surface_sha256"]:
+        fail("existing release.flag has a conflicting surface digest")
+    if payload["lineage"].get("derived_from") != lineage["derived_from"]:
+        fail("existing release.flag has conflicting lineage ancestry")
+    if payload["lineage"].get("bump") != lineage["bump"]:
+        fail("existing release.flag has a conflicting lineage bump")
+    return actual
 
-    expected = flag_bytes(source_sha, digest, payload["flagged_at"], pipeline_url)
-    if actual != expected:
-        fail("existing release.flag has non-canonical contents")
-    return expected
 
-
-def flag_asset(release, token, source_sha, digest, pipeline_url):
+def flag_asset(release, token, source_sha, digest, pipeline_url, lineage):
     assets = publisher.assets_of(release)
     asset = assets.get(FLAG_NAME)
     if asset is None:
         return False
     actual = publisher.download(asset, token, FLAG_NAME)
-    verify_existing_flag(actual, source_sha, digest, pipeline_url)
+    verify_existing_flag(actual, source_sha, digest, pipeline_url, lineage)
     return True
 
 
@@ -164,7 +373,7 @@ def reread_flag(tag_url, token, expected, description):
     return release
 
 
-def receipt(status, sha, binary_name, sidecar_name, digest, pipeline_url, tag_url):
+def receipt(status, sha, binary_name, sidecar_name, digest, pipeline_url, tag_url, lineage):
     print(json.dumps({
         "schema": "coronatio.release_flag.v1",
         "ok": True,
@@ -176,6 +385,7 @@ def receipt(status, sha, binary_name, sidecar_name, digest, pipeline_url, tag_ur
         "sha256": digest,
         "pipeline_url": pipeline_url,
         "release_url": tag_url,
+        "lineage": lineage,
     }, separators=(",", ":")))
 
 
@@ -183,6 +393,7 @@ def main():
     token = os.environ.get("FORGEJO_TOKEN", "")
     if not token:
         fail("FORGEJO_TOKEN is required")
+    load_seat(token)
     sha = os.environ.get("CI_COMMIT_SHA", "")
     if len(sha) != 40 or any(char not in "0123456789abcdef" for char in sha):
         fail("CI_COMMIT_SHA must be exactly 40 lowercase hexadecimal characters")
@@ -208,12 +419,14 @@ def main():
     existing_digest = publisher.verify_existing(release, token, binary_name, sidecar_name)
     if existing_digest != digest:
         fail("local release binary conflicts with its published digest")
-    if flag_asset(release, token, sha, digest, pipeline_url):
-        receipt("no-op", sha, binary_name, sidecar_name, digest, pipeline_url, tag_url)
+
+    names = load_surface_names()
+    lineage = derive_lineage(names, previous_lineage(token, sha), commit_count())
+    if flag_asset(release, token, sha, digest, pipeline_url, lineage):
+        receipt("no-op", sha, binary_name, sidecar_name, digest, pipeline_url, tag_url, lineage)
         return
 
-    expected = flag_bytes(sha, digest, current_utc_timestamp(), pipeline_url)
-
+    expected = flag_bytes(sha, digest, current_utc_timestamp(), pipeline_url, lineage)
     release_id = release.get("id")
     if not isinstance(release_id, int) or isinstance(release_id, bool):
         fail("release has no numeric id")
@@ -223,13 +436,13 @@ def main():
     )
     if status == 409:
         reread_flag(tag_url, token, expected, "release race reread")
-        receipt("no-op", sha, binary_name, sidecar_name, digest, pipeline_url, tag_url)
+        receipt("no-op", sha, binary_name, sidecar_name, digest, pipeline_url, tag_url, lineage)
         return
     if status not in (200, 201):
         fail(f"upload of {FLAG_NAME} returned HTTP {status}")
 
     reread_flag(tag_url, token, expected, "release reread")
-    receipt("flagged", sha, binary_name, sidecar_name, digest, pipeline_url, tag_url)
+    receipt("flagged", sha, binary_name, sidecar_name, digest, pipeline_url, tag_url, lineage)
 
 
 if __name__ == "__main__":
