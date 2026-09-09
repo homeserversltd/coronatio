@@ -561,6 +561,17 @@ fn build_tab_contracts(value: &serde_json::Value, status: &serde_json::Value) ->
                 if let Some(admin_only) = config.get("adminOnly").and_then(serde_json::Value::as_bool) { tab.admin_only = admin_only; }
             }
             tab.data = raw.get("data").cloned();
+            if tab.xenia_entry.is_some() && xenia_discovery::health_degraded(&tab.id) {
+                match tab.installed.as_mut() {
+                    Some(serde_json::Value::Object(installed)) => {
+                        installed.insert("health".to_string(), serde_json::Value::String("degraded".to_string()));
+                    }
+                    None => {
+                        tab.installed = Some(serde_json::json!({"health": "degraded"}));
+                    }
+                    Some(_) => {}
+                }
+            }
             if let Some(visibility) = raw.get("visibility").and_then(serde_json::Value::as_object) {
                 if let Some(visible) = visibility.get("tab").and_then(serde_json::Value::as_bool) { tab.visibility.tab = visible; }
                 if let Some(elements) = visibility.get("elements").and_then(serde_json::Value::as_object) {

@@ -175,7 +175,7 @@ fn app(state: AppState) -> Router {
         .route(CROWN_HTMX_SCRIPT_PATH, get(crown_htmx_script_route))
         .route(CROWN_CHROME_SCRIPT_PATH, get(crown_chrome_script_route))
         .route("/api/tabs", get(tabs_route))
-        .route("/api/tabs/:tab_id/manifest", any(tab_manifest_route))
+        .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
         .route("/api/tabs/:tab_id", any(xenia_proxy_default_route))
         .route("/api/tabs/:tab_id/", any(xenia_proxy_root_route))
         .route("/api/tabs/:tab_id/*path", any(xenia_proxy_path_route))

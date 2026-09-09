@@ -19,10 +19,11 @@ const MAX_HEALTH_BODY: usize = 64 * 1024;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Discovery {
     pub endpoint: Option<String>,
-    pub content_kind: String,
+    pub content_kind: Option<String>,
     pub rung: String,
     pub static_dir: Option<String>,
     pub health: Option<String>,
+    pub fault_signal: Option<String>,
 }
 
 #[derive(Clone)]
@@ -34,7 +35,7 @@ struct HeldDiscovery {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DiscoveryStamp {
     endpoint: Option<String>,
-    content_kind: String,
+    content_kind: Option<String>,
     rung: String,
 }
 
@@ -53,6 +54,14 @@ pub(super) fn invalidate() {
         .lock()
         .unwrap_or_else(|error| error.into_inner())
         .clear();
+}
+
+pub(super) fn health_degraded(tab_id: &str) -> bool {
+    cache()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get(tab_id)
+        .is_some_and(|held| held.result.health.is_some())
 }
 
 fn string_field<'a>(value: &'a serde_json::Value, names: &[&str]) -> Option<&'a str> {
@@ -124,9 +133,6 @@ fn declared_endpoint_text(tab: &CoronatioTabContract) -> Option<&str> {
                 )
             })
         })
-        .or_else(|| {
-            transport.and_then(|value| value.get("endpoint").and_then(serde_json::Value::as_str))
-        })
 }
 
 fn declared_endpoint(tab: &CoronatioTabContract) -> Option<String> {
@@ -135,24 +141,25 @@ fn declared_endpoint(tab: &CoronatioTabContract) -> Option<String> {
 
 fn one_runtime_listener(tab: &CoronatioTabContract) -> Option<String> {
     let listeners = tab.listeners.as_ref()?.as_array()?;
-    let mut loopback = listeners.iter().filter_map(|listener| {
-        (listener
-            .get("loopback")
-            .and_then(serde_json::Value::as_bool)
-            == Some(true))
-        .then(|| {
+    let loopback = listeners
+        .iter()
+        .filter(|listener| {
             listener
-                .get("endpoint")
-                .and_then(serde_json::Value::as_str)
-                .and_then(loopback_endpoint)
+                .get("loopback")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
         })
-        .flatten()
-    });
-    let only = loopback.next()?;
-    loopback.next().is_none().then_some(only)
+        .collect::<Vec<_>>();
+    if loopback.len() != 1 {
+        return None;
+    }
+    loopback[0]
+        .get("endpoint")
+        .and_then(serde_json::Value::as_str)
+        .and_then(loopback_endpoint)
 }
 
-fn content_kind(headers: &hyper::HeaderMap) -> &'static str {
+fn content_kind(headers: &hyper::HeaderMap) -> Option<&'static str> {
     let content_type = headers
         .get(hyper::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
@@ -161,34 +168,68 @@ fn content_kind(headers: &hyper::HeaderMap) -> &'static str {
         .unwrap_or("")
         .to_ascii_lowercase();
     if content_type == "text/event-stream" {
-        "stream"
+        Some("stream")
     } else if content_type == "text/html" || content_type == "application/xhtml+xml" {
-        "html"
-    } else if content_type.starts_with("application/") {
-        "api"
+        Some("html")
+    } else if content_type == "application/json" || content_type.ends_with("+json") {
+        Some("api")
     } else {
-        "none"
+        None
     }
 }
 
-fn client() -> Client<HttpConnector, Full<Bytes>> {
-    let mut connector = HttpConnector::new();
-    connector.enforce_http(true);
-    Client::builder(TokioExecutor::new()).build(connector)
+fn client() -> &'static Client<HttpConnector, Full<Bytes>> {
+    static CLIENT: OnceLock<Client<HttpConnector, Full<Bytes>>> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        let mut connector = HttpConnector::new();
+        connector.enforce_http(true);
+        Client::builder(TokioExecutor::new()).build(connector)
+    })
+}
+
+pub(super) fn validate_proxy_path(path: &str) -> Result<(), &'static str> {
+    if !path.starts_with('/')
+        || path.starts_with("//")
+        || path.contains("//")
+        || path.contains("://")
+        || path.contains(['\r', '\n', '?', '#'])
+        || path.split('/').any(|segment| segment == "..")
+    {
+        return Err("path-invalid");
+    }
+    let relative: HyperUri = path.parse().map_err(|_| "path-invalid")?;
+    if relative.scheme().is_some() || relative.authority().is_some() {
+        return Err("path-invalid");
+    }
+    Ok(())
 }
 
 fn upstream_uri(endpoint: &str, path_and_query: &str) -> Result<HyperUri, &'static str> {
-    let base = url::Url::parse(endpoint).map_err(|_| "endpoint-invalid")?;
-    let joined = base
-        .join(path_and_query.trim_start_matches('/'))
-        .map_err(|_| "path-invalid")?;
     if loopback_endpoint(endpoint).is_none() {
         return Err("endpoint-not-loopback");
     }
-    joined.as_str().parse().map_err(|_| "uri-invalid")
+    let path = path_and_query
+        .split_once('?')
+        .map(|(path, _)| path)
+        .unwrap_or(path_and_query);
+    validate_proxy_path(path)?;
+    let relative: HyperUri = path_and_query.parse().map_err(|_| "path-invalid")?;
+    if relative.scheme().is_some() || relative.authority().is_some() {
+        return Err("path-invalid");
+    }
+    let base: HyperUri = endpoint.parse().map_err(|_| "endpoint-invalid")?;
+    let scheme = base.scheme_str().ok_or("endpoint-invalid")?;
+    let authority = base.authority().ok_or("endpoint-invalid")?.clone();
+    let combined: HyperUri = format!("{scheme}://{authority}{path_and_query}")
+        .parse()
+        .map_err(|_| "uri-invalid")?;
+    if combined.authority() != Some(&authority) {
+        return Err("path-invalid");
+    }
+    Ok(combined)
 }
 
-async fn probe(endpoint: &str, path: &str) -> Result<(String, u16), &'static str> {
+async fn probe(endpoint: &str, path: &str) -> Result<(Option<String>, u16), &'static str> {
     let uri = upstream_uri(endpoint, path)?;
     let request = Request::builder()
         .method("GET")
@@ -201,7 +242,7 @@ async fn probe(endpoint: &str, path: &str) -> Result<(String, u16), &'static str
         .map_err(|_| "probe-timeout")?
         .map_err(|_| "probe-unreachable")?;
     let status = response.status().as_u16();
-    let kind = content_kind(response.headers()).to_string();
+    let kind = content_kind(response.headers()).map(str::to_string);
     if !(200..400).contains(&status) {
         return Err("probe-not-ok");
     }
@@ -318,50 +359,65 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
     };
     let result = if let Some(endpoint) = endpoint {
         match probe(&endpoint, "/").await {
-            Ok((kind, _)) => Discovery {
-                health: probe_health(&endpoint, &health_path)
+            Ok((kind, _)) => {
+                let health = probe_health(&endpoint, &health_path)
                     .await
                     .err()
-                    .map(str::to_string),
-                endpoint: Some(endpoint),
-                content_kind: kind,
-                rung: source_rung.to_string(),
-                static_dir: static_dir.clone(),
-            },
+                    .map(str::to_string);
+                if let Some(signal) = health.as_deref() {
+                    record_cartridge_fault_signal(
+                        &tab.id,
+                        CartridgeFaultKind::UpstreamError,
+                        &format!("health:{signal}"),
+                    );
+                }
+                Discovery {
+                    health,
+                    endpoint: Some(endpoint),
+                    content_kind: kind,
+                    rung: source_rung.to_string(),
+                    static_dir: static_dir.clone(),
+                    fault_signal: None,
+                }
+            }
             Err(_) if static_dir.is_some() => Discovery {
                 endpoint: None,
-                content_kind: "static".to_string(),
+                content_kind: Some("static".to_string()),
                 rung: "static".to_string(),
                 static_dir: static_dir.clone(),
                 health: None,
+                fault_signal: None,
             },
             Err(signal) => Discovery {
                 endpoint: None,
-                content_kind: "none".to_string(),
-                rung: "probe".to_string(),
+                content_kind: None,
+                rung: "none".to_string(),
                 static_dir: None,
-                health: Some(signal.to_string()),
+                health: None,
+                fault_signal: Some(format!("probe:{signal}")),
             },
         }
     } else if let Some(static_dir) = static_dir.clone() {
         Discovery {
             endpoint: None,
-            content_kind: "static".to_string(),
+            content_kind: Some("static".to_string()),
             rung: "static".to_string(),
             static_dir: Some(static_dir),
             health: None,
+            fault_signal: None,
         }
     } else {
         Discovery {
             endpoint: None,
-            content_kind: "none".to_string(),
-            rung: if declared { "declared" } else { "listening" }.to_string(),
+            content_kind: None,
+            rung: "none".to_string(),
             static_dir: None,
-            health: Some(
+            health: None,
+            fault_signal: Some(
                 if declared {
-                    "declared-endpoint-invalid"
+                    "declared:declared-endpoint-invalid"
                 } else {
-                    "loopback-listener-not-singular"
+                    "listening:loopback-listener-not-singular"
                 }
                 .to_string(),
             ),
@@ -453,6 +509,7 @@ pub(super) fn pack_css_offender(css: &[u8]) -> Option<String> {
     fn walk<'i, 't>(
         parser: &mut Parser<'i, 't>,
         offender: &mut Option<String>,
+        depth: usize,
     ) -> Result<(), ParseError<'i, String>> {
         while !parser.is_exhausted() {
             let token = parser.next_including_whitespace_and_comments()?.clone();
@@ -468,7 +525,11 @@ pub(super) fn pack_css_offender(css: &[u8]) -> Option<String> {
                 | Token::ParenthesisBlock
                 | Token::SquareBracketBlock
                 | Token::CurlyBracketBlock => {
-                    parser.parse_nested_block(|nested| walk(nested, offender))?
+                    if depth >= 32 {
+                        *offender = Some("nesting-too-deep".to_string());
+                        return Err(parser.new_custom_error("CSS nesting exceeds 32".to_string()));
+                    }
+                    parser.parse_nested_block(|nested| walk(nested, offender, depth + 1))?
                 }
                 Token::BadString(_)
                 | Token::BadUrl(_)
@@ -484,7 +545,7 @@ pub(super) fn pack_css_offender(css: &[u8]) -> Option<String> {
     }
     let mut input = ParserInput::new(css);
     let mut offender = None;
-    match walk(&mut Parser::new(&mut input), &mut offender) {
+    match walk(&mut Parser::new(&mut input), &mut offender, 0) {
         Ok(()) => None,
         Err(_) => offender.or_else(|| Some("malformed-css".to_string())),
     }
@@ -496,12 +557,27 @@ pub(super) async fn proxy(
     method: Method,
     path_and_query: &str,
     headers: &axum::http::HeaderMap,
-    body: Bytes,
+    mut body: Body,
 ) -> Result<Response, &'static str> {
-    if body.len() > MAX_BODY {
+    let uri = upstream_uri(endpoint, path_and_query)?;
+    if headers
+        .get(hyper::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+        .is_some_and(|length| length > MAX_BODY)
+    {
         return Err("request-body-too-large");
     }
-    let uri = upstream_uri(endpoint, path_and_query)?;
+    let mut request_body = Vec::new();
+    while let Some(frame) = body.frame().await {
+        let frame = frame.map_err(|_| "request-body-read-failed")?;
+        if let Ok(data) = frame.into_data() {
+            if request_body.len().saturating_add(data.len()) > MAX_BODY {
+                return Err("request-body-too-large");
+            }
+            request_body.extend_from_slice(&data);
+        }
+    }
     let mut builder = Request::builder().method(method.as_str()).uri(uri);
     for (name, value) in headers {
         if safe_request_header(name) {
@@ -510,7 +586,7 @@ pub(super) async fn proxy(
     }
     builder = builder.header("x-forwarded-prefix", format!("/api/tabs/{tab_id}"));
     let request = builder
-        .body(Full::new(body))
+        .body(Full::new(Bytes::from(request_body)))
         .map_err(|_| "proxy-request-invalid")?;
     let response = tokio::time::timeout(PROXY_TIMEOUT, client().request(request))
         .await
@@ -518,13 +594,34 @@ pub(super) async fn proxy(
         .map_err(|_| "proxy-unreachable")?;
     let status = response.status();
     let response_kind = content_kind(response.headers());
+    if response
+        .headers()
+        .get(hyper::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+        .is_some_and(|length| length > MAX_BODY)
+        && response_kind != Some("stream")
+    {
+        return Err("response-body-too-large");
+    }
     let mut response_builder = Response::builder().status(status);
     for (name, value) in response.headers() {
-        if !hop_header(name) && !sensitive_response_header(name) {
+        if !hop_header(name)
+            && !sensitive_response_header(name)
+            && name != hyper::header::CACHE_CONTROL
+            && name != hyper::header::CONTENT_SECURITY_POLICY
+        {
             response_builder = response_builder.header(name, value);
         }
     }
-    if response_kind == "stream" {
+    response_builder = response_builder.header(hyper::header::CACHE_CONTROL, "no-store");
+    if response_kind == Some("html") {
+        response_builder = response_builder.header(
+            hyper::header::CONTENT_SECURITY_POLICY,
+            CROWN_CONTENT_SECURITY_POLICY,
+        );
+    }
+    if response_kind == Some("stream") {
         let mut upstream = response.into_body();
         let (sender, receiver) = mpsc::channel::<Bytes>(8);
         tokio::spawn(async move {
@@ -552,14 +649,22 @@ pub(super) async fn proxy(
             .body(Body::from_stream(stream))
             .map_err(|_| "proxy-response-invalid");
     }
-    let mut bytes = tokio::time::timeout(PROXY_TIMEOUT, response.into_body().collect())
-        .await
-        .map_err(|_| "proxy-timeout")?
-        .map_err(|_| "proxy-read-failed")?
-        .to_bytes();
-    if bytes.len() > MAX_BODY {
-        return Err("response-body-too-large");
-    }
+    let mut upstream = response.into_body();
+    let bytes = tokio::time::timeout(PROXY_TIMEOUT, async {
+        let mut body = Vec::new();
+        while let Some(frame) = upstream.frame().await {
+            let frame = frame.map_err(|_| "proxy-read-failed")?;
+            if let Ok(data) = frame.into_data() {
+                if body.len().saturating_add(data.len()) > MAX_BODY {
+                    return Err("response-body-too-large");
+                }
+                body.extend_from_slice(&data);
+            }
+        }
+        Ok::<Bytes, &'static str>(Bytes::from(body))
+    })
+    .await
+    .map_err(|_| "proxy-timeout")??;
     if path_and_query.split('?').next() == Some("/static/pack.css") {
         if let Some(offender) = pack_css_offender(&bytes) {
             record_cartridge_fault_signal(
@@ -579,24 +684,14 @@ pub(super) async fn proxy(
                 [
                     ("content-type", "text/plain; charset=utf-8"),
                     ("x-coronatio-fault", "pack-css-refused"),
+                    ("cache-control", "no-store"),
                 ],
                 format!("PackCssRefused: {offender}\n"),
             )
                 .into_response());
         }
     }
-    if path_and_query.split('?').next() == Some("/fragment") && response_kind == "html" {
-        let source = String::from_utf8(bytes.to_vec()).map_err(|_| "fragment-invalid-utf8")?;
-        let prefix = format!("/api/tabs/{tab_id}");
-        let rewritten = source
-            .replace("\"/events/renew\"", &format!("\"{prefix}/events/renew\""))
-            .replace("\"/events\"", &format!("\"{prefix}/events\""))
-            .replace(
-                "\"/static/pack.css\"",
-                &format!("\"{prefix}/static/pack.css\""),
-            );
-        bytes = Bytes::from(rewritten);
-    }
+
     response_builder
         .body(Body::from(bytes))
         .map_err(|_| "proxy-response-invalid")
