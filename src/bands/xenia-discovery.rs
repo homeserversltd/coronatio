@@ -103,6 +103,10 @@ fn health_path(entry: &serde_json::Value) -> String {
     }
 }
 
+fn fragment_path(entry: &serde_json::Value) -> &str {
+    string_field(entry, &["fragment_path", "fragmentPath"]).unwrap_or("/")
+}
+
 fn loopback_endpoint(raw: &str) -> Option<String> {
     let parsed = url::Url::parse(raw.trim()).ok()?;
     if parsed.scheme() != "http" || parsed.query().is_some() || parsed.fragment().is_some() {
@@ -350,6 +354,7 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
         .unwrap_or_else(|| serde_json::json!({}));
     let static_dir = static_dir(&entry);
     let health_path = health_path(&entry);
+    let fragment_path = fragment_path(&entry);
     let declared = declared_endpoint_text(tab).is_some();
     let source_rung = if declared { "declared" } else { "listening" };
     let endpoint = if declared {
@@ -358,7 +363,7 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
         one_runtime_listener(tab)
     };
     let result = if let Some(endpoint) = endpoint {
-        match probe(&endpoint, "/").await {
+        match probe(&endpoint, fragment_path).await {
             Ok((kind, _)) => {
                 let health = probe_health(&endpoint, &health_path)
                     .await
