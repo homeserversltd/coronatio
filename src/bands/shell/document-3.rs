@@ -809,6 +809,163 @@ fn shell_document_3() -> &'static str {
       while (target.childNodes.length > template.content.childNodes.length) { target.lastChild.remove(); mutated = true; }
       return mutated;
     }
+    const scaffoldRegistry = (() => {
+      const guests = new Map();
+      const bindings = new Map();
+      const inFlight = new Map();
+      const validStates = new Set(['pending', 'ready', 'fault']);
+      function registerGuest(registration) {
+        if (!registration || typeof registration.guest !== 'string' || !registration.root || typeof registration.read !== 'function') return false;
+        guests.set(registration.guest, registration);
+        return true;
+      }
+      function rootFor(registration) {
+        return typeof registration.root === 'function' ? registration.root() : document.querySelector(registration.root);
+      }
+      function stateFor(slot) {
+        return validStates.has(slot.dataset.scaffoldState) ? slot.dataset.scaffoldState : 'pending';
+      }
+      function removeStatus(slot) {
+        slot.querySelector('[data-scaffold-status]')?.remove();
+        slot.removeAttribute('aria-invalid');
+        slot.removeAttribute('data-scaffold-error');
+      }
+      function setPending(slot, key) {
+        if (stateFor(slot) === 'ready') return;
+        removeStatus(slot);
+        slot.dataset.scaffoldState = 'pending';
+        slot.dataset.scaffoldPending = 'true';
+        slot.setAttribute('aria-busy', 'true');
+        if (!slot.hasAttribute('aria-label')) slot.setAttribute('aria-label', 'Loading ' + (slot.dataset.scaffoldPlaceholder || key || 'content'));
+      }
+      function setReady(slot) {
+        removeStatus(slot);
+        slot.dataset.scaffoldState = 'ready';
+        delete slot.dataset.scaffoldPending;
+        slot.setAttribute('aria-busy', 'false');
+      }
+      function setFault(slot, guest, detail) {
+        const message = detail || 'Content unavailable';
+        slot.dataset.scaffoldState = 'fault';
+        delete slot.dataset.scaffoldPending;
+        slot.setAttribute('aria-busy', 'false');
+        slot.setAttribute('aria-invalid', 'true');
+        slot.dataset.scaffoldError = message;
+        let status = slot.querySelector('[data-scaffold-status]');
+        if (!status) {
+          status = document.createElement('div');
+          status.dataset.scaffoldStatus = 'fault';
+          status.className = 'scaffold-slot-fault';
+          status.setAttribute('role', 'alert');
+          slot.appendChild(status);
+        }
+        status.textContent = '';
+        const text = document.createElement('span');
+        text.textContent = message + '. ';
+        status.appendChild(text);
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'scaffold-slot-retry';
+        retry.dataset.scaffoldRetry = guest;
+        retry.textContent = 'Retry';
+        status.appendChild(retry);
+      }
+      function slotsFor(binding) {
+        return [...binding.root.querySelectorAll('[data-scaffold-slot]')];
+      }
+      function bind(guest) {
+        const registration = guests.get(guest);
+        if (!registration) return false;
+        const root = rootFor(registration);
+        if (!(root instanceof Element)) return false;
+        const binding = { guest, registration, root, slots: [] };
+        binding.slots = slotsFor(binding);
+        binding.slots.forEach(slot => {
+          if (!validStates.has(slot.dataset.scaffoldState)) setPending(slot, slot.dataset.scaffoldKey || slot.dataset.scaffoldSlot);
+          else if (stateFor(slot) === 'fault') setFault(slot, guest, slot.dataset.scaffoldError || 'Content unavailable');
+          else if (stateFor(slot) === 'pending') setPending(slot, slot.dataset.scaffoldKey || slot.dataset.scaffoldSlot);
+          else setReady(slot);
+        });
+        bindings.set(guest, binding);
+        return true;
+      }
+      function faultSlot(binding, slot, detail) {
+        if (bindings.get(binding.guest) !== binding || !binding.root.contains(slot)) return;
+        setFault(slot, binding.guest, detail);
+      }
+      function fill(guest, payload) {
+        const binding = bindings.get(guest);
+        if (!binding) return false;
+        binding.slots = slotsFor(binding);
+        binding.slots.forEach(slot => {
+          const key = slot.dataset.scaffoldKey || slot.dataset.scaffoldSlot;
+          const fillerName = slot.dataset.scaffoldFill || key;
+          const filler = binding.registration.fillers?.[fillerName];
+          if (!filler || typeof filler.present !== 'function' || typeof filler.fill !== 'function') {
+            faultSlot(binding, slot, 'This slot is not configured');
+            return;
+          }
+          let present = false;
+          try { present = Boolean(filler.present(payload)); }
+          catch (error) { faultSlot(binding, slot, error?.message || 'Slot data is invalid'); return; }
+          if (!present) {
+            if (stateFor(slot) !== 'ready') setPending(slot, key);
+            return;
+          }
+          try { filler.fill(payload, { guest, key, slot }); setReady(slot); }
+          catch (error) { faultSlot(binding, slot, error?.message || 'Slot render failed'); }
+        });
+        return true;
+      }
+      function fault(guest, detail = 'Content unavailable', selectedSlots = null) {
+        const binding = bindings.get(guest);
+        if (!binding) return false;
+        const slots = Array.isArray(selectedSlots) ? selectedSlots : binding.slots;
+        slots.forEach(slot => faultSlot(binding, slot, detail?.message || String(detail)));
+        return true;
+      }
+      function read(guest, options = {}) {
+        const binding = bindings.get(guest);
+        if (!binding) return Promise.resolve(false);
+        const existing = inFlight.get(guest);
+        if (existing) return existing.promise;
+        const controller = new AbortController();
+        const upstream = options.signal;
+        const relayAbort = () => controller.abort();
+        if (upstream) {
+          if (upstream.aborted) controller.abort();
+          else upstream.addEventListener('abort', relayAbort, { once: true });
+        }
+        binding.slots.forEach(slot => { if (stateFor(slot) !== 'ready') setPending(slot, slot.dataset.scaffoldKey || slot.dataset.scaffoldSlot); });
+        const promise = Promise.resolve()
+          .then(() => binding.registration.read({ signal: controller.signal, guest, root: binding.root }))
+          .then(payload => { fill(guest, payload); return true; })
+          .catch(error => { fault(guest, error?.name === 'AbortError' ? 'Read aborted' : (error?.message || 'Read failed')); return false; })
+          .finally(() => {
+            inFlight.delete(guest);
+            if (upstream) upstream.removeEventListener('abort', relayAbort);
+          });
+        inFlight.set(guest, { promise, controller });
+        return promise;
+      }
+      function rebind(guest) {
+        return bind(guest);
+      }
+      function retire(guest) {
+        inFlight.get(guest)?.controller.abort();
+        inFlight.delete(guest);
+        bindings.delete(guest);
+        return true;
+      }
+      document.addEventListener('click', event => {
+        const retry = event.target.closest?.('[data-scaffold-retry]');
+        if (!retry) return;
+        event.preventDefault();
+        read(retry.dataset.scaffoldRetry).catch(() => {});
+      });
+      return Object.freeze({ registerGuest, bind, read, fill, fault, rebind, retire });
+    })();
+    window.scaffoldRegistry = scaffoldRegistry;
     const elementsChangedConsumers = new Map();
     function consumeElementsChanged({ paneId, route, target, afterReplace = () => {} }) {
       const pull = async () => {
@@ -931,6 +1088,7 @@ fn shell_document_3() -> &'static str {
       }
       function emptySlot() {
         closeViewportStreamFamily();
+        if (activeGuest) scaffoldRegistry.retire(activeGuest);
         panes.forEach(pane => {
           pane.classList.remove('active', 'immortal-floor-enter');
           pane.setAttribute('aria-hidden', 'true');
@@ -991,7 +1149,9 @@ fn shell_document_3() -> &'static str {
           adminDocumentPatchPendingHydration = false;
           window.htmx.process(pane);
         }
+        if (activeGuest && activeGuest !== id) scaffoldRegistry.retire(activeGuest);
         activeGuest = id; crossingGuest = null; expose('Seated', detail); applyAdminDomState(); applyTabBarVisibility();
+        scaffoldRegistry.bind(id);
         reconcileViewportStreamFamily();
         return true;
       }

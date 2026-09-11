@@ -60,7 +60,7 @@ fn shell_document_2() -> &'static str {
         </article>
       </section>
       <section class="pane active" id="pane-stats" data-pane-panel="stats" data-view-panel="stats" role="tabpanel" aria-label="Stats">
-        <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
+        <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one" data-scaffold-root data-guest-id="stats" data-scaffold-version="1">
           __STATS_ELEMENTS_FRAGMENT__
         </div>
       </section>

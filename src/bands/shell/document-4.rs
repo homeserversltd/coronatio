@@ -508,16 +508,47 @@ fn shell_document_4() -> &'static str {
       } catch (_) { /* sparse history is truthful when Caduceus has no samples */ }
     }
     const statsPullTimeoutMs = 8000;
-    async function hydrateStats() {
-      if (statsHydrationInFlight) { console.warn('[coronatio] stats tick dropped: a stats pull is still in flight'); return; }
-      statsHydrationInFlight = true;
+    const statsScaffoldFillers = Object.freeze({
+      'stats.cpu': { present: data => Boolean(data?.resources?.load), fill: data => renderCpuChart(data) },
+      'stats.network': { present: data => Boolean(data?.network), fill: data => renderNetwork(data) },
+      'stats.io': { present: data => Boolean(data?.io), fill: data => renderDiskIo(data) },
+      'stats.memory': { present: data => Boolean(data?.resources?.memory), fill: data => renderMemory(data) },
+      'stats.storage': { present: data => data?.storage !== undefined && data?.storage !== null, fill: data => renderDiskUsage(data) },
+      'stats.kea-leases': { present: data => Boolean(data?.keaLeases), fill: data => renderStatsRoster(data) },
+      'stats.processes': { present: data => Boolean(data?.processes), fill: data => renderProcesses(data) }
+    });
+    async function readBundledStats({ signal }) {
       const pullAbort = new AbortController();
+      const relayAbort = () => pullAbort.abort();
+      if (signal) {
+        if (signal.aborted) pullAbort.abort();
+        else signal.addEventListener('abort', relayAbort, { once: true });
+      }
       const pullTimer = window.setTimeout(() => pullAbort.abort(), statsPullTimeoutMs);
       try {
         if (!statsChartState.lastStamp) await hydrateStatsHistory(pullAbort.signal);
-        const statsResponse = await fetch('/api/stats', { cache: 'no-store', signal: pullAbort.signal }); if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`); const data = await statsResponse.json(), label = formatChartTime(), roster = identityRows(data.keaLeases?.entries); identityState.roster = roster; identityState.notes = Object.fromEntries(roster.map(row => [canonicalNetworkNoteMac(row.mac), row.note ?? '']).filter(([mac]) => mac)); pushChartPoint(label, data); if (data.resources?.load) renderCpuChart(data); if (data.network) renderNetwork(data); if (data.io) renderDiskIo(data); if (data.resources?.memory) renderMemory(data); if (data.storage) renderDiskUsage(data); if (data.keaLeases) renderStatsRoster(); if (data.processes) renderProcesses(data);
-      } catch (error) { if (error?.name === 'AbortError') console.warn('[coronatio] stats pull aborted after ' + statsPullTimeoutMs + 'ms; next tick pulls again'); /* OG has no Stats-family error face; retain the last truthful frame. */ }
-      finally { window.clearTimeout(pullTimer); statsHydrationInFlight = false; }
+        const statsResponse = await fetch('/api/stats', { cache: 'no-store', signal: pullAbort.signal });
+        if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
+        const data = await statsResponse.json();
+        const label = formatChartTime();
+        const roster = identityRows(data.keaLeases?.entries);
+        identityState.roster = roster;
+        identityState.notes = Object.fromEntries(roster.map(row => [canonicalNetworkNoteMac(row.mac), row.note ?? '']).filter(([mac]) => mac));
+        pushChartPoint(label, data);
+        return data;
+      } finally {
+        window.clearTimeout(pullTimer);
+        if (signal) signal.removeEventListener('abort', relayAbort);
+      }
+    }
+    scaffoldRegistry.registerGuest({
+      guest: 'stats',
+      root: '[data-scaffold-root][data-guest-id="stats"]',
+      read: readBundledStats,
+      fillers: statsScaffoldFillers
+    });
+    async function hydrateStats() {
+      return scaffoldRegistry.read('stats');
     }
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -667,7 +698,7 @@ fn shell_document_4() -> &'static str {
       paneId: 'stats',
       route: '/api/stats/elements',
       target: () => document.querySelector('[data-stats-viewport]'),
-      afterReplace: () => hydrateStats()
+      afterReplace: () => { scaffoldRegistry.rebind('stats'); hydrateStats(); }
     });
     function refreshElementFragment(tabId) {
       return ({ portals: portalElementsChanged, stats: statsElementsChanged })[tabId]?.();
@@ -692,7 +723,7 @@ fn shell_document_4() -> &'static str {
         const changed = morphLivePane(target, html);
         if (changed) {
           if (tabId === 'portals') bindPortalFragmentControls(target);
-          if (tabId === 'stats') hydrateStats();
+          if (tabId === 'stats') { scaffoldRegistry.rebind('stats'); hydrateStats(); }
           applyAdminDomState();
         }
       } catch (_) {
