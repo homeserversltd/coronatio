@@ -1088,6 +1088,7 @@ fn shell_document_3() -> &'static str {
         if (!active || active.dataset.visibility === 'hidden') showPane(firstVisibleTab());
       }));
     }
+    reconcileAdmittedPaneHosts();
     bindTabControls();
     document.querySelector('[data-crown-headless-reload]')?.addEventListener('click', () => window.location.reload());
     document.addEventListener('visibilitychange', reconcileViewportStreamFamily); async function fetchInto(route, target, method = 'GET') {
