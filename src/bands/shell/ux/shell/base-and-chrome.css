@@ -267,6 +267,7 @@
     [data-immortal-floor-state="BareFloor"] .immortal-floor-loader { animation: none; }
     .pane { display: none; width: 100%; max-width: none; margin: 0; opacity: 0; transform: translateY(6px); }
     [data-immortal-floor-state="Seated"] .pane.active { display: block; opacity: 1; transform: translateY(0); }
+    [data-admitted-pane-host="true"] > section.pane { display: block; opacity: 1; transform: none; }
     .pane.immortal-floor-enter { transition-property: opacity, transform; transition-duration: var(--theme-transition-normal); transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
     @media (prefers-reduced-motion: reduce) {
       .immortal-floor-admission-frame, .pane.immortal-floor-enter { transition-duration: 1ms; }
