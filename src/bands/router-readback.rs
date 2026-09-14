@@ -28,9 +28,6 @@ async fn installer_route() -> impl IntoResponse {
 
 async fn route_boundary_fallback(method: Method, uri: Uri) -> impl IntoResponse {
     let normalized = uri.path().to_string();
-    if normalized == "/cartridge" || normalized.starts_with("/cartridge/") {
-        return StatusCode::NOT_FOUND.into_response();
-    }
     if normalized.starts_with("/api/") {
         return (
             StatusCode::NOT_FOUND,
