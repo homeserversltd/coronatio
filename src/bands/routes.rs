@@ -335,22 +335,7 @@ async fn cartridges_read_proxy_route() -> Response {
     cartridge_proxy_response(readback)
 }
 
-async fn cartridges_admit_proxy_route(headers: axum::http::HeaderMap, Json(mut request): Json<CartridgeMutationRequest>) -> Response {
-    if request.id == "my-devices" {
-        // Origin is subsequently checked by the existing attended authority.
-        // Store the crown origin, never a worker endpoint or a staff address.
-        let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok())
-            .and_then(|v| url::Url::parse(v).ok())
-            .filter(|v| matches!(v.scheme(), "http" | "https"));
-        let Some(origin) = origin else {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "firstMissingSignal": "cartridge-origin-unavailable"}))).into_response();
-        };
-        request.id = "my-devices".into();
-        request.title = "My Devices".into();
-        request.url = format!("{}{}", origin.origin().ascii_serialization(), my_devices_proxy::PATH);
-        request.guest_class = "iframe".into();
-        request.admin_only = false;
-    }
+async fn cartridges_admit_proxy_route(headers: axum::http::HeaderMap, Json(request): Json<CartridgeMutationRequest>) -> Response {
     cartridge_mutation_proxy_response(headers, "/api/v1/cartridges/admit", request, true)
 }
 

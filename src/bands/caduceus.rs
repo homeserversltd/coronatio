@@ -300,16 +300,6 @@ fn caduceus_socket_path() -> std::path::PathBuf {
 
 fn caduceus_transport_readback() -> &'static str { "caduceus-uds" }
 
-// Async GET on the same local staff transport for process-isolated collectors.
-// One total deadline covers connect, write and read; cancellation closes the UDS.
-async fn caduceus_get_bounded(path: &str, timeout: Duration) -> Result<cartridge_http::Reply, cartridge_http::Failure> {
-    tokio::time::timeout(timeout, async {
-        let stream = tokio::net::UnixStream::connect(caduceus_socket_path()).await
-            .map_err(|_| cartridge_http::Failure::new("connect-failed"))?;
-        cartridge_http::exchange(stream, "caduceus.local", path, timeout).await
-    }).await.unwrap_or_else(|_| Err(cartridge_http::Failure::new("timeout")))
-}
-
 fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
     caduceus_http_with_attendance(method, path, None)
 }

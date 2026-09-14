@@ -217,7 +217,7 @@ fn shell_document_2() -> &'static str {
       <div class="modal-content">
         <p>Loadable cartridges are the extension lane.</p>
         <form class="portal-form" data-cartridge-add-form>
-          <div class="form-group"><label for="cartridge-choice">Cartridge</label><select id="cartridge-choice" name="cartridgeChoice"><option value="custom">Custom cartridge</option><option value="my-devices">My Devices — gateway and staff</option></select></div>
+          <div class="form-group"><label for="cartridge-choice">Cartridge</label><select id="cartridge-choice" name="cartridgeChoice"><option value="custom">Custom cartridge</option></select></div>
           <div class="form-group"><label for="cartridge-title">Title *</label><input id="cartridge-title" name="title" type="text" required maxlength="80" placeholder="e.g., Jellyfin"></div>
           <div class="form-group"><label for="cartridge-url">URL *</label><input id="cartridge-url" name="url" type="url" required placeholder="http://jellyfin.home.arpa:8096"></div>
           <div class="form-group"><label><input name="adminOnly" type="checkbox"> Admin only</label></div>

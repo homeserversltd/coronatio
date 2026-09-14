@@ -12,6 +12,5 @@ async fn shutdown_signal() {
         _ = tokio::signal::ctrl_c() => {},
         _ = terminate.recv() => {},
     }
-    my_devices_proxy::stop().await;
 }
 

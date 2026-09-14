@@ -28,12 +28,6 @@ use tower_http::services::ServeDir;
 static CADUCEUS_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 include!("bands/contracts.rs");
-#[path = "bands/cartridge-http.rs"]
-mod cartridge_http;
-#[path = "bands/my-devices-proxy.rs"]
-mod my_devices_proxy;
-#[path = "bands/my-devices-worker.rs"]
-mod my_devices_worker;
 #[path = "bands/xenia-discovery.rs"]
 mod xenia_discovery;
 include!("bands/runtime.rs");

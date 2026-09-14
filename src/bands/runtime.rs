@@ -68,14 +68,6 @@ where
 
 #[tokio::main]
 async fn main() {
-    // Worker mode exits before crown tracing, door preloads, ticker and router.
-    if env::args().nth(1).as_deref() == Some("--my-devices-worker") {
-        if let Err(signal) = my_devices_worker::run().await {
-            eprintln!("{signal}");
-            std::process::exit(1);
-        }
-        return;
-    }
     let filter = tracing_subscriber::EnvFilter::builder()
         .with_default_directive(tracing_subscriber::filter::LevelFilter::INFO.into())
         .from_env_lossy();
@@ -110,7 +102,6 @@ fn app(state: AppState) -> Router {
     Router::new()
         .route("/", get(crown_shell_route))
         .route("/health", get(health_route))
-        .route(my_devices_proxy::PATH, get(my_devices_proxy::proxy))
         .route("/api", get(api_root_route))
         .route("/api/panes", get(panes_route))
         .route("/api/panes/:pane_id", get(pane_route))
