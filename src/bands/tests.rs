@@ -54,6 +54,7 @@ mod tests {
     include!("tests/dhcp-pane-walls.rs");
     include!("tests/firewall-walls.rs");
     include!("tests/unbound-dns-walls.rs");
+    include!("tests/door-resolver-retirement-walls.rs");
     include!("tests/device-note-projection-walls.rs");
 
     // Legacy ticket/capability authority tests were retired with Slice D.

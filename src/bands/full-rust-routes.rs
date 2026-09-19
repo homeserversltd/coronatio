@@ -246,7 +246,6 @@ async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multip
     let mut filename = "upload.bin".to_string();
     let mut destination = "/mnt/nas".to_string();
     let mut payload = Vec::new();
-    let mut content_type = "application/octet-stream".to_string();
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
@@ -258,7 +257,6 @@ async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multip
         }
         if name == "file" {
             if let Some(raw_name) = field.file_name() { filename = raw_name.to_string(); }
-            if let Some(raw_type) = field.content_type() { content_type = raw_type.to_string(); }
             match field.bytes().await {
                 Ok(data) => payload = data.to_vec(),
                 Err(err) => {
@@ -301,19 +299,13 @@ async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multip
     }
     let byte_count = payload.len();
 
-    let caduceus = caduceus_staff_transition(
+    let caduceus = route_translation_debt(
         &mutation_authority(),
         &headers,
         "POST",
         "/api/files/upload",
-        "file-ingress",
-        serde_json::json!({
-            "filename": filename,
-            "bytes": byte_count,
-            "contentType": content_type,
-            "destination": destination,
-            "payload": payload
-        }),
+        Some("/api/v1/file/ingress"),
+        Some("/api/v1/portals/deploy"),
     );
     (
         if caduceus.ok { StatusCode::OK } else { mutation_response_status(&caduceus) },
@@ -545,13 +537,13 @@ include!("full-rust-routes/network-notes.rs");
 include!("full-rust-routes/power.rs");
 
 fn homeserver_mutation_response(headers: &axum::http::HeaderMap, method: &str, path: &str) -> Response {
-    let caduceus = caduceus_staff_transition(
+    let caduceus = route_translation_debt(
         &mutation_authority(),
-        &headers,
+        headers,
         method,
         path,
-        homeserver_route_family(path),
-        serde_json::json!({}),
+        None,
+        None,
     );
     (
         if caduceus.ok { StatusCode::ACCEPTED } else { mutation_response_status(&caduceus) },

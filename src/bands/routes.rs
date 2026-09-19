@@ -290,47 +290,53 @@ fn cartridge_proxy_response(readback: CaduceusHttpReadback) -> Response {
     (status, Json(serde_json::json!({"ok": readback.ok, "cartridges": readback.body, "firstMissingSignal": readback.first_missing_signal}))).into_response()
 }
 
+#[derive(Clone, Debug)]
+struct CartridgeResolvedRoute {
+    method: String,
+    path: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CartridgeRouteFailure {
+    Unmapped,
+    Unavailable,
+}
+
 // Compatibility is deliberately confined to the already-live cartridge lane.
-// A route advertisement supplies reachability, never attendance or admin rights.
-fn resolve_cartridge_door(method: &str, route: &str) -> Result<ResolvedCaduceusDoor, CaduceusDoorResolutionFailure> {
+// A flat route advertisement supplies reachability, never attendance or admin rights.
+fn resolve_cartridge_door(method: &str, route: &str) -> Result<CartridgeResolvedRoute, CartridgeRouteFailure> {
     let advertised = match (method, route) {
         ("GET", "/api/v1/cartridges") => "/api/v1/cartridges/list",
         ("POST", "/api/v1/cartridges/admit") => "/api/v1/cartridges/admit",
         ("POST", "/api/v1/cartridges/remove") => "/api/v1/cartridges/remove",
-        _ => return Err(CaduceusDoorResolutionFailure::Unmapped),
+        _ => return Err(CartridgeRouteFailure::Unmapped),
     };
     let readback = caduceus_http("GET", "/api/v1/doors");
     if !readback.ok {
-        return Err(CaduceusDoorResolutionFailure::Unavailable);
+        return Err(CartridgeRouteFailure::Unavailable);
     }
-    if let Some(routes) = readback.body.get("routes").and_then(|v| v.as_array()) {
-        if !matches!(readback.body.get("schema").and_then(|v| v.as_str()),
-            Some("caduceus.doors.v1" | "caduceus.doors.readback.v1")) {
-            return Err(CaduceusDoorResolutionFailure::Unavailable);
-        }
-        if !routes.iter().any(|v| v.as_str() == Some(advertised)) {
-            return Err(CaduceusDoorResolutionFailure::Unmapped);
-        }
-        return Ok(ResolvedCaduceusDoor {
-            method: method.to_string(),
-            // The list advertisement names the capability; the existing GET
-            // consumer remains on /api/v1/cartridges, not a new transport lane.
-            path: route.to_string(),
-            // Not consulted for authorization: the mutation caller retains its
-            // existing session, Origin, attendance, document and scope checks.
-            posture: String::new(),
-        });
+    if readback.body.get("schema").and_then(|value| value.as_str()) != Some("caduceus.doors.readback.v1") {
+        return Err(CartridgeRouteFailure::Unavailable);
     }
-    // Preserve compatibility with the original nested seat/typed-door producer.
-    resolve_caduceus_door(method, route)
+    let Some(routes) = readback.body.get("routes").and_then(|value| value.as_array()) else {
+        return Err(CartridgeRouteFailure::Unavailable);
+    };
+    if !routes.iter().any(|value| value.as_str() == Some(advertised)) {
+        return Err(CartridgeRouteFailure::Unmapped);
+    }
+    Ok(CartridgeResolvedRoute {
+        method: method.to_string(),
+        // Preserve the public GET transport after checking the current list advertisement.
+        path: route.to_string(),
+    })
 }
 
 async fn cartridges_read_proxy_route() -> Response {
     let route = "/api/v1/cartridges";
     let readback = match resolve_cartridge_door("GET", route) {
         Ok(door) => caduceus_http(&door.method, &door.path),
-        Err(CaduceusDoorResolutionFailure::Unmapped) => mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
-        Err(CaduceusDoorResolutionFailure::Unavailable) => mutation_refusal_readback(route, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 }),
+        Err(CartridgeRouteFailure::Unmapped) => mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
+        Err(CartridgeRouteFailure::Unavailable) => mutation_refusal_readback(route, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 }),
     };
     cartridge_proxy_response(readback)
 }
@@ -360,10 +366,24 @@ fn cartridge_mutation_proxy_response(headers: axum::http::HeaderMap, route: &str
         body["guest_class"] = serde_json::json!("iframe");
         body["admin_only"] = serde_json::json!(request.admin_only);
     }
-    let readback = caduceus_staff_transition_with_mapping(
-        &mutation_authority(), &headers,
-        MutationActionTarget::caduceus(if admitting { "coronatio.cartridges.admit" } else { "coronatio.cartridges.remove" }, route),
-        "POST", route, "loadable-cartridge", body,
+    let target = MutationActionTarget::caduceus(if admitting { "coronatio.cartridges.admit" } else { "coronatio.cartridges.remove" }, route);
+    let context = target.request_context(&headers);
+    let authority = mutation_authority();
+    let attendance = match authority.authorize(&context, target) {
+        Ok(attendance) => attendance,
+        Err(refusal) => return cartridge_proxy_response(mutation_refusal_readback(route, refusal)),
+    };
+    let door = match resolve_cartridge_door("POST", route) {
+        Ok(door) => door,
+        Err(CartridgeRouteFailure::Unmapped) => return cartridge_proxy_response(mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 })),
+        Err(CartridgeRouteFailure::Unavailable) => return cartridge_proxy_response(mutation_refusal_readback(route, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 })),
+    };
+    let readback = caduceus_http_json_with_attendance_and_document(
+        &door.method,
+        &door.path,
+        body,
+        Some(&attendance.proof),
+        Some(&attendance.document),
     );
     cartridge_proxy_response(readback)
 }

@@ -48,22 +48,10 @@ fn dns_intent(headers: &axum::http::HeaderMap, path: &str, intent: serde_json::V
 
 async fn dns_caduceus_read_route(uri: axum::http::Uri) -> Response {
     let path = uri.path();
-    let readback = match resolve_caduceus_door("GET", path) {
-        Ok(door) => caduceus_http(&door.method, &door.path),
-        Err(CaduceusDoorResolutionFailure::Unmapped) => mutation_refusal_readback(
-            path,
-            MutationRefusal {
-                code: "coronatio-caduceus-door-unmapped".to_string(),
-                status: 0,
-            },
-        ),
-        Err(CaduceusDoorResolutionFailure::Unavailable) => mutation_refusal_readback(
-            path,
-            MutationRefusal {
-                code: "caduceus-doors-unavailable".to_string(),
-                status: 0,
-            },
-        ),
+    let readback = if path == "/api/v1/network/dns/read" {
+        caduceus_http("GET", "/api/v1/network/dns/read")
+    } else {
+        translation_debt_readback("GET", path, Some(path), None)
     };
     dns_response(path, readback)
 }
@@ -71,16 +59,16 @@ async fn dns_caduceus_read_route(uri: axum::http::Uri) -> Response {
 async fn dns_caduceus_mutation_route(
     headers: axum::http::HeaderMap,
     uri: axum::http::Uri,
-    payload: Option<Json<serde_json::Value>>,
+    _payload: Option<Json<serde_json::Value>>,
 ) -> Response {
     let path = uri.path();
-    let readback = caduceus_staff_transition(
+    let readback = route_translation_debt(
         &mutation_authority(),
         &headers,
         "POST",
         path,
-        "network-control",
-        payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({})),
+        Some(path),
+        None,
     );
     dns_response(path, readback)
 }

@@ -14,11 +14,22 @@ fn dhcp_guest_refusal(path: &str) -> Response {
 }
 
 fn dhcp_readback(_headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpReadback {
-    match resolve_caduceus_door("GET", path) {
-        Ok(door) => caduceus_http(&door.method, &door.path),
-        Err(CaduceusDoorResolutionFailure::Unmapped) => mutation_refusal_readback(path, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
-        Err(CaduceusDoorResolutionFailure::Unavailable) => mutation_refusal_readback(path, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 }),
-    }
+    let Some(target) = (match path {
+        "/api/dhcp/status" => Some("/api/v1/network/dhcp/status"),
+        "/api/dhcp/leases" => Some("/api/v1/network/dhcp/leases"),
+        "/api/dhcp/health" => Some("/api/v1/network/dhcp/health"),
+        "/api/dhcp/statistics" => Some("/api/v1/network/dhcp/statistics"),
+        "/api/dhcp/pool-boundary" => Some("/api/v1/network/dhcp/boundary"),
+        _ => None,
+    }) else {
+        let historical_target = match path {
+            "/api/dhcp/reservations" => Some("/api/v1/network/dhcp/reservations"),
+            "/api/dhcp/config" => Some("/api/v1/network/dhcp"),
+            _ => None,
+        };
+        return translation_debt_readback("GET", path, historical_target, None);
+    };
+    caduceus_http("GET", target)
 }
 
 fn strip_dhcp_identity(value: &serde_json::Value) -> serde_json::Value {
@@ -97,15 +108,24 @@ fn dhcp_mutation_response(
     headers: &axum::http::HeaderMap,
     method: &str,
     path: &str,
-    metadata: serde_json::Value,
+    _metadata: serde_json::Value,
 ) -> Response {
-    let readback = caduceus_staff_transition(
+    let historical_target = if method == "POST" && path == "/api/dhcp/reservations" {
+        Some("/api/v1/network/dhcp/reservations")
+    } else if matches!(method, "PUT" | "DELETE") && path.starts_with("/api/dhcp/reservations/") {
+        Some("/api/v1/network/dhcp/reservations/:reservation_id")
+    } else if method == "POST" && path == "/api/dhcp/pool-boundary" {
+        Some("/api/v1/network/dhcp/pool-boundary")
+    } else {
+        None
+    };
+    let readback = route_translation_debt(
         &mutation_authority(),
-        &headers,
+        headers,
         method,
         path,
-        "network-control",
-        metadata,
+        historical_target,
+        None,
     );
     dhcp_mutation_result_response(method, path, readback)
 }

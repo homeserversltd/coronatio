@@ -390,19 +390,14 @@ fn upload_pin_required_update(headers: &axum::http::HeaderMap, body: serde_json:
     (if caduceus.ok { StatusCode::OK } else { mutation_response_status(&caduceus) }, Json(serde_json::json!({"ok":caduceus.ok,"isPinRequired":required,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
 }
 
-fn upload_force_permissions_destination(body: &serde_json::Value) -> &str {
-    body.get("directory").or_else(|| body.get("path")).or_else(|| body.get("destination")).and_then(serde_json::Value::as_str).unwrap_or("/mnt/nas")
-}
-
-fn upload_force_permissions(headers: &axum::http::HeaderMap, body: serde_json::Value) -> Response {
-    let destination = upload_force_permissions_destination(&body);
-    let caduceus = caduceus_staff_transition(
+fn upload_force_permissions(headers: &axum::http::HeaderMap, _body: serde_json::Value) -> Response {
+    let caduceus = route_translation_debt(
         &mutation_authority(),
-        &headers,
+        headers,
         "POST",
         "/api/upload/force-permissions",
-        "force-permissions",
-        serde_json::json!({"destination": destination}),
+        Some("/api/v1/upload/force-permissions"),
+        Some("/api/v1/portals/deploy"),
     );
     (if caduceus.ok { StatusCode::OK } else { mutation_response_status(&caduceus) }, Json(serde_json::json!({"success":caduceus.ok,"message":if caduceus.ok { "Permissions updated successfully" } else { "Permissions update failed" },"ok":caduceus.ok,"caduceus":caduceus,"firstMissingSignal":if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }}))).into_response()
 }

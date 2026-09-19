@@ -675,17 +675,6 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
     }
 }
 
-fn admin_caduceus_staff_transition(headers: &axum::http::HeaderMap, method: &str, path: &str, classification: &str) -> CaduceusHttpReadback {
-    caduceus_staff_transition(
-        &mutation_authority(),
-        &headers,
-        method,
-        path,
-        classification,
-        serde_json::json!({}),
-    )
-}
-
 const ADMIN_LOG_PAGE_LIMIT: usize = 100;
 
 fn admin_log_pagination(uri: &Uri) -> (usize, usize) {
@@ -739,7 +728,7 @@ async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> 
 
 async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
     let (_, limit) = admin_log_pagination(&uri);
-    let clear = admin_fragment_caduceus_staff_transition(&headers, "POST", "/api/v1/log/clear", "admin-log-clear");
+    let clear = admin_fragment_caduceus_json_request(&headers, "POST", "/api/v1/log/clear", serde_json::json!({}));
     if !clear.ok {
         log_admin_action_admission(&headers, "/admit/admin/action/view-logs-clear", &clear, StatusCode::OK);
         return admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&clear, 0, limit, None));
@@ -765,7 +754,7 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
             admin_membrane_refusal_fragment("unknown admin toggle", "unknown-admin-toggle"),
         );
     };
-    let readback = admin_fragment_caduceus_staff_transition(&headers, "POST", path, "admin-service-toggle");
+    let readback = admin_fragment_translation_debt(&headers, "POST", path);
     let status_readback = admin_service_status_target(&toggle_id)
         .map(|status_path| admin_fragment_caduceus_request(&headers, "POST", status_path))
         .unwrap_or_else(|| mutation_refusal_readback(path, MutationRefusal { code: "unknown-admin-toggle".to_string(), status: 404 }));
@@ -818,7 +807,7 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
     let readback = if action_id == "update" {
         caduceus_mutation_readback(&headers, path, "update now", "local")
     } else if mutation {
-        admin_fragment_caduceus_staff_transition(&headers, method, path, homeserver_route_family(path))
+        admin_fragment_translation_debt(&headers, method, path)
     } else {
         admin_fragment_caduceus_request(&headers, method, path)
     };

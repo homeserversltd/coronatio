@@ -1,0 +1,138 @@
+id,method,public_path,resolver_path,source,disposition,historical_target,direct_target,candidate_note
+R001,POST,/admit/admin/action/hard-drive-test,/api/admin/hard-drive-test/start,src/bands/caduceus.rs,translation-debt,/api/admin/hard-drive-test/start,,candidate-only: current storage/disk family (/api/v1/storage/disk/...) is plausible; no target selected
+R002,POST,/admit/admin/action/restart,/api/admin/system/restart,src/bands/caduceus.rs,translation-debt,/api/admin/system/restart,,none
+R003,POST,/admit/admin/action/restart-website,/api/admin/services/hard-reset,src/bands/caduceus.rs,translation-debt,/api/admin/services/hard-reset,,none
+R004,POST,/admit/admin/action/rotate-capability-key,/usr/local/sbin/caduceus-keyman-rotate-capability,src/bands/caduceus.rs,translation-debt,,,none
+R005,POST,/admit/admin/action/shutdown,/api/admin/system/shutdown,src/bands/caduceus.rs,translation-debt,/api/admin/system/shutdown,,none
+R006,POST,/admit/admin/action/view-logs-clear,/api/v1/log/clear,src/bands/caduceus.rs,migrate-identity,,/api/v1/log/clear,proven direct target: /api/v1/log/clear via identity mapping
+R007,POST,/admit/admin/toggle/samba-file-sharing,/api/admin/samba/service,src/bands/caduceus.rs,translation-debt,/api/admin/samba/service,,none
+R008,POST,/admit/admin/toggle/ssh-password-authentication,/api/admin/ssh/toggle,src/bands/caduceus.rs,translation-debt,/api/admin/ssh/toggle,,candidate-only: current settings/ssh family (/api/v1/settings/ssh) is plausible; no target selected
+R009,POST,/admit/admin/toggle/ssh-service,/api/admin/ssh/service,src/bands/caduceus.rs,translation-debt,/api/admin/ssh/service,,candidate-only: current settings/ssh family (/api/v1/settings/ssh) is plausible; no target selected
+R010,POST,/api/admin/crypto/test,/api/admin/crypto/test,src/bands/full-rust-routes.rs,translation-debt,,,none
+R011,POST,/api/admin/diskman/apply-permissions,/api/admin/diskman/apply-permissions,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current storage/disk family (/api/v1/storage/disk/...) is plausible; no target selected
+R012,POST,/api/admin/diskman/assign-nas,/api/admin/diskman/assign-nas,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current storage/disk family (/api/v1/storage/disk/...) is plausible; no target selected
+R013,POST,/api/admin/diskman/create-key,/api/admin/diskman/create-key,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current storage/disk family (/api/v1/storage/disk/...) is plausible; no target selected
+R014,POST,/api/admin/diskman/key-status,/api/admin/diskman/key-status,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current storage/disk family (/api/v1/storage/disk/...) is plausible; no target selected
+R015,POST,/api/admin/diskman/manage-services,/api/admin/diskman/manage-services,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current storage/disk family (/api/v1/storage/disk/...) is plausible; no target selected
+R016,POST,/api/admin/diskman/unlock-with-password,/api/admin/diskman/unlock-with-password,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current storage/disk family (/api/v1/storage/disk/...) is plausible; no target selected
+R017,POST,/api/admin/diskman/update-key,/api/admin/diskman/update-key,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current storage/disk family (/api/v1/storage/disk/...) is plausible; no target selected
+R018,POST,/api/admin/hard-drive-test/start,/api/admin/hard-drive-test/start,src/bands/full-rust-routes.rs,translation-debt,/api/admin/hard-drive-test/start,,candidate-only: current storage/disk family (/api/v1/storage/disk/...) is plausible; no target selected
+R019,POST,/api/admin/samba/service,/api/admin/samba/service,src/bands/full-rust-routes.rs,translation-debt,/api/admin/samba/service,,none
+R020,POST,/api/admin/services/hard-reset,/api/admin/services/hard-reset,src/bands/full-rust-routes.rs,translation-debt,/api/admin/services/hard-reset,,none
+R021,POST,/api/admin/ssh/service,/api/admin/ssh/service,src/bands/full-rust-routes.rs,translation-debt,/api/admin/ssh/service,,candidate-only: current settings/ssh family (/api/v1/settings/ssh) is plausible; no target selected
+R022,POST,/api/admin/ssh/toggle,/api/admin/ssh/toggle,src/bands/full-rust-routes.rs,translation-debt,/api/admin/ssh/toggle,,candidate-only: current settings/ssh family (/api/v1/settings/ssh) is plausible; no target selected
+R023,POST,/api/admin/system/restart,/api/admin/system/restart,src/bands/full-rust-routes.rs,translation-debt,/api/admin/system/restart,,none
+R024,POST,/api/admin/system/shutdown,/api/admin/system/shutdown,src/bands/full-rust-routes.rs,translation-debt,/api/admin/system/shutdown,,none
+R025,POST,/api/admin/system/update-password,/api/admin/system/update-password,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
+R026,POST,/api/admin/updates/apply,/api/admin/updates/apply,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
+R027,POST,/api/admin/updates/force,/api/admin/updates/force,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
+R028,POST,/api/admin/updates/interactives/:interactive_id/run,/api/admin/updates/interactives/:interactive_id/run,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
+R029,POST,/api/admin/updates/modules/:module_name/branch,/api/admin/updates/modules/:module_name/branch,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
+R030,POST,/api/admin/updates/modules/:module_name/components/:component_name/toggle,/api/admin/updates/modules/:module_name/components/:component_name/toggle,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
+R031,POST,/api/admin/updates/modules/:module_name/toggle,/api/admin/updates/modules/:module_name/toggle,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
+R032,POST,/api/admin/updates/schedule,/api/admin/updates/schedule,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
+R033,POST,/api/backup/auto-update/check,/api/backup/auto-update/check,src/bands/full-rust-routes.rs,translation-debt,,,none
+R034,POST,/api/backup/auto-update/toggle,/api/backup/auto-update/toggle,src/bands/full-rust-routes.rs,translation-debt,,,none
+R035,POST,/api/backup/backup/run,/api/backup/backup/run,src/bands/full-rust-routes.rs,translation-debt,,,none
+R036,POST,/api/backup/cleanup,/api/backup/cleanup,src/bands/full-rust-routes.rs,translation-debt,,,none
+R037,POST,/api/backup/cloud/test,/api/backup/cloud/test,src/bands/full-rust-routes.rs,translation-debt,,,none
+R038,POST,/api/backup/config,/api/backup/config,src/bands/full-rust-routes.rs,translation-debt,,,none
+R039,POST,/api/backup/debug/toggle,/api/backup/debug/toggle,src/bands/full-rust-routes.rs,translation-debt,,,none
+R040,POST,/api/backup/install,/api/backup/install,src/bands/full-rust-routes.rs,translation-debt,,,none
+R041,POST,/api/backup/key,/api/backup/key,src/bands/full-rust-routes.rs,translation-debt,,,none
+R042,DELETE,/api/backup/keyman/credentials/:service_name,/api/backup/keyman/credentials/:service_name,src/bands/full-rust-routes.rs,translation-debt,,,none
+R043,POST,/api/backup/keyman/credentials/:service_name,/api/backup/keyman/credentials/:service_name,src/bands/full-rust-routes.rs,translation-debt,,,none
+R044,PUT,/api/backup/keyman/credentials/:service_name,/api/backup/keyman/credentials/:service_name,src/bands/full-rust-routes.rs,translation-debt,,,none
+R045,POST,/api/backup/providers/:provider_name/config,/api/backup/providers/:provider_name/config,src/bands/full-rust-routes.rs,translation-debt,,,none
+R046,POST,/api/backup/providers/:provider_name/disable,/api/backup/providers/:provider_name/disable,src/bands/full-rust-routes.rs,translation-debt,,,none
+R047,POST,/api/backup/providers/:provider_name/enable,/api/backup/providers/:provider_name/enable,src/bands/full-rust-routes.rs,translation-debt,,,none
+R048,POST,/api/backup/providers/:provider_name/test,/api/backup/providers/:provider_name/test,src/bands/full-rust-routes.rs,translation-debt,,,none
+R049,POST,/api/backup/restore,/api/backup/restore,src/bands/full-rust-routes.rs,translation-debt,,,none
+R050,POST,/api/backup/schedule,/api/backup/schedule,src/bands/full-rust-routes.rs,translation-debt,,,none
+R051,POST,/api/backup/schedule/config,/api/backup/schedule/config,src/bands/full-rust-routes.rs,translation-debt,,,none
+R052,POST,/api/backup/schedule/test,/api/backup/schedule/test,src/bands/full-rust-routes.rs,translation-debt,,,none
+R053,POST,/api/backup/sync-now,/api/backup/sync-now,src/bands/full-rust-routes.rs,translation-debt,,,none
+R054,POST,/api/backup/test/cycle,/api/backup/test/cycle,src/bands/full-rust-routes.rs,translation-debt,,,none
+R055,POST,/api/backup/uninstall,/api/backup/uninstall,src/bands/full-rust-routes.rs,translation-debt,,,none
+R056,POST,/api/dhcp/config,/api/dhcp/config,src/bands/full-rust-routes.rs,translation-debt,/api/v1/network/dhcp,,candidate-only: current network/dhcp family (/api/v1/network/dhcp/...) is plausible; no target selected
+R057,POST,/api/files/upload,/api/files/upload,src/bands/full-rust-routes.rs,translation-debt,/api/v1/file/ingress,,candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected
+R058,POST,/api/miner/config,/api/miner/config,src/bands/full-rust-routes.rs,translation-debt,,,none
+R059,POST,/api/miner/config/coin/:coin_id,/api/miner/config/coin/:coin_id,src/bands/full-rust-routes.rs,translation-debt,,,none
+R060,POST,/api/miner/config/ssh-password,/api/miner/config/ssh-password,src/bands/full-rust-routes.rs,translation-debt,,,none
+R061,POST,/api/miner/fleet/restart,/api/miner/fleet/restart,src/bands/full-rust-routes.rs,translation-debt,,,none
+R062,POST,/api/miner/fleet/sync,/api/miner/fleet/sync,src/bands/full-rust-routes.rs,translation-debt,,,none
+R063,POST,/api/miner/fleet/update-all,/api/miner/fleet/update-all,src/bands/full-rust-routes.rs,translation-debt,,,none
+R064,POST,/api/miner/fleet/update-coins,/api/miner/fleet/update-coins,src/bands/full-rust-routes.rs,translation-debt,,,none
+R065,POST,/api/miner/fleet/update-system,/api/miner/fleet/update-system,src/bands/full-rust-routes.rs,translation-debt,,,none
+R066,POST,/api/miner/fleet/update-wallets,/api/miner/fleet/update-wallets,src/bands/full-rust-routes.rs,translation-debt,,,none
+R067,POST,/api/miner/miners/:miner_id/claim,/api/miner/miners/:miner_id/claim,src/bands/full-rust-routes.rs,translation-debt,,,none
+R068,POST,/api/miner/miners/:miner_id/coins/:coin_id/disable,/api/miner/miners/:miner_id/coins/:coin_id/disable,src/bands/full-rust-routes.rs,translation-debt,,,none
+R069,POST,/api/miner/miners/:miner_id/coins/:coin_id/enable,/api/miner/miners/:miner_id/coins/:coin_id/enable,src/bands/full-rust-routes.rs,translation-debt,,,none
+R070,POST,/api/miner/miners/:miner_id/restart,/api/miner/miners/:miner_id/restart,src/bands/full-rust-routes.rs,translation-debt,,,none
+R071,POST,/api/miner/miners/:miner_id/unclaim,/api/miner/miners/:miner_id/unclaim,src/bands/full-rust-routes.rs,translation-debt,,,none
+R072,DELETE,/api/nasLinker/delete,/api/nasLinker/delete,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected
+R073,POST,/api/nasLinker/deploy,/api/nasLinker/deploy,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected
+R074,POST,/api/nasLinker/newdir,/api/nasLinker/newdir,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected
+R075,POST,/api/nasLinker/rename,/api/nasLinker/rename,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected
+R076,POST,/api/portals,/api/portals,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected
+R077,DELETE,/api/portals/:portal_name,/api/portals/:portal_name,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected
+R078,PUT,/api/portals/:portal_name,/api/portals/:portal_name,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected
+R079,POST,/api/pre-unlock,/api/pre-unlock,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current storage/vault family (/api/v1/storage/vault/...) is plausible; no target selected
+R080,POST,/api/status/tailscale/authkey,/api/status/tailscale/authkey,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
+R081,POST,/api/status/tailscale/config,/api/status/tailscale/config,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
+R082,POST,/api/status/tailscale/connect,/api/status/tailscale/connect,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
+R083,POST,/api/status/tailscale/disable,/api/status/tailscale/disable,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
+R084,POST,/api/status/tailscale/disconnect,/api/status/tailscale/disconnect,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
+R085,POST,/api/status/tailscale/enable,/api/status/tailscale/enable,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
+R086,POST,/api/status/tailscale/update-tailnet,/api/status/tailscale/update-tailnet,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
+R087,POST,/api/status/vpn/disable,/api/status/vpn/disable,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/vpn family (/api/v1/network/vpn) is plausible; no target selected
+R088,POST,/api/status/vpn/enable,/api/status/vpn/enable,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/vpn family (/api/v1/network/vpn) is plausible; no target selected
+R089,POST,/api/status/vpn/updatekey/pia,/api/status/vpn/updatekey/pia,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/vpn family (/api/v1/network/vpn) is plausible; no target selected
+R090,POST,/api/status/vpn/updatekey/transmission,/api/status/vpn/updatekey/transmission,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/vpn family (/api/v1/network/vpn) is plausible; no target selected
+R091,POST,/api/system/log,/api/system/log,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current log family (/api/v1/log/...) is plausible; no target selected
+R092,POST,/api/system/update,/api/system/update,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
+R093,POST,/api/test/analytics/process,/api/test/analytics/process,src/bands/full-rust-routes.rs,translation-debt,,,none
+R094,POST,/api/vault/unlock,/api/vault/unlock,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current storage/vault family (/api/v1/storage/vault/...) is plausible; no target selected
+R095,POST,/api/backblaze/buckets,/api/backblaze/buckets,src/bands/full-rust-routes/backblaze.rs,translation-debt,,,none
+R096,DELETE,/api/backblaze/buckets/:bucket,/api/backblaze/buckets/:bucket,src/bands/full-rust-routes/backblaze.rs,translation-debt,,,none
+R097,DELETE,/api/backblaze/buckets/:bucket/items,/api/backblaze/buckets/:bucket/items,src/bands/full-rust-routes/backblaze.rs,translation-debt,,,none
+R098,POST,/api/backblaze/buckets/:bucket/items,/api/backblaze/buckets/:bucket/items,src/bands/full-rust-routes/backblaze.rs,translation-debt,,,none
+R099,POST,/api/backblaze/buckets/:bucket/run,/api/backblaze/buckets/:bucket/run,src/bands/full-rust-routes/backblaze.rs,translation-debt,,,none
+R100,POST,/api/backblaze/buckets/:bucket/toggle,/api/backblaze/buckets/:bucket/toggle,src/bands/full-rust-routes/backblaze.rs,translation-debt,,,none
+R101,POST,/api/backblaze/buckets/:bucket/verify,/api/backblaze/buckets/:bucket/verify,src/bands/full-rust-routes/backblaze.rs,translation-debt,,,none
+R102,POST,/api/backblaze/config,/api/backblaze/config,src/bands/full-rust-routes/backblaze.rs,translation-debt,/api/v1/backblaze/config,,none
+R103,POST,/api/backblaze/run,/api/backblaze/buckets/:bucket/run,src/bands/full-rust-routes/backblaze.rs,translation-debt,,,none
+R104,GET,/api/network/device,/api/network/device,src/bands/full-rust-routes/device-identity.rs,translation-debt,/api/v1/network/device,,candidate-only: current network/device family (/api/v1/network/device/...) is plausible; no target selected
+R105,POST,/api/network/device/claim,/api/network/device/claim,src/bands/full-rust-routes/device-identity.rs,migrate-explicit-historical-target,/api/v1/network/device/claim,/api/v1/network/device/claim,proven direct target: /api/v1/network/device/claim via explicit historical target
+R106,GET,/api/network/dhcp/boundary,/api/network/dhcp/boundary,src/bands/full-rust-routes/device-identity.rs,migrate-explicit-historical-target,/api/v1/network/dhcp/boundary,/api/v1/network/dhcp/boundary,proven direct target: /api/v1/network/dhcp/boundary via explicit historical target
+R107,GET,/api/network/dhcp/leases,/api/network/dhcp/leases,src/bands/full-rust-routes/device-identity.rs,migrate-explicit-historical-target,/api/v1/network/dhcp/leases,/api/v1/network/dhcp/leases,proven direct target: /api/v1/network/dhcp/leases via explicit historical target
+R108,GET,/api/network/dhcp/reservations,/api/network/dhcp/reservations,src/bands/full-rust-routes/device-identity.rs,translation-debt,/api/v1/network/dhcp/reservations,,candidate-only: current network/dhcp family (/api/v1/network/dhcp/...) is plausible; no target selected
+R109,GET,/api/network/dns/read,/api/network/dns/read,src/bands/full-rust-routes/device-identity.rs,migrate-explicit-historical-target,/api/v1/network/dns/read,/api/v1/network/dns/read,proven direct target: /api/v1/network/dns/read via explicit historical target
+R110,GET,/api/dhcp/config,/api/dhcp/config,src/bands/full-rust-routes/dhcp.rs,translation-debt,,,candidate-only: current network/dhcp family (/api/v1/network/dhcp/...) is plausible; no target selected
+R111,GET,/api/dhcp/health,/api/dhcp/health,src/bands/full-rust-routes/dhcp.rs,migrate-explicit-historical-target,/api/v1/network/dhcp/health,/api/v1/network/dhcp/health,proven direct target: /api/v1/network/dhcp/health via explicit historical target
+R112,GET,/api/dhcp/leases,/api/dhcp/leases,src/bands/full-rust-routes/dhcp.rs,migrate-explicit-historical-target,/api/v1/network/dhcp/leases,/api/v1/network/dhcp/leases,proven direct target: /api/v1/network/dhcp/leases via explicit historical target
+R113,GET,/api/dhcp/pool-boundary,/api/dhcp/pool-boundary,src/bands/full-rust-routes/dhcp.rs,migrate-explicit-historical-target,/api/v1/network/dhcp/boundary,/api/v1/network/dhcp/boundary,proven direct target: /api/v1/network/dhcp/boundary via explicit historical target
+R114,POST,/api/dhcp/pool-boundary,/api/dhcp/pool-boundary,src/bands/full-rust-routes/dhcp.rs,translation-debt,/api/v1/network/dhcp/pool-boundary,,candidate-only: current network/dhcp family (/api/v1/network/dhcp/...) is plausible; no target selected
+R115,GET,/api/dhcp/reservations,/api/dhcp/reservations,src/bands/full-rust-routes/dhcp.rs,translation-debt,/api/v1/network/dhcp/reservations,,candidate-only: current network/dhcp family (/api/v1/network/dhcp/...) is plausible; no target selected
+R116,POST,/api/dhcp/reservations,/api/dhcp/reservations,src/bands/full-rust-routes/dhcp.rs,translation-debt,/api/v1/network/dhcp/reservations,,candidate-only: current network/dhcp family (/api/v1/network/dhcp/...) is plausible; no target selected
+R117,DELETE,/api/dhcp/reservations/:reservation_id,/api/dhcp/reservations/:reservation_id,src/bands/full-rust-routes/dhcp.rs,translation-debt,/api/v1/network/dhcp/reservations/:reservation_id,,candidate-only: current network/dhcp family (/api/v1/network/dhcp/...) is plausible; no target selected
+R118,PUT,/api/dhcp/reservations/:reservation_id,/api/dhcp/reservations/:reservation_id,src/bands/full-rust-routes/dhcp.rs,translation-debt,/api/v1/network/dhcp/reservations/:reservation_id,,candidate-only: current network/dhcp family (/api/v1/network/dhcp/...) is plausible; no target selected
+R119,GET,/api/dhcp/statistics,/api/dhcp/statistics,src/bands/full-rust-routes/dhcp.rs,migrate-explicit-historical-target,/api/v1/network/dhcp/statistics,/api/v1/network/dhcp/statistics,proven direct target: /api/v1/network/dhcp/statistics via explicit historical target
+R120,GET,/api/dhcp/status,/api/dhcp/status,src/bands/full-rust-routes/dhcp.rs,migrate-explicit-historical-target,/api/v1/network/dhcp/status,/api/v1/network/dhcp/status,proven direct target: /api/v1/network/dhcp/status via explicit historical target
+R121,POST,/api/firewall/children,/api/admin/firewall/list,src/bands/full-rust-routes/firewall.rs,translation-debt,/api/admin/firewall/list,,candidate-only: current network/device/whitelist and settings/child-device families are plausible; no target selected
+R122,POST,/api/firewall/children,/api/admin/firewall/register,src/bands/full-rust-routes/firewall.rs,translation-debt,/api/admin/firewall/register,,candidate-only: current network/device/whitelist and settings/child-device families are plausible; no target selected
+R123,POST,/api/firewall/children/:mac,/api/admin/firewall/unregister,src/bands/full-rust-routes/firewall.rs,translation-debt,/api/admin/firewall/unregister,,candidate-only: current network/device/whitelist and settings/child-device families are plausible; no target selected
+R124,POST,/api/firewall/children/:mac/whitelist,/api/admin/firewall/whitelist-get,src/bands/full-rust-routes/firewall.rs,translation-debt,/api/admin/firewall/whitelist-get,,candidate-only: current network/device/whitelist and settings/child-device families are plausible; no target selected
+R125,POST,/api/firewall/children/:mac/whitelist,/api/admin/firewall/whitelist-set,src/bands/full-rust-routes/firewall.rs,translation-debt,/api/admin/firewall/whitelist-set,,candidate-only: current network/device/whitelist and settings/child-device families are plausible; no target selected
+R126,POST,/api/firewall/observed,/api/admin/firewall/observed,src/bands/full-rust-routes/firewall.rs,translation-debt,/api/admin/firewall/observed,,candidate-only: current network/device/whitelist and settings/child-device families are plausible; no target selected
+R127,POST,/api/v1/network/dns/adblock,/api/v1/network/dns/adblock,src/bands/full-rust-routes/unbound.rs,translation-debt,/api/v1/network/dns/adblock,,candidate-only: current network/dns/status family (/api/v1/network/dns/status) is plausible; no target selected
+R128,POST,/api/v1/network/dns/blocklist/update,/api/v1/network/dns/blocklist/update,src/bands/full-rust-routes/unbound.rs,translation-debt,/api/v1/network/dns/blocklist/update,,candidate-only: current network/dns/status family (/api/v1/network/dns/status) is plausible; no target selected
+R129,POST,/api/v1/network/dns/device-name/create,/api/v1/network/dns/device-name/create,src/bands/full-rust-routes/unbound.rs,translation-debt,/api/v1/network/dns/device-name/create,,candidate-only: current network/dns/status family (/api/v1/network/dns/status) is plausible; no target selected
+R130,POST,/api/v1/network/dns/device-name/remove,/api/v1/network/dns/device-name/remove,src/bands/full-rust-routes/unbound.rs,translation-debt,/api/v1/network/dns/device-name/remove,,candidate-only: current network/dns/status family (/api/v1/network/dns/status) is plausible; no target selected
+R131,GET,/api/v1/network/dns/read,/api/v1/network/dns/read,src/bands/full-rust-routes/unbound.rs,migrate-identity,/api/v1/network/dns/read,/api/v1/network/dns/read,proven direct target: /api/v1/network/dns/read via identity mapping
+R132,GET,/api/v1/network/dns/resolver/status,/api/v1/network/dns/resolver/status,src/bands/full-rust-routes/unbound.rs,translation-debt,/api/v1/network/dns/resolver/status,,candidate-only: current network/dns/status family (/api/v1/network/dns/status) is plausible; no target selected
+R133,POST,/api/v1/network/dns/upstream,/api/v1/network/dns/upstream,src/bands/full-rust-routes/unbound.rs,translation-debt,/api/v1/network/dns/upstream,,candidate-only: current network/dns/status family (/api/v1/network/dns/status) is plausible; no target selected
+R134,POST,/api/upload/force-permissions,/api/upload/force-permissions,src/bands/full-rust-routes/upload.rs,translation-debt,/api/v1/upload/force-permissions,,candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected
+R135,GET,/api/v1/cartridges,/api/v1/cartridges,src/bands/routes.rs,preserve-cartridge-existence-check,/api/v1/cartridges,/api/v1/cartridges,proven cartridge existence check: resolve_cartridge_door advertises and checks /api/v1/cartridges
+R136,POST,/api/v1/cartridges/admit,/api/v1/cartridges/admit,src/bands/routes.rs,preserve-cartridge-existence-check,/api/v1/cartridges/admit,/api/v1/cartridges/admit,proven cartridge existence check: resolve_cartridge_door advertises and checks /api/v1/cartridges/admit
+R137,POST,/api/v1/cartridges/remove,/api/v1/cartridges/remove,src/bands/routes.rs,preserve-cartridge-existence-check,/api/v1/cartridges/remove,/api/v1/cartridges/remove,proven cartridge existence check: resolve_cartridge_door advertises and checks /api/v1/cartridges/remove

@@ -12,40 +12,24 @@ fn firewall_guest_refusal(path: &str) -> Response {
         .into_response()
 }
 
-fn firewall_seated_read(caduceus_path: &str, metadata: serde_json::Value) -> CaduceusHttpReadback {
-    match resolve_caduceus_door("POST", caduceus_path) {
-        Ok(door) => caduceus_http_json(&door.method, &door.path, metadata, None),
-        Err(CaduceusDoorResolutionFailure::Unmapped) => mutation_refusal_readback(
-            caduceus_path,
-            MutationRefusal {
-                code: "coronatio-caduceus-door-unmapped".to_string(),
-                status: 0,
-            },
-        ),
-        Err(CaduceusDoorResolutionFailure::Unavailable) => mutation_refusal_readback(
-            caduceus_path,
-            MutationRefusal {
-                code: "caduceus-doors-unavailable".to_string(),
-                status: 0,
-            },
-        ),
-    }
+fn firewall_seated_read(caduceus_path: &str, _metadata: serde_json::Value) -> CaduceusHttpReadback {
+    translation_debt_readback("POST", caduceus_path, Some(caduceus_path), None)
 }
 
 fn firewall_seated_mutation(
     headers: &axum::http::HeaderMap,
     crown_path: &str,
     caduceus_path: &str,
-    metadata: serde_json::Value,
+    _metadata: serde_json::Value,
 ) -> CaduceusHttpReadback {
-    caduceus_staff_transition_with_mapping(
+    caduceus_translation_debt(
         &mutation_authority(),
         headers,
         MutationActionTarget::caduceus("caduceus_staff.child_device", crown_path),
         "POST",
         caduceus_path,
-        "child-device",
-        metadata,
+        Some(caduceus_path),
+        None,
     )
 }
 

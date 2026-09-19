@@ -555,20 +555,13 @@ async fn backblaze_bucket_post_route(
     headers: axum::http::HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
-    let mut intent_body = body.clone();
-    if let Some(object) = intent_body.as_object_mut() {
-        object.remove("keyId");
-        object.remove("key_id");
-        object.remove("applicationKey");
-        object.remove("application_key");
-    }
-    let r = caduceus_staff_transition(
+    let r = route_translation_debt(
         &mutation_authority(),
         &headers,
         "POST",
         "/api/backblaze/buckets",
-        "backblaze bucket",
-        intent_body,
+        None,
+        None,
     );
     if !r.ok {
         return (
@@ -633,13 +626,13 @@ async fn backblaze_bucket_verify_route(
     headers: axum::http::HeaderMap,
     Path(bucket): Path<String>,
 ) -> Response {
-    let r = caduceus_staff_transition(
+    let r = route_translation_debt(
         &mutation_authority(),
         &headers,
         "POST",
         "/api/backblaze/buckets/:bucket/verify",
-        "backblaze verification",
-        serde_json::json!({"bucket": bucket}),
+        None,
+        None,
     );
     if !r.ok {
         return (
@@ -686,13 +679,13 @@ async fn backblaze_bucket_delete_route(
     headers: axum::http::HeaderMap,
     Path(bucket): Path<String>,
 ) -> Response {
-    let r = caduceus_staff_transition(
+    let r = route_translation_debt(
         &mutation_authority(),
         &headers,
         "DELETE",
         "/api/backblaze/buckets/:bucket",
-        "backblaze bucket",
-        serde_json::json!({"bucket": bucket}),
+        None,
+        None,
     );
     if !r.ok {
         return (
@@ -760,13 +753,13 @@ async fn backblaze_item_mutate(
     item: serde_json::Value,
     remove: bool,
 ) -> Response {
-    let r = caduceus_staff_transition(
+    let r = route_translation_debt(
         &mutation_authority(),
         &headers,
         "POST",
         "/api/backblaze/buckets/:bucket/items",
-        "backblaze item",
-        item.clone(),
+        None,
+        None,
     );
     if !r.ok {
         return (
@@ -832,13 +825,13 @@ async fn backblaze_toggle_route(
     Path(bucket): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
-    let r = caduceus_staff_transition(
+    let r = route_translation_debt(
         &mutation_authority(),
         &headers,
         "POST",
         "/api/backblaze/buckets/:bucket/toggle",
-        "backblaze encryption",
-        body.clone(),
+        None,
+        None,
     );
     if !r.ok {
         return (
@@ -925,13 +918,13 @@ async fn backblaze_run_bucket_route(
     headers: axum::http::HeaderMap,
     Path(bucket): Path<String>,
 ) -> Response {
-    let r = caduceus_staff_transition(
+    let r = route_translation_debt(
         &mutation_authority(),
         &headers,
         "POST",
         "/api/backblaze/buckets/:bucket/run",
-        "backblaze backup",
-        serde_json::json!({"bucket": bucket}),
+        None,
+        None,
     );
     if !r.ok {
         return (
@@ -1040,7 +1033,14 @@ async fn backblaze_config_get_route() -> Response {
 }
 
 async fn backblaze_config_post_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
-    let r = caduceus_staff_transition(&mutation_authority(), &headers, "POST", "/api/backblaze/config", "backblaze config", body.clone());
+    let r = route_translation_debt(
+        &mutation_authority(),
+        &headers,
+        "POST",
+        "/api/backblaze/config",
+        Some("/api/v1/backblaze/config"),
+        None,
+    );
     if !r.ok { return (mutation_response_status(&r), Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal}))).into_response(); }
     match normalized_config(body).and_then(save_backblaze_config) { Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(), Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "reason": e}))).into_response() }
 }
