@@ -111,12 +111,35 @@ impl MutationAuthority {
             return Err(MutationRefusal { code: "caduceus-attendance-required".to_string(), status: 401 });
         };
         let call = self.access.attendance_validate(attendance, document);
-        if call.receipt.ok { Ok(MutationAttendance { proof: attendance.clone(), document: document.clone() }) }
-        else {
+        if !call.receipt.ok {
             crate::caduceus_access::bust_attendance_projection(attendance, document, "validation-refused");
-            Err(MutationRefusal { code: call.receipt.code, status: call.receipt.status })
+            return Err(MutationRefusal { code: call.receipt.code, status: call.receipt.status });
+        }
+        let target = canonical_mutation_target(&mapping.target);
+        let scoped = self.access.attendance_open_scoped(attendance, document, &target);
+        if let Some(proof) = scoped.proof {
+            Ok(MutationAttendance { proof, document: target })
+        } else {
+            Err(MutationRefusal { code: scoped.receipt.code, status: scoped.receipt.status })
         }
     }
+}
+
+fn canonical_mutation_target(target: &str) -> String {
+    if let Some(action) = target.strip_prefix("/api/v1/appliance/service/").and_then(|value| value.rsplit('/').next()).filter(|value| !value.is_empty()) {
+        return format!("/api/v1/appliance/service/{{service}}/{action}");
+    }
+    if let Some(mac) = target.strip_prefix("/api/v1/network/firewall/policies/").filter(|value| !value.is_empty()) {
+        return format!("/api/v1/network/firewall/policies/{mac}");
+    }
+    if let Some(mac) = target
+        .strip_prefix("/api/firewall/children/")
+        .and_then(|value| value.split('/').next())
+        .filter(|value| !value.is_empty())
+    {
+        return format!("/api/v1/network/firewall/policies/{mac}");
+    }
+    target.to_string()
 }
 
 fn mutation_authority() -> MutationAuthority { MutationAuthority::default() }
@@ -200,6 +223,38 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
     }
 }
 
+fn invalidate_scoped_attendance(
+    authority: &MutationAuthority,
+    attendance: &MutationAttendance,
+    mut readback: CaduceusHttpReadback,
+) -> CaduceusHttpReadback {
+    let invalidation = authority
+        .access
+        .attendance_invalidate(&attendance.proof, &attendance.document);
+    crate::caduceus_access::bust_attendance_projection(
+        &attendance.proof,
+        &attendance.document,
+        "attendance-invalidated",
+    );
+    if !invalidation.receipt.ok && readback.ok {
+        readback.ok = false;
+        readback.status = if invalidation.receipt.status == 0 {
+            503
+        } else {
+            invalidation.receipt.status
+        };
+        readback.first_missing_signal = "caduceus-attendance-invalidate-failed".to_string();
+        if let Some(object) = readback.body.as_object_mut() {
+            object.insert("ok".to_string(), serde_json::Value::Bool(false));
+            object.insert(
+                "firstMissingSignal".to_string(),
+                serde_json::Value::String(readback.first_missing_signal.clone()),
+            );
+        }
+    }
+    readback
+}
+
 fn caduceus_actuate_json(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
@@ -209,12 +264,16 @@ fn caduceus_actuate_json(
 ) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
-        Ok(attendance) => caduceus_http_json_with_attendance_and_document(
-            "POST",
-            path,
-            body,
-            Some(&attendance.proof),
-            Some(&attendance.document),
+        Ok(attendance) => invalidate_scoped_attendance(
+            authority,
+            &attendance,
+            caduceus_http_json_with_attendance_and_document(
+                "POST",
+                path,
+                body,
+                Some(&attendance.proof),
+                Some(&attendance.document),
+            ),
         ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
@@ -228,7 +287,16 @@ fn caduceus_actuate(
 ) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
-        Ok(attendance) => caduceus_http_with_attendance("POST", path, Some(&attendance.proof)),
+        Ok(attendance) => invalidate_scoped_attendance(
+            authority,
+            &attendance,
+            caduceus_http_with_attendance_and_document(
+                "POST",
+                path,
+                Some(&attendance.proof),
+                Some(&attendance.document),
+            ),
+        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
@@ -239,7 +307,16 @@ fn admin_fragment_caduceus_request(headers: &axum::http::HeaderMap, method: &str
         &MutationRequestContext::attended_document_from_headers(headers),
         MutationActionTarget::caduceus("coronatio.admin.fragment", path),
     ) {
-        Ok(attendance) => caduceus_http_with_attendance_and_document(method, path, Some(&attendance.proof), Some(&attendance.document)),
+        Ok(attendance) => invalidate_scoped_attendance(
+            &authority,
+            &attendance,
+            caduceus_http_with_attendance_and_document(
+                method,
+                path,
+                Some(&attendance.proof),
+                Some(&attendance.document),
+            ),
+        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
@@ -255,12 +332,16 @@ fn admin_fragment_caduceus_json_request(
         &MutationRequestContext::attended_document_from_headers(headers),
         MutationActionTarget::caduceus("coronatio.admin.fragment", path),
     ) {
-        Ok(attendance) => caduceus_http_json_with_attendance_and_document(
-            method,
-            path,
-            body,
-            Some(&attendance.proof),
-            Some(&attendance.document),
+        Ok(attendance) => invalidate_scoped_attendance(
+            &authority,
+            &attendance,
+            caduceus_http_json_with_attendance_and_document(
+                method,
+                path,
+                body,
+                Some(&attendance.proof),
+                Some(&attendance.document),
+            ),
         ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
@@ -304,7 +385,11 @@ fn caduceus_translation_debt(
 ) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
-        Ok(_) => translation_debt_readback(method, path, historical_target, current_candidate),
+        Ok(attendance) => invalidate_scoped_attendance(
+            authority,
+            &attendance,
+            translation_debt_readback(method, path, historical_target, current_candidate),
+        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }

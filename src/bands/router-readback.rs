@@ -731,7 +731,75 @@ async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) ->
     attendance_projection_response(&headers, ROUTE, status, projection, Some(&document))
 }
 
-async fn caduceus_agent_service_route(headers: axum::http::HeaderMap, body: axum::body::Bytes) -> Response {
+const AGENT_SERVICE_RATE_LIMIT_MAX: u8 = 5;
+const AGENT_SERVICE_RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+const AGENT_SERVICE_RATE_LIMIT_PEER_CAP: usize = 1024;
+
+#[derive(Default)]
+struct AgentServicePeerLimiter {
+    peers: std::collections::HashMap<std::net::IpAddr, AgentServicePeerWindow>,
+}
+
+struct AgentServicePeerWindow {
+    started: std::time::Instant,
+    attempts: u8,
+}
+
+impl AgentServicePeerLimiter {
+    fn allow(&mut self, peer: std::net::IpAddr) -> bool {
+        self.allow_at(peer, std::time::Instant::now())
+    }
+
+    fn allow_at(&mut self, peer: std::net::IpAddr, now: std::time::Instant) -> bool {
+        self.peers.retain(|_, window| {
+            now.checked_duration_since(window.started)
+                .is_some_and(|elapsed| elapsed < AGENT_SERVICE_RATE_LIMIT_WINDOW)
+        });
+        let expired = self
+            .peers
+            .get(&peer)
+            .is_some_and(|window| now.checked_duration_since(window.started).is_none());
+        if expired {
+            self.peers.remove(&peer);
+        }
+        if let Some(window) = self.peers.get_mut(&peer) {
+            if window.attempts >= AGENT_SERVICE_RATE_LIMIT_MAX {
+                return false;
+            }
+            window.attempts += 1;
+            return true;
+        }
+        if self.peers.len() >= AGENT_SERVICE_RATE_LIMIT_PEER_CAP {
+            if let Some(oldest) = self
+                .peers
+                .iter()
+                .min_by_key(|(_, window)| window.started)
+                .map(|(peer, _)| *peer)
+            {
+                self.peers.remove(&oldest);
+            }
+        }
+        self.peers.insert(peer, AgentServicePeerWindow { started: now, attempts: 1 });
+        true
+    }
+}
+
+static AGENT_SERVICE_PEER_LIMITER: OnceLock<Mutex<AgentServicePeerLimiter>> = OnceLock::new();
+
+fn agent_service_peer_allowed(connect_info: axum::extract::ConnectInfo<SocketAddr>) -> bool {
+    let peer = connect_info.0.ip();
+    AGENT_SERVICE_PEER_LIMITER
+        .get_or_init(|| Mutex::new(AgentServicePeerLimiter::default()))
+        .lock()
+        .expect("agent service peer limiter lock")
+        .allow(peer)
+}
+
+async fn caduceus_agent_service_route(
+    connect_info: axum::extract::ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
     if !json_content_type(&headers) || body.len() > CADUCEUS_SESSION_BODY_MAX || body.is_empty() {
         return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-request-invalid", None, None, None);
     }
@@ -788,6 +856,15 @@ async fn caduceus_agent_service_route(headers: axum::http::HeaderMap, body: axum
         return agent_service_refusal(
             StatusCode::FORBIDDEN,
             "portal-service-not-allowlisted",
+            Some(service),
+            Some(action),
+            None,
+        );
+    }
+    if !agent_service_peer_allowed(connect_info) {
+        return agent_service_refusal(
+            StatusCode::TOO_MANY_REQUESTS,
+            "coronatio-exousia-agent-rate-limited",
             Some(service),
             Some(action),
             None,

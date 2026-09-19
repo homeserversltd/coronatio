@@ -40,6 +40,10 @@ mod exousia_agent_tests {
         headers
     }
 
+    fn agent_peer() -> axum::extract::ConnectInfo<std::net::SocketAddr> {
+        axum::extract::ConnectInfo(std::net::SocketAddr::from(([192, 0, 2, 200], 3013)))
+    }
+
     #[tokio::test]
     async fn agent_crossing_preserves_raw_unknown_fields_and_invalidates_scoped_attendance() {
         let _guard = crate::CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
@@ -72,7 +76,7 @@ mod exousia_agent_tests {
             reply(stream, r#"{"ok":true,"firstMissingSignal":"none"}"#);
         });
         std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
-        let response = caduceus_agent_service_route(headers(), axum::body::Bytes::from(fixture_request().to_vec())).await;
+        let response = caduceus_agent_service_route(agent_peer(), headers(), axum::body::Bytes::from(fixture_request().to_vec())).await;
         worker.join().unwrap();
         std::env::remove_var("CADUCEUS_STAFF_SOCKET");
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
@@ -117,7 +121,7 @@ mod exousia_agent_tests {
         std::env::set_var("CORONATIO_HOMESERVER_JSON", &config_path);
         std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
 
-        let response = caduceus_agent_service_route(headers(), axum::body::Bytes::from(fixture_request().to_vec())).await;
+        let response = caduceus_agent_service_route(agent_peer(), headers(), axum::body::Bytes::from(fixture_request().to_vec())).await;
 
         std::env::remove_var("CADUCEUS_STAFF_SOCKET");
         std::env::remove_var("CORONATIO_HOMESERVER_JSON");
@@ -152,7 +156,7 @@ mod exousia_agent_tests {
             br#"{"schema":"caduceus.staff.v1","intent_id":"i","transition":"exousia.open","version":1,"timestamp":1,"target":{"document":"wrong","service":"fixture.service","action":"restart"},"flags":{"exousia":{"pin":"fixture-pin"}}}"#.as_slice(),
             br#"{"schema":"caduceus.staff.v1","intent_id":"i","transition":"exousia.open","version":1,"timestamp":1,"target":{"document":"/api/v1/appliance/service/{service}/restart","service":"fixture.service","action":"restart"},"flags":{"exousia":{}}}"#.as_slice(),
         ] {
-            let response = caduceus_agent_service_route(headers(), axum::body::Bytes::from(raw.to_vec())).await;
+            let response = caduceus_agent_service_route(agent_peer(), headers(), axum::body::Bytes::from(raw.to_vec())).await;
             assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         }
         let posture_socket = UnixListener::bind(&socket).unwrap();
@@ -201,15 +205,21 @@ mod exousia_agent_tests {
         let captured = Arc::new(Mutex::new(Vec::<(String, Vec<u8>)>::new()));
         let captured_thread = Arc::clone(&captured);
         let worker = std::thread::spawn(move || {
-            for _ in 0..2 {
+            for _ in 0..4 {
                 let (stream, _) = listener.accept().unwrap();
                 let (head, body, stream) = read_request(stream);
                 let validate = head.starts_with("POST /api/v1/exousia/validate HTTP/1.1");
+                let open = head.starts_with("POST /api/v1/exousia/open HTTP/1.1");
+                let action = head.starts_with("POST /api/v1/appliance/service/fixture/restart HTTP/1.1");
                 captured_thread.lock().unwrap().push((head, body));
                 if validate {
                     reply(stream, r#"{"ok":true,"firstMissingSignal":"none"}"#);
-                } else {
+                } else if open {
+                    reply(stream, r#"{"ok":true,"attendance":"scoped-browser-attendance","firstMissingSignal":"none"}"#);
+                } else if action {
                     reply(stream, r#"{"ok":true,"success":true,"active":true,"firstMissingSignal":"none"}"#);
+                } else {
+                    reply(stream, r#"{"ok":true,"firstMissingSignal":"none"}"#);
                 }
             }
         });
@@ -245,17 +255,89 @@ mod exousia_agent_tests {
         assert_eq!(value["success"], true);
 
         let captured = captured.lock().unwrap();
-        assert_eq!(captured.len(), 2);
+        assert_eq!(captured.len(), 4);
         assert!(captured[0].0.starts_with("POST /api/v1/exousia/validate HTTP/1.1"));
         let validation: serde_json::Value = serde_json::from_slice(&captured[0].1).unwrap();
         assert_eq!(validation["attendance"], attendance);
         assert_eq!(validation["documentId"], document);
         assert_eq!(validation["documentIncarnation"], document);
-        assert!(captured[1].0.starts_with("POST /api/v1/appliance/service/fixture/restart HTTP/1.1"));
-        assert!(captured[1].0.contains(&format!("x-caduceus-document: {document}")));
-        assert!(captured[1].0.contains(&format!("x-caduceus-attendance: {attendance}")));
-        assert_eq!(captured[1].1, br#"{}"#);
-        assert!(!captured.iter().any(|(head, _)| head.contains("/api/v1/exousia/open")));
+        assert!(captured[1].0.starts_with("POST /api/v1/exousia/open HTTP/1.1"));
+        let scoped_open: serde_json::Value = serde_json::from_slice(&captured[1].1).unwrap();
+        assert_eq!(scoped_open["target"]["document"], "/api/v1/appliance/service/{service}/restart");
+        assert_eq!(scoped_open["flags"]["exousia"]["attendance"], attendance);
+        assert_eq!(scoped_open["flags"]["exousia"]["documentId"], document);
+        assert_eq!(scoped_open["flags"]["exousia"]["documentIncarnation"], document);
+        assert!(scoped_open["flags"]["exousia"].get("pin").is_none());
+        assert!(captured[2].0.starts_with("POST /api/v1/appliance/service/fixture/restart HTTP/1.1"));
+        assert!(captured[2].0.contains("x-caduceus-document: /api/v1/appliance/service/{service}/restart"));
+        assert!(captured[2].0.contains("x-caduceus-attendance: scoped-browser-attendance"));
+        assert!(!captured[2].0.contains(&format!("x-caduceus-attendance: {attendance}")));
+        assert_eq!(captured[2].1, br#"{}"#);
+        assert!(captured[3].0.starts_with("POST /api/v1/exousia/invalidate HTTP/1.1"));
+        let invalidation: serde_json::Value = serde_json::from_slice(&captured[3].1).unwrap();
+        assert_eq!(invalidation["attendance"], "scoped-browser-attendance");
+        assert_eq!(invalidation["documentId"], "/api/v1/appliance/service/{service}/restart");
+        assert!(!captured.iter().skip(2).any(|(_, body)| body.windows(attendance.len()).any(|window| window == attendance.as_bytes())));
+    }
+
+    #[tokio::test]
+    async fn agent_peer_rate_limit_blocks_sixth_before_uds_and_keeps_other_peer_eligible() {
+        let _guard = crate::CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _config_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let config_path = std::env::temp_dir().join(format!("coronatio-agent-rate-{}.json", uuid::Uuid::new_v4()));
+        std::fs::write(
+            &config_path,
+            r#"{"global":{"cors":{"allowed_origins":["https://home.arpa"]}},"tabs":{"portals":{"data":{"portals":[{"name":"Fixture","services":["fixture"],"localURL":"https://fixture.home.arpa"}]}}}}"#,
+        )
+        .unwrap();
+        let socket = std::env::temp_dir().join(format!("coronatio-agent-rate-{}-{}.sock", std::process::id(), uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).unwrap();
+        let worker = std::thread::spawn(move || {
+            for _ in 0..18 {
+                let (stream, _) = listener.accept().unwrap();
+                let (head, _, stream) = read_request(stream);
+                let response = if head.starts_with("POST /api/v1/exousia/open HTTP/1.1") {
+                    r#"{"ok":true,"attendance":"rate-scoped-attendance","firstMissingSignal":"none"}"#
+                } else {
+                    r#"{"ok":true,"success":true,"active":true,"firstMissingSignal":"none"}"#
+                };
+                reply(stream, response);
+            }
+        });
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config_path);
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let peer = axum::extract::ConnectInfo(std::net::SocketAddr::from(([192, 0, 2, 44], 3013)));
+        for _ in 0..5 {
+            let response = caduceus_agent_service_route(peer, headers(), axum::body::Bytes::from(fixture_request().to_vec())).await;
+            assert_ne!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        }
+        let blocked = caduceus_agent_service_route(peer, headers(), axum::body::Bytes::from(fixture_request().to_vec())).await;
+        assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
+        let body = axum::body::to_bytes(blocked.into_body(), usize::MAX).await.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["firstMissingSignal"], "coronatio-exousia-agent-rate-limited");
+        let other_peer = axum::extract::ConnectInfo(std::net::SocketAddr::from(([192, 0, 2, 45], 3013)));
+        let eligible = caduceus_agent_service_route(other_peer, headers(), axum::body::Bytes::from(fixture_request().to_vec())).await;
+        assert_eq!(eligible.status(), StatusCode::OK);
+        worker.join().unwrap();
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+        let _ = std::fs::remove_file(&socket);
+        let _ = std::fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn agent_peer_limiter_allows_five_blocks_sixth_is_peer_local_and_expires_without_sleep() {
+        let mut limiter = AgentServicePeerLimiter::default();
+        let start = std::time::Instant::now();
+        let first = "192.0.2.10".parse().unwrap();
+        let second = "192.0.2.11".parse().unwrap();
+        for _ in 0..5 {
+            assert!(limiter.allow_at(first, start));
+        }
+        assert!(!limiter.allow_at(first, start));
+        assert!(limiter.allow_at(second, start));
+        assert!(limiter.allow_at(first, start + AGENT_SERVICE_RATE_LIMIT_WINDOW));
     }
 
     #[test]

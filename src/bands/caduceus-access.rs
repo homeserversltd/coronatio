@@ -20,6 +20,25 @@ impl CaduceusAccessClient {
     pub(crate) fn attendance_open(&self, pin: &str, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Open, serde_json::json!({"pin":pin,"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_open_raw_envelope(&self, raw_envelope: &[u8]) -> AttendanceCall { self.call_raw(AttendanceOperation::Open, raw_envelope) }
     pub(crate) fn attendance_validate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Validate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
+    pub(crate) fn attendance_open_scoped(&self, attendance: &AttendanceProof, document: &str, target: &str) -> AttendanceCall {
+        self.call(AttendanceOperation::Open, serde_json::json!({
+            "schema": "caduceus.staff.v1",
+            "intent_id": format!("coronatio-exousia-{}", uuid::Uuid::new_v4()),
+            "transition": "exousia.open",
+            "version": {"future": true},
+            "timestamp": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_secs().to_string())
+                .unwrap_or_else(|_| "0".to_string()),
+            "target": {"document": target},
+            "flags": {"exousia": {
+                "attendance": attendance.expose(),
+                "documentId": document,
+                "documentIncarnation": document,
+            }},
+            "payload": {},
+        }))
+    }
     pub(crate) fn attendance_touch(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Touch, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_change_pin(&self, attendance: &AttendanceProof, document: &str, current_pin: &str, new_pin: &str) -> AttendanceCall { self.call(AttendanceOperation::ChangePin, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document,"currentPin":current_pin,"newPin":new_pin})) }
     pub(crate) fn attendance_invalidate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Invalidate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
