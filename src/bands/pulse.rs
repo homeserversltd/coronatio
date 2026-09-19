@@ -8,6 +8,7 @@ mod pulse {
 
     pub(crate) const STATS_INTERVAL_SECONDS: u64 = 1;
     const PULSE_LEASE_SECONDS: u64 = 30;
+    const STATS_HISTORY_ROW_LIMIT: usize = 60;
     const PULSE_KEEP_ALIVE_SECONDS: u64 = 10;
     static STATS_TICKER_STARTED: AtomicBool = AtomicBool::new(false);
     #[cfg(test)]
@@ -30,7 +31,7 @@ mod pulse {
         if seed_only && held_stats().read().unwrap().is_some() { return; }
         let (refresh_history,now)={let held=held_stats().read().unwrap(); let now=Instant::now(); (held.as_ref().is_none_or(|h| h.history_at.elapsed()>=Duration::from_secs(60)),now)};
         let stats=super::caduceus_stats_value("/api/v1/appliance/stats");
-        let history=refresh_history.then(||super::caduceus_http("GET","/api/v1/appliance/stats/history"));
+        let history=refresh_history.then(||{let path=format!("/api/v1/appliance/stats/history?limit={STATS_HISTORY_ROW_LIMIT}"); super::caduceus_http("GET",&path)});
         let (roster_at,roster)=super::stats_identity_roster_cached();
         let mut held=held_stats().write().unwrap();
         let held=held.get_or_insert_with(||HeldStats{stats:serde_json::Value::Null,stats_at:now,history:serde_json::Value::Null,history_at:now,history_status:502,roster:StatsKeaLeases{status:"unavailable".to_string(),entries:Vec::new()},roster_at:now});
