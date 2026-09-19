@@ -596,9 +596,8 @@ fn shell_document_3() -> &'static str {
     if (!coronatioAttendanceRuntime.recordEligibleActivity) {
       const ATTENDANCE_TOUCH_THROTTLE_MS = 60 * 1000;
       coronatioAttendanceRuntime.recordEligibleActivity = () => { const now = Date.now(); coronatioAttendanceRuntime.lastEligibleActivity = now; if (!coronatioAttendanceRuntime.currentAttendance || coronatioAttendanceRuntime.inactivityHeadless || now - coronatioAttendanceRuntime.lastAttendanceTouch < ATTENDANCE_TOUCH_THROTTLE_MS) return; coronatioAttendanceRuntime.lastAttendanceTouch = now; void fetch('/api/v1/attendance/touch', { method: 'POST', cache: 'no-store' }).catch(() => {}); };
-      ['scroll', 'touchstart', 'pointerdown', 'keydown', 'input'].forEach(type => document.addEventListener(type, coronatioAttendanceRuntime.recordEligibleActivity, { passive: true }));
-      coronatioAttendanceRuntime.clickActivityHandler = event => { if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL'].includes(event.target?.tagName)) coronatioAttendanceRuntime.recordEligibleActivity(); };
-      document.addEventListener('click', coronatioAttendanceRuntime.clickActivityHandler, { passive: true });
+      const activityCensusListener = event => { if (event.isTrusted === false) return; coronatioAttendanceRuntime.recordEligibleActivity(); };
+      ['click', 'pointerdown', 'touchstart', 'keydown', 'input', 'scroll'].forEach(type => document.addEventListener(type, activityCensusListener, { capture: true, passive: true }));
       coronatioAttendanceRuntime.inactivityInterval = window.setInterval(() => { if (Date.now() - coronatioAttendanceRuntime.lastEligibleActivity >= 15 * 60 * 1000) enterInactivityHeadless(); }, 60 * 1000);
       coronatioAttendanceRuntime.activityCensusInstallCount++;
     }

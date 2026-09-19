@@ -60,6 +60,11 @@ fn browser_attendance_runtime_precedes_theme_iteration_and_has_one_owner() {
     assert_eq!(chrome.matches("document.addEventListener('htmx:configRequest'").count(), 1);
     assert_eq!(chrome.matches("activityCensusInstallCount++").count(), 1);
     assert_eq!(chrome.matches("/api/v1/attendance/touch").count(), 1);
+    assert!(chrome.contains("['click', 'pointerdown', 'touchstart', 'keydown', 'input', 'scroll']"));
+    assert_eq!(chrome.matches("['click', 'pointerdown', 'touchstart', 'keydown', 'input', 'scroll'].forEach(type => document.addEventListener(type, activityCensusListener, { capture: true, passive: true }));").count(), 1);
+    assert!(chrome.contains("event.isTrusted === false"));
+    assert!(!chrome.contains("['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'LABEL']"));
+    assert!(chrome.contains("15 * 60 * 1000"));
     assert!(!chrome.contains("let currentAttendance = null"));
     assert!(!chrome.contains("const documentIncarnation ="));
 

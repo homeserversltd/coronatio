@@ -478,6 +478,23 @@
         assert!(fragment.contains("data-service-action=\"status\""));
         assert!(fragment.contains("data-portal-services"));
         assert!(shell.contains("function handlePortalServiceAction(event)"));
+        assert!(shell.contains("function portalServiceFailureMessage(result"));
+        for signal in [
+            "caduceus-attendance-refused",
+            "caduceus-attendance-pin-refused",
+            "caduceus-attendance-not-current",
+            "caduceus-attendance-invalid",
+            "caduceus-attendance-required",
+            "caduceus-stale-incarnation",
+            "caduceus-attendance-stale-incarnation",
+        ] {
+            assert!(shell.contains(signal), "missing attendance expiry signal {signal}");
+        }
+        assert!(shell.contains("caduceus-attendance-connect-failed"));
+        assert!(shell.contains("const unreachableSignals = new Set(["));
+        assert!(shell.contains("Admin session expired. Enter the PIN again."));
+        assert!(shell.contains("The appliance service controller is unreachable."));
+        assert!(shell.contains("decoratedError"));
         assert!(shell.contains("fetch('/api/service/control'"));
         assert!(shell.contains("credentials: 'same-origin'"));
         assert!(shell.contains("const header = `=== ${result.service || 'service'} ===`"));
@@ -520,30 +537,118 @@
     }
 
     #[tokio::test]
-    async fn portals_service_control_validates_and_enters_caduceus_staff_intent() {
-        let temp = test_tab_root("portal-service-control");
-        let response = app(AppState { tab_root: Arc::new(temp) })
-            .oneshot(successor_admin_request(
+    async fn portals_service_control_projects_all_actions_through_direct_caduceus_paths() {
+        let _env_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let config_path = std::env::temp_dir().join(format!("coronatio-portals-allowlist-{}.json", std::process::id()));
+        std::fs::write(
+            &config_path,
+            r#"{"global":{"cors":{"allowed_origins":["https://home.arpa"]}},"tabs":{"portals":{"data":{"portals":[{"name":"Jellyfin","services":["jellyfin"],"localURL":"https://jellyfin.home.arpa"}]}}}}"#,
+        )
+        .unwrap();
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config_path);
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("portal-service-control-all-actions")) });
+        let actions = ["status", "start", "stop", "restart", "enable", "disable"];
+        let mut observed_paths = Vec::new();
+        for action in actions {
+            let mark = crate::caduceus_access::test_fixture::mark();
+            let response = router
+                .clone()
+                .oneshot(successor_admin_request(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/service/control")
+                        .header("content-type", "application/json")
+                        .body(Body::from(format!(r#"{{"service":"jellyfin","action":"{action}"}}"#)))
+                        .unwrap(),
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{action}");
+            let body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+            assert_eq!(body.as_object().unwrap().len(), 7, "{action}: {body}");
+            for key in ["schema", "success", "ok", "message", "output", "active", "firstMissingSignal"] {
+                assert!(body.get(key).is_some(), "missing {key} for {action}: {body}");
+            }
+            assert!(body["success"].as_bool().unwrap(), "{action}: {body}");
+            let expected_path = format!("/api/v1/appliance/service/jellyfin/{action}");
+            let records = crate::caduceus_access::test_fixture::records_since(mark);
+            let matching = records.iter().filter(|record| record.path == expected_path).collect::<Vec<_>>();
+            assert_eq!(matching.len(), 1, "{action} records: {records:?}");
+            observed_paths.push(matching[0].path.clone());
+        }
+        assert_eq!(
+            observed_paths,
+            actions.iter().map(|action| format!("/api/v1/appliance/service/jellyfin/{action}")).collect::<Vec<_>>()
+        );
+        let source = std::fs::read_to_string("src/bands/full-rust-routes/portals.rs").unwrap();
+        assert!(source.contains("caduceus_actuate_json"));
+        assert!(!source.contains("caduceus_staff_transition"));
+        assert!(!source.contains("resolve_caduceus_door"));
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+        std::fs::remove_file(config_path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn portals_service_control_projects_attendance_unreachable_and_systemd_failures() {
+        let _env_guard = HX_EXEMPLAR_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let config_path = std::env::temp_dir().join(format!("coronatio-portals-failures-{}.json", uuid::Uuid::new_v4()));
+        std::fs::write(
+            &config_path,
+            r#"{"global":{"cors":{"allowed_origins":["https://home.arpa"]}}}"#,
+        )
+        .unwrap();
+        std::env::set_var("CORONATIO_HOMESERVER_JSON", &config_path);
+        let router = app(AppState { tab_root: Arc::new(test_tab_root("portal-service-control-failures")) });
+        let missing = router
+            .oneshot(successor_session_request(
                 Request::builder()
                     .method("POST")
                     .uri("/api/service/control")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"service":"jellyfin","action":"restart"}"#))
                     .unwrap(),
+                false,
             ))
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(body.as_object().unwrap().len(), 4);
-        for key in ["active", "message", "output", "success"] {
-            assert!(body.get(key).is_some(), "missing {key}: {body}");
-        }
-        let succeeded = body["success"].as_bool().expect("boolean success");
-        assert!(body["active"].is_boolean(), "active must remain a projection boolean: {body}");
-        assert!(succeeded, "attendance fixture must admit the authorized service action: {body}");
-        assert_eq!(body["output"], "none");
+        assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+        let missing_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(missing.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(missing_body["firstMissingSignal"], "caduceus-attendance-required");
+        assert_eq!(missing_body["ok"], false);
+
+        let unreachable = portal_service_mutation_response(CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: "/api/v1/appliance/service/jellyfin/restart".to_string(),
+            body: serde_json::json!({"ok":false,"error":"caduceus-upstream-failed","firstMissingSignal":"caduceus-attendance-connect-failed"}),
+            first_missing_signal: "caduceus-attendance-connect-failed".to_string(),
+        });
+        assert_eq!(unreachable.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let unreachable_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(unreachable.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(unreachable_body["schema"], "coronatio.portals.service_control.v1");
+        assert_eq!(unreachable_body["firstMissingSignal"], "caduceus-attendance-connect-failed");
+        assert_eq!(unreachable_body["ok"], false);
+
+        let upstream_message = "Failed to restart jellyfin.service: Unit entered failed state";
+        let systemd = portal_service_mutation_response(CaduceusHttpReadback {
+            ok: true,
+            status: 200,
+            path: "/api/v1/appliance/service/jellyfin/restart".to_string(),
+            body: serde_json::json!({"schema":"caduceus.appliance.service.v1","success":false,"message":upstream_message,"error":"systemd-service-restart-failed","firstMissingSignal":"systemd-service-restart-failed"}),
+            first_missing_signal: "systemd-service-restart-failed".to_string(),
+        });
+        assert_eq!(systemd.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let systemd_body: serde_json::Value = serde_json::from_slice(&axum::body::to_bytes(systemd.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(systemd_body["schema"], "coronatio.portals.service_control.v1");
+        assert_eq!(systemd_body["firstMissingSignal"], "systemd-service-restart-failed");
+        assert_eq!(systemd_body["message"], upstream_message);
+        assert_eq!(systemd_body["success"], false);
+        assert_eq!(systemd_body["ok"], false);
+        assert_ne!(missing_body["firstMissingSignal"], unreachable_body["firstMissingSignal"]);
+        assert_ne!(missing_body["firstMissingSignal"], systemd_body["firstMissingSignal"]);
+        assert_ne!(unreachable_body["firstMissingSignal"], systemd_body["firstMissingSignal"]);
+        std::env::remove_var("CORONATIO_HOMESERVER_JSON");
+        std::fs::remove_file(config_path).unwrap();
     }
 
     #[tokio::test]

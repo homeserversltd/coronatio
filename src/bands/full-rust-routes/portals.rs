@@ -226,37 +226,62 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
             "portal-service-not-allowlisted".to_string(),
         );
     }
-    let systemd_service = if service.ends_with(".service") { service.clone() } else { format!("{service}.service") };
-    let caduceus = caduceus_staff_transition(
+    let path = format!("/api/v1/appliance/service/{service}/{action}");
+    let caduceus = caduceus_actuate_json(
         &mutation_authority(),
         &headers,
-        "POST",
-        "/api/service/control",
-        "portal-service",
-        serde_json::json!({
-            "service": service,
-            "action": action,
-            "systemdService": systemd_service,
-            "source": "coronatio-portals-admin-mode",
-            "originalQuarry": "Flask portals service_control execute_systemctl_command"
-        }),
+        MutationActionTarget::caduceus("coronatio.portals.service_control", &path),
+        &path,
+        serde_json::json!({}),
     );
     portal_service_mutation_response(caduceus)
 }
 
 fn portal_service_mutation_response(caduceus: CaduceusHttpReadback) -> Response {
     let body = &caduceus.body;
-    let success = body.get("success").and_then(serde_json::Value::as_bool).unwrap_or(caduceus.ok);
-    let message = body.get("message").and_then(serde_json::Value::as_str).unwrap_or(if success { "Service action completed" } else { "Service action failed" });
-    let output = body.get("output").and_then(serde_json::Value::as_str).unwrap_or(caduceus.first_missing_signal.as_str());
+    let semantic_success = body
+        .get("success")
+        .and_then(serde_json::Value::as_bool)
+        .or_else(|| body.get("ok").and_then(serde_json::Value::as_bool))
+        .unwrap_or(caduceus.ok);
+    let success = caduceus.ok && semantic_success;
+    let first_missing_signal = body
+        .get("firstMissingSignal")
+        .or_else(|| body.get("first_missing_signal"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(caduceus.first_missing_signal.as_str());
+    let message = body
+        .get("message")
+        .or_else(|| body.get("error"))
+        .or_else(|| body.get("output"))
+        .or_else(|| body.get("stdout"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(if success { "Service action completed" } else { first_missing_signal });
+    let output = body
+        .get("output")
+        .or_else(|| body.get("stdout"))
+        .or_else(|| body.get("message"))
+        .or_else(|| body.get("error"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(first_missing_signal);
     let active = body.get("active").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let status = if success {
+        StatusCode::OK
+    } else if (400..=599).contains(&caduceus.status) {
+        StatusCode::from_u16(caduceus.status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE)
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
     (
-        if success { StatusCode::OK } else { mutation_response_status(&caduceus) },
+        status,
         Json(serde_json::json!({
+            "schema": "coronatio.portals.service_control.v1",
             "success": success,
+            "ok": success,
             "message": message,
             "output": output,
-            "active": active
+            "active": active,
+            "firstMissingSignal": first_missing_signal
         })),
     )
         .into_response()
@@ -293,6 +318,7 @@ fn services_mutation_context_refusal_response(method: &str, path: &str, refusal:
         Json(serde_json::json!({
             "schema": "coronatio.services.mutation.refusal.v1",
             "success": false,
+            "ok": false,
             "accepted": false,
             "method": method,
             "path": path,

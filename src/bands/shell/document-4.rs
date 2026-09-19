@@ -606,11 +606,19 @@ fn shell_document_4() -> &'static str {
       catch (error) { showCoronatioToast(error.message || 'Could not remove tab', 'error'); } }
     function openAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); void loadCartridgeManagement(); requestAnimationFrame(() => modal.querySelector('[name="title"]')?.focus()); }
     function closeAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); }
+    function portalServiceFailureMessage(result, fallback = 'Service action failed') {
+      const signal = result?.firstMissingSignal || result?.first_missing_signal;
+      const expiredAttendanceSignals = new Set(['caduceus-attendance-refused', 'caduceus-attendance-pin-refused', 'caduceus-attendance-not-current', 'caduceus-attendance-invalid', 'caduceus-attendance-required', 'caduceus-stale-incarnation', 'caduceus-attendance-stale-incarnation']);
+      const unreachableSignals = new Set(['caduceus-unreachable', 'caduceus-upstream-failed', 'caduceus-attendance-connect-refused', 'caduceus-attendance-connect-failed', 'caduceus-attendance-timeout', 'caduceus-attendance-socket-config-failed', 'caduceus-attendance-write-failed', 'caduceus-attendance-task-failed']);
+      if (expiredAttendanceSignals.has(signal)) return 'Admin session expired. Enter the PIN again.';
+      if (unreachableSignals.has(signal)) return 'The appliance service controller is unreachable.';
+      return result?.message || result?.error || result?.output || result?.stdout || fallback;
+    }
     function showPortalServiceStatus(results) {
       const modal = document.querySelector('[data-service-status-modal]'); const content = modal?.querySelector('[data-service-status-content]');
       if (content) content.textContent = results.map(result => {
-        const header = `=== ${result.service || 'service'} ===`; const status = result.output || result.message || result.error || result.raw || 'No status available';
-        if (result.error) return `${header}\n⚠️ Error State:\n${status}`;
+        const header = `=== ${result.service || 'service'} ===`; const decoratedError = result.decoratedError || (result.error ? portalServiceFailureMessage(result, result.error) : ''); const status = decoratedError || result.output || result.message || result.stdout || result.raw || 'No status available';
+        if (decoratedError) return `${header}\n⚠️ Error State:\n${status}`;
         const isActive = result.active !== undefined ? result.active : result.success;
         return `${header}\n${!isActive ? '⚠️ Service Inactive/Failed:\n' : ''}${status}`;
       }).join('\n\n');
@@ -641,14 +649,16 @@ fn shell_document_4() -> &'static str {
           const text = await response.text();
           let result;
           try { result = JSON.parse(text); } catch (_) { result = { success: response.ok, output: text }; }
-          results.push({ service, ...result });
+          const decoratedError = !response.ok || result.ok === false || result.success === false ? portalServiceFailureMessage(result, `Failed to ${action} ${service}`) : '';
+          results.push({ service, ...result, decoratedError });
           if (action !== 'status') {
-            if (response.ok && result.success !== false) showCoronatioToast(result.message || `Successfully ${action}ed ${service}`, 'success');
-            else showCoronatioToast(result.error || result.message || `Failed to ${action} ${service}`, 'error');
+            if (response.ok && result.ok !== false && result.success !== false) showCoronatioToast(result.message || `Successfully ${action}ed ${service}`, 'success');
+            else showCoronatioToast(portalServiceFailureMessage(result, `Failed to ${action} ${service}`), 'error');
           }
-        } catch (error) {
-          results.push({ service, action, error: String(error) });
-          if (action !== 'status') showCoronatioToast(`Failed to ${action} ${service}`, 'error');
+        } catch (_) {
+          const unreachableMessage = 'The appliance service controller is unreachable.';
+          results.push({ service, action, error: unreachableMessage, decoratedError: unreachableMessage });
+          if (action !== 'status') showCoronatioToast(unreachableMessage, 'error');
         }
       }
       if (action === 'status') showPortalServiceStatus(results);
