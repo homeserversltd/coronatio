@@ -139,6 +139,25 @@ fn canonical_mutation_target(target: &str) -> String {
     {
         return format!("/api/v1/network/firewall/policies/{mac}");
     }
+    if target == "/api/v1/file/ingress/start" {
+        return "/api/v1/file/ingress/start".to_string();
+    }
+    if let Some(value) = target.strip_prefix("/api/v1/file/ingress/") {
+        let segments: Vec<_> = value.split('/').collect();
+        if segments.len() == 3
+            && !segments[0].is_empty()
+            && segments[1] == "chunk"
+            && !segments[2].is_empty()
+        {
+            return "/api/v1/file/ingress/{upload_id}/chunk/{index}".to_string();
+        }
+        if segments.len() == 2 && !segments[0].is_empty() && segments[1] == "complete" {
+            return "/api/v1/file/ingress/{upload_id}/complete".to_string();
+        }
+        if segments.len() == 1 && !segments[0].is_empty() {
+            return "/api/v1/file/ingress/{upload_id}".to_string();
+        }
+    }
     target.to_string()
 }
 

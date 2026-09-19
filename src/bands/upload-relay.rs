@@ -31,12 +31,15 @@ fn upload_mutation_refusal(refusal: MutationRefusal) -> axum::response::Response
         .into_response()
 }
 
-fn authorize_upload(headers: &axum::http::HeaderMap) -> Result<MutationAttendance, axum::response::Response> {
+fn authorize_upload(
+    headers: &axum::http::HeaderMap,
+    target: impl Into<String>,
+) -> Result<MutationAttendance, axum::response::Response> {
     if upload_pin_required() && session_from_headers(headers) != Session::Admin {
         return Err(upload_pin_required_refusal());
     }
     let authority = mutation_authority();
-    let mapping = MutationActionTarget::caduceus("coronatio.file.ingress", "/api/v1/file/ingress");
+    let mapping = MutationActionTarget::caduceus("coronatio.file.ingress", target);
     authority
         .authorize(&mapping.request_context(headers), mapping)
         .map_err(upload_mutation_refusal)
@@ -140,7 +143,7 @@ async fn upload_start_route(
     headers: axum::http::HeaderMap,
     body: axum::body::Body,
 ) -> axum::response::Response {
-    let attendance = match authorize_upload(&headers) {
+    let attendance = match authorize_upload(&headers, "/api/v1/file/ingress/start") {
         Ok(attendance) => attendance,
         Err(response) => return response,
     };
@@ -159,7 +162,10 @@ async fn upload_chunk_route(
     headers: axum::http::HeaderMap,
     body: axum::body::Body,
 ) -> axum::response::Response {
-    let attendance = match authorize_upload(&headers) {
+    let attendance = match authorize_upload(
+        &headers,
+        format!("/api/v1/file/ingress/{upload_id}/chunk/{index}"),
+    ) {
         Ok(attendance) => attendance,
         Err(response) => return response,
     };
@@ -178,7 +184,10 @@ async fn upload_complete_route(
     headers: axum::http::HeaderMap,
     body: axum::body::Body,
 ) -> axum::response::Response {
-    let attendance = match authorize_upload(&headers) {
+    let attendance = match authorize_upload(
+        &headers,
+        format!("/api/v1/file/ingress/{upload_id}/complete"),
+    ) {
         Ok(attendance) => attendance,
         Err(response) => return response,
     };
@@ -197,7 +206,7 @@ async fn upload_delete_route(
     headers: axum::http::HeaderMap,
     body: axum::body::Body,
 ) -> axum::response::Response {
-    let attendance = match authorize_upload(&headers) {
+    let attendance = match authorize_upload(&headers, format!("/api/v1/file/ingress/{upload_id}")) {
         Ok(attendance) => attendance,
         Err(response) => return response,
     };
