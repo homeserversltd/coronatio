@@ -460,7 +460,7 @@ pub(crate) fn stats_identity_roster_cached() -> (std::time::Instant, StatsKeaLea
         }
     }
 
-    let roster = caduceus_http("GET", "/api/v1/network/device/list");
+    let roster = caduceus_http("GET", "/api/v1/network/device");
     let result = if !roster.ok {
         StatsKeaLeases {
             status: "unavailable".to_string(),
