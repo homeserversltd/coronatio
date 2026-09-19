@@ -80,28 +80,73 @@ fn shell_document_4() -> &'static str {
       applyAdminDomState();
     });
     async function uploadOneFile(file, scopedAttendance = null) {
-      setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending' });
-      const form = new FormData();
-      form.append('file', file);
-      form.append('path', uploadCurrentPath());
-      const xhr = new XMLHttpRequest();
-      const start = Date.now();
-      return new Promise((resolve, reject) => {
-        xhr.upload.onprogress = event => {
-          if (event.lengthComputable) {
-            const elapsed = Math.max(1, Date.now() - start) / 1000;
-            setUpload(file.name, { progress: (event.loaded / event.total) * 100, speed: event.loaded / elapsed, uploaded: event.loaded, total: event.total, status: 'uploading' });
-          }
-        };
+      const CHUNK_SIZE = 4194304;
+      setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending', uploadId: null, xhr: null, removed: false, attendance: scopedAttendance || coronatioAttendanceRuntime.currentAttendance });
+      const uploadHeaders = (uploadAttendance = scopedAttendance) => {
+        const headers = { 'X-Caduceus-Document': coronatioAttendanceRuntime.documentIncarnation };
+        if (uploadAttendance || coronatioAttendanceRuntime.currentAttendance) headers['X-Caduceus-Attendance'] = uploadAttendance || coronatioAttendanceRuntime.currentAttendance;
+        return headers;
+      };
+      const uploadFailure = (status, text) => {
+        let msg = 'Upload failed with status ' + status; let signal = '';
+        try { const payload = JSON.parse(text || '{}'); signal = payload.firstMissingSignal || ''; if (payload.error) msg = payload.error; } catch (_) {}
+        const error = new Error(msg); if (status === 428 && signal === 'upload-pin-required') error.uploadPinRequired = true; return error;
+      };
+      const uploadRecord = uploadState.activeUploads.get(file.name);
+      const removed = () => uploadRecord?.removed === true;
+      const startUpload = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest(); const current = uploadState.activeUploads.get(file.name); if (current) current.xhr = xhr;
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) { setUpload(file.name, { progress: 100, uploaded: file.size, total: file.size, status: 'completed' }); const readout = uploadReadout(); if (readout) readout.textContent = xhr.responseText; resolve(); }
-          else { let msg = 'Upload failed with status ' + xhr.status; let signal = ''; try { const body = JSON.parse(xhr.responseText); signal = body.firstMissingSignal || ''; if (body.error) msg = body.error; } catch (_) {} const error = new Error(msg); if (xhr.status === 428 && signal === 'upload-pin-required') { error.uploadPinRequired = true; reject(error); return; } setUpload(file.name, { status: 'error', error: msg }); reject(error); }
+          if (removed()) { reject(Object.assign(new Error('Upload removed'), { uploadRemoved: true })); return; }
+          if (xhr.status < 200 || xhr.status >= 300) { reject(uploadFailure(xhr.status, xhr.responseText)); return; }
+          let result = {}; try { result = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
+          const uploadId = result.upload_id || result.uploadId || result.id;
+          if (!uploadId) { reject(new Error('Upload start response did not include an upload ID')); return; }
+          resolve(String(uploadId));
         };
-        xhr.onerror = () => { const msg = 'Network error occurred during upload'; setUpload(file.name, { status: 'error', error: msg }); reject(new Error(msg)); };
-        xhr.open('POST', '/api/files/upload');
-        xhr.setRequestHeader('X-Caduceus-Document', coronatioAttendanceRuntime.documentIncarnation); const uploadAttendance = scopedAttendance || coronatioAttendanceRuntime.currentAttendance; if (uploadAttendance) xhr.setRequestHeader('X-Caduceus-Attendance', uploadAttendance);
-        xhr.send(form);
+        xhr.onerror = () => { if (removed()) reject(Object.assign(new Error('Upload removed'), { uploadRemoved: true })); else reject(new Error('Network error occurred during upload')); };
+        xhr.onabort = () => reject(Object.assign(new Error('Upload removed'), { uploadRemoved: true }));
+        xhr.open('POST', '/api/files/upload/start');
+        xhr.setRequestHeader('Content-Type', 'application/json'); const startHeaders = uploadHeaders(); Object.keys(startHeaders).forEach(name => xhr.setRequestHeader(name, startHeaders[name]));
+        xhr.send(JSON.stringify({ filename: file.name, total_size: file.size, target_dir: uploadCurrentPath(), chunk_size: CHUNK_SIZE }));
       });
+      if (removed()) throw Object.assign(new Error('Upload removed'), { uploadRemoved: true });
+      setUpload(file.name, { uploadId: startUpload, status: 'uploading', xhr: null, uploaded: 0, total: file.size });
+      const startedAt = Date.now(); let index = 0; let uploaded = 0;
+      while (uploaded < file.size) {
+        const offset = uploaded; const end = Math.min(file.size, offset + CHUNK_SIZE); const chunk = file.slice(offset, end);
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest(); const current = uploadState.activeUploads.get(file.name); if (current) current.xhr = xhr;
+          xhr.upload.onprogress = event => {
+            if (!event.lengthComputable) return;
+            const cumulative = Math.min(file.size, offset + event.loaded); const elapsed = Math.max(1, Date.now() - startedAt) / 1000;
+            if (removed()) return;
+            setUpload(file.name, { progress: file.size ? (cumulative / file.size) * 100 : 0, speed: cumulative / elapsed, uploaded: cumulative, total: file.size, status: 'uploading', uploadId: startUpload, xhr });
+          };
+          xhr.onload = () => {
+            if (removed()) { reject(Object.assign(new Error('Upload removed'), { uploadRemoved: true })); return; }
+            if (xhr.status < 200 || xhr.status >= 300) reject(uploadFailure(xhr.status, xhr.responseText)); else resolve();
+          };
+          xhr.onerror = () => { if (removed()) reject(Object.assign(new Error('Upload removed'), { uploadRemoved: true })); else reject(new Error('Network error occurred during upload')); };
+          xhr.onabort = () => reject(Object.assign(new Error('Upload removed'), { uploadRemoved: true }));
+          xhr.open('POST', '/api/files/upload/' + encodeURIComponent(startUpload) + '/chunk/' + index);
+          const chunkHeaders = uploadHeaders(); Object.keys(chunkHeaders).forEach(name => xhr.setRequestHeader(name, chunkHeaders[name]));
+          xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+          xhr.send(chunk);
+        });
+        if (removed()) throw Object.assign(new Error('Upload removed'), { uploadRemoved: true });
+        uploaded = end; index += 1;
+        const elapsed = Math.max(1, Date.now() - startedAt) / 1000;
+        setUpload(file.name, { progress: file.size ? (uploaded / file.size) * 100 : 0, speed: uploaded / elapsed, uploaded, total: file.size, status: 'uploading', uploadId: startUpload });
+      }
+      const complete = await fetch('/api/files/upload/' + encodeURIComponent(startUpload) + '/complete', { method: 'POST', headers: uploadHeaders(), cache: 'no-store' });
+      const completeText = await complete.text();
+      if (removed()) throw Object.assign(new Error('Upload removed'), { uploadRemoved: true });
+      if (!complete.ok) throw uploadFailure(complete.status, completeText);
+      if (removed()) throw Object.assign(new Error('Upload removed'), { uploadRemoved: true });
+      setUpload(file.name, { progress: 100, uploaded: file.size, total: file.size, speed: file.size / Math.max(1, Date.now() - startedAt) * 1000, status: 'completed', uploadId: startUpload, xhr: null });
+      const readout = uploadReadout(); if (readout) readout.textContent = completeText;
+      return { removed: false };
     }
     async function uploadSelectedFiles(scopedAttendance = null) {
       if (!uploadState.selectedFiles.length) { showCoronatioToast('No files selected for upload', 'error'); return; }
@@ -111,8 +156,8 @@ fn shell_document_4() -> &'static str {
       if (submit) { submit.disabled = true; submit.textContent = 'Uploading...'; }
       let success = 0; let failed = 0; let pinRequired = false;
       for (const file of uploadState.selectedFiles) {
-        try { await uploadOneFile(file, scopedAttendance); success += 1; }
-        catch (error) { if (error?.uploadPinRequired && !headerState.isAdmin) { pinRequired = true; setUpload(file.name, { status: 'pending', error: '' }); break; } failed += 1; showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error'); }
+        try { const outcome = await uploadOneFile(file, scopedAttendance); if (!outcome?.removed) success += 1; }
+        catch (error) { if (error?.uploadRemoved) continue; if (error?.uploadPinRequired && !headerState.isAdmin) { pinRequired = true; setUpload(file.name, { status: 'pending', error: '' }); break; } failed += 1; setUpload(file.name, { status: 'error', error: error?.message || String(error) }); showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error'); }
       }
       uploadState.uploading = false;
       const submitAfterUpload = uploadSubmit();
@@ -147,7 +192,19 @@ fn shell_document_4() -> &'static str {
     document.body.addEventListener('click', async event => { const target = event.target instanceof Element ? event.target : null; if (!target) return;
       const modal = target.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]'); if (modal && target === modal) { closeUploadModal(modal); return; }
       const control = target.closest('[data-upload-remove], [data-blacklist-remove], [data-upload-breadcrumb-path], [data-upload-modal-close], [data-upload-pin-cancel], [data-upload-submit], [data-upload-pin-confirm], [data-upload-refresh], [data-upload-force-allow], [data-upload-set-default], [data-upload-history], [data-upload-blacklist], [data-upload-blacklist-add], [data-upload-blacklist-submit], [data-upload-clear-history], [data-upload-pin-toggle]'); if (!control) return;
-      if (control.matches('[data-upload-remove]')) { uploadState.activeUploads.delete(control.dataset.uploadRemove); renderUploadProgress(); return; }
+      if (control.matches('[data-upload-remove]')) {
+        const filename = control.dataset.uploadRemove; const upload = uploadState.activeUploads.get(filename);
+        let cleanup = null;
+        if (upload && (upload.status === 'pending' || upload.status === 'uploading')) {
+          upload.removed = true; upload.xhr?.abort();
+          if (upload.uploadId) {
+            const headers = { 'X-Caduceus-Document': coronatioAttendanceRuntime.documentIncarnation };
+            const attendance = upload.attendance || coronatioAttendanceRuntime.currentAttendance; if (attendance) headers['X-Caduceus-Attendance'] = attendance;
+            cleanup = fetch('/api/files/upload/' + encodeURIComponent(upload.uploadId), { method: 'DELETE', headers, cache: 'no-store' }).catch(() => {});
+          }
+        }
+        uploadState.activeUploads.delete(filename); renderUploadProgress(); if (cleanup) await cleanup; return;
+      }
       if (control.matches('[data-blacklist-remove]')) { uploadState.blacklist.splice(Number(control.dataset.blacklistRemove), 1); refreshUploadBlacklistDomOnly(); return; }
       if (control.matches('[data-upload-breadcrumb-path]')) { uploadState.currentPath = control.dataset.uploadBreadcrumbPath || '/mnt/nas'; const field = document.querySelector('[data-upload-current-path]'); if (field) field.value = uploadState.currentPath; renderUploadBreadcrumbs(uploadState.currentPath); refreshUploadTree(uploadState.currentPath); return; }
       if (control.matches('[data-upload-modal-close], [data-upload-pin-cancel]')) { closeUploadModal(control.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]')); return; }

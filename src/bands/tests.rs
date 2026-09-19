@@ -64,6 +64,7 @@ mod tests {
     include!("tests/hyalos-consumer-walls.rs");
     include!("tests/debug-emitter-walls.rs");
     include!("tests/hestia-bundle-walls.rs");
+    include!("tests/upload-chunked-streaming-walls.rs");
 
     include!("tests/portals-htmx-mirror-walls.rs");
     include!("tests/portals-currentness-walls.rs");

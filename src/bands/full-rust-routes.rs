@@ -91,6 +91,14 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/files/browse", get(upload_browse_hierarchical_route))
         .route("/api/files/browse-hierarchical", get(upload_browse_hierarchical_route))
         .route("/api/files/upload", post(upload_file_route))
+        .route("/api/files/upload/start", post(upload_start_route))
+        .route(
+            "/api/files/upload/:upload_id/chunk/:index",
+            post(upload_chunk_route)
+                .layer(tower_http::limit::RequestBodyLimitLayer::new(UPLOAD_CHUNK_BODY_LIMIT)),
+        )
+        .route("/api/files/upload/:upload_id/complete", post(upload_complete_route))
+        .route("/api/files/upload/:upload_id", delete(upload_delete_route))
         .route("/api/files/download", get(homeserver_rust_read_route))
         .route("/api/upload/force-permissions", post(admin_class_generic_mutation_route))
         .route("/api/upload/history", get(upload_history_admin_route))
@@ -679,6 +687,10 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/files/browse", &["get"]),
         ("/api/files/browse-hierarchical", &["get"]),
         ("/api/files/upload", &["post"]),
+        ("/api/files/upload/start", &["post"]),
+        ("/api/files/upload/:upload_id/chunk/:index", &["post"]),
+        ("/api/files/upload/:upload_id/complete", &["post"]),
+        ("/api/files/upload/:upload_id", &["delete"]),
         ("/api/files/download", &["get"]),
         ("/api/upload/force-permissions", &["post"]),
         ("/api/upload/history", &["get"]),

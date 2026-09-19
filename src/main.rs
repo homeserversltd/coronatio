@@ -40,6 +40,7 @@ mod caduceus_access {
     include!("bands/caduceus-access.rs");
 }
 include!("bands/mutation-authority.rs");
+include!("bands/upload-relay.rs");
 include!("bands/pulse.rs");
 include!("bands/router-readback.rs");
 include!("bands/full-rust-routes.rs");
