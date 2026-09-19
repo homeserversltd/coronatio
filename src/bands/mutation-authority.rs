@@ -164,6 +164,14 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
         axum::http::StatusCode::FORBIDDEN
     } else if matches!(
         signal,
+        "caduceus-attendance-wrong-document"
+            | "caduceus-attendance-document-wrong"
+            | "caduceus-attendance-document-mismatch"
+            | "caduceus-attendance-document-incarnation-mismatch"
+    ) {
+        axum::http::StatusCode::BAD_REQUEST
+    } else if matches!(
+        signal,
         "caduceus-access-refused"
             | "caduceus-attendance-refused"
             | "caduceus-attendance-pin-refused"
@@ -172,8 +180,21 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
             | "caduceus-attendance-required"
             | "caduceus-stale-incarnation"
             | "caduceus-attendance-stale-incarnation"
+            | "caduceus-attendance-pin-wrong"
+            | "caduceus-attendance-stale-document"
+            | "caduceus-attendance-incarnation-stale"
     ) {
         axum::http::StatusCode::UNAUTHORIZED
+    } else if matches!(
+        signal,
+        "caduceus-attendance-unbound"
+            | "caduceus-derived-unbound"
+            | "caduceus-attendance-verifier-unbound"
+            | "caduceus-signer-stale-derived"
+            | "caduceus-signer-current-bind-unavailable"
+            | "caduceus-signer-verification-unavailable"
+    ) {
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
     } else {
         axum::http::StatusCode::SERVICE_UNAVAILABLE
     }

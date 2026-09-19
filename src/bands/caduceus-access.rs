@@ -18,6 +18,7 @@ impl Default for CaduceusAccessClient {
 impl CaduceusAccessClient {
     pub(crate) fn new(socket: impl Into<PathBuf>) -> Self { Self { socket: socket.into(), timeout: CADUCEUS_ACCESS_TIMEOUT } }
     pub(crate) fn attendance_open(&self, pin: &str, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Open, serde_json::json!({"pin":pin,"documentId":document,"documentIncarnation":document})) }
+    pub(crate) fn attendance_open_raw_envelope(&self, raw_envelope: &[u8]) -> AttendanceCall { self.call_raw(AttendanceOperation::Open, raw_envelope) }
     pub(crate) fn attendance_validate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Validate, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_touch(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall { self.call(AttendanceOperation::Touch, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document})) }
     pub(crate) fn attendance_change_pin(&self, attendance: &AttendanceProof, document: &str, current_pin: &str, new_pin: &str) -> AttendanceCall { self.call(AttendanceOperation::ChangePin, serde_json::json!({"attendance":attendance.expose(),"documentId":document,"documentIncarnation":document,"currentPin":current_pin,"newPin":new_pin})) }
@@ -59,7 +60,13 @@ impl CaduceusAccessClient {
         }).await.unwrap_or_else(|_| AttendanceCall::refused(AttendanceOperation::Invalidate, 0, "caduceus-attendance-task-failed"))
     }
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
-        let encoded = match serde_json::to_vec(&body) { Ok(v) if v.len() <= 4096 => v, _ => return AttendanceCall::refused(operation, 0, "caduceus-attendance-request-invalid") };
+        let encoded = match serde_json::to_vec(&body) { Ok(v) => v, _ => return AttendanceCall::refused(operation, 0, "caduceus-attendance-request-invalid") };
+        self.call_raw(operation, &encoded)
+    }
+    fn call_raw(&self, operation: AttendanceOperation, encoded: &[u8]) -> AttendanceCall {
+        if encoded.len() > 4096 {
+            return AttendanceCall::refused(operation, 0, "caduceus-attendance-request-invalid");
+        }
         let mut stream = match UnixStream::connect(&self.socket) {
             Ok(stream) => stream,
             Err(error) => return AttendanceCall::refused(operation, 0, attendance_io_code("connect", &error)),
@@ -68,7 +75,7 @@ impl CaduceusAccessClient {
             return AttendanceCall::refused(operation, 0, "caduceus-attendance-socket-config-failed");
         }
         let request = format!("POST {} HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\n\r\n", operation.path(), encoded.len());
-        if let Err(error) = stream.write_all(request.as_bytes()).and_then(|_| stream.write_all(&encoded)) {
+        if let Err(error) = stream.write_all(request.as_bytes()).and_then(|_| stream.write_all(encoded)) {
             return AttendanceCall::refused(operation, 0, attendance_io_code("write", &error));
         }
         parse_attendance_response(operation, &mut stream)
@@ -302,6 +309,7 @@ fn parse_attendance_response(op: AttendanceOperation, stream: &mut UnixStream) -
     let code = object
         .get("code")
         .or_else(|| object.get("firstMissingSignal"))
+        .or_else(|| object.get("first_missing_signal"))
         .and_then(|value| value.as_str())
         .unwrap_or(if ok { "none" } else { "caduceus-attendance-refused" });
     if status < 200 || status >= 300 || !ok {

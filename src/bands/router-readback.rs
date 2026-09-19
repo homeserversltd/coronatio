@@ -613,6 +613,10 @@ fn attendance_failure_status(call: &crate::caduceus_access::AttendanceCall) -> S
     }
     match call.receipt.code.as_str() {
         "caduceus-access-origin-refused" | "caduceus-attendance-origin-refused" => StatusCode::FORBIDDEN,
+        "caduceus-attendance-wrong-document"
+        | "caduceus-attendance-document-wrong"
+        | "caduceus-attendance-document-mismatch"
+        | "caduceus-attendance-document-incarnation-mismatch" => StatusCode::BAD_REQUEST,
         "caduceus-access-refused"
         | "caduceus-attendance-refused"
         | "caduceus-attendance-pin-refused"
@@ -620,7 +624,16 @@ fn attendance_failure_status(call: &crate::caduceus_access::AttendanceCall) -> S
         | "caduceus-attendance-invalid"
         | "caduceus-attendance-required"
         | "caduceus-stale-incarnation"
-        | "caduceus-attendance-stale-incarnation" => StatusCode::UNAUTHORIZED,
+        | "caduceus-attendance-stale-incarnation"
+        | "caduceus-attendance-pin-wrong"
+        | "caduceus-attendance-stale-document"
+        | "caduceus-attendance-incarnation-stale" => StatusCode::UNAUTHORIZED,
+        "caduceus-attendance-unbound"
+        | "caduceus-derived-unbound"
+        | "caduceus-attendance-verifier-unbound"
+        | "caduceus-signer-stale-derived"
+        | "caduceus-signer-current-bind-unavailable"
+        | "caduceus-signer-verification-unavailable" => StatusCode::SERVICE_UNAVAILABLE,
         _ => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
@@ -716,4 +729,199 @@ async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) ->
     let status = attendance_failure_status(&call);
     let projection = if invalidated { guest_session_projection("none") } else { session_projection(call) };
     attendance_projection_response(&headers, ROUTE, status, projection, Some(&document))
+}
+
+async fn caduceus_agent_service_route(headers: axum::http::HeaderMap, body: axum::body::Bytes) -> Response {
+    if !json_content_type(&headers) || body.len() > CADUCEUS_SESSION_BODY_MAX || body.is_empty() {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-request-invalid", None, None, None);
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-request-invalid", None, None, None);
+    };
+    let Some(object) = value.as_object() else {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-request-invalid", None, None, None);
+    };
+    for field in ["schema", "intent_id", "transition", "version", "timestamp"] {
+        if !object.contains_key(field) {
+            return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-staff-kernel-missing", None, None, None);
+        }
+    }
+    if object.get("schema").and_then(serde_json::Value::as_str) != Some("caduceus.staff.v1") {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-staff-schema-foreign", None, None, None);
+    }
+    if object.get("transition").and_then(serde_json::Value::as_str) != Some("exousia.open") {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-transition-invalid", None, None, None);
+    }
+    let Some(pin) = object
+        .get("flags")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|flags| flags.get("exousia"))
+        .and_then(serde_json::Value::as_object)
+        .and_then(|exousia| exousia.get("pin"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|pin| !pin.is_empty() && pin.len() <= 256)
+    else {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-pin-required", None, None, None);
+    };
+    let _pin_is_process_memory_only = pin;
+    let Some(target) = object.get("target").and_then(serde_json::Value::as_object) else {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-target-invalid", None, None, None);
+    };
+    let Some(service) = target.get("service").and_then(serde_json::Value::as_str).map(str::trim).filter(|service| is_safe_service_name(service) && service.len() <= 128) else {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-service-invalid", None, None, None);
+    };
+    let Some(action) = target.get("action").and_then(serde_json::Value::as_str).map(str::trim).filter(|action| portal_service_action_allowed(action)) else {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-action-invalid", Some(service), None, None);
+    };
+    let expected_document = agent_service_document(action);
+    let Some(document) = target.get("document").and_then(serde_json::Value::as_str) else {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-document-invalid", Some(service), Some(action), None);
+    };
+    if document != expected_document {
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-target-mismatch", Some(service), Some(action), None);
+    }
+    let portals = match read_portals_config() {
+        Ok(config) => config.portals,
+        Err(signal) => return agent_service_refusal(StatusCode::FORBIDDEN, &signal, Some(service), Some(action), None),
+    };
+    if !portal_service_is_allowlisted(service, &portals) {
+        return agent_service_refusal(
+            StatusCode::FORBIDDEN,
+            "portal-service-not-allowlisted",
+            Some(service),
+            Some(action),
+            None,
+        );
+    }
+
+    let access = crate::caduceus_access::CaduceusAccessClient::default();
+    let opened = access.attendance_open_raw_envelope(&body);
+    let Some(attendance) = opened.proof else {
+        return agent_service_refusal(
+            attendance_failure_status(&opened),
+            &opened.receipt.code,
+            Some(service),
+            Some(action),
+            Some(agent_receipt_from_attendance(&opened)),
+        );
+    };
+    let action_path = format!("/api/v1/appliance/service/{service}/{action}");
+    let action_readback = caduceus_http_json_with_attendance_and_document(
+        "POST",
+        &action_path,
+        serde_json::json!({}),
+        Some(&attendance),
+        Some(document),
+    );
+    // This is deliberately unconditional: action refusal is not permission to
+    // retain the scoped attendance opened for the sibling agent lane.
+    let invalidation = access.attendance_invalidate(&attendance, document);
+    crate::caduceus_access::bust_attendance_projection(&attendance, document, "attendance-invalidated");
+    agent_service_response(service, action, action_readback, invalidation)
+}
+
+const AGENT_SERVICE_DOCUMENT_PREFIX: &str = "/api/v1/appliance/service/{service}/";
+
+fn agent_service_document(action: &str) -> String {
+    format!("{AGENT_SERVICE_DOCUMENT_PREFIX}{action}")
+}
+
+fn agent_receipt_from_attendance(call: &crate::caduceus_access::AttendanceCall) -> serde_json::Value {
+    serde_json::json!({
+        "redacted": true,
+        "ok": call.receipt.ok,
+        "status": call.receipt.status,
+        "firstMissingSignal": safe_access_code(&call.receipt.code),
+    })
+}
+
+fn agent_service_refusal(
+    status: StatusCode,
+    signal: &str,
+    service: Option<&str>,
+    action: Option<&str>,
+    receipt: Option<serde_json::Value>,
+) -> Response {
+    let mut body = serde_json::json!({
+        "schema": "coronatio.exousia.agent.service.v1",
+        "ok": false,
+        "success": false,
+        "active": false,
+        "firstMissingSignal": safe_access_code(signal),
+    });
+    if let Some(service) = service { body["service"] = serde_json::Value::String(service.to_string()); }
+    if let Some(action) = action { body["action"] = serde_json::Value::String(action.to_string()); }
+    if let Some(receipt) = receipt { body["receipt"] = receipt; }
+    (status, Json(body)).into_response()
+}
+
+fn redacted_agent_service_receipt(readback: &CaduceusHttpReadback) -> serde_json::Value {
+    let body = &readback.body;
+    serde_json::json!({
+        "redacted": true,
+        "ok": readback.ok,
+        "status": readback.status,
+        "active": body.get("active").and_then(serde_json::Value::as_bool).unwrap_or(false),
+        "firstMissingSignal": safe_access_code(&readback.first_missing_signal),
+    })
+}
+
+fn agent_service_response(
+    service: &str,
+    action: &str,
+    action_readback: CaduceusHttpReadback,
+    invalidation: crate::caduceus_access::AttendanceCall,
+) -> Response {
+    let mut success = action_readback.ok;
+    let mut signal = if action_readback.ok { "none".to_string() } else { safe_access_code(&action_readback.first_missing_signal) };
+    if success && !invalidation.receipt.ok {
+        success = false;
+        signal = "caduceus-attendance-invalidate-failed".to_string();
+    }
+    let status = if success {
+        StatusCode::OK
+    } else if !invalidation.receipt.ok && signal == "caduceus-attendance-invalidate-failed" {
+        attendance_failure_status(&invalidation)
+    } else if action_readback.status >= 400 && action_readback.status <= 599 {
+        StatusCode::from_u16(action_readback.status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE)
+    } else {
+        mutation_response_status(&action_readback)
+    };
+    let body = serde_json::json!({
+        "schema": "coronatio.exousia.agent.service.v1",
+        "ok": success,
+        "success": success,
+        "service": service,
+        "action": action,
+        "active": action_readback.body.get("active").and_then(serde_json::Value::as_bool).unwrap_or(false),
+        "firstMissingSignal": signal,
+        "receipt": redacted_agent_service_receipt(&action_readback),
+    });
+    (status, Json(body)).into_response()
+}
+
+async fn caduceus_agent_posture_route() -> Response {
+    let readback = caduceus_http("GET", "/api/v1/exousia/posture");
+    let source = &readback.body;
+    let mut body = serde_json::json!({
+        "schema": "coronatio.exousia.agent.posture.v1",
+        "ok": readback.ok,
+        "firstMissingSignal": safe_access_code(&readback.first_missing_signal),
+    });
+    for field in ["bound", "storedVerifierPresent", "currentPresent", "epochMatches"] {
+        if let Some(value) = source.get(field).and_then(serde_json::Value::as_bool) {
+            body[field] = serde_json::Value::Bool(value);
+        }
+    }
+    for field in ["posture"] {
+        if let Some(value) = source.get(field).and_then(serde_json::Value::as_str) {
+            body[field] = serde_json::Value::String(value.to_string());
+        }
+    }
+    let status = if readback.status == 0 {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::from_u16(readback.status).unwrap_or(StatusCode::BAD_GATEWAY)
+    };
+    (status, Json(body)).into_response()
 }
