@@ -176,7 +176,7 @@ Candidate: `candidate-only: current network/dhcp family (/api/v1/network/dhcp/..
 |---|
 | `R056` `POST` `/api/dhcp/config` → `/api/dhcp/config`; historical `/api/v1/network/dhcp` |
 | `R108` `GET` `/api/network/dhcp/reservations` → `/api/network/dhcp/reservations`; historical `/api/v1/network/dhcp/reservations` |
-| `R110` `GET` `/api/dhcp/config` → `/api/dhcp/config` |
+| `R110` `GET` `/api/dhcp/config` → `/api/dhcp/config`; historical `/api/v1/network/dhcp` |
 | `R114` `POST` `/api/dhcp/pool-boundary` → `/api/dhcp/pool-boundary`; historical `/api/v1/network/dhcp/pool-boundary` |
 | `R115` `GET` `/api/dhcp/reservations` → `/api/dhcp/reservations`; historical `/api/v1/network/dhcp/reservations` |
 | `R116` `POST` `/api/dhcp/reservations` → `/api/dhcp/reservations`; historical `/api/v1/network/dhcp/reservations` |

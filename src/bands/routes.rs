@@ -282,7 +282,7 @@ struct CartridgeMutationRequest {
     #[serde(default)]
     admin_only: bool,
     #[serde(flatten)]
-    extra: BTreeMap<String, serde_json::Value>,
+    _extra: BTreeMap<String, serde_json::Value>,
 }
 
 fn cartridge_proxy_response(readback: CaduceusHttpReadback) -> Response {
@@ -358,8 +358,10 @@ fn cartridge_mutation_proxy_response(headers: axum::http::HeaderMap, route: &str
     if !valid {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "firstMissingSignal": "invalid-cartridge-request"}))).into_response();
     }
-    let mut body = serde_json::to_value(&request.extra).unwrap_or_else(|_| serde_json::json!({}));
-    body["id"] = serde_json::json!(id);
+    // Caduceus admits strict raw Json<Cartridge> / Json<CartridgeRemoveBody>
+    // bodies here, not a caduceus.staff.v1 envelope. Coronatio may tolerate
+    // flattened browser extras, but this seam never forwards them upstream.
+    let mut body = serde_json::json!({"id": id});
     if admitting {
         body["title"] = serde_json::json!(request.title.trim());
         body["url"] = serde_json::json!(request.url);
