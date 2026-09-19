@@ -321,11 +321,11 @@ fn shell_document_2() -> &'static str {
     const headerStateKey = 'coronatio.flask-react-header.v1';
     const preferredThemeKey = 'preferred-theme';
     const themeDataKey = 'themeData';
-    let themeCatalog = { default: 'light', themes: {} };
+    let themeCatalog = { default: 'dark', themes: {} };
     let themes = [];
     const savedHeaderState = (() => { try { return JSON.parse(localStorage.getItem(headerStateKey) || '{}'); } catch (_) { return {}; } })();
     const savedPreferredTheme = localStorage.getItem(preferredThemeKey);
-    const headerState = { theme: savedPreferredTheme || savedHeaderState.theme || 'light', isAdmin: false };
+    const headerState = { theme: savedPreferredTheme || savedHeaderState.theme || themeCatalog.default, isAdmin: false };
     const saveHeaderState = () => {
       localStorage.setItem(headerStateKey, JSON.stringify({ theme: headerState.theme }));
       localStorage.setItem(preferredThemeKey, headerState.theme);
