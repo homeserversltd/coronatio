@@ -587,7 +587,7 @@ fn shell_document_4() -> &'static str {
         const statsResponse = await fetch('/api/stats', { cache: 'no-store', signal: pullAbort.signal });
         if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
         const data = await statsResponse.json();
-        const label = formatChartTime();
+        const label = data.sampledAt === undefined || data.sampledAt === null ? formatChartTime() : formatChartTime(data.sampledAt);
         const roster = identityRows(data.keaLeases?.entries);
         identityState.roster = roster;
         identityState.notes = Object.fromEntries(roster.map(row => [canonicalNetworkNoteMac(row.mac), row.note ?? '']).filter(([mac]) => mac));

@@ -79,6 +79,7 @@ struct StatsSnapshot {
     schema: String,
     pane_id: String,
     product: String,
+    sampled_at: u64,
     doctrine: StatsViewportDoctrine,
     transport: StatsTransport,
     resources: StatsResources,
@@ -98,6 +99,7 @@ struct StatsSnapshot {
 struct SystemStatsGuestProjection {
     schema: String,
     topic: String,
+    sampled_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     resources: Option<StatsResources>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,6 +129,7 @@ struct StatsKeaLeases {
 struct SystemStatsAdminProjection {
     schema: String,
     topic: String,
+    sampled_at: u64,
     pane_id: String,
     product: String,
     doctrine: StatsViewportDoctrine,
@@ -154,6 +157,7 @@ fn project_system_stats_guest(raw: &StatsSnapshot, facts: &IrisFacts) -> SystemS
     SystemStatsGuestProjection {
         schema: raw.schema.clone(),
         topic: "system.stats".to_string(),
+        sampled_at: raw.sampled_at,
         resources: (cpu_visible || memory_visible).then(|| raw.resources.clone()),
         storage: storage_visible.then(|| raw.storage.clone()),
         network: network_visible.then(|| raw.network.clone()),
@@ -173,6 +177,7 @@ fn project_system_stats_admin(raw: &StatsSnapshot) -> SystemStatsAdminProjection
     SystemStatsAdminProjection {
         schema: raw.schema.clone(),
         topic: "system.stats".to_string(),
+        sampled_at: raw.sampled_at,
         pane_id: raw.pane_id.clone(),
         product: raw.product.clone(),
         doctrine: StatsViewportDoctrine {

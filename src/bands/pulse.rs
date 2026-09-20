@@ -13,10 +13,12 @@ mod pulse {
     static STATS_TICKER_STARTED: AtomicBool = AtomicBool::new(false);
     #[cfg(test)]
     static STATS_TICKER_TEST_ENABLED: AtomicBool = AtomicBool::new(false);
+    static STATS_REFRESH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
     pub(crate) struct HeldStats {
         pub(crate) stats: serde_json::Value,
         pub(crate) stats_at: Instant,
+        pub(crate) sampled_at: u64,
         pub(crate) history: serde_json::Value,
         pub(crate) history_at: Instant,
         pub(crate) history_status: u16,
@@ -31,21 +33,28 @@ mod pulse {
         if seed_only && held_stats().read().unwrap().is_some() { return; }
         let (refresh_history,now)={let held=held_stats().read().unwrap(); let now=Instant::now(); (held.as_ref().is_none_or(|h| h.history_at.elapsed()>=Duration::from_secs(60)),now)};
         let stats=super::caduceus_stats_value("/api/v1/appliance/stats");
+        let sampled_at=SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
         let history=refresh_history.then(||{let path=format!("/api/v1/appliance/stats/history?limit={STATS_HISTORY_ROW_LIMIT}"); super::caduceus_http("GET",&path)});
         let (roster_at,roster)=super::stats_identity_roster_cached();
         let mut held=held_stats().write().unwrap();
-        let held=held.get_or_insert_with(||HeldStats{stats:serde_json::Value::Null,stats_at:now,history:serde_json::Value::Null,history_at:now,history_status:502,roster:StatsKeaLeases{status:"unavailable".to_string(),entries:Vec::new()},roster_at:now});
-        held.stats=stats; held.stats_at=now; if let Some(history)=history { held.history=history.body; held.history_status=history.status; held.history_at=now; } held.roster=roster; held.roster_at=roster_at;
+        let held=held.get_or_insert_with(||HeldStats{stats:serde_json::Value::Null,stats_at:now,sampled_at:0,history:serde_json::Value::Null,history_at:now,history_status:502,roster:StatsKeaLeases{status:"unavailable".to_string(),entries:Vec::new()},roster_at:now});
+        held.stats=stats; held.stats_at=now; held.sampled_at=sampled_at; if let Some(history)=history { held.history=history.body; held.history_status=history.status; held.history_at=now; } held.roster=roster; held.roster_at=roster_at;
     }
     pub(crate) async fn stats_snapshot() -> StatsSnapshot {
         if held_stats().read().unwrap().is_none() { let _=tokio::task::spawn_blocking(|| refresh_stats_pool(true)).await; }
-        let held=held_stats().read().unwrap(); let held=held.as_ref().expect("stats pool seeded"); super::stats_caduceus_snapshot(held.stats.clone(),held.roster.clone())
+        let held=held_stats().read().unwrap(); let held=held.as_ref().expect("stats pool seeded"); super::stats_caduceus_snapshot(held.stats.clone(),held.roster.clone(),held.sampled_at)
     }
     pub(crate) async fn stats_history() -> impl IntoResponse {
         if held_stats().read().unwrap().is_none() { let _=tokio::task::spawn_blocking(|| refresh_stats_pool(true)).await; }
         let held=held_stats().read().unwrap(); let held=held.as_ref().expect("stats pool seeded"); (StatusCode::from_u16(held.history_status).unwrap_or(StatusCode::BAD_GATEWAY),Json(held.history.clone()))
     }
-    async fn collect_stats() { if tokio::task::spawn_blocking(|| refresh_stats_pool(false)).await.is_ok() { poke(PokeTopic::StatsTick); } }
+    fn schedule_stats_collection() {
+        if STATS_REFRESH_IN_FLIGHT.compare_exchange(false,true,Ordering::AcqRel,Ordering::Acquire).is_err() { return; }
+        tokio::spawn(async {
+            let _ = tokio::task::spawn_blocking(|| refresh_stats_pool(false)).await;
+            STATS_REFRESH_IN_FLIGHT.store(false,Ordering::Release);
+        });
+    }
 
     #[allow(dead_code)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +143,7 @@ mod pulse {
         };
         handle.spawn(async {
             let mut ticker = interval(Duration::from_secs(STATS_INTERVAL_SECONDS));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             ticker.tick().await;
             loop {
                 ticker.tick().await;
@@ -143,7 +153,7 @@ mod pulse {
                     break;
                 }
                 let live=bus().memberships.lock().unwrap().values().any(|m|m.deadline>Instant::now());
-                if live { collect_stats().await; }
+                if live { poke(PokeTopic::StatsTick); schedule_stats_collection(); }
             }
         });
     }
