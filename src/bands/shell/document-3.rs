@@ -604,6 +604,8 @@ fn shell_document_3() -> &'static str {
     let pulseStream = null;
     let pulseRenewTimer = null;
     let pulseStreamId = null;
+    let pulseStaleTimer = null;
+    let pulseLastActivityAt = 0;
     let coreStream = null;
     let coreRenewTimer = null;
     let coreStreamId = null;
@@ -611,6 +613,7 @@ fn shell_document_3() -> &'static str {
     const sseReconnectMaxDelayMs = 30000;
     let coreReconnectDelayMs = sseReconnectBaseDelayMs;
     let pulseReconnectDelayMs = sseReconnectBaseDelayMs;
+    const pulseStaleTimeoutMs = 20000;
     async function setStreamMembership(family, streamId, action) {
       if (!streamId) return null;
       return fetch(`/api/${family}/pulse/${action}?streamId=${encodeURIComponent(streamId)}`, { method: 'POST', cache: 'no-store' });
@@ -781,6 +784,7 @@ fn shell_document_3() -> &'static str {
           return;
         }
         morphAttributes(current, next);
+        if (current.matches?.('input[type="checkbox"], input[type="radio"]')) current.checked = next.checked;
         // Stats owns chart canvases and live readouts between element-fact pulls. Its
         // element wrapper carries the fact attributes; preserve its live descendants.
         if (current.hasAttribute('data-stat-element-id')) {
@@ -828,6 +832,7 @@ fn shell_document_3() -> &'static str {
         slot.querySelector('[data-scaffold-status]')?.remove();
         slot.removeAttribute('aria-invalid');
         slot.removeAttribute('data-scaffold-error');
+        delete slot.dataset.scaffoldStale;
       }
       function setPending(slot, key) {
         if (stateFor(slot) === 'ready') return;
@@ -856,6 +861,32 @@ fn shell_document_3() -> &'static str {
           status.dataset.scaffoldStatus = 'fault';
           status.className = 'scaffold-slot-fault';
           status.setAttribute('role', 'alert');
+          slot.appendChild(status);
+        }
+        status.textContent = '';
+        const text = document.createElement('span');
+        text.textContent = message + '. ';
+        status.appendChild(text);
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'scaffold-slot-retry';
+        retry.dataset.scaffoldRetry = guest;
+        retry.textContent = 'Retry';
+        status.appendChild(retry);
+      }
+      function setStale(slot, guest, detail) {
+        const message = detail || 'Showing last known data';
+        slot.dataset.scaffoldState = 'ready';
+        slot.dataset.scaffoldStale = 'true';
+        slot.setAttribute('aria-busy', 'false');
+        slot.removeAttribute('aria-invalid');
+        slot.dataset.scaffoldError = message;
+        let status = slot.querySelector('[data-scaffold-status]');
+        if (!status) {
+          status = document.createElement('div');
+          status.dataset.scaffoldStatus = 'stale';
+          status.className = 'scaffold-slot-stale';
+          status.setAttribute('role', 'status');
           slot.appendChild(status);
         }
         status.textContent = '';
@@ -920,7 +951,10 @@ fn shell_document_3() -> &'static str {
         const binding = bindings.get(guest);
         if (!binding) return false;
         const slots = Array.isArray(selectedSlots) ? selectedSlots : binding.slots;
-        slots.forEach(slot => faultSlot(binding, slot, detail?.message || String(detail)));
+        slots.forEach(slot => {
+          if (stateFor(slot) === 'ready') setStale(slot, guest, detail?.message || String(detail));
+          else faultSlot(binding, slot, detail?.message || String(detail));
+        });
         return true;
       }
       function read(guest, options = {}) {
@@ -989,6 +1023,8 @@ fn shell_document_3() -> &'static str {
     function closeViewportStreamFamily(preserveDiskSnapshot = false) {
       if (!preserveDiskSnapshot) retireAdminDiskSnapshot();
       clearPulseRenewal();
+      if (pulseStaleTimer) window.clearTimeout(pulseStaleTimer);
+      pulseStaleTimer = null;
       if (pulseStream) pulseStream.close();
       pulseStream = null;
       pulseStreamId = null;
@@ -1026,6 +1062,38 @@ fn shell_document_3() -> &'static str {
         if (pulseStream && pulseStream.readyState !== EventSource.CLOSED) schedulePulseRenewal(renewRoute);
       }, 15000);
     }
+    function setStatsPulseStaleSignal(stale) {
+      const root = document.querySelector('[data-scaffold-root][data-guest-id="stats"]');
+      if (!root) return;
+      root.dataset.pulseState = stale ? 'stale' : 'live';
+      let status = root.querySelector('[data-stats-pulse-status]');
+      if (!stale) { status?.remove(); return; }
+      if (!status) {
+        status = document.createElement('div');
+        status.dataset.statsPulseStatus = 'stale';
+        status.className = 'stats-pulse-status';
+        status.setAttribute('role', 'status');
+        root.prepend(status);
+      }
+      status.textContent = 'Live stats connection is stale. Reconnecting…';
+    }
+    function armPulseStaleWatchdog() {
+      if (pulseStaleTimer) window.clearTimeout(pulseStaleTimer);
+      pulseLastActivityAt = Date.now();
+      pulseStaleTimer = window.setTimeout(() => {
+        if (!pulseStream) return;
+        const quietFor = Date.now() - pulseLastActivityAt;
+        if (quietFor >= pulseStaleTimeoutMs) {
+          setStatsPulseStaleSignal(true);
+          reconnectPulseStream();
+        } else armPulseStaleWatchdog();
+      }, pulseStaleTimeoutMs);
+    }
+    function markPulseLiveness() {
+      pulseLastActivityAt = Date.now();
+      setStatsPulseStaleSignal(false);
+      armPulseStaleWatchdog();
+    }
     function reconnectPulseStream() {
       closeViewportStreamFamily();
       const delayMs = pulseReconnectDelayMs;
@@ -1040,6 +1108,7 @@ fn shell_document_3() -> &'static str {
       if (pulseStream) pulseStream.close();
       pulseStream = new EventSource('/api/stats/pulse');
       pulseStream.addEventListener('pulse.open', event => {
+        markPulseLiveness();
         let data = {};
         try { data = JSON.parse(event.data || '{}'); } catch (_) {}
         pulseStreamId = data.streamId || event.lastEventId || null;
@@ -1055,11 +1124,15 @@ fn shell_document_3() -> &'static str {
         pullHeldElementFragments().catch(() => {});
       });
       pulseStream.addEventListener('stats.tick', () => {
+        markPulseLiveness();
         hydrateStats().catch(() => {});
       });
       pulseStream.addEventListener('pulse.expired', reconnectPulseStream);
       pulseStream.addEventListener('error', () => {
-        if (pulseStream && pulseStream.readyState === EventSource.CLOSED) reconnectPulseStream();
+        if (pulseStream && pulseStream.readyState === EventSource.CLOSED) {
+          setStatsPulseStaleSignal(true);
+          reconnectPulseStream();
+        }
       });
     }
     const immortalFloorStates = Object.freeze(['BootFloor', 'Seated', 'GuestRevolution', 'BareFloor']);

@@ -3,6 +3,7 @@
             schema: "schema-marker-system-stats".to_string(),
             pane_id: "pane-marker-stats".to_string(),
             product: "product-marker-coronatio".to_string(),
+            sampled_at: 1_700_000_000_000,
             doctrine: StatsViewportDoctrine {
                 quarry_sources: vec!["DENY-quarry-source-marker".to_string()],
                 preserved_sections: vec!["DENY-preserved-section-marker".to_string()],
@@ -275,4 +276,54 @@
         assert!(chrome.contains("network.receivedBytes"));
         assert!(chrome.contains("drive.productLabel || drive.name || 'Storage'"));
         assert!(chrome.contains("data.keaLeases && !data.leases"));
+    }
+
+    #[test]
+    fn stats_resilience_wall_keeps_history_and_snapshot_bounds_within_eight_seconds() {
+        let chrome = crown_chrome_js();
+        assert!(chrome.contains("const statsHistoryTimeoutMs = 2500;"));
+        assert!(chrome.contains("const statsSnapshotTimeoutMs = 5500;"));
+        assert!(chrome.contains("const statsPullTimeoutMs = statsHistoryTimeoutMs + statsSnapshotTimeoutMs;"));
+        assert!(chrome.contains("boundedStatsHistory(pullAbort.signal)"));
+        assert!(chrome.contains("fetch('/api/stats', { cache: 'no-store', signal: snapshotAbort.signal })"));
+        assert!(chrome.contains("window.setTimeout(() => historyAbort.abort(), statsHistoryTimeoutMs)"));
+        assert!(chrome.contains("window.setTimeout(() => snapshotAbort.abort(), statsSnapshotTimeoutMs)"));
+    }
+
+    #[test]
+    fn stats_resilience_wall_preserves_ready_panels_as_visible_last_known_data() {
+        let chrome = crown_chrome_js();
+        assert!(chrome.contains("function setStale(slot, guest, detail)"));
+        assert!(chrome.contains("slot.dataset.scaffoldStale = 'true'"));
+        assert!(chrome.contains("if (stateFor(slot) === 'ready') setStale(slot, guest"));
+        assert!(chrome.contains("status.dataset.scaffoldStatus = 'stale'"));
+        assert!(chrome.contains("className = 'scaffold-slot-stale'"));
+        assert!(chrome.contains("Content unavailable"));
+        assert!(chrome.contains("Showing last known data"));
+    }
+
+    #[test]
+    fn stats_resilience_wall_morphs_all_live_subtrees_with_stable_keys() {
+        let chrome = crown_chrome_js();
+        for forbidden in [
+            "tbody.innerHTML =",
+            "controls.innerHTML =",
+            "legend.innerHTML =",
+            "target.innerHTML = (data.storage",
+        ] {
+            assert!(!chrome.contains(forbidden), "stats live subtree still uses direct replacement: {forbidden}");
+        }
+        assert!(chrome.matches("morphLivePane(").count() >= 5);
+        for key in [
+            "network-interface-",
+            "io-device-",
+            "io-read-",
+            "io-write-",
+            "io-series-",
+            "disk-usage-",
+            "data-stats-key",
+        ] {
+            assert!(chrome.contains(key), "missing stable stats child key {key}");
+        }
+        assert!(chrome.contains("pulseStream.addEventListener('stats.tick'"));
     }
