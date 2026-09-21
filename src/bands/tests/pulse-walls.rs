@@ -335,17 +335,40 @@
     }
 
     #[test]
-    fn pulse_002_wall_shell_rider_is_data_free_eventsource_pull_only() {
+    fn pulse_002_wall_shell_rider_is_native_eventsource_pull_only() {
         let chrome = crown_chrome_js();
         assert!(chrome.contains("new EventSource('/api/stats/pulse')"));
-        assert!(chrome.contains("pulseStream.addEventListener('pulse.open'"));
-        assert!(chrome.contains("pulseStream.addEventListener('tabs.changed'"));
-        assert!(chrome.contains("pulseStream.addEventListener('pulse.expired'"));
+        for event in ["pulse.open", "tabs.changed", "elements.changed", "stats.tick", "pulse.expired", "error"] {
+            assert!(chrome.contains(&format!("pulseStream.addEventListener('{event}'")), "native pulse listener missing: {event}");
+        }
+        assert!(chrome.contains("pulseStream.addEventListener('pulse.open', event => {\n        markPulseLiveness();"));
+        assert!(chrome.contains("pulseStream.addEventListener('stats.tick', () => {\n        markPulseLiveness();"));
+        assert!(!chrome.contains("createPulseClient"));
+        assert!(!chrome.contains("readPulseStream"));
+        assert!(!chrome.contains("getReader"));
+        assert!(!chrome.contains("TextDecoder"));
+        assert!(!chrome.contains("pulse.keepalive"));
+        assert!(!chrome.contains("line.startsWith(':')"), "SSE keepalive comments must not count as liveness");
         assert!(chrome.contains("fetch(renewRoute, { method: 'POST', cache: 'no-store' })"));
         assert!(chrome.contains("}, 15000)"), "renewal cadence must stay comfortably before the 20s readback contract");
         assert!(chrome.contains("refreshTabBar(active)"));
         assert!(!chrome.contains("event.data.visibility"));
         assert!(!chrome.contains("event.data.tabId"));
+    }
+
+    #[test]
+    fn pulse_004_wall_client_watchdog_is_bounded_and_viewer_visible() {
+        let chrome = crown_chrome_js();
+        assert!(chrome.contains("const pulseStaleTimeoutMs = 20000;"));
+        assert!(chrome.contains("setStatsPulseStaleSignal(true)"));
+        assert!(chrome.contains("Live stats connection is stale. Reconnecting…"));
+        assert!(chrome.contains("pulseLastActivityAt"));
+        assert!(chrome.contains("pulseStream.addEventListener('pulse.open', event => {\n        markPulseLiveness();"));
+        assert!(chrome.contains("pulseStream.addEventListener('stats.tick', () => {\n        markPulseLiveness();"));
+        assert!(!chrome.contains("line.startsWith(':')"));
+        assert!(!chrome.contains("pulse.keepalive"));
+        assert!(chrome.contains("reconnectPulseStream();"));
+        assert!(chrome.contains("pulseReconnectDelayMs = Math.min(pulseReconnectDelayMs * 2, sseReconnectMaxDelayMs)"));
     }
 
     #[test]
@@ -363,7 +386,7 @@
                 "pulse rider state declaration must precede lifecycle connect: {declaration}"
             );
         }
-        assert!(chrome.contains("if (!window.EventSource || !viewportFamilyAdmitted('stats')) return;"));
+        assert!(chrome.contains("if (!window.EventSource || !(viewportFamilyAdmitted('stats') || viewportFamilyAdmitted('portals'))) return;"));
         assert!(chrome.contains("document.addEventListener('visibilitychange', reconcileViewportStreamFamily)"));
     }
 

@@ -408,6 +408,10 @@ fn shell_document_4() -> &'static str {
       if (!iface.rxBytes && !iface.txBytes) return false;
       return true;
     }
+    function statsDomKey(value, fallback = 'item') {
+      const raw = String(value ?? fallback);
+      return encodeURIComponent(raw).replace(/[^A-Za-z0-9_-]/g, '_') || fallback;
+    }
     function renderNetwork(data) {
       const ctx = document.getElementById('networkChart');
       if (ctx && window.Chart) {
@@ -428,18 +432,20 @@ fn shell_document_4() -> &'static str {
       if (!tbody) return;
       const interfaces = data.network?.interfaces;
       if (Array.isArray(interfaces)) {
-        tbody.innerHTML = interfaces.filter(meaningfulInterface).map(iface => `<tr><td><span class="interface-name">${interfaceLabel(iface.name)}</span><span class="interface-label"> (${iface.name})</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr><td colspan="3">Loading network data...</td></tr>';
+        const rows = interfaces.filter(meaningfulInterface).map(iface => `<tr id="network-interface-${statsDomKey(iface.name)}" data-stats-key="${escapeHtml(iface.name)}"><td><span class="interface-name">${interfaceLabel(iface.name)}</span><span class="interface-label"> (${iface.name})</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr id="network-interface-loading"><td colspan="3">Loading network data...</td></tr>';
+        morphLivePane(tbody, rows);
       } else {
         const totals = statsNetworkTotals(data);
-        tbody.innerHTML = `<tr><td><span class="interface-name">Network</span></td><td class="data-cell">${fmtBytes(totals.rx)}</td><td class="data-cell">${fmtBytes(totals.tx)}</td></tr>`;
+        morphLivePane(tbody, `<tr id="network-interface-total" data-stats-key="total"><td><span class="interface-name">Network</span></td><td class="data-cell">${fmtBytes(totals.rx)}</td><td class="data-cell">${fmtBytes(totals.tx)}</td></tr>`);
       }
     }
     function renderDiskIo(data) {
       const controls = document.querySelector('[data-device-controls]'), checked = new Map(Array.from(controls?.querySelectorAll('input[type="checkbox"]') || []).map(input => [input.name, input.checked])), devices = data.io?.devices || [];
-      if (controls) controls.innerHTML = devices.map(device => {
+      if (controls) morphLivePane(controls, devices.map(device => {
         const name = diskDisplayName(device), readName = `read-${name}`, writeName = `write-${name}`, readChecked = checked.has(readName) ? checked.get(readName) : true, writeChecked = checked.has(writeName) ? checked.get(writeName) : true;
-        return `<div class="device-control" data-io-device="${escapeHtml(name)}"><div class="device-name">${escapeHtml(name)}</div><div class="device-checkboxes"><label class="drive-checkbox"><input type="checkbox" name="${escapeHtml(readName)}" value="${escapeHtml(name)}" ${readChecked ? 'checked' : ''}>Read</label><label class="drive-checkbox"><input type="checkbox" name="${escapeHtml(writeName)}" value="${escapeHtml(name)}" ${writeChecked ? 'checked' : ''}>Write</label></div></div>`;
-      }).join('') || '<div class="io-loading"><p>Loading disk I/O data...</p></div>';
+        const key = statsDomKey(device.device || device.mount || name);
+        return `<div id="io-device-${key}" class="device-control" data-io-device="${escapeHtml(name)}" data-stats-key="${escapeHtml(device.device || device.mount || name)}"><div class="device-name">${escapeHtml(name)}</div><div class="device-checkboxes"><label id="io-read-label-${key}" class="drive-checkbox"><input id="io-read-${key}" type="checkbox" name="${escapeHtml(readName)}" value="${escapeHtml(name)}" ${readChecked ? 'checked' : ''}>Read</label><label id="io-write-label-${key}" class="drive-checkbox"><input id="io-write-${key}" type="checkbox" name="${escapeHtml(writeName)}" value="${escapeHtml(name)}" ${writeChecked ? 'checked' : ''}>Write</label></div></div>`;
+      }).join('') || '<div id="io-device-loading" class="io-loading"><p>Loading disk I/O data...</p></div>');
       const colors = ['--secondary', '--accent', '--warning', '--success', '--error'];
       const datasets = devices.flatMap((device, index) => {
         const key = device.device || device.mount;
@@ -464,7 +470,7 @@ fn shell_document_4() -> &'static str {
         }
       }
       const legend = document.getElementById('io-chart-legend');
-      if (legend) legend.innerHTML = datasets.map(dataset => `<span data-io-series="${escapeHtml(dataset.label)}">${escapeHtml(dataset.label)}</span>`).join('');
+      if (legend) morphLivePane(legend, datasets.map(dataset => `<span id="io-series-${statsDomKey(dataset.label)}" data-io-series="${escapeHtml(dataset.label)}">${escapeHtml(dataset.label)}</span>`).join(''));
     }
     function renderMemory(data) {
       const memory = data.resources?.memory || {};
@@ -485,11 +491,12 @@ fn shell_document_4() -> &'static str {
     function renderDiskUsage(data) {
       const target = document.querySelector('[data-disk-usage-stats]');
       if (!target) return;
-      target.innerHTML = (data.storage || []).map(drive => {
+      morphLivePane(target, (data.storage || []).map((drive, index) => {
         const label = drive.productLabel || drive.name || 'Storage';
         const mountLine = drive.mount ? `<div class="disk-mountpoint">Mount: ${drive.mount}</div>` : '';
-        return `<div class="disk-usage-item"><div class="disk-usage-header"><div class="disk-device">${label} (${Number(drive.usagePercent || 0).toFixed(1)}%)</div>${mountLine}</div><div class="disk-usage-bar"><div class="disk-usage-fill" style="width:${drive.usagePercent || 0}%"></div></div><div class="disk-usage-details"><div>Used: ${fmtBytes(drive.usedBytes)}</div><div>Free: ${fmtBytes(drive.freeBytes)}</div><div>Total: ${fmtBytes(drive.totalBytes)}</div></div></div>`;
-      }).join('') || '<div class="disk-usage-loading"><p>Loading disk usage data...</p></div>';
+        const key = statsDomKey(drive.mount || drive.name || `drive-${index}`);
+        return `<div id="disk-usage-${key}" class="disk-usage-item" data-stats-key="${escapeHtml(drive.mount || drive.name || `drive-${index}`)}"><div class="disk-usage-header"><div class="disk-device">${label} (${Number(drive.usagePercent || 0).toFixed(1)}%)</div>${mountLine}</div><div class="disk-usage-bar"><div class="disk-usage-fill" style="width:${drive.usagePercent || 0}%"></div></div><div class="disk-usage-details"><div>Used: ${fmtBytes(drive.usedBytes)}</div><div>Free: ${fmtBytes(drive.freeBytes)}</div><div>Total: ${fmtBytes(drive.totalBytes)}</div></div></div>`;
+      }).join('') || '<div id="disk-usage-loading" class="disk-usage-loading"><p>Loading disk usage data...</p></div>');
     }
     function renderStatsRoster() { renderIdentityRoster('liveness'); }
     function normalizeNetworkNotes(payload) { const notes = payload?.networkNotes || payload?.notes || payload?.data?.networkNotes || payload?.data?.notes || payload; return notes && typeof notes === 'object' && !Array.isArray(notes) ? notes : {}; }
@@ -537,6 +544,23 @@ fn shell_document_4() -> &'static str {
       });
       Object.entries(statsChartState.ioSeries).forEach(([key, series]) => { if (!seen.has(key)) { series.read.push(null); series.write.push(null); } });
     }
+    const statsHistoryTimeoutMs = 2500;
+    const statsSnapshotTimeoutMs = 5500;
+    const statsPullTimeoutMs = statsHistoryTimeoutMs + statsSnapshotTimeoutMs;
+    async function boundedStatsHistory(signal) {
+      const historyAbort = new AbortController();
+      const relayAbort = () => historyAbort.abort();
+      if (signal) {
+        if (signal.aborted) historyAbort.abort();
+        else signal.addEventListener('abort', relayAbort, { once: true });
+      }
+      const timer = window.setTimeout(() => historyAbort.abort(), statsHistoryTimeoutMs);
+      try { await hydrateStatsHistory(historyAbort.signal); }
+      finally {
+        window.clearTimeout(timer);
+        if (signal) signal.removeEventListener('abort', relayAbort);
+      }
+    }
     async function hydrateStatsHistory(signal) {
       try {
         const response = await fetch('/api/stats/history', { cache: 'no-store', signal });
@@ -564,7 +588,6 @@ fn shell_document_4() -> &'static str {
         }
       } catch (_) { /* sparse history is truthful when Caduceus has no samples */ }
     }
-    const statsPullTimeoutMs = 8000;
     const statsScaffoldFillers = Object.freeze({
       'stats.cpu': { present: data => Boolean(data?.resources?.load), fill: data => renderCpuChart(data) },
       'stats.network': { present: data => Boolean(data?.network), fill: data => renderNetwork(data) },
@@ -583,8 +606,19 @@ fn shell_document_4() -> &'static str {
       }
       const pullTimer = window.setTimeout(() => pullAbort.abort(), statsPullTimeoutMs);
       try {
-        if (!statsChartState.lastStamp) await hydrateStatsHistory(pullAbort.signal);
-        const statsResponse = await fetch('/api/stats', { cache: 'no-store', signal: pullAbort.signal });
+        if (!statsChartState.lastStamp) await boundedStatsHistory(pullAbort.signal);
+        const snapshotAbort = new AbortController();
+        const relaySnapshotAbort = () => snapshotAbort.abort();
+        if (pullAbort.signal.aborted) snapshotAbort.abort();
+        else pullAbort.signal.addEventListener('abort', relaySnapshotAbort, { once: true });
+        const snapshotTimer = window.setTimeout(() => snapshotAbort.abort(), statsSnapshotTimeoutMs);
+        let statsResponse;
+        try {
+          statsResponse = await fetch('/api/stats', { cache: 'no-store', signal: snapshotAbort.signal });
+        } finally {
+          window.clearTimeout(snapshotTimer);
+          pullAbort.signal.removeEventListener('abort', relaySnapshotAbort);
+        }
         if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
         const data = await statsResponse.json();
         const label = data.sampledAt === undefined || data.sampledAt === null ? formatChartTime() : formatChartTime(data.sampledAt);
