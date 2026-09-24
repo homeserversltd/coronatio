@@ -1066,7 +1066,6 @@ fn shell_document_3() -> &'static str {
     const immortalFloor = (() => {
       let state = 'BootFloor'; let generation = 0; let activeGuest = null;
       let crossingGuest = null;
-      const admissionTimeoutMs = 1500;
       const hydrationTimeoutMs = 750;
       const statsHydrationTimeoutMs = 4000;
       const ready = new Promise(resolve => requestAnimationFrame(() => {
@@ -1110,6 +1109,10 @@ fn shell_document_3() -> &'static str {
         const pane = panes.find(candidate => candidate.dataset.panePanel === id);
         const tab = tabs.find(candidate => candidate.dataset.pane === id);
         if (!pane) throw new Error('guest-missing');
+        const timeoutCandidate = Number(tab?.dataset.admissionTimeoutMs);
+        const admissionTimeoutMs = Number.isSafeInteger(timeoutCandidate) && timeoutCandidate > 0
+          ? timeoutCandidate
+          : 1500;
         if (tab?.getAttribute('hx-get') && window.htmx) {
           await new Promise((resolve, reject) => {
             let timer = null;

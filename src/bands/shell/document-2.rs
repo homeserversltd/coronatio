@@ -297,11 +297,65 @@ fn shell_document_2() -> &'static str {
       document.documentElement.dataset.cartridgeFaultReceipt = 'typed';
       document.documentElement.dataset.cartridgeFaultLast = kind;
       showCoronatioToast(`Pane could not be loaded (${kind}).`, 'error');
-      window.immortalFloor?.faultForPanel(panelId, kind);
+      const coldFault = window.immortalFloor?.faultForPanel(panelId, kind) === true;
+      if (coldFault && panelId) {
+        xeniaRetryIntent = panelId;
+        scheduleXeniaColdRetry(panelId);
+      }
     }
     document.body.addEventListener('htmx:timeout', event => presentCartridgeFault('timeout', event));
     document.body.addEventListener('htmx:responseError', event => presentCartridgeFault(faultKindFromResponse(event, 'upstream-error'), event));
     document.body.addEventListener('htmx:sendError', event => presentCartridgeFault('proxy-unreachable', event));
+    const xeniaColdRetries = new Map();
+    const xeniaRetryDelays = [5000, 15000, 30000];
+    let xeniaRetryIntent = null;
+    function cancelXeniaColdRetries(nextIntent = null) {
+      for (const [id, retry] of xeniaColdRetries) {
+        if (retry.timer !== null) window.clearTimeout(retry.timer);
+        retry.timer = null;
+        if (!retry.inFlight) xeniaColdRetries.delete(id);
+      }
+      xeniaRetryIntent = nextIntent;
+    }
+    function scheduleXeniaColdRetry(id) {
+      if (!id || xeniaRetryIntent !== id) return;
+      let retry = xeniaColdRetries.get(id);
+      if (!retry) {
+        retry = { attempt: 0, timer: null, inFlight: false };
+        xeniaColdRetries.set(id, retry);
+      }
+      if (retry.timer !== null || retry.inFlight) return;
+      const delay = xeniaRetryDelays[Math.min(retry.attempt, xeniaRetryDelays.length - 1)];
+      retry.timer = window.setTimeout(async () => {
+        retry.timer = null;
+        if (xeniaRetryIntent !== id || xeniaColdRetries.get(id) !== retry || window.getImmortalFloorState?.() === 'Seated') {
+          xeniaColdRetries.delete(id);
+          return;
+        }
+        retry.inFlight = true;
+        retry.attempt += 1;
+        try {
+          const seated = await showPane(id, { refresh: true });
+          const panel = panes.find(candidate => candidate.dataset.panePanel === id);
+          if (seated === true && window.getImmortalFloorState?.() === 'Seated' && panel?.classList.contains('active')) {
+            retry.inFlight = false;
+            cancelXeniaColdRetries(null);
+            return;
+          }
+        } catch (_) {}
+        retry.inFlight = false;
+        if (xeniaRetryIntent === id && xeniaColdRetries.get(id) === retry) scheduleXeniaColdRetry(id);
+        else xeniaColdRetries.delete(id);
+      }, delay);
+    }
+    document.body.addEventListener('click', event => {
+      const tab = event.target instanceof Element ? event.target.closest('[data-pane]') : null;
+      if (tab?.dataset.pane && !event.target.closest('button')) cancelXeniaColdRetries(tab.dataset.pane);
+    }, true);
+    document.body.addEventListener('keydown', event => {
+      const tab = event.target instanceof Element ? event.target.closest('[data-pane]') : null;
+      if (tab?.dataset.pane && !event.target.closest('button') && (event.key === 'Enter' || event.key === ' ')) cancelXeniaColdRetries(tab.dataset.pane);
+    }, true);
     let statsHydrationInFlight = false;
     document.body.addEventListener('htmx:afterSwap', event => {
       const panel = panelFromHtmxEvent(event);

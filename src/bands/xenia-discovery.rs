@@ -10,7 +10,8 @@ use std::{collections::HashMap, convert::Infallible, time::Instant};
 use tokio::sync::mpsc;
 
 const DISCOVERY_TTL: Duration = Duration::from_secs(30);
-const PROBE_TIMEOUT: Duration = Duration::from_millis(750);
+const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_millis(5_000);
+const MIN_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
 const PROXY_TIMEOUT: Duration = Duration::from_secs(8);
 const SSE_STREAM_LIMIT: Duration = Duration::from_secs(35);
 const MAX_BODY: usize = 2 * 1024 * 1024;
@@ -233,7 +234,7 @@ fn upstream_uri(endpoint: &str, path_and_query: &str) -> Result<HyperUri, &'stat
     Ok(combined)
 }
 
-async fn probe(endpoint: &str, path: &str) -> Result<(Option<String>, u16), &'static str> {
+async fn probe(endpoint: &str, path: &str, timeout: Duration) -> Result<(Option<String>, u16), &'static str> {
     let uri = upstream_uri(endpoint, path)?;
     let request = Request::builder()
         .method("GET")
@@ -241,7 +242,7 @@ async fn probe(endpoint: &str, path: &str) -> Result<(Option<String>, u16), &'st
         .header(hyper::header::ACCEPT, "*/*")
         .body(Full::new(Bytes::new()))
         .map_err(|_| "probe-request-invalid")?;
-    let response = tokio::time::timeout(PROBE_TIMEOUT, client().request(request))
+    let response = tokio::time::timeout(timeout, client().request(request))
         .await
         .map_err(|_| "probe-timeout")?
         .map_err(|_| "probe-unreachable")?;
@@ -253,7 +254,7 @@ async fn probe(endpoint: &str, path: &str) -> Result<(Option<String>, u16), &'st
     Ok((kind, status))
 }
 
-async fn probe_health(endpoint: &str, path: &str) -> Result<(), &'static str> {
+async fn probe_health(endpoint: &str, path: &str, timeout: Duration) -> Result<(), &'static str> {
     let uri = upstream_uri(endpoint, path)?;
     let request = Request::builder()
         .method("GET")
@@ -261,7 +262,7 @@ async fn probe_health(endpoint: &str, path: &str) -> Result<(), &'static str> {
         .header(hyper::header::ACCEPT, "application/json")
         .body(Full::new(Bytes::new()))
         .map_err(|_| "health-request-invalid")?;
-    let response = tokio::time::timeout(PROBE_TIMEOUT, client().request(request))
+    let response = tokio::time::timeout(timeout, client().request(request))
         .await
         .map_err(|_| "health-timeout")?
         .map_err(|_| "health-unreachable")?;
@@ -269,7 +270,7 @@ async fn probe_health(endpoint: &str, path: &str) -> Result<(), &'static str> {
         return Err("health-http-not-ok");
     }
     let mut upstream = response.into_body();
-    let body = tokio::time::timeout(PROBE_TIMEOUT, async {
+    let body = tokio::time::timeout(timeout, async {
         let mut body = Vec::new();
         while let Some(frame) = upstream.frame().await {
             let frame = frame.map_err(|_| "health-read-failed")?;
@@ -352,6 +353,7 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
         .as_ref()
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
+    let probe_timeout = entry.get("fault_recovery").and_then(|recovery| recovery.get("timeout_ms")).and_then(serde_json::Value::as_u64).map(|milliseconds| Duration::from_millis(milliseconds).max(MIN_PROBE_TIMEOUT)).unwrap_or(DEFAULT_PROBE_TIMEOUT);
     let static_dir = static_dir(&entry);
     let health_path = health_path(&entry);
     let fragment_path = fragment_path(&entry);
@@ -363,9 +365,9 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
         one_runtime_listener(tab)
     };
     let result = if let Some(endpoint) = endpoint {
-        match probe(&endpoint, fragment_path).await {
+        match probe(&endpoint, fragment_path, probe_timeout).await {
             Ok((kind, _)) => {
-                let health = probe_health(&endpoint, &health_path)
+                let health = probe_health(&endpoint, &health_path, probe_timeout)
                     .await
                     .err()
                     .map(str::to_string);
@@ -385,21 +387,13 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
                     fault_signal: None,
                 }
             }
-            Err(_) if static_dir.is_some() => Discovery {
-                endpoint: None,
-                content_kind: Some("static".to_string()),
-                rung: "static".to_string(),
-                static_dir: static_dir.clone(),
-                health: None,
-                fault_signal: None,
-            },
-            Err(signal) => Discovery {
-                endpoint: None,
-                content_kind: None,
-                rung: "none".to_string(),
-                static_dir: None,
-                health: None,
-                fault_signal: Some(format!("probe:{signal}")),
+            Err(signal) => {
+                let first_missing = format!("{source_rung}:probe:{signal};endpoint={endpoint}");
+                if let Some(static_dir) = static_dir.clone() {
+                    Discovery { endpoint: None, content_kind: Some("static".to_string()), rung: "static".to_string(), static_dir: Some(static_dir), health: None, fault_signal: Some(first_missing) }
+                } else {
+                    Discovery { endpoint: None, content_kind: None, rung: "none".to_string(), static_dir: None, health: None, fault_signal: Some(first_missing) }
+                }
             },
         }
     } else if let Some(static_dir) = static_dir.clone() {
@@ -428,16 +422,14 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
             ),
         }
     };
-    cache()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .insert(
-            tab.id.clone(),
-            HeldDiscovery {
-                at: Instant::now(),
-                result: result.clone(),
-            },
-        );
+    {
+        let mut cache = cache().lock().unwrap_or_else(|error| error.into_inner());
+        if result.rung == "none" {
+            cache.remove(&tab.id);
+        } else {
+            cache.insert(tab.id.clone(), HeldDiscovery { at: Instant::now(), result: result.clone() });
+        }
+    }
     stamp_if_changed(&tab.id, &result);
     result
 }

@@ -188,6 +188,10 @@ struct CartridgeFaultReceipt {
     fault_kind: CartridgeFaultKind,
     occurred_at: u64,
     first_missing_signal: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    probe_signal: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    probe_endpoint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -212,6 +216,14 @@ fn record_cartridge_fault(tab_id: &str, fault_kind: CartridgeFaultKind) -> Cartr
 }
 
 fn record_cartridge_fault_signal(tab_id: &str, fault_kind: CartridgeFaultKind, first_missing_signal: &str) -> CartridgeFaultReceipt {
+    record_cartridge_fault_details(tab_id, fault_kind, first_missing_signal, None, None)
+}
+
+fn record_cartridge_probe_fault(tab_id: &str, fault_kind: CartridgeFaultKind, rung: &str, probe_signal: &str, probe_endpoint: &str) -> CartridgeFaultReceipt {
+    record_cartridge_fault_details(tab_id, fault_kind, rung, Some(probe_signal), Some(probe_endpoint))
+}
+
+fn record_cartridge_fault_details(tab_id: &str, fault_kind: CartridgeFaultKind, first_missing_signal: &str, probe_signal: Option<&str>, probe_endpoint: Option<&str>) -> CartridgeFaultReceipt {
     let receipt = CartridgeFaultReceipt {
         tab_id: tab_id.to_string(),
         fault_kind,
@@ -220,7 +232,17 @@ fn record_cartridge_fault_signal(tab_id: &str, fault_kind: CartridgeFaultKind, f
             .map(|duration| duration.as_secs())
             .unwrap_or(0),
         first_missing_signal: first_missing_signal.to_string(),
+        probe_signal: probe_signal.map(str::to_string),
+        probe_endpoint: probe_endpoint.map(str::to_string),
     };
+    let mut payload = serde_json::json!({
+        "fault_kind": receipt.fault_kind.as_str(),
+        "first_missing_signal": receipt.first_missing_signal,
+        "occurred_at": receipt.occurred_at,
+        "phase": "cartridge-fault",
+    });
+    if let Some(signal) = receipt.probe_signal.as_deref() { payload["probe_signal"] = serde_json::Value::String(signal.to_string()); }
+    if let Some(endpoint) = receipt.probe_endpoint.as_deref() { payload["probe_endpoint"] = serde_json::Value::String(endpoint.to_string()); }
     caduceus_hyalos_reflect_best_effort(
         if native_crown_panes().into_iter().any(|pane| pane.id == tab_id) {
             "crown-cartridge-fault"
@@ -230,12 +252,7 @@ fn record_cartridge_fault_signal(tab_id: &str, fault_kind: CartridgeFaultKind, f
         "error".to_string(),
         format!("cartridge fault: {}", receipt.fault_kind.as_str()),
         Some(tab_id.to_string()),
-        Some(serde_json::json!({
-            "fault_kind": receipt.fault_kind.as_str(),
-            "first_missing_signal": receipt.first_missing_signal,
-            "occurred_at": receipt.occurred_at,
-            "phase": "cartridge-fault",
-        })),
+        Some(payload),
     );
     let mut receipts = cartridge_fault_receipts().lock().expect("cartridge fault receipts lock");
     while receipts.len() >= CARTRIDGE_FAULT_RECEIPT_CAPACITY { receipts.pop_front(); }
@@ -302,7 +319,26 @@ fn xenia_visible_recovery(tab_id: &str, rung: &str, message: &str) -> Response {
     } else {
         CartridgeFaultKind::UpstreamError
     };
-    fragment_fault_with_signal(StatusCode::SERVICE_UNAVAILABLE, tab_id, kind, rung, message)
+    let signal = if matches!(rung, "declared" | "listening") && message.starts_with("probe:") {
+        format!("{rung}:{message}")
+    } else { rung.to_string() };
+    if let Some((_probe_rung, probe_signal, probe_endpoint)) = parse_probe_signal(&signal) {
+        fragment_probe_fault(StatusCode::SERVICE_UNAVAILABLE, tab_id, kind, rung, probe_signal, probe_endpoint, message)
+    } else {
+        fragment_fault_with_signal(StatusCode::SERVICE_UNAVAILABLE, tab_id, kind, rung, message)
+    }
+}
+
+fn parse_probe_signal(signal: &str) -> Option<(&str, &str, &str)> {
+    let (rung, detail) = signal.split_once(':')?;
+    if !matches!(rung, "declared" | "listening") { return None; }
+    let (probe_signal, endpoint) = detail.split_once(";endpoint=")?;
+    (probe_signal.starts_with("probe:probe-") && !endpoint.is_empty()).then_some((rung, probe_signal, endpoint))
+}
+
+fn fragment_probe_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKind, rung: &str, probe_signal: &str, probe_endpoint: &str, message: &str) -> Response {
+    let receipt = record_cartridge_probe_fault(tab_id, fault_kind, rung, probe_signal, probe_endpoint);
+    render_fragment_fault(status, tab_id, &receipt, rung, message)
 }
 
 fn xenia_static_admission(tab: &CoronatioTabContract, static_dir: &str, client_class: &str) -> Response {
@@ -494,10 +530,16 @@ fn fragment_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKi
 
 fn fragment_fault_with_signal(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKind, signal: &str, message: &str) -> Response {
     let receipt = record_cartridge_fault_signal(tab_id, fault_kind, signal);
+    render_fragment_fault(status, tab_id, &receipt, signal, message)
+}
+
+fn render_fragment_fault(status: StatusCode, tab_id: &str, receipt: &CartridgeFaultReceipt, signal: &str, message: &str) -> Response {
     let fault = receipt.fault_kind.as_str();
+    let probe_signal = receipt.probe_signal.as_deref().map(html_escape).unwrap_or_default();
+    let probe_endpoint = receipt.probe_endpoint.as_deref().map(html_escape).unwrap_or_default();
     let body = format!(
-        r#"<div hidden data-cartridge-fault="true" data-cartridge-fault-kind="{}" data-first-missing-signal="{}" data-tab-id="{}" data-cartridge-fault-occurred-at="{}"></div><section class="pane-content"><h1>{} is unavailable</h1><p>{}</p><button class="ui-button ui-button--secondary" type="button" hx-get="/admit/{}" hx-target="closest [data-view-panel]" hx-swap="innerHTML">Try again</button></section>"#,
-        fault, html_escape(signal), html_escape(tab_id), receipt.occurred_at,
+        r#"<div hidden data-cartridge-fault="true" data-cartridge-fault-kind="{}" data-first-missing-signal="{}" data-probe-signal="{}" data-probe-endpoint="{}" data-tab-id="{}" data-cartridge-fault-occurred-at="{}"></div><section class="pane-content"><h1>{} is unavailable</h1><p>{}</p><button class="ui-button ui-button--secondary" type="button" hx-get="/admit/{}" hx-target="closest [data-view-panel]" hx-swap="innerHTML">Try again</button></section>"#,
+        fault, html_escape(signal), probe_signal, probe_endpoint, html_escape(tab_id), receipt.occurred_at,
         html_escape(tab_id), html_escape(message), html_escape(tab_id),
     );
     let mut response = (status, [("x-coronatio-fault", "cartridge-fragment")], Html(body)).into_response();

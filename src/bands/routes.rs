@@ -502,7 +502,11 @@ fn xenia_status(refresh: bool) -> serde_json::Value {
         if at.elapsed() < XENIA_STATUS_TTL { return value.clone(); }
     }
     let readback = caduceus_http("GET", "/api/v1/xenia/status");
-    let value = if readback.ok { readback.body } else { serde_json::Value::Null };
+    if !readback.ok {
+        *cache = None;
+        return serde_json::Value::Null;
+    }
+    let value = readback.body;
     *cache = Some((std::time::Instant::now(), value.clone()));
     value
 }

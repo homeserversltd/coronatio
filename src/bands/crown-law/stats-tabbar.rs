@@ -584,10 +584,19 @@ fn render_plan_tabbar_projection_from_facts(facts: &IrisFacts, session: Session,
         .map(|tab| iris::landing_after_session_change(&plan, &plan, &tab))
         .unwrap_or_else(|| iris::initial_tab(&plan));
     let names = tab_display_names_from_facts(facts);
+    let admission_budgets = tab_admission_budgets_from_facts(facts);
     plan.tabs
         .into_iter()
         .filter(|grant| grant.tab_id != "fallback")
-        .map(|grant| render_plan_tab_grant(&grant, &names, &active_tab, active_load_trigger))
+        .map(|grant| {
+            render_plan_tab_grant_with_admission_budget(
+                &grant,
+                &names,
+                &active_tab,
+                active_load_trigger,
+                admission_budgets.get(&grant.tab_id).copied(),
+            )
+        })
         .chain((session == Session::Admin).then(|| r#"<button type="button" class="tab add-tab-button" data-admin-only="true" data-add-tab-button title="Add tab" aria-label="Add tab"><span class="tab-name">+</span></button>"#.to_string()))
         .collect::<Vec<_>>()
         .join("")
@@ -609,9 +618,37 @@ fn tab_display_names_from_facts(facts: &IrisFacts) -> BTreeMap<String, String> {
         .map(|tab| (tab.id, tab.display_name)).collect()
 }
 
-fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, active_tab: &str, _active_load_trigger: bool) -> String {
+fn tab_admission_budgets_from_facts(facts: &IrisFacts) -> BTreeMap<String, u64> {
+    build_tab_contracts(&registry_config_value(), &xenia_status(false)).into_iter()
+        .filter(|tab| facts.tabs.iter().any(|fact| fact.id == tab.id))
+        .filter_map(|tab| {
+            let entry = tab.xenia_entry?;
+            let timeout_ms = entry.get("fault_recovery")
+                .and_then(|recovery| recovery.get("timeout_ms"))
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(5000)
+                .max(100);
+            Some((tab.id, timeout_ms))
+        })
+        .collect()
+}
+
+fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, active_tab: &str, active_load_trigger: bool) -> String {
+    render_plan_tab_grant_with_admission_budget(grant, names, active_tab, active_load_trigger, None)
+}
+
+fn render_plan_tab_grant_with_admission_budget(
+    grant: &TabGrant,
+    names: &BTreeMap<String, String>,
+    active_tab: &str,
+    _active_load_trigger: bool,
+    admission_timeout_ms: Option<u64>,
+) -> String {
     let id = &grant.tab_id;
     let title = html_escape(&names.get(id).cloned().unwrap_or_else(|| id.to_string()));
+    let admission_attribute = admission_timeout_ms
+        .map(|timeout_ms| format!(" data-admission-timeout-ms=\"{timeout_ms}\""))
+        .unwrap_or_default();
     let visibility = match grant.state { RenderState::DimmedHidden => "hidden", _ => "visible" };
     let visible_bool = grant.state != RenderState::DimmedHidden;
     let eye = if visible_bool { "fa-eye" } else { "fa-eye-slash" };
@@ -631,7 +668,7 @@ fn render_plan_tab_grant(grant: &TabGrant, names: &BTreeMap<String, String>, act
     let active = grant.tab_id == active_tab;
     let active_class = if active { "active" } else { "" };
     format!(
-        r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}" data-visibility="{visibility}" hx-get="/admit/{id}" hx-target="[data-view-panel='{id}']" hx-swap="innerHTML" hx-trigger="{hx_trigger}">{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
+        r##"<div class="tab {active_class}" role="tab" tabindex="0" aria-controls="pane-{id}" aria-selected="{selected}" data-pane="{id}" data-tab-id="{id}"{admission_attribute} data-visibility="{visibility}" hx-get="/admit/{id}" hx-target="[data-view-panel='{id}']" hx-swap="innerHTML" hx-trigger="{hx_trigger}">{visibility_button}<span class="tab-name">{title}</span>{star_button}</div>"##,
         selected = active,
         hx_trigger = "immortal-floor-admit",
     )
