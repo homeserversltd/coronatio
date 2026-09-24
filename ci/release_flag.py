@@ -194,13 +194,15 @@ def commit_count(sha, token):
 
 
 def release_for_sha(sha, token):
-    tag_url = f"{publisher.RELEASES}/tags/{urllib.parse.quote(sha, safe='')}"
+    tag = publisher.release_tag(sha)
+    tag_url = f"{publisher.RELEASES}/tags/{urllib.parse.quote(tag, safe='')}"
     status, raw = publisher.request("GET", tag_url, token)
     if status != 200:
         fail(f"GET release tag returned HTTP {status}")
     release = publisher.decode(raw, "existing release")
     if not isinstance(release, dict):
         fail("existing release response is not an object")
+    publisher.verify_release_identity(release, sha)
     return tag_url, release
 
 
@@ -291,7 +293,7 @@ def previous_lineage(token, current_sha):
         for release in releases:
             if not isinstance(release, dict):
                 fail("release list contains a non-object")
-            if release.get("tag_name") == current_sha:
+            if release.get("target_commitish") == current_sha:
                 continue
             asset = publisher.assets_of(release).get(FLAG_NAME)
             if asset is None:
@@ -401,7 +403,7 @@ def receipt(status, sha, binary_name, sidecar_name, digest, pipeline_url, tag_ur
         "ok": True,
         "status": status,
         "project": publisher.PROJECT,
-        "tag": sha,
+        "tag": publisher.release_tag(sha),
         "source_sha": sha,
         "assets": [binary_name, sidecar_name, FLAG_NAME],
         "sha256": digest,

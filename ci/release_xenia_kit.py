@@ -15,6 +15,11 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import NoReturn
 
+try:
+    from . import release_publish as publisher
+except ImportError:  # pragma: no cover - exercised when run as a script
+    import release_publish as publisher
+
 
 API_ROOT = "https://git.home.arpa/api/v1"
 OWNER = "HOMESERVERSLTD"
@@ -262,7 +267,8 @@ def releases_url(repo):
 
 
 def tag_url(repo, sha):
-    return f"{releases_url(repo)}/tags/{urllib.parse.quote(sha, safe='')}"
+    tag = publisher.release_tag(sha)
+    return f"{releases_url(repo)}/tags/{urllib.parse.quote(tag, safe='')}"
 
 
 def assets_of(release, description):
@@ -323,7 +329,7 @@ def previous_lineage(client, releases, current_sha, component, description):
     for release in releases:
         if not isinstance(release, dict):
             fail(f"{description} release list contains a non-object")
-        if release.get("tag_name") == current_sha:
+        if release.get("target_commitish") == current_sha:
             continue
         payload, lineage = flag_from_release(
             client, release, component, f"previous {description} release.flag", require_lineage=False,
@@ -421,7 +427,7 @@ def fixture_flag(value, component, description, require_lineage=True):
 
 def release_plan(kit_sha, body, flag, release_id=None):
     create_payload = {
-        "tag_name": kit_sha,
+        "tag_name": publisher.release_tag(kit_sha),
         "name": f"xenia-kit {kit_sha[:8]}",
         "target_commitish": kit_sha,
         "body": body.decode("utf-8"),
@@ -452,7 +458,7 @@ def release_plan(kit_sha, body, flag, release_id=None):
 def verify_existing_release(client, release, kit_sha, body, expected_flag, fixture_flag_payload=None):
     expected_name = f"xenia-kit {kit_sha[:8]}"
     for field, expected in (
-        ("tag_name", kit_sha),
+        ("tag_name", publisher.release_tag(kit_sha)),
         ("target_commitish", kit_sha),
         ("name", expected_name),
         ("body", body.decode("utf-8")),
@@ -565,6 +571,7 @@ def live_run(crown_sha, pipeline_url, token):
     seat, _headers = client.get_json(SEAT_URL, "release flag schema seat")
     validate_seat(seat)
     current_release, _headers = client.get_json(tag_url(CROWN_REPO, crown_sha), "current crown release")
+    publisher.verify_release_identity(current_release, crown_sha)
     current_payload, current_lineage = flag_from_release(
         client, current_release, CROWN_REPO, "current crown release.flag",
     )
@@ -635,7 +642,7 @@ def live_run(crown_sha, pipeline_url, token):
     flagged_at = now_utc()
     flag = kit_flag_bytes(kit_sha, body_digest, flagged_at, pipeline_url, lineage)
     create_payload = {
-        "tag_name": kit_sha,
+        "tag_name": publisher.release_tag(kit_sha),
         "name": f"xenia-kit {kit_sha[:8]}",
         "target_commitish": kit_sha,
         "body": body.decode("utf-8"),

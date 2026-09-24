@@ -25,6 +25,8 @@ class FakeForgejo:
         self.release = {
             "id": 7,
             "created_at": RELEASE_CREATED_AT,
+            "tag_name": release_publish.release_tag(SHA),
+            "target_commitish": SHA,
             "assets": [
                 {"name": BINARY_NAME, "browser_download_url": "https://fake/binary"},
                 {"name": SIDECAR_NAME, "browser_download_url": "https://fake/sidecar"},
@@ -57,7 +59,7 @@ class FakeForgejo:
             "content_type": content_type,
             "accept": accept,
         })
-        if method == "GET" and url.endswith(f"/tags/{SHA}"):
+        if method == "GET" and url.endswith(f"/tags/{release_publish.release_tag(SHA)}"):
             if self.tag_status != 200:
                 return self.tag_status, b"{}"
             return 200, json.dumps(self.release).encode()
