@@ -319,21 +319,20 @@ fn xenia_visible_recovery(tab_id: &str, rung: &str, message: &str) -> Response {
     } else {
         CartridgeFaultKind::UpstreamError
     };
-    let signal = if matches!(rung, "declared" | "listening") && message.starts_with("probe:") {
-        format!("{rung}:{message}")
-    } else { rung.to_string() };
-    if let Some((_probe_rung, probe_signal, probe_endpoint)) = parse_probe_signal(&signal) {
-        fragment_probe_fault(StatusCode::SERVICE_UNAVAILABLE, tab_id, kind, rung, probe_signal, probe_endpoint, message)
+    if rung == "probe" {
+        if let Some((probe_signal, probe_endpoint)) = parse_probe_detail(message) {
+            fragment_probe_fault(StatusCode::SERVICE_UNAVAILABLE, tab_id, CartridgeFaultKind::ProxyUnreachable, "probe", probe_signal, probe_endpoint, "The guest process could not be reached. Try again shortly.")
+        } else {
+            fragment_fault_with_signal(StatusCode::SERVICE_UNAVAILABLE, tab_id, CartridgeFaultKind::ProxyUnreachable, "probe", "The guest process could not be reached. Try again shortly.")
+        }
     } else {
         fragment_fault_with_signal(StatusCode::SERVICE_UNAVAILABLE, tab_id, kind, rung, message)
     }
 }
 
-fn parse_probe_signal(signal: &str) -> Option<(&str, &str, &str)> {
-    let (rung, detail) = signal.split_once(':')?;
-    if !matches!(rung, "declared" | "listening") { return None; }
+fn parse_probe_detail(detail: &str) -> Option<(&str, &str)> {
     let (probe_signal, endpoint) = detail.split_once(";endpoint=")?;
-    (probe_signal.starts_with("probe:probe-") && !endpoint.is_empty()).then_some((rung, probe_signal, endpoint))
+    (!probe_signal.is_empty() && !endpoint.is_empty()).then_some((probe_signal, endpoint))
 }
 
 fn fragment_probe_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKind, rung: &str, probe_signal: &str, probe_endpoint: &str, message: &str) -> Response {

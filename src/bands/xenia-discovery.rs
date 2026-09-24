@@ -388,7 +388,7 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
                 }
             }
             Err(signal) => {
-                let first_missing = format!("{source_rung}:probe:{signal};endpoint={endpoint}");
+                let first_missing = format!("probe:{signal};endpoint={endpoint}");
                 if let Some(static_dir) = static_dir.clone() {
                     Discovery { endpoint: None, content_kind: Some("static".to_string()), rung: "static".to_string(), static_dir: Some(static_dir), health: None, fault_signal: Some(first_missing) }
                 } else {
