@@ -112,8 +112,8 @@ def delete_release(record, token):
     tag_delete_404 = status == 404
 
     ref_status, _raw = publisher.request("GET", tag_ref_url(record["tag"]), token)
-    if ref_status not in (200, 404):
-        fail(f"GET {publisher.REPO} git ref {record['tag']} returned HTTP {ref_status}")
+    if ref_status != 404:
+        fail(f"tag-ref-remains-{record['tag']} (HTTP {ref_status})")
     return {"tag_delete_404": tag_delete_404, "remaining_tag_ref": ref_status == 200,
             "ref_already_absent": ref_status == 404}
 
