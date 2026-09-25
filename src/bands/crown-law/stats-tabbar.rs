@@ -400,43 +400,65 @@ fn render_admin_mount_destinations_html() -> String {
 
 
 
+const STATS_KEA_LEASES_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+const STATS_KEA_LEASES_FAILED_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+static STATS_KEA_LEASES_CACHE: OnceLock<Mutex<Option<(std::time::Instant, bool, Vec<StatsKeaLease>)>>> =
+    OnceLock::new();
+
 fn stats_kea_leases() -> Vec<StatsKeaLease> {
-    let mut leases = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    for path in ["/var/lib/kea/kea-leases4.csv", "/var/lib/kea/dhcp4.leases"] {
-        if let Ok(raw) = std::fs::read_to_string(path) {
-            for line in raw.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with("address") || line.starts_with('#') {
-                    continue;
-                }
-                let parts: Vec<&str> = line.split(',').map(|part| part.trim().trim_matches('"')).collect();
-                if parts.len() < 2 {
-                    continue;
-                }
-                let (ip, mac, hostname) = if parts.first().is_some_and(|value| value.contains('.')) {
-                    (
-                        parts.first().unwrap_or(&"").to_string(),
-                        parts.get(1).unwrap_or(&"").to_string(),
-                        parts.get(8).or_else(|| parts.get(3)).unwrap_or(&"N/A").to_string(),
-                    )
-                } else {
-                    (
-                        parts.get(2).unwrap_or(&"").to_string(),
-                        parts.first().unwrap_or(&"").to_string(),
-                        parts.get(1).unwrap_or(&"N/A").to_string(),
-                    )
-                };
-                if ip.is_empty() || !seen.insert((ip.clone(), mac.clone())) {
-                    continue;
-                }
-                leases.push(StatsKeaLease { hostname, ip, mac, note: String::new() });
-                if leases.len() >= 20 { break; }
-            }
-            if !leases.is_empty() { break; }
+    let mut cache = STATS_KEA_LEASES_CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((cached_at, available, leases)) = cache.as_ref() {
+        let ttl = if *available { STATS_KEA_LEASES_TTL } else { STATS_KEA_LEASES_FAILED_TTL };
+        if cached_at.elapsed() < ttl {
+            return leases.clone();
         }
     }
-    leases
+
+    let readback = caduceus_http("GET", "/api/v1/network/dhcp/leases");
+    let result = if !readback.ok {
+        stats_kea_leases_failure("caduceus-lease-door-unavailable")
+    } else {
+        match readback
+            .body
+            .get("payload")
+            .and_then(|payload| payload.get("result"))
+            .and_then(serde_json::Value::as_array)
+        {
+            None => stats_kea_leases_failure("caduceus-lease-result-malformed"),
+            Some(rows) => {
+                let leases = rows
+                    .iter()
+                    .take(20)
+                    .map(|row| {
+                        let object = row.as_object()?;
+                        Some(StatsKeaLease {
+                            hostname: object.get("hostname")?.as_str()?.to_string(),
+                            ip: object.get("ip")?.as_str()?.to_string(),
+                            mac: object.get("mac")?.as_str()?.to_string(),
+                            note: String::new(),
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>();
+                match leases {
+                    Some(leases) => (true, leases),
+                    None => stats_kea_leases_failure("caduceus-lease-row-malformed"),
+                }
+            }
+        }
+    };
+    *cache = Some((std::time::Instant::now(), result.0, result.1.clone()));
+    result.1
+}
+
+fn stats_kea_leases_failure(signal: &'static str) -> (bool, Vec<StatsKeaLease>) {
+    eprintln!("{}", serde_json::json!({
+        "event": "coronatio.stats.kea_leases",
+        "signal": signal,
+    }));
+    (false, Vec::new())
 }
 
 const STATS_IDENTITY_ROSTER_TTL: std::time::Duration = std::time::Duration::from_secs(30);
