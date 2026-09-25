@@ -149,19 +149,46 @@ def run(token, published_sha, dry_run):
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="GET-only plan; never mutate Forgejo")
-    return parser.parse_args()
+    parser.add_argument("--repo", choices=("coronatio", "xenia-kit"), default="coronatio")
+    parser.add_argument("--release-receipt", help="xenia-kit release receipt; skipped releases protect no SHA")
+    args = parser.parse_args()
+    if args.release_receipt and args.repo != "xenia-kit":
+        parser.error("--release-receipt requires --repo xenia-kit")
+    return args
 
 
 def main():
     args = parse_args()
+    if args.repo == "xenia-kit":
+        publisher.REPO = "xenia-kit"
+        publisher.PROJECT = "HOMESERVERSLTD/xenia-kit"
+        publisher.RELEASES = f"{publisher.API_ROOT}/repos/{publisher.OWNER}/{publisher.REPO}/releases"
     if not args.dry_run and os.environ.get("CI_COMMIT_BRANCH") != "main":
         fail("live retention is restricted to the main branch")
     token = os.environ.get("FORGEJO_TOKEN", "")
     if not token:
         fail("FORGEJO_TOKEN is required")
-    published_sha = os.environ.get("CI_COMMIT_SHA", "")
-    if re.fullmatch(r"[0-9a-f]{40}", published_sha) is None:
-        fail("CI_COMMIT_SHA must be exactly 40 lowercase hexadecimal characters")
+    if args.release_receipt:
+        try:
+            with open(args.release_receipt, encoding="utf-8") as receipt_file:
+                release_receipt = json.load(receipt_file)
+        except (OSError, json.JSONDecodeError) as exc:
+            fail(f"xenia-kit release receipt is unreadable or invalid JSON: {exc}")
+        if not isinstance(release_receipt, dict):
+            fail("xenia-kit release receipt is not an object")
+        release_status = release_receipt.get("status")
+        if release_status in ("published", "no-op"):
+            published_sha = release_receipt.get("kit_sha")
+            if not isinstance(published_sha, str) or re.fullmatch(r"[0-9a-f]{40}", published_sha) is None:
+                fail("published xenia-kit receipt must contain a valid kit_sha")
+        elif release_status == "skipped":
+            published_sha = None
+        else:
+            fail(f"xenia-kit release receipt has unsupported status {release_status!r}")
+    else:
+        published_sha = os.environ.get("CI_COMMIT_SHA", "")
+        if re.fullmatch(r"[0-9a-f]{40}", published_sha) is None:
+            fail("CI_COMMIT_SHA must be exactly 40 lowercase hexadecimal characters")
     receipt = run(token, published_sha, args.dry_run)
     print(json.dumps({
         "schema": "coronatio.release_retention.v1",

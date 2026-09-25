@@ -276,7 +276,11 @@ steps:
         assert written > 0, "CA bundle write is empty"
         PY
         export SSL_CERT_FILE=/tmp/house-ca.pem
-        python3 ci/release_xenia_kit.py
+        release_receipt="$(mktemp)"
+        trap 'rm -f "$release_receipt"' EXIT
+        python3 ci/release_xenia_kit.py > "$release_receipt"
+        cat "$release_receipt"
+        python3 ci/release_retention.py --repo xenia-kit --release-receipt "$release_receipt"
 
   - name: retain-coronatio-releases
     image: python:3.12-alpine
