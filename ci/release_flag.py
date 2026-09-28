@@ -4,6 +4,7 @@
 import hashlib
 import json
 import os
+import re
 import sys
 import tomllib
 import urllib.parse
@@ -70,7 +71,7 @@ def surface_digest(names):
     return hashlib.sha256(("\n".join(names) + "\n").encode("utf-8")).hexdigest()
 
 
-def flag_bytes(source_sha, digest, flagged_at, pipeline_url, lineage=None):
+def flag_bytes(source_sha, digest, flagged_at, pipeline_url, lineage=None, env_sha=None, rustc_version=None):
     payload = {
         "schema": SCHEMA,
         "component": COMPONENT,
@@ -81,6 +82,10 @@ def flag_bytes(source_sha, digest, flagged_at, pipeline_url, lineage=None):
     }
     if lineage is not None:
         payload["lineage"] = lineage
+    if env_sha is not None:
+        payload["env_sha"] = env_sha
+    if rustc_version is not None:
+        payload["rustc_version"] = rustc_version
     return canonical_json_bytes(payload)
 
 
@@ -344,7 +349,7 @@ def derive_lineage(names, previous, revision_count):
     }
 
 
-def verify_existing_flag(actual, source_sha, digest, pipeline_url, lineage):
+def verify_existing_flag(actual, source_sha, digest, pipeline_url, lineage, env_sha=None, rustc_version=None):
     payload = parse_flag(actual, "existing release.flag")
     if payload.get("component") != COMPONENT:
         fail("existing release.flag has an invalid component")
@@ -354,6 +359,12 @@ def verify_existing_flag(actual, source_sha, digest, pipeline_url, lineage):
         fail("existing release.flag has a conflicting digest")
     if payload.get("pipeline_url") != pipeline_url:
         fail("existing release.flag has a conflicting pipeline URL")
+    existing_rustc_version = payload.get("rustc_version")
+    if existing_rustc_version is not None:
+        if existing_rustc_version != rustc_version:
+            fail("existing release.flag has a conflicting rustc version")
+        if payload.get("env_sha") is not None and payload["env_sha"] != env_sha:
+            fail("existing release.flag has a conflicting environment SHA")
     actual_lineage = parse_lineage(payload, "existing release.flag")
     expected_lineage = {
         "version": parse_version(lineage["version"], "expected release.flag"),
@@ -371,13 +382,13 @@ def verify_existing_flag(actual, source_sha, digest, pipeline_url, lineage):
     return actual
 
 
-def flag_asset(release, token, source_sha, digest, pipeline_url, lineage):
+def flag_asset(release, token, source_sha, digest, pipeline_url, lineage, env_sha=None, rustc_version=None):
     assets = publisher.assets_of(release)
     asset = assets.get(FLAG_NAME)
     if asset is None:
         return False
     actual = publisher.download(asset, token, FLAG_NAME)
-    verify_existing_flag(actual, source_sha, digest, pipeline_url, lineage)
+    verify_existing_flag(actual, source_sha, digest, pipeline_url, lineage, env_sha, rustc_version)
     return True
 
 
@@ -446,11 +457,33 @@ def main():
 
     names = load_surface_names()
     lineage = derive_lineage(names, previous_lineage(token, sha), commit_count(sha, token))
-    if flag_asset(release, token, sha, digest, pipeline_url, lineage):
+    rustc_version_path = os.path.join(target_directory, "release", "rustc-version")
+    env_sha_path = os.path.join(target_directory, "release", "env-sha")
+    staged_identity = (os.path.exists(rustc_version_path), os.path.exists(env_sha_path))
+    if staged_identity == (True, True):
+        try:
+            with open(rustc_version_path, encoding="ascii") as version_file:
+                rustc_version = version_file.read().strip()
+            with open(env_sha_path, encoding="ascii") as env_file:
+                env_sha = env_file.read().strip()
+        except OSError as exc:
+            fail(f"cannot read staged build identity: {exc}")
+    elif staged_identity == (False, False):
+        rustc_version = env_sha = None
+    else:
+        fail("staged rustc version and environment SHA must both be present")
+    if rustc_version is not None:
+        if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", rustc_version):
+            fail("staged rustc version must be exactly X.Y.Z")
+        if not isinstance(env_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", env_sha):
+            fail("staged environment SHA must be exactly 64 lowercase hexadecimal characters")
+    if flag_asset(release, token, sha, digest, pipeline_url, lineage, env_sha, rustc_version):
         receipt("no-op", sha, binary_name, sidecar_name, digest, pipeline_url, tag_url, lineage)
         return
 
-    expected = flag_bytes(sha, digest, current_utc_timestamp(), pipeline_url, lineage)
+    expected = flag_bytes(
+        sha, digest, current_utc_timestamp(), pipeline_url, lineage, env_sha, rustc_version,
+    )
     release_id = release.get("id")
     if not isinstance(release_id, int) or isinstance(release_id, bool):
         fail("release has no numeric id")

@@ -103,12 +103,21 @@ steps:
         PY
 
   - name: build-coronatio-release
-    image: rust:1-bookworm
+    image: git.home.arpa/homeserversltd/rust-house:house
     when:
       - event: push
         branch: main
     commands:
-      - CORONATIO_SOURCE_SHA="$CI_COMMIT_SHA" CORONATIO_BUILD_SHA="$CI_COMMIT_SHA" cargo build --release --locked
+      - |
+        set -eu
+        rustc_vv="$(rustc -Vv)"
+        rustc_version="$(printf '%s\n' "$rustc_vv" | awk '$1 == "release:" { count++; value=$2 } END { if (count == 1) print value; else exit 1 }')"
+        printf '%s\n' "$rustc_version" | awk -F. 'NF == 3 && ($1 == "0" || $1 ~ /^[1-9][0-9]*$/) && ($2 == "0" || $2 ~ /^[1-9][0-9]*$/) && ($3 == "0" || $3 ~ /^[1-9][0-9]*$/) { valid=1 } END { exit !valid }'
+        cargo_version="$(cargo -V)"
+        env_sha="$(printf '%s\n%s\n%s\n' "$rustc_vv" "$cargo_version" 'x86_64-unknown-linux-gnu' | sha256sum | awk '{ print $1 }')"
+        CORONATIO_SOURCE_SHA="$CI_COMMIT_SHA" CORONATIO_BUILD_SHA="$CI_COMMIT_SHA" cargo build --release --locked
+        printf '%s\n' "$rustc_version" > target/release/rustc-version
+        printf '%s\n' "$env_sha" > target/release/env-sha
 
   - name: publish-coronatio-release
     image: python:3.12-alpine
