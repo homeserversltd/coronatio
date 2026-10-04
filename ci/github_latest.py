@@ -536,7 +536,8 @@ def github_upload_url(release):
     if origin(upload_base) != GITHUB_UPLOAD_ORIGIN:
         fail("GitHub Release upload URL is not on uploads.github.com")
     expected_path = f"/repos/{OWNER}/{REPO}/releases/{release.get('id')}/assets"
-    if parsed.path.rstrip("/") != expected_path:
+    # GitHub answers with its canonical lowercase login; owner and repo compare case-insensitively.
+    if parsed.path.rstrip("/").casefold() != expected_path.casefold():
         fail("GitHub Release upload URL points to a different release")
     return upload_base
 
