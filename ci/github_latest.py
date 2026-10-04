@@ -2,6 +2,7 @@
 """Mirror Coronatio's Forgejo SHA release onto GitHub's single `latest` release."""
 
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -27,8 +28,9 @@ GITHUB_API_ORIGIN = ("https", "api.github.com", 443)
 GITHUB_UPLOAD_ORIGIN = ("https", "uploads.github.com", 443)
 FORGEJO_GIT_URL = "https://git.home.arpa/HOMESERVERSLTD/coronatio.git"
 MAX_REDIRECTS = 5
-MIRROR_MAX_ATTEMPTS = 6
-MIRROR_BACKOFF_SECONDS = (2, 5, 10, 20, 30)
+MIRROR_MAX_ATTEMPTS = 10
+MIRROR_BACKOFF_SECONDS = (2, 5, 10, 20, 30, 30, 30, 30, 30)
+MIRROR_READINESS_BOUND_SECONDS = sum(MIRROR_BACKOFF_SECONDS)
 
 
 class PublishError(Exception):
@@ -196,6 +198,129 @@ def forgejo_main_sha(token):
     return commit_sha(commit.get("id"), "Forgejo main head")
 
 
+def forgejo_push_mirrors_url():
+    return f"{FORGEJO_API}/repos/{OWNER}/{REPO}/push_mirrors"
+
+
+def forgejo_push_mirrors_sync_url():
+    return f"{FORGEJO_API}/repos/{OWNER}/{REPO}/push_mirrors-sync"
+
+
+def is_github_repository_address(value):
+    """Match this repository without ever returning or logging the URL."""
+    if not isinstance(value, str) or not value:
+        fail("Forgejo push mirror has no valid remote address")
+    try:
+        parsed = urllib.parse.urlsplit(value)
+    except ValueError:
+        fail("Forgejo push mirror has a malformed remote address")
+    if parsed.scheme:
+        host = parsed.hostname or ""
+        path = parsed.path
+    else:
+        match = re.fullmatch(r"(?:[^@/:]+@)?([^/:]+):/?(.+)", value)
+        if match is None:
+            fail("Forgejo push mirror has a malformed remote address")
+        host, path = match.groups()
+    path = path.strip("/")
+    if path.casefold().endswith(".git"):
+        path = path[:-4]
+    parts = path.split("/")
+    return (
+        host.casefold() == "github.com"
+        and len(parts) == 2
+        and parts[0].casefold() == OWNER.casefold()
+        and parts[1].casefold() == REPO.casefold()
+    )
+
+
+def parse_mirror_timestamp(value):
+    if not isinstance(value, str) or not value:
+        fail("Forgejo push mirror has a missing or malformed last_update timestamp")
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        fail("Forgejo push mirror has a malformed last_update timestamp")
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        fail("Forgejo push mirror last_update timestamp has no timezone")
+    return parsed.astimezone(datetime.timezone.utc)
+
+
+def timestamp_text(value):
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def forgejo_github_push_mirror(token, expected_remote_name=None):
+    status, raw, _headers = api_request(
+        "GET", forgejo_push_mirrors_url(), token=token,
+    )
+    if status != 200:
+        fail(f"Forgejo push mirrors GET returned HTTP {status}")
+    mirrors = decode_json(raw, "Forgejo push mirrors")
+    if not isinstance(mirrors, list):
+        fail("Forgejo push mirrors response is not a list")
+    matches = []
+    for mirror in mirrors:
+        if not isinstance(mirror, dict):
+            fail("Forgejo push mirrors response contains an invalid entry")
+        remote_name = mirror.get("remote_name")
+        if not isinstance(remote_name, str) or not remote_name:
+            fail("Forgejo push mirror has no valid remote_name")
+        if is_github_repository_address(mirror.get("remote_address")):
+            matches.append(mirror)
+    if len(matches) != 1:
+        fail("Forgejo push mirror for HOMESERVERSLTD/coronatio is missing or ambiguous")
+    mirror = matches[0]
+    remote_name = mirror["remote_name"]
+    if expected_remote_name is not None and remote_name != expected_remote_name:
+        fail("Forgejo GitHub push mirror identity changed during readiness wait")
+    last_update = parse_mirror_timestamp(mirror.get("last_update"))
+    last_error = mirror.get("last_error")
+    if not isinstance(last_error, str):
+        fail("Forgejo push mirror has an invalid last_error field")
+    return {
+        "remote_name": remote_name,
+        "last_update": last_update,
+        "last_error_empty": last_error == "",
+    }
+
+
+def begin_forgejo_mirror_sync(token, expected_main_sha, expected_remote_name=None):
+    # Forgejo v14.0.3 mirror_push uses `git remote add --mirror`, which also
+    # installs a fetch refspec; completion can write its stale snapshot back
+    # into source refs. The upstream fix uses --mirror=push and clears fetch
+    # config: https://codeberg.org/forgejo/forgejo/commit/4b28e01e6ceeb37ca9d17445f79f7226bf171d2a.patch
+    baseline = forgejo_github_push_mirror(token, expected_remote_name)
+    main_sha = forgejo_main_sha(token)
+    if main_sha != expected_main_sha:
+        return {
+            "remote_name": baseline["remote_name"],
+            "baseline_last_update": baseline["last_update"],
+            "stale_main_sha": main_sha,
+        }
+    request_started_at = datetime.datetime.now(datetime.timezone.utc)
+    status, _raw, _headers = api_request(
+        "POST", forgejo_push_mirrors_sync_url(), token=token,
+    )
+    if not 200 <= status < 300:
+        fail(f"Forgejo push_mirrors-sync POST returned HTTP {status}")
+    return {
+        "remote_name": baseline["remote_name"],
+        "baseline_last_update": baseline["last_update"],
+        "request_started_at": request_started_at,
+        "post_http_status": status,
+    }
+
+
+def mirror_retry_description():
+    return {
+        "max_attempts": MIRROR_MAX_ATTEMPTS,
+        "backoff_seconds": list(MIRROR_BACKOFF_SECONDS),
+        "backoff_total_seconds": MIRROR_READINESS_BOUND_SECONDS,
+        "readiness_bound_seconds": MIRROR_READINESS_BOUND_SECONDS,
+    }
+
+
 def load_source_release(sha, forgejo_token):
     url = forgejo_release_url(sha)
     status, raw, _headers = api_request("GET", url, token=forgejo_token)
@@ -361,15 +486,212 @@ def peeled_target(service, token, ref, description):
     fail(f"{description} annotated tag nesting exceeds the allowed depth")
 
 
-def wait_for_github_mirror(sha, token):
+def source_ref_state(ref, target, sha):
+    return {
+        "exists": ref is not None,
+        "object_sha": ref["object_sha"] if ref else None,
+        "object_type": ref["object_type"] if ref else None,
+        "target_sha": target,
+        "matches_source": target == sha,
+        "direct_commit_matches_source": bool(
+            ref is not None
+            and ref["object_type"] == "commit"
+            and ref["object_sha"] == sha
+            and target == sha
+        ),
+    }
+
+
+def mirror_completion_state(sync, mirror):
+    advanced_after_baseline = mirror["last_update"] > sync["baseline_last_update"]
+    return {
+        "remote_name": sync["remote_name"],
+        "baseline_last_update": timestamp_text(sync["baseline_last_update"]),
+        "request_started_at": timestamp_text(sync["request_started_at"]),
+        "request_started_at_is_diagnostic": True,
+        "last_update": timestamp_text(mirror["last_update"]),
+        "advanced_after_baseline": advanced_after_baseline,
+        "last_error_empty": mirror["last_error_empty"],
+        "complete": advanced_after_baseline and mirror["last_error_empty"],
+    }
+
+
+def wait_for_mirror_readiness(sha, forgejo_token, github_token, initial_sync):
+    sync = initial_sync
+    post_statuses = [sync["post_http_status"]] if sync else []
+    reassertions = []
+    readiness_retries = []
+    timestamp_retry_used = False
+    pending_reassertion_sync = False
+    last_observation = None
+
+    def stale_result(main_sha):
+        if last_observation is None:
+            fail("stale Forgejo main observed before mirror readiness sampling")
+        last_observation["forgejo_main_sha"] = main_sha
+        last_observation["forgejo_main_matches_source"] = False
+        return {
+            "stale": True,
+            "ready": False,
+            "observation": last_observation,
+            "post_http_statuses": post_statuses,
+            "reassertions": reassertions,
+            "readiness_retries": readiness_retries,
+            **mirror_retry_description(),
+        }
+
+    def request_sync(reason, attempt, mirror):
+        nonlocal sync
+        if attempt >= MIRROR_MAX_ATTEMPTS or len(post_statuses) >= MIRROR_MAX_ATTEMPTS:
+            return False
+        expected_remote_name = sync["remote_name"] if sync else mirror["remote_name"]
+        candidate = begin_forgejo_mirror_sync(
+            forgejo_token, sha, expected_remote_name,
+        )
+        if "stale_main_sha" in candidate:
+            return candidate
+        if last_observation is None:
+            fail("mirror sync requested before readiness observation")
+        sync = candidate
+        post_statuses.append(sync["post_http_status"])
+        readiness_retries.append({
+            "attempt": attempt,
+            "reason": reason,
+            "post_http_status": sync["post_http_status"],
+        })
+        last_observation["mirror_completion"] = mirror_completion_state(sync, mirror)
+        return True
+
     for attempt in range(1, MIRROR_MAX_ATTEMPTS + 1):
-        ref = get_ref("github", token, "GitHub mirrored latest ref")
-        target = peeled_target("github", token, ref, "GitHub mirrored latest ref")
-        if ref is not None and target == sha:
-            return ref, target
+        mirror = forgejo_github_push_mirror(
+            forgejo_token, sync["remote_name"] if sync else None,
+        )
+        completion = (
+            mirror_completion_state(sync, mirror)
+            if sync else {
+                "remote_name": mirror["remote_name"],
+                "baseline_last_update": timestamp_text(mirror["last_update"]),
+                "request_started_at": None,
+                "request_started_at_is_diagnostic": True,
+                "last_update": timestamp_text(mirror["last_update"]),
+                "advanced_after_baseline": False,
+                "last_error_empty": mirror["last_error_empty"],
+                "complete": False,
+            }
+        )
+        forgejo_main_head = forgejo_main_sha(forgejo_token)
+        forgejo_ref = get_ref("forgejo", forgejo_token, "Forgejo latest ref during mirror wait")
+        forgejo_target = peeled_target(
+            "forgejo", forgejo_token, forgejo_ref, "Forgejo latest ref during mirror wait",
+        )
+        github_ref = get_ref("github", github_token, "GitHub mirrored latest ref")
+        github_target = peeled_target("github", github_token, github_ref, "GitHub mirrored latest ref")
+        last_observation = {
+            "attempt": attempt,
+            "forgejo_main_sha": forgejo_main_head,
+            "forgejo_main_matches_source": forgejo_main_head == sha,
+            "forgejo_latest": source_ref_state(forgejo_ref, forgejo_target, sha),
+            "github_latest": source_ref_state(github_ref, github_target, sha),
+            "mirror_completion": completion,
+        }
+        if forgejo_main_head != sha:
+            return stale_result(forgejo_main_head)
+
+        forgejo_matches = last_observation["forgejo_latest"]["direct_commit_matches_source"]
+        if not forgejo_matches:
+            # A mirror completion can roll the canonical source refs backward.
+            # Recheck main before restoring the source ref; readiness polling
+            # owns this recovery instead of treating the observed rollback as fatal.
+            forgejo_main_head = forgejo_main_sha(forgejo_token)
+            if forgejo_main_head != sha:
+                return stale_result(forgejo_main_head)
+            operation = move_forgejo_latest(sha, forgejo_token, forgejo_ref)
+            verified_ref = get_ref(
+                "forgejo", forgejo_token, "Forgejo latest ref rollback readback",
+            )
+            verified_target = peeled_target(
+                "forgejo", forgejo_token, verified_ref, "Forgejo latest ref rollback readback",
+            )
+            verified = source_ref_state(verified_ref, verified_target, sha)
+            reassertion = {
+                "attempt": attempt,
+                "rolled_back_target_sha": forgejo_target,
+                "forgejo_latest_move": operation,
+                "readback_target_sha": verified_target,
+                "readback_matches_source": verified["direct_commit_matches_source"],
+                "sync_post_http_status": None,
+            }
+            reassertions.append(reassertion)
+            last_observation["forgejo_latest"] = verified
+            pending_reassertion_sync = True
+            if verified["direct_commit_matches_source"]:
+                sync_result = request_sync("forgejo-latest-reasserted", attempt, mirror)
+                if isinstance(sync_result, dict):
+                    return stale_result(sync_result["stale_main_sha"])
+                if sync_result:
+                    pending_reassertion_sync = False
+                    reassertion["sync_post_http_status"] = sync["post_http_status"]
+        elif sync is None:
+            sync_result = request_sync("forgejo-latest-readback-ready", attempt, mirror)
+            if isinstance(sync_result, dict):
+                return stale_result(sync_result["stale_main_sha"])
+        elif pending_reassertion_sync:
+            sync_result = request_sync("forgejo-latest-reassertion-readback-recovered", attempt, mirror)
+            if isinstance(sync_result, dict):
+                return stale_result(sync_result["stale_main_sha"])
+            if sync_result:
+                pending_reassertion_sync = False
+        elif (
+            completion["complete"]
+            and last_observation["github_latest"]["matches_source"]
+        ):
+            return {
+                "stale": False,
+                "ready": True,
+                "observation": last_observation,
+                "post_http_statuses": post_statuses,
+                "reassertions": reassertions,
+                "readiness_retries": readiness_retries,
+                **mirror_retry_description(),
+            }
+        elif (
+            attempt > 1
+            and not timestamp_retry_used
+            and mirror["last_update"] == sync["baseline_last_update"]
+            and mirror["last_error_empty"]
+            and forgejo_matches
+            and last_observation["github_latest"]["matches_source"]
+        ):
+            # A correct, error-free mirror can finish in the baseline's same
+            # second. After the configured backoff, one fresh-baseline sync
+            # distinguishes that collision without re-posting while refs lag.
+            sync_result = request_sync("same-second-completion-fence-collision", attempt, mirror)
+            if isinstance(sync_result, dict):
+                return stale_result(sync_result["stale_main_sha"])
+            if sync_result:
+                timestamp_retry_used = True
+
         if attempt < MIRROR_MAX_ATTEMPTS:
             time.sleep(MIRROR_BACKOFF_SECONDS[attempt - 1])
-    fail("GitHub refs/tags/latest did not mirror the source SHA within the bounded readiness window")
+    final = last_observation or {}
+    final_forgejo = final.get("forgejo_latest", {}).get("target_sha")
+    final_github = final.get("github_latest", {}).get("target_sha")
+    completion = final.get("mirror_completion", {})
+    return {
+        "stale": False,
+        "ready": False,
+        "reason": (
+            "Forgejo push mirror readiness did not converge within the bounded window "
+            f"(attempts={MIRROR_MAX_ATTEMPTS}, bound={MIRROR_READINESS_BOUND_SECONDS}s, "
+            f"post_http_statuses={post_statuses}, forgejo_target={final_forgejo}, "
+            f"github_target={final_github}, mirror_complete={completion.get('complete')})"
+        ),
+        "observation": last_observation,
+        "post_http_statuses": post_statuses,
+        "reassertions": reassertions,
+        "readiness_retries": readiness_retries,
+        **mirror_retry_description(),
+    }
 
 
 def git_ref_description(service, ref, target_sha):
@@ -620,8 +942,8 @@ def emit(payload):
     print(json.dumps(payload, separators=(",", ":"), sort_keys=True))
 
 
-def emit_stale_noop(sha, forgejo_main_head, forgejo_latest_move=None):
-    emit({
+def emit_stale_noop(sha, forgejo_main_head, forgejo_latest_move=None, extra=None):
+    payload = {
         "schema": "coronatio.github_latest.v1",
         "status": "no-op",
         "source_sha": sha,
@@ -630,7 +952,39 @@ def emit_stale_noop(sha, forgejo_main_head, forgejo_latest_move=None):
         "forgejo_main_matches_source": False,
         "forgejo_latest_move": forgejo_latest_move,
         "github_release_mutation": "skipped",
-    })
+    }
+    if extra:
+        payload.update(extra)
+    emit(payload)
+
+
+def mirror_sync_receipt(readiness):
+    observation = readiness["observation"]
+    statuses = readiness["post_http_statuses"]
+    completion = observation["mirror_completion"]
+    return {
+        "planned": True,
+        "method": "POST",
+        "endpoint": forgejo_push_mirrors_sync_url(),
+        "remote_name": completion["remote_name"],
+        "post_http_status": statuses[-1] if statuses else None,
+        "post_http_statuses": statuses,
+        "retry": {
+            "max_attempts": readiness["max_attempts"],
+            "backoff_seconds": list(MIRROR_BACKOFF_SECONDS),
+            "backoff_total_seconds": readiness["backoff_total_seconds"],
+            "readiness_bound_seconds": readiness["readiness_bound_seconds"],
+            "attempts_used": observation["attempt"],
+            "readiness_retries": readiness["readiness_retries"],
+        },
+        "ready": readiness["ready"],
+        "final_forgejo_target_sha": observation["forgejo_latest"]["target_sha"],
+        "final_github_target_sha": observation["github_latest"]["target_sha"],
+        "mirror_completion": completion,
+        "forgejo_latest": observation["forgejo_latest"],
+        "github_latest": observation["github_latest"],
+        "reassertions": readiness["reassertions"],
+    }
 
 
 def plan(sha, forgejo_token, source_release, names, forgejo_main_head):
@@ -651,6 +1005,11 @@ def plan(sha, forgejo_token, source_release, names, forgejo_main_head):
             "expected_assets": list(names),
             "assets": [],
             "forgejo_latest_move": None,
+            "push_mirror_sync": {
+                "planned": False,
+                "reason": "Forgejo per-SHA Release is absent",
+                "retry": mirror_retry_description(),
+            },
             "github_latest": {
                 "ref_exists": github_ref is not None,
                 "ref_object_sha": github_ref["object_sha"] if github_ref else None,
@@ -671,6 +1030,7 @@ def plan(sha, forgejo_token, source_release, names, forgejo_main_head):
     del binary_digest
     current_forgejo = get_ref("forgejo", forgejo_token, "Forgejo latest ref")
     forgejo_target = peeled_target("forgejo", forgejo_token, current_forgejo, "Forgejo latest ref")
+    push_mirror = forgejo_github_push_mirror(forgejo_token)
     if current_forgejo is None:
         move = "create"
     elif current_forgejo["object_type"] == "commit" and current_forgejo["object_sha"] == sha:
@@ -708,6 +1068,30 @@ def plan(sha, forgejo_token, source_release, names, forgejo_main_head):
             "current_target_sha": forgejo_target,
             "proposed_action": move,
             "proposed_target_sha": sha,
+            "proposed_final_target_sha": sha,
+        },
+        "rollback_reconciliation": {
+            "reassert_only_on_observed_rollback": True,
+            "require_forgejo_main_matches_source_before_reassert": True,
+            "readback_required": "direct lightweight commit ref",
+        },
+        "push_mirror_sync": {
+            "planned": True,
+            "method": "POST",
+            "endpoint": forgejo_push_mirrors_sync_url(),
+            "remote_name": push_mirror["remote_name"],
+            "baseline_last_update": timestamp_text(push_mirror["last_update"]),
+            "post_http_status": None,
+            "final_forgejo_target_sha": sha,
+            "readiness_bound_seconds": MIRROR_READINESS_BOUND_SECONDS,
+            "retry": mirror_retry_description(),
+            "completion_fence": [
+                "matching Forgejo push mirror last_update advances after sampled Forgejo baseline",
+                "mirror last_error is empty",
+                "Forgejo refs/tags/latest directly targets source SHA",
+                "GitHub refs/tags/latest peels to source SHA",
+            ],
+            "request_started_at_role": "local diagnostic only; not a cross-clock completion fence",
         },
         "github_latest": {
             "ref_exists": github_ref is not None,
@@ -737,31 +1121,6 @@ def live(sha, forgejo_token, github_token, source_release, names, forgejo_main_h
     source_assets, digests, binary_digest = load_source_assets(
         release, names, sha, forgejo_token,
     )
-    current_forgejo = get_ref("forgejo", forgejo_token, "Forgejo latest ref")
-    forgejo_main_head = forgejo_main_sha(forgejo_token)
-    if forgejo_main_head != sha:
-        emit_stale_noop(sha, forgejo_main_head)
-        return
-    operation = move_forgejo_latest(sha, forgejo_token, current_forgejo)
-    verified_forgejo = get_ref("forgejo", forgejo_token, "Forgejo latest ref readback")
-    verified_target = peeled_target("forgejo", forgejo_token, verified_forgejo, "Forgejo latest ref readback")
-    if (
-        verified_forgejo is None
-        or verified_forgejo["object_type"] != "commit"
-        or verified_forgejo["object_sha"] != sha
-        or verified_target != sha
-    ):
-        fail("Forgejo latest ref readback does not directly target the source commit")
-
-    try:
-        github_ref, github_target = wait_for_github_mirror(sha, github_token)
-    except PublishError:
-        forgejo_main_head = forgejo_main_sha(forgejo_token)
-        if forgejo_main_head != sha:
-            emit_stale_noop(sha, forgejo_main_head, operation)
-            return
-        raise
-
     github_release = get_github_release(github_token)
     if github_release is not None and github_release.get("tag_name") != "latest":
         fail("existing GitHub Release is not tagged latest")
@@ -772,16 +1131,87 @@ def live(sha, forgejo_token, github_token, source_release, names, forgejo_main_h
             github_release, source_assets, names, github_token,
         )
 
-    # Recheck the mirrored ref immediately before any GitHub Release mutation;
+    current_forgejo = get_ref("forgejo", forgejo_token, "Forgejo latest ref")
+    forgejo_main_head = forgejo_main_sha(forgejo_token)
+    if forgejo_main_head != sha:
+        emit_stale_noop(sha, forgejo_main_head)
+        return
+    operation = move_forgejo_latest(sha, forgejo_token, current_forgejo)
+    verified_forgejo = get_ref("forgejo", forgejo_token, "Forgejo latest ref readback")
+    verified_target = peeled_target("forgejo", forgejo_token, verified_forgejo, "Forgejo latest ref readback")
+    verified_exact = source_ref_state(
+        verified_forgejo, verified_target, sha,
+    )["direct_commit_matches_source"]
+    forgejo_main_head = forgejo_main_sha(forgejo_token)
+    if forgejo_main_head != sha:
+        emit_stale_noop(
+            sha, forgejo_main_head, operation,
+            {"forgejo_latest_target_sha": verified_target},
+        )
+        return
+
+    initial_sync = None
+    if verified_exact:
+        initial_sync = begin_forgejo_mirror_sync(forgejo_token, sha)
+        if "stale_main_sha" in initial_sync:
+            emit_stale_noop(
+                sha, initial_sync["stale_main_sha"], operation,
+                {"forgejo_latest_target_sha": verified_target,
+                 "push_mirror_sync": {
+                     "planned": False,
+                     "reason": "Forgejo main changed before mirror-sync POST",
+                     "remote_name": initial_sync["remote_name"],
+                     "baseline_last_update": timestamp_text(initial_sync["baseline_last_update"]),
+                     "post_http_status": None,
+                 }},
+            )
+            return
+    readiness = wait_for_mirror_readiness(
+        sha, forgejo_token, github_token, initial_sync,
+    )
+    push_mirror_sync = mirror_sync_receipt(readiness)
+    if readiness["stale"]:
+        observation = readiness["observation"]
+        emit_stale_noop(
+            sha, observation["forgejo_main_sha"], operation,
+            {"push_mirror_sync": push_mirror_sync,
+             "mirror_readiness_observation": observation},
+        )
+        return
+    if not readiness["ready"]:
+        observation = readiness["observation"]
+        emit({
+            "schema": "coronatio.github_latest.v1",
+            "status": "error",
+            "source_sha": sha,
+            "forgejo_main_sha": observation["forgejo_main_sha"],
+            "forgejo_main_matches_source": observation["forgejo_main_matches_source"],
+            "forgejo_latest_move": operation,
+            "push_mirror_sync": push_mirror_sync,
+            "mirror_readiness_observation": observation,
+            "reason": readiness["reason"],
+        })
+        fail(readiness["reason"])
+
+    # Recheck source and destination refs immediately before Release mutation;
     # GitHub's release-create API can otherwise create a missing tag implicitly.
+    forgejo_main_head = forgejo_main_sha(forgejo_token)
+    if forgejo_main_head != sha:
+        emit_stale_noop(
+            sha, forgejo_main_head, operation,
+            {"push_mirror_sync": push_mirror_sync},
+        )
+        return
+    preflight_forgejo = get_ref("forgejo", forgejo_token, "Forgejo latest ref preflight")
+    preflight_forgejo_target = peeled_target(
+        "forgejo", forgejo_token, preflight_forgejo, "Forgejo latest ref preflight",
+    )
+    if not source_ref_state(preflight_forgejo, preflight_forgejo_target, sha)["direct_commit_matches_source"]:
+        fail("Forgejo latest rolled back after mirror readiness; refusing downstream Release mutation")
     github_ref = get_ref("github", github_token, "GitHub mirrored latest ref preflight")
     github_target = peeled_target("github", github_token, github_ref, "GitHub mirrored latest ref preflight")
     if github_ref is None or github_target != sha:
         fail("GitHub refs/tags/latest changed before Release update; refusing downstream tag creation")
-    forgejo_main_head = forgejo_main_sha(forgejo_token)
-    if forgejo_main_head != sha:
-        emit_stale_noop(sha, forgejo_main_head, operation)
-        return
 
     if matched:
         if github_release is None:
@@ -822,6 +1252,21 @@ def live(sha, forgejo_token, github_token, source_release, names, forgejo_main_h
     )
     if not final_matches:
         fail("GitHub latest Release assets differ from the verified Forgejo source bytes")
+    forgejo_main_head = forgejo_main_sha(forgejo_token)
+    final_forgejo_ref = get_ref("forgejo", forgejo_token, "Forgejo latest ref final readback")
+    final_forgejo_target = peeled_target(
+        "forgejo", forgejo_token, final_forgejo_ref, "Forgejo latest ref final readback",
+    )
+    if forgejo_main_head != sha:
+        emit_stale_noop(
+            sha, forgejo_main_head, operation,
+            {"github_release_mutation": status,
+             "push_mirror_sync": push_mirror_sync,
+             "final_forgejo_target_sha": final_forgejo_target},
+        )
+        return
+    if not source_ref_state(final_forgejo_ref, final_forgejo_target, sha)["direct_commit_matches_source"]:
+        fail("Forgejo latest no longer directly targets the source commit at final readback")
     final_ref = get_ref("github", github_token, "GitHub mirrored latest ref final readback")
     final_target = peeled_target("github", github_token, final_ref, "GitHub mirrored latest ref final readback")
     if final_ref is None or final_target != sha:
@@ -834,6 +1279,8 @@ def live(sha, forgejo_token, github_token, source_release, names, forgejo_main_h
         "forgejo_main_matches_source": True,
         "forgejo_source_release": release_url,
         "forgejo_latest_move": operation,
+        "forgejo_latest_target_sha": final_forgejo_target,
+        "push_mirror_sync": push_mirror_sync,
         "github_release_tag": reread_release.get("tag_name"),
         "github_release_id": reread_release.get("id"),
         "github_ref_target_sha": final_target,
