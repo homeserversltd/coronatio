@@ -317,6 +317,7 @@ steps:
 
   - name: github-latest-coronatio
     image: python:3.12-alpine
+    failure: ignore
     when:
       - event: push
         branch: main
