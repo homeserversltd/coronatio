@@ -315,6 +315,34 @@ steps:
         export SSL_CERT_FILE=/tmp/house-ca.pem
         python3 ci/release_retention.py
 
+  - name: github-latest-coronatio
+    image: python:3.12-alpine
+    when:
+      - event: push
+        branch: main
+    environment:
+      FORGEJO_TOKEN:
+        from_secret: FORGEJO_TOKEN
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - |
+        set -eu
+        apk add --no-cache git
+        python3 - <<'PY'
+        import urllib.request
+
+        with urllib.request.urlopen("http://192.168.123.1:7100/v1/trust/ca-bundle") as response:
+            ca_bundle = response.read()
+        if not ca_bundle:
+            raise SystemExit("CA bundle response is empty")
+        with open("/tmp/house-ca.pem", "wb") as output:
+            if output.write(ca_bundle) != len(ca_bundle):
+                raise SystemExit("CA bundle write was incomplete")
+        PY
+        export SSL_CERT_FILE=/tmp/house-ca.pem
+        FORGEJO_TOKEN="$${FORGEJO_TOKEN:-}" GITHUB_TOKEN="$${GITHUB_TOKEN:-}" CI_COMMIT_SHA="$${CI_COMMIT_SHA:-}" python3 ci/github_latest.py
+
   - name: ci-outcome-coronatio
     image: python:3.12-alpine
     backend_options:
