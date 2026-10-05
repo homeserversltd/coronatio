@@ -50,10 +50,14 @@ fn shell_document_3() -> &'static str {
     }
     function setAdminMode(value, options = {}) {
       const previousActive = currentActiveTabId();
+      const previousAdmin = headerState.isAdmin;
       headerState.isAdmin = Boolean(value);
       if (!headerState.isAdmin) retireAdminDiskSnapshot();
       saveHeaderState();
       applyAdminDomState();
+      if (previousAdmin !== headerState.isAdmin && infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="source-currency"]')) {
+        openInfoModal(infoTitle.textContent, 'source-currency');
+      }
       if (headerState.isAdmin) void upgradeOpenStreams();
       else void downgradeOpenStreams();
       if (options.boot) return Promise.resolve(true);
@@ -175,6 +179,7 @@ fn shell_document_3() -> &'static str {
       button.setAttribute('aria-label', 'Services Status ' + status);
     }
     const sourceCurrencyUpdateState = { inFlight: false, latestEnvelope: null };
+    let sourceCurrencyModalGeneration = 0;
     function setSourceCurrencyIndicatorState(envelope) {
       sourceCurrencyUpdateState.latestEnvelope = envelope;
       const button = document.querySelector('[data-indicator="source-currency"]');
@@ -202,6 +207,89 @@ fn shell_document_3() -> &'static str {
         update.hidden = !available;
         update.disabled = !available || sourceCurrencyUpdateState.inFlight;
         update.setAttribute('aria-busy', String(sourceCurrencyUpdateState.inFlight));
+      }
+    }
+    function sourceCurrencyUpdateServiceModal() {
+      return infoBody.querySelector('[data-modal-kind-body="source-currency"]');
+    }
+    function renderSourceCurrencyUpdateServiceStatus(modal, status) {
+      const control = modal?.querySelector('[data-source-currency-update-service-toggle]');
+      const label = modal?.querySelector('[data-source-currency-update-service-label]');
+      if (!control) return;
+      const enabled = typeof status?.enabled === 'boolean' ? status.enabled : null;
+      if (enabled === null) {
+        control.checked = false;
+        control.disabled = true;
+        delete control.dataset.currentEnabled;
+        control.setAttribute('aria-label', 'Automatic updates status unknown');
+        control.setAttribute('aria-busy', 'false');
+        if (label) label.textContent = 'Automatic updates status unknown';
+        return;
+      }
+      const activeLabel = typeof status.active === 'boolean'
+        ? (status.active ? 'timer active' : 'timer inactive')
+        : 'timer state unknown';
+      const enabledLabel = enabled ? 'On' : 'Off';
+      control.checked = enabled;
+      control.disabled = false;
+      control.dataset.currentEnabled = String(enabled);
+      control.setAttribute('aria-label', `Automatic updates ${enabledLabel}; ${activeLabel}`);
+      control.setAttribute('aria-busy', 'false');
+      if (label) label.textContent = `Automatic updates ${enabledLabel} · ${activeLabel}`;
+    }
+    async function refreshSourceCurrencyUpdateServiceStatus(generation = sourceCurrencyModalGeneration, expectedModal = sourceCurrencyUpdateServiceModal()) {
+      const modal = expectedModal;
+      const control = modal?.querySelector('[data-source-currency-update-service-toggle]');
+      if (!headerState.isAdmin || !modal || !control) return;
+      const isCurrent = () => generation === sourceCurrencyModalGeneration &&
+        headerState.isAdmin && infoBackdrop.classList.contains('open') &&
+        sourceCurrencyUpdateServiceModal() === modal;
+      control.disabled = true;
+      control.setAttribute('aria-busy', 'true');
+      try {
+        const response = await fetch('/api/caduceus/update/service/status', { cache: 'no-store' });
+        const result = await response.json().catch(() => ({}));
+        if (!isCurrent()) return;
+        const readback = result?.readback;
+        const status = response.ok && result?.ok === true && readback?.ok === true
+          ? readback.body
+          : null;
+        renderSourceCurrencyUpdateServiceStatus(modal, status);
+      } catch (_) {
+        if (isCurrent()) renderSourceCurrencyUpdateServiceStatus(modal, null);
+      }
+    }
+    async function startSourceCurrencyServiceToggle(control) {
+      const modal = sourceCurrencyUpdateServiceModal();
+      if (!headerState.isAdmin || !modal || modal.querySelector('[data-source-currency-update-service-toggle]') !== control || control.disabled) return;
+      const currentEnabled = control.dataset.currentEnabled;
+      if (currentEnabled !== 'true' && currentEnabled !== 'false') return;
+      const state = currentEnabled === 'true' ? 'off' : 'on';
+      const generation = sourceCurrencyModalGeneration;
+      control.disabled = true;
+      control.setAttribute('aria-busy', 'true');
+      try {
+        const response = await fetch('/api/caduceus/update/service/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ state })
+        });
+        const receipt = await response.json().catch(() => ({}));
+        const readback = receipt?.readback || {};
+        if (readback.status === 404) {
+          showCoronatioToast('Automatic updates unavailable — Caduceus is not deployed yet.', 'warning');
+        } else if (receipt?.accepted === true) {
+          showCoronatioToast(`Automatic updates turned ${state === 'on' ? 'on' : 'off'}.`, 'success');
+        } else if (readback.status === 409) {
+          showCoronatioToast('Automatic updates could not be changed yet.', 'warning');
+        } else {
+          showCoronatioToast(readback.firstMissingSignal || receipt.firstMissingSignal || 'Automatic updates could not be changed.', 'warning');
+        }
+      } catch (_) {
+        showCoronatioToast('Automatic updates could not be changed.', 'warning');
+      } finally {
+        await refreshSourceCurrencyUpdateServiceStatus(generation, modal);
       }
     }
     async function startSourceCurrencyUpdate(update) {
@@ -501,6 +589,8 @@ fn shell_document_3() -> &'static str {
       }));
     }
     function openInfoModal(title, kind = 'status') {
+      sourceCurrencyModalGeneration += 1;
+      const modalGeneration = sourceCurrencyModalGeneration;
       infoTitle.textContent = title;
       infoBody.innerHTML = modalTemplate(kind);
       themeChoiceRow.hidden = kind !== 'theme';
@@ -508,10 +598,14 @@ fn shell_document_3() -> &'static str {
       infoBackdrop.setAttribute('aria-hidden', 'false');
       wireModalFetches();
       hydrateModalRouteReads(kind);
-      if (kind === 'source-currency') setSourceCurrencyIndicatorState(sourceCurrencyUpdateState.latestEnvelope);
+      if (kind === 'source-currency') {
+        setSourceCurrencyIndicatorState(sourceCurrencyUpdateState.latestEnvelope);
+        void refreshSourceCurrencyUpdateServiceStatus(modalGeneration);
+      }
       if (kind === 'power-meter') renderPowerModal();
     }
     function closeInfoModal() {
+      sourceCurrencyModalGeneration += 1;
       infoBackdrop.classList.remove('open');
       infoBackdrop.setAttribute('aria-hidden', 'true');
     }

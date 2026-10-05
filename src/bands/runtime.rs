@@ -125,6 +125,8 @@ fn app(state: AppState) -> Router {
             post(caduceus_update_check_route),
         )
         .route("/api/caduceus/update/now", post(caduceus_update_now_route))
+        .route("/api/caduceus/update/service/status", get(caduceus_update_service_status_route))
+        .route("/api/caduceus/update/service/toggle", post(caduceus_update_service_toggle_route))
         .route("/api/caduceus/keyman/create-key", post(caduceus_keyman_create_key_route))
         .route("/api/caduceus/keyman/update-key", post(caduceus_keyman_update_key_route))
         .route("/api/caduceus/keyman/admin-password", post(caduceus_keyman_admin_password_route))

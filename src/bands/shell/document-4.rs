@@ -858,6 +858,8 @@ fn shell_document_4() -> &'static str {
     document.body.addEventListener('click', event => {
       const toastSpawn = event.target.closest('[data-coronatio-toast-spawn]');
       if (toastSpawn) { showCoronatioToast(toastSpawn.dataset.toastMessage || 'Notification', toastSpawn.dataset.toastVariant || 'info'); return; }
+      const sourceCurrencyServiceToggle = event.target.closest('[data-source-currency-update-service-toggle]');
+      if (sourceCurrencyServiceToggle) { event.preventDefault(); void startSourceCurrencyServiceToggle(sourceCurrencyServiceToggle); return; }
       const sourceCurrencyUpdate = event.target.closest('[data-source-currency-update]');
       if (sourceCurrencyUpdate) { void startSourceCurrencyUpdate(sourceCurrencyUpdate); return; }
       const toastDismiss = event.target.closest('[data-coronatio-toast]'); const loadingToggle = event.target.closest('[data-loading-spinner-toggle]');

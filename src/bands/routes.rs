@@ -63,6 +63,8 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/caduceus/status".to_string(),
             "/api/caduceus/update/check".to_string(),
             "/api/caduceus/update/now".to_string(),
+            "/api/caduceus/update/service/status".to_string(),
+            "/api/caduceus/update/service/toggle".to_string(),
             "/api/caduceus/receipts/latest".to_string(),
             "/api/topics".to_string(),
             "/api/monitor/pulse".to_string(),

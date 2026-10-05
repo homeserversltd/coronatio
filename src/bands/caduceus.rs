@@ -38,6 +38,51 @@ async fn caduceus_update_now_route(headers: axum::http::HeaderMap) -> impl IntoR
     caduceus_mutation_route(&headers, "update_now", "/api/v1/update/now", "harmonia update", "local")
 }
 
+async fn caduceus_update_service_status_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    let path = "/api/v1/update/service/status";
+    let readback = admin_fragment_caduceus_request(&headers, "GET", path);
+    let status = mutation_response_status(&readback);
+    let ok = readback.ok;
+    let first_missing_signal = readback.first_missing_signal.clone();
+    (
+        status,
+        Json(serde_json::json!({
+            "schema": "coronatio.caduceus.update.service.status.v1",
+            "ok": ok,
+            "readback": readback,
+            "firstMissingSignal": first_missing_signal,
+        })),
+    )
+}
+
+async fn caduceus_update_service_toggle_route(
+    headers: axum::http::HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let path = "/api/v1/update/service/toggle";
+    let readback = caduceus_actuate_json(
+        &mutation_authority(),
+        &headers,
+        MutationActionTarget::caduceus("caduceus.update.service.toggle", path),
+        path,
+        body,
+    );
+    let status = mutation_response_status(&readback);
+    let ok = readback.ok;
+    let first_missing_signal = readback.first_missing_signal.clone();
+    (
+        status,
+        Json(serde_json::json!({
+            "schema": "coronatio.caduceus.mutation.v1",
+            "ok": ok,
+            "accepted": ok,
+            "route": "update_service_toggle",
+            "readback": readback,
+            "firstMissingSignal": first_missing_signal,
+        })),
+    )
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct KeymanDoorRequest {

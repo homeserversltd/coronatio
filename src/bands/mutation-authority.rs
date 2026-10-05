@@ -473,6 +473,7 @@ fn mutation_mapping_table() -> Vec<(String, String, String)> {
         ("post".to_string(), "/api/set_starred_tab".to_string(), "coronatio.config.set".to_string()),
         ("post".to_string(), "/api/caduceus/update/check".to_string(), "caduceus.update.check".to_string()),
         ("post".to_string(), "/api/caduceus/update/now".to_string(), "caduceus.update.now".to_string()),
+        ("post".to_string(), "/api/caduceus/update/service/toggle".to_string(), "caduceus.update.service.toggle".to_string()),
         ("post".to_string(), "/admit/admin/toggle/:toggle_id".to_string(), "coronatio.route.post".to_string()),
         ("post".to_string(), "/admit/admin/action/:action_id".to_string(), "coronatio.route.post".to_string()),
     ]);
