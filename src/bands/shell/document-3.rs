@@ -878,7 +878,6 @@ fn shell_document_3() -> &'static str {
           return;
         }
         morphAttributes(current, next);
-        if (current.matches?.('input[type="checkbox"], input[type="radio"]')) current.checked = next.checked;
         // Stats owns chart canvases and live readouts between element-fact pulls. Its
         // element wrapper carries the fact attributes; preserve its live descendants.
         if (current.hasAttribute('data-stat-element-id')) {
@@ -1033,7 +1032,8 @@ fn shell_document_3() -> &'static str {
           try { present = Boolean(filler.present(payload)); }
           catch (error) { faultSlot(binding, slot, error?.message || 'Slot data is invalid'); return; }
           if (!present) {
-            if (stateFor(slot) !== 'ready') setPending(slot, key);
+            if (stateFor(slot) === 'ready') setReady(slot);
+            else setPending(slot, key);
             return;
           }
           try { filler.fill(payload, { guest, key, slot }); setReady(slot); }
@@ -1201,6 +1201,7 @@ fn shell_document_3() -> &'static str {
       clearPulseRenewal();
       if (pulseStream) pulseStream.close();
       pulseStream = new EventSource('/api/stats/pulse');
+      armPulseStaleWatchdog();
       pulseStream.addEventListener('pulse.open', event => {
         markPulseLiveness();
         let data = {};
