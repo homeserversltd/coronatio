@@ -1529,13 +1529,14 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 
 /* UX-MIGRATION-SLICE-09B manager continuation: OG anatomy, Crown tokens, portal-created dialog. */
 .manager-modal-backdrop { display: grid; place-items: center; padding: 1rem; z-index: 40; }
+.manager-modal-backdrop[data-manager-modal="nas-setup"] { z-index: 2600; }
 .manager-modal { width: min(100%, 42rem); max-height: min(88vh, 52rem); overflow: auto; }
 .manager-modal .modal-body { display: grid; gap: .75rem; }
 .manager-modal label { display: grid; gap: .3rem; color: var(--text); }
 .manager-modal .ui-input { width: 100%; }
 .manager-route-state, .manager-action-reading { color: var(--warning); border-left: 3px solid var(--warning); padding-left: .6rem; }
 .manager-warning { color: var(--text); font-size: .9rem; }
-.disk-item[data-disk-select] { width: 100%; text-align: left; cursor: pointer; color: inherit; }
+
 
 /* Hestia public household trust download, composed in the original admin modal grammar. */
 .hestia-certificate-modal {
@@ -1581,6 +1582,117 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 .hestia-certificate-modal [data-hestia-certificate-download] {
   text-decoration: none;
 }
-.disk-item[data-disk-select].selected { outline: 2px solid var(--accent); outline-offset: 2px; }
-.disk-actions[data-disk-actions-state="blocked"] [data-disk-action] { opacity: .6; cursor: not-allowed; }
+
 /* Provenance: OG KeyManager.css/DiskManager.css; token fold --primary,--border,--text,--warning => Crown theme aliases. */
+
+.vault-unlock-panel {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--text);
+}
+
+.vault-unlock-panel h3,
+.vault-unlock-panel p {
+  margin: 0;
+}
+
+.vault-unlock-panel form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.vault-unlock-panel label {
+  grid-column: 1 / -1;
+  font-weight: 600;
+}
+
+.vault-unlock-panel input {
+  width: 100%;
+}
+
+.vault-unlock-result[data-state="success"] { color: var(--success); }
+.vault-unlock-result[data-state="error"] { color: var(--error); }
+.vault-unlock-result[data-state="pending"] { color: var(--text-secondary); }
+
+.admin-nas-status {
+  margin: 0 0 0.65rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.admin-nas-status[data-state="empty"] {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.disk-census-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: default;
+}
+
+.disk-census-row .disk-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.disk-census-row.unavailable {
+  cursor: not-allowed;
+}
+
+.disk-census-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.disk-census-fields strong { color: var(--text); }
+
+.disk-census-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+
+.nas-setup-result {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.nas-setup-result:empty { display: none; }
+.nas-setup-outcome,
+.nas-setup-root-facts { margin: 0; }
+.nas-setup-root-facts { color: var(--text-secondary); overflow-wrap: anywhere; }
+.nas-setup-steps { display: grid; gap: 0.55rem; padding-left: 1.5rem; }
+.nas-setup-steps li[data-state="success"] > strong { color: var(--success); }
+.nas-setup-steps li[data-state="failure"] > strong { color: var(--error); }
+.nas-setup-steps pre,
+.nas-setup-result details pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 520px) {
+  .vault-unlock-panel form { grid-template-columns: 1fr; }
+  .vault-unlock-panel label { grid-column: auto; }
+}

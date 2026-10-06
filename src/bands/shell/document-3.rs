@@ -33,7 +33,7 @@ fn shell_document_3() -> &'static str {
       document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === headerState.theme)));
       if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]') && powerChartState.chart) renderPowerModal();
     }
-    const adminDiskSnapshotFamily = Object.freeze({ paneId: 'admin', topics: [], snapshotRoutes: ['/api/v1/disk/census'], authClass: 'admin', timeoutMs: 15000 });
+    const adminDiskSnapshotFamily = Object.freeze({ paneId: 'admin', topics: [], snapshotRoutes: ['/api/v1/storage/disk/census'], authClass: 'admin', timeoutMs: 15000 });
     let adminDiskSnapshotOwner = null;
     let adminDiskPageHidden = false;
     function applyAdminDomState() {

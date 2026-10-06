@@ -5,9 +5,10 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/tabs/elements/:tab_id", get(element_fragment_route))
         .route("/api/stats/elements", get(stats_elements_fragment_route))
         .route("/api/portals/elements", get(portals_elements_fragment_route))
-        .route("/api/pre-unlock", post(admin_class_generic_mutation_route))
         .route("/api/vault/status", get(homeserver_rust_read_route))
-        .route("/api/vault/unlock", post(admin_class_generic_mutation_route))
+        .route("/api/v1/storage/disk/census", get(storage_disk_census_route))
+        .route("/api/v1/storage/vault/unlock", post(storage_vault_unlock_route))
+        .route("/api/v1/storage/nas/setup", post(storage_nas_setup_route))
         .route("/api/system/log", post(admin_class_generic_mutation_route))
         .route("/api/system/update", post(admin_class_generic_mutation_route))
         .route("/api/admin/system/update-password", post(admin_class_generic_mutation_route))
@@ -43,31 +44,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/admin/hard-drive-test/progress", get(homeserver_rust_read_route))
         .route("/api/admin/hard-drive-test/start", post(admin_class_generic_mutation_route))
         .route("/api/admin/hard-drive-test/devices", get(homeserver_rust_read_route))
-        .route("/api/v1/disk/census", get(disk_census_route))
-        .route("/api/admin/diskman/nas-compatible", get(homeserver_rust_read_route))
-        .route("/api/admin/diskman/format", post(caduceus_diskman_format_route))
-        .route("/api/admin/diskman/unlock", post(caduceus_diskman_unlock_route))
-        .route("/api/admin/diskman/unlock-with-password", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/encrypt", post(caduceus_diskman_encrypt_route))
-        .route("/api/admin/diskman/mount", post(caduceus_diskman_mount_route))
-        .route("/api/admin/diskman/unmount", post(caduceus_diskman_unmount_route))
-        .route("/api/admin/diskman/apply-permissions", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/check-services", get(homeserver_rust_read_route))
-        .route("/api/admin/diskman/manage-services", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/sync", post(caduceus_diskman_sync_now_route))
-        .route("/api/admin/diskman/sync-schedule", get(caduceus_diskman_sync_schedule_route))
-        .route("/api/admin/diskman/sync-schedule-update", post(caduceus_diskman_sync_schedule_update_route))
-        .route("/api/admin/diskman/assign-nas", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/assign-primary-nas", post(caduceus_diskman_assign_primary_nas_route))
-        .route("/api/admin/diskman/assign-nas-backup", post(caduceus_diskman_assign_nas_backup_route))
-        .route("/api/admin/diskman/unassign-nas", post(caduceus_diskman_unassign_nas_route))
-        .route("/api/admin/diskman/import-to-nas", post(caduceus_diskman_import_to_nas_route))
-        .route("/api/admin/diskman/setup-nas", post(caduceus_diskman_setup_nas_route))
-        .route("/api/admin/diskman/sync-job-status", post(caduceus_diskman_sync_job_status_route))
-        .route("/api/admin/diskman/create-key", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/update-key", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/key-status", post(admin_class_generic_mutation_route))
-        .route("/api/admin/diskman/vault-device", get(homeserver_rust_read_route))
+
         .route("/api/status/services", get(homeserver_rust_read_route))
         .route("/api/status", get(internet_status_route))
         .route("/api/uptime", get(uptime_route))
@@ -442,21 +419,6 @@ fn format_duration(mut seconds: u64) -> String {
 
 async fn homeserver_rust_read_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_read_response(&headers, method.as_str(), uri.path()).await }
 
-async fn disk_census_route(headers: axum::http::HeaderMap) -> Response {
-    let attendance = crate::caduceus_access::attendance_from_headers(&headers);
-    let document = crate::caduceus_access::document_incarnation_from_headers(&headers);
-    let readback = caduceus_http_with_attendance_and_document(
-        "GET",
-        "/api/v1/disk/census",
-        attendance.as_ref(),
-        document.as_deref(),
-    );
-    if readback.ok {
-        return (StatusCode::OK, Json(readback.body)).into_response();
-    }
-    (StatusCode::SERVICE_UNAVAILABLE, Json(readback.body)).into_response()
-}
-
 async fn homeserver_rust_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri) -> impl IntoResponse { homeserver_mutation_response(&headers, method.as_str(), uri.path()) }
 
 async fn admin_class_generic_mutation_route(headers: axum::http::HeaderMap, method: Method, uri: Uri, body: Bytes) -> Response {
@@ -539,6 +501,7 @@ include!("full-rust-routes/firewall.rs");
 include!("full-rust-routes/wake-on-lan.rs");
 include!("full-rust-routes/linker.rs");
 include!("full-rust-routes/backblaze.rs");
+include!("full-rust-routes/storage.rs");
 
 include!("full-rust-routes/network-notes.rs");
 
@@ -574,7 +537,7 @@ fn homeserver_mutation_response(headers: &axum::http::HeaderMap, method: &str, p
 include!("full-rust-routes/portals.rs");
 
 fn homeserver_route_family(path: &str) -> &'static str {
-    if path.contains("/diskman") || path.contains("/vault") || path.contains("/crypto") || path.contains("/keyman") {
+    if path.contains("/storage/") || path.contains("/vault") || path.contains("/crypto") || path.contains("/keyman") {
         "admin-storage"
     } else if path.contains("/updates") || path.contains("/system/update") || path.contains("/backup") {
         "update-and-backup"
@@ -601,9 +564,10 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/tabs/elements/:tab_id", &["get"]),
         ("/api/stats/elements", &["get"]),
         ("/api/portals/elements", &["get"]),
-        ("/api/pre-unlock", &["post"]),
         ("/api/vault/status", &["get"]),
-        ("/api/vault/unlock", &["post"]),
+        ("/api/v1/storage/disk/census", &["get"]),
+        ("/api/v1/storage/vault/unlock", &["post"]),
+        ("/api/v1/storage/nas/setup", &["post"]),
         ("/api/themes", &["get"]),
         ("/api/system/log", &["post"]),
         ("/api/system/update", &["post"]),
@@ -640,30 +604,6 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/admin/hard-drive-test/progress", &["get"]),
         ("/api/admin/hard-drive-test/start", &["post"]),
         ("/api/admin/hard-drive-test/devices", &["get"]),
-        ("/api/admin/diskman/nas-compatible", &["get"]),
-        ("/api/admin/diskman/format", &["post"]),
-        ("/api/admin/diskman/unlock", &["post"]),
-        ("/api/admin/diskman/unlock-with-password", &["post"]),
-        ("/api/admin/diskman/encrypt", &["post"]),
-        ("/api/admin/diskman/mount", &["post"]),
-        ("/api/admin/diskman/unmount", &["post"]),
-        ("/api/admin/diskman/apply-permissions", &["post"]),
-        ("/api/admin/diskman/check-services", &["get"]),
-        ("/api/admin/diskman/manage-services", &["post"]),
-        ("/api/admin/diskman/sync", &["post"]),
-        ("/api/admin/diskman/sync-schedule", &["get"]),
-        ("/api/admin/diskman/sync-schedule-update", &["post"]),
-        ("/api/admin/diskman/assign-nas", &["post"]),
-        ("/api/admin/diskman/assign-primary-nas", &["post"]),
-        ("/api/admin/diskman/assign-nas-backup", &["post"]),
-        ("/api/admin/diskman/unassign-nas", &["post"]),
-        ("/api/admin/diskman/setup-nas", &["post"]),
-        ("/api/admin/diskman/import-to-nas", &["post"]),
-        ("/api/admin/diskman/sync-job-status", &["post"]),
-        ("/api/admin/diskman/create-key", &["post"]),
-        ("/api/admin/diskman/update-key", &["post"]),
-        ("/api/admin/diskman/key-status", &["post"]),
-        ("/api/admin/diskman/vault-device", &["get"]),
         ("/api/status/services", &["get"]),
         ("/api/status", &["get"]),
         ("/api/uptime", &["get"]),

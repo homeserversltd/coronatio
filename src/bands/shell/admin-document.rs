@@ -45,26 +45,24 @@ fn shell_admin_document_patch() -> &'static str {
           </section>
 
           <section class="mb-6" style="margin-bottom: 0.5rem">
+            <div class="vault-unlock-panel" aria-label="Vault unlock">
+              <h3>Unlock encrypted storage</h3>
+              <form data-vault-unlock-form autocomplete="off">
+                <label for="vault-unlock-password">Vault password</label>
+                <input id="vault-unlock-password" class="ui-input ui-input--medium" type="password" autocomplete="current-password" data-vault-unlock-password>
+                <button type="submit" class="action-button" data-vault-unlock-submit disabled>Unlock Vault</button>
+              </form>
+              <p class="vault-unlock-result" data-vault-unlock-result aria-live="polite"></p>
+            </div>
+          </section>
+
+          <section class="mb-6" style="margin-bottom: 0.5rem">
             <div class="disk-manager">
               <div class="disk-manager-container">
-                <div class="disk-column"><h4>Available Devices</h4><div class="disk-list" data-disk-census-readback="/api/v1/disk/census"><div class="disk-item empty"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">Reading available devices…</div></div></div></div></div>
+                <div class="disk-column"><h4>Available Devices</h4><p class="admin-nas-status" data-admin-nas-status aria-live="polite">Checking NAS status…</p><div class="disk-list" data-disk-census-readback="/api/v1/storage/disk/census"><div class="disk-item empty"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">Reading available devices…</div></div></div></div></div>
                 <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list" data-admin-mounts-readback="/api/services/data">__ADMIN_MOUNT_DESTINATIONS__</div></div>
               </div>
-              <div class="disk-actions" data-disk-actions-state="no-selection" aria-live="polite">
-                <p class="manager-action-reading" data-disk-action-reading>Select a device or mount destination to inspect its available actions.</p>
-                <button type="button" class="action-button format" data-disk-action="format" disabled title="Select an eligible device first">Format</button>
-                <button type="button" class="action-button encrypt" data-disk-action="encrypt" disabled title="Select an eligible device first">Encrypt</button>
-                <button type="button" class="action-button assign-primary" data-disk-action="assign-primary" disabled title="Select an eligible device first">Assign as primary NAS</button>
-                <button type="button" class="action-button assign-backup" data-disk-action="assign-backup" disabled title="Select an eligible device first">Assign as NAS Backup</button>
-                <button type="button" class="action-button unassign-nas" data-disk-action="unassign" disabled title="Select an eligible device first">Unassign drive</button>
-                <button type="button" class="action-button import-nas" data-disk-action="import" disabled title="Select an eligible device first">Import to NAS</button>
-                <button type="button" class="action-button permissions" data-disk-action="setup-nas" data-disk-action-live title="Setup NAS">Setup NAS</button>
-                <button type="button" class="action-button unlock" data-disk-action="unlock" disabled title="Select an eligible device first">Unlock</button>
-                <button type="button" class="action-button mount" data-disk-action="mount" disabled title="Select an eligible device first">Mount</button>
-                <button type="button" class="action-button unmount" data-disk-action="unmount" disabled title="Select an eligible device first">Unmount</button>
-                <button type="button" class="action-button sync" data-disk-action="sync" data-disk-action-live title="Sync Now">Sync Now</button>
-                <button type="button" class="action-button auto-sync" data-disk-action="auto-sync" data-disk-action-live title="Auto Sync">Auto Sync</button>
-              </div>
+              <div class="nas-setup-result" data-admin-nas-setup-result aria-live="polite"></div>
             </div>
           </section>
         </div>
