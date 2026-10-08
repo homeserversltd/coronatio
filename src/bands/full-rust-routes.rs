@@ -441,9 +441,16 @@ async fn internet_speedtest_route(headers: axum::http::HeaderMap) -> Response {
     if let Some(refusal) = device_identity_admin(&headers, path) {
         return refusal;
     }
+    // Caduceus mounts the speed test at GET /api/v1/network/bandwidth/measure
+    // (leaf network/bandwidth/measure) and answers caduceus.network.speedtest.v1:
+    // ok, download and upload in Mbps, latency in ms, mutationPerformed false,
+    // firstMissingSignal. The face reads exactly download, upload, latency and
+    // firstMissingSignal, so the receipt passes through unchanged. Coronatio's
+    // own door stays POST behind the admin session; the downstream verb is
+    // the actuator's, not a reason to relax the caller's gate.
     let readback = caduceus_http_json(
-        "POST",
-        "/api/v1/network/speedtest",
+        "GET",
+        "/api/v1/network/bandwidth/measure",
         serde_json::json!({}),
         None,
     );
