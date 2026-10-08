@@ -12,25 +12,69 @@ fn firewall_guest_refusal(path: &str) -> Response {
         .into_response()
 }
 
-fn firewall_seated_read(caduceus_path: &str, _metadata: serde_json::Value) -> CaduceusHttpReadback {
-    translation_debt_readback("POST", caduceus_path, Some(caduceus_path), None)
+fn firewall_seated_read(method: &str, caduceus_path: &str) -> CaduceusHttpReadback {
+    caduceus_http(method, caduceus_path)
+}
+
+fn firewall_payload(
+    payload: Option<Json<serde_json::Value>>,
+    schema: &str,
+    path_mac: Option<&str>,
+    crown_path: &str,
+) -> Result<serde_json::Value, Response> {
+    let mut metadata = payload
+        .map(|Json(value)| value)
+        .unwrap_or_else(|| serde_json::json!({}));
+    let Some(fields) = metadata.as_object_mut() else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "schema": "coronatio.firewall.refusal.v1",
+                "ok": false,
+                "path": crown_path,
+                "error": "firewall-payload-invalid",
+                "firstMissingSignal": "firewall-payload-invalid"
+            })),
+        )
+            .into_response());
+    };
+    fields.insert("schema".to_string(), serde_json::json!(schema));
+    if let Some(mac) = path_mac {
+        fields.insert("mac".to_string(), serde_json::json!(mac));
+    }
+    Ok(metadata)
 }
 
 fn firewall_seated_mutation(
     headers: &axum::http::HeaderMap,
-    crown_path: &str,
     caduceus_path: &str,
-    _metadata: serde_json::Value,
+    method: &str,
+    body: Option<serde_json::Value>,
 ) -> CaduceusHttpReadback {
-    caduceus_translation_debt(
-        &mutation_authority(),
-        headers,
-        MutationActionTarget::caduceus("caduceus_staff.child_device", crown_path),
-        "POST",
-        caduceus_path,
-        Some(caduceus_path),
-        None,
-    )
+    let authority = mutation_authority();
+    let mapping = MutationActionTarget::caduceus("caduceus_staff.child_device", caduceus_path);
+    let context = mapping.request_context(headers);
+    match authority.authorize(&context, mapping) {
+        Ok(attendance) => {
+            let readback = match body {
+                Some(body) => caduceus_http_json_with_attendance_and_document(
+                    method,
+                    caduceus_path,
+                    body,
+                    Some(&attendance.proof),
+                    Some(&attendance.document),
+                ),
+                None => caduceus_http_with_attendance_and_document(
+                    method,
+                    caduceus_path,
+                    Some(&attendance.proof),
+                    Some(&attendance.document),
+                ),
+            };
+            invalidate_scoped_attendance(&authority, &attendance, readback)
+        }
+        Err(refusal) => mutation_refusal_readback(caduceus_path, refusal),
+    }
 }
 
 fn firewall_staff_response(readback: CaduceusHttpReadback, path: &str) -> Response {
@@ -57,24 +101,24 @@ fn firewall_admin(headers: &axum::http::HeaderMap, path: &str) -> Option<Respons
 }
 
 async fn firewall_observed_route(headers: axum::http::HeaderMap) -> Response {
-    let path = "/api/firewall/observed";
-    if let Some(refusal) = firewall_admin(&headers, path) {
+    let crown_path = "/api/firewall/observed";
+    if let Some(refusal) = firewall_admin(&headers, crown_path) {
         return refusal;
     }
     firewall_staff_response(
-        firewall_seated_read("/api/admin/firewall/observed", serde_json::json!({})),
-        path,
+        firewall_seated_read("GET", "/api/v1/network/firewall/observed"),
+        crown_path,
     )
 }
 
 async fn firewall_children_route(headers: axum::http::HeaderMap) -> Response {
-    let path = "/api/firewall/children";
-    if let Some(refusal) = firewall_admin(&headers, path) {
+    let crown_path = "/api/firewall/children";
+    if let Some(refusal) = firewall_admin(&headers, crown_path) {
         return refusal;
     }
     firewall_staff_response(
-        firewall_seated_read("/api/admin/firewall/list", serde_json::json!({})),
-        path,
+        firewall_seated_read("GET", "/api/v1/network/firewall/children"),
+        crown_path,
     )
 }
 
@@ -82,20 +126,27 @@ async fn firewall_register_route(
     headers: axum::http::HeaderMap,
     payload: Option<Json<serde_json::Value>>,
 ) -> Response {
-    let path = "/api/firewall/children";
-    if let Some(refusal) = firewall_admin(&headers, path) {
+    let crown_path = "/api/firewall/children";
+    if let Some(refusal) = firewall_admin(&headers, crown_path) {
         return refusal;
     }
+    let body = match firewall_payload(
+        payload,
+        "caduceus.network.firewall.child.v1",
+        None,
+        crown_path,
+    ) {
+        Ok(body) => body,
+        Err(refusal) => return refusal,
+    };
     firewall_staff_response(
         firewall_seated_mutation(
             &headers,
-            path,
-            "/api/admin/firewall/register",
-            payload
-                .map(|Json(value)| value)
-                .unwrap_or_else(|| serde_json::json!({})),
+            "/api/v1/network/firewall/children",
+            "POST",
+            Some(body),
         ),
-        path,
+        crown_path,
     )
 }
 
@@ -103,18 +154,14 @@ async fn firewall_unregister_route(
     headers: axum::http::HeaderMap,
     Path(mac): Path<String>,
 ) -> Response {
-    let path = format!("/api/firewall/children/{mac}");
-    if let Some(refusal) = firewall_admin(&headers, &path) {
+    let crown_path = format!("/api/firewall/children/{mac}");
+    if let Some(refusal) = firewall_admin(&headers, &crown_path) {
         return refusal;
     }
+    let caduceus_path = format!("/api/v1/network/firewall/children/{mac}");
     firewall_staff_response(
-        firewall_seated_mutation(
-            &headers,
-            &path,
-            "/api/admin/firewall/unregister",
-            serde_json::json!({"mac": mac}),
-        ),
-        &path,
+        firewall_seated_mutation(&headers, &caduceus_path, "DELETE", None),
+        &crown_path,
     )
 }
 
@@ -122,17 +169,12 @@ async fn firewall_whitelist_get_route(
     headers: axum::http::HeaderMap,
     Path(mac): Path<String>,
 ) -> Response {
-    let path = format!("/api/firewall/children/{mac}/whitelist");
-    if let Some(refusal) = firewall_admin(&headers, &path) {
+    let crown_path = format!("/api/firewall/children/{mac}/whitelist");
+    if let Some(refusal) = firewall_admin(&headers, &crown_path) {
         return refusal;
     }
-    firewall_staff_response(
-        firewall_seated_read(
-            "/api/admin/firewall/whitelist-get",
-            serde_json::json!({"mac": mac}),
-        ),
-        &path,
-    )
+    let caduceus_path = format!("/api/v1/network/firewall/children/{mac}/whitelist");
+    firewall_staff_response(firewall_seated_read("GET", &caduceus_path), &crown_path)
 }
 
 async fn firewall_whitelist_set_route(
@@ -140,23 +182,22 @@ async fn firewall_whitelist_set_route(
     Path(mac): Path<String>,
     payload: Option<Json<serde_json::Value>>,
 ) -> Response {
-    let path = format!("/api/firewall/children/{mac}/whitelist");
-    if let Some(refusal) = firewall_admin(&headers, &path) {
+    let crown_path = format!("/api/firewall/children/{mac}/whitelist");
+    if let Some(refusal) = firewall_admin(&headers, &crown_path) {
         return refusal;
     }
-    let mut metadata = payload
-        .map(|Json(value)| value)
-        .unwrap_or_else(|| serde_json::json!({}));
-    if let Some(fields) = metadata.as_object_mut() {
-        fields.insert("mac".to_string(), serde_json::json!(mac));
-    }
+    let body = match firewall_payload(
+        payload,
+        "caduceus.network.firewall.whitelist.v1",
+        Some(&mac),
+        &crown_path,
+    ) {
+        Ok(body) => body,
+        Err(refusal) => return refusal,
+    };
+    let caduceus_path = format!("/api/v1/network/firewall/children/{mac}/whitelist");
     firewall_staff_response(
-        firewall_seated_mutation(
-            &headers,
-            &path,
-            "/api/admin/firewall/whitelist-set",
-            metadata,
-        ),
-        &path,
+        firewall_seated_mutation(&headers, &caduceus_path, "PUT", Some(body)),
+        &crown_path,
     )
 }
