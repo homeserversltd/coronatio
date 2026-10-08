@@ -129,15 +129,22 @@ fn canonical_mutation_target(target: &str) -> String {
     if let Some(action) = target.strip_prefix("/api/v1/appliance/service/").and_then(|value| value.rsplit('/').next()).filter(|value| !value.is_empty()) {
         return format!("/api/v1/appliance/service/{{service}}/{action}");
     }
-    if let Some(mac) = target.strip_prefix("/api/v1/network/firewall/policies/").filter(|value| !value.is_empty()) {
-        return format!("/api/v1/network/firewall/policies/{mac}");
+    if target == "/api/v1/network/firewall/children" || target == "/api/firewall/children" {
+        return "/api/v1/network/firewall/policies/{mac}".to_string();
     }
-    if let Some(mac) = target
-        .strip_prefix("/api/firewall/children/")
-        .and_then(|value| value.split('/').next())
-        .filter(|value| !value.is_empty())
-    {
-        return format!("/api/v1/network/firewall/policies/{mac}");
+    for prefix in [
+        "/api/v1/network/firewall/children/",
+        "/api/v1/network/firewall/policies/",
+        "/api/firewall/children/",
+    ] {
+        if let Some(value) = target.strip_prefix(prefix) {
+            let segments: Vec<_> = value.split('/').collect();
+            if !segments[0].is_empty()
+                && (segments.len() == 1 || (segments.len() == 2 && segments[1] == "whitelist"))
+            {
+                return "/api/v1/network/firewall/policies/{mac}".to_string();
+            }
+        }
     }
     if target == "/api/v1/file/ingress/start" {
         return "/api/v1/file/ingress/start".to_string();
