@@ -61,7 +61,7 @@ fn device_identity_read(path: &str, target: Option<&str>, headers: &axum::http::
 }
 
 async fn device_roster_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read("/api/network/device", None, &headers)
+    device_identity_read("/api/network/device", Some("/api/v1/network/device"), &headers)
 }
 async fn device_boundary_route(headers: axum::http::HeaderMap) -> Response {
     device_identity_read("/api/network/dhcp/boundary", Some("/api/v1/network/dhcp/boundary"), &headers)
@@ -70,7 +70,7 @@ async fn device_leases_route(headers: axum::http::HeaderMap) -> Response {
     device_identity_read("/api/network/dhcp/leases", Some("/api/v1/network/dhcp/leases"), &headers)
 }
 async fn device_reservations_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read("/api/network/dhcp/reservations", None, &headers)
+    device_identity_read("/api/network/dhcp/reservations", Some("/api/v1/network/dhcp/reservations"), &headers)
 }
 async fn device_dns_read_route(headers: axum::http::HeaderMap) -> Response {
     device_identity_read("/api/network/dns/read", Some("/api/v1/network/dns/read"), &headers)

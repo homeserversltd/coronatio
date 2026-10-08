@@ -21,9 +21,6 @@ fn dns_refusal(path: &str, readback: CaduceusHttpReadback) -> Response {
 }
 
 fn dns_response(path: &str, readback: CaduceusHttpReadback) -> Response {
-    if readback.ok {
-        return (StatusCode::OK, Json(readback.body)).into_response();
-    }
     if readback.status > 0 {
         if let Ok(status) = StatusCode::from_u16(readback.status) {
             return (status, Json(readback.body)).into_response();
@@ -48,10 +45,9 @@ fn dns_intent(headers: &axum::http::HeaderMap, path: &str, intent: serde_json::V
 
 async fn dns_caduceus_read_route(uri: axum::http::Uri) -> Response {
     let path = uri.path();
-    let readback = if path == "/api/v1/network/dns/read" {
-        caduceus_http("GET", "/api/v1/network/dns/read")
-    } else {
-        translation_debt_readback("GET", path, Some(path), None)
+    let readback = match path {
+        "/api/v1/network/dns/read" | "/api/v1/network/dns/resolver/status" => caduceus_http("GET", path),
+        _ => translation_debt_readback("GET", path, Some(path), None),
     };
     dns_response(path, readback)
 }
@@ -59,17 +55,24 @@ async fn dns_caduceus_read_route(uri: axum::http::Uri) -> Response {
 async fn dns_caduceus_mutation_route(
     headers: axum::http::HeaderMap,
     uri: axum::http::Uri,
-    _payload: Option<Json<serde_json::Value>>,
+    payload: Option<Json<serde_json::Value>>,
 ) -> Response {
     let path = uri.path();
-    let readback = route_translation_debt(
-        &mutation_authority(),
-        &headers,
-        "POST",
-        path,
-        Some(path),
-        None,
-    );
+    if let Some(refusal) = mutation_context_refusal(&headers) {
+        return dns_refusal(path, mutation_refusal_readback("/api/v1/network/dns", refusal));
+    }
+    let mapping = MutationActionTarget::caduceus("caduceus.network.dns", path);
+    let readback = if path == "/api/v1/network/dns/blocklist/update" {
+        caduceus_actuate(&mutation_authority(), &headers, mapping, path)
+    } else {
+        caduceus_actuate_json(
+            &mutation_authority(),
+            &headers,
+            mapping,
+            path,
+            payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({})),
+        )
+    };
     dns_response(path, readback)
 }
 
