@@ -49,7 +49,13 @@ fn shell_unbound_client() -> &'static str {
         for (const key of ['records', 'names']) dnsArray(node?.[key]).forEach(row => add(row, 'dns-record'));
         for (const key of ['aliases', 'cnames']) dnsArray(node?.[key]).forEach(row => add({ ...row, address: row?.target || row?.cname || row?.address, provenance: row?.provenance || 'alias (read-only)' }, 'alias'));
       });
-      dnsArray(identityState?.roster).forEach(device => dnsArray(device?.dns_names).forEach(name => add({ name, address: dnsAddress(device), mac: device?.mac || '' }, 'roster')));
+      const dnsNameKey = value => String(value ?? '').trim().replace(/\.$/, '').toLowerCase();
+      const dnsNames = new Set([...rows.values()].map(row => dnsNameKey(row.name)).filter(Boolean));
+      dnsArray(identityState?.roster).forEach(device => dnsArray(device?.dns_names).forEach(name => {
+        const address = dnsAddress(device);
+        if (address === '—' && dnsNames.has(dnsNameKey(name))) return;
+        add({ name, address, mac: device?.mac || '' }, 'roster');
+      }));
       return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name) || a.address.localeCompare(b.address));
     }
     function renderDnsNames() { const target = document.querySelector('[data-dns-names]'); if (!target) return; const rows = dnsNameRows(); target.innerHTML = rows.length ? `<table class="ui-table dns-name-table"><thead><tr><th>Name</th><th>Address</th><th>PTR</th><th>Provenance</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td><code>${escapeHtml(dnsValue(row.name))}</code></td><td><code>${escapeHtml(dnsValue(row.address))}</code></td><td><code>${escapeHtml(dnsValue(row.ptr))}</code></td><td>${escapeHtml(Array.isArray(row.provenance) ? row.provenance.join(', ') : dnsValue(row.provenance))}</td><td>${row.removable ? `<button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" aria-label="Remove owned A and PTR records for ${escapeHtml(row.name)}"${!dnsUiState.identityReady || dnsUiState.mutationBusy ? ' disabled' : ''}>Remove</button>` : '—'}</td></tr>`).join('')}</tbody></table>` : '<p>No LAN names are registered.</p>'; }

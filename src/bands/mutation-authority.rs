@@ -4,7 +4,7 @@
 use crate::caduceus_access::{attendance_from_headers, document_incarnation_from_headers, safe_access_code, same_origin_state_change, AttendanceProof, CaduceusAccessClient};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MutationAuthorization { SameOrigin, AttendedDocument }
+enum MutationAuthorization { SameOrigin, AttendedDocument, AttendedParent }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MutationActionTarget {
@@ -45,9 +45,13 @@ impl MutationActionTarget {
         Self { action, target: target.into(), authorization }
     }
 
+    fn attended_parent(action: impl Into<String>, target: impl Into<String>) -> Self {
+        Self { action: action.into(), target: target.into(), authorization: MutationAuthorization::AttendedParent }
+    }
+
     fn request_context(&self, headers: &axum::http::HeaderMap) -> MutationRequestContext {
         match self.authorization {
-            MutationAuthorization::SameOrigin => MutationRequestContext::from_headers(headers),
+            MutationAuthorization::SameOrigin | MutationAuthorization::AttendedParent => MutationRequestContext::from_headers(headers),
             MutationAuthorization::AttendedDocument => MutationRequestContext::attended_document_from_headers(headers),
         }
     }
@@ -78,8 +82,11 @@ impl MutationRequestContext {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MutationAttendanceScope { ScopedChild, AttendedParent }
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct MutationAttendance { proof: AttendanceProof, document: String }
+struct MutationAttendance { proof: AttendanceProof, document: String, scope: MutationAttendanceScope }
 
 
 #[derive(Clone, Debug)]
@@ -115,10 +122,17 @@ impl MutationAuthority {
             crate::caduceus_access::bust_attendance_projection(attendance, document, "validation-refused");
             return Err(MutationRefusal { code: call.receipt.code, status: call.receipt.status });
         }
+        if mapping.authorization == MutationAuthorization::AttendedParent {
+            return Ok(MutationAttendance {
+                proof: attendance.clone(),
+                document: document.clone(),
+                scope: MutationAttendanceScope::AttendedParent,
+            });
+        }
         let target = canonical_mutation_target(&mapping.target);
         let scoped = self.access.attendance_open_scoped(attendance, document, &target);
         if let Some(proof) = scoped.proof {
-            Ok(MutationAttendance { proof, document: target })
+            Ok(MutationAttendance { proof, document: target, scope: MutationAttendanceScope::ScopedChild })
         } else {
             Err(MutationRefusal { code: scoped.receipt.code, status: scoped.receipt.status })
         }
@@ -254,6 +268,9 @@ fn invalidate_scoped_attendance(
     attendance: &MutationAttendance,
     mut readback: CaduceusHttpReadback,
 ) -> CaduceusHttpReadback {
+    if attendance.scope == MutationAttendanceScope::AttendedParent {
+        return readback;
+    }
     let invalidation = authority
         .access
         .attendance_invalidate(&attendance.proof, &attendance.document);

@@ -74,7 +74,16 @@ async fn dns_caduceus_mutation_route(
     if let Some(refusal) = mutation_context_refusal(&headers) {
         return dns_refusal(path, mutation_refusal_readback("/api/v1/network/dns", refusal));
     }
-    let mapping = MutationActionTarget::caduceus("caduceus.network.dns", path);
+    let mapping = match path {
+        "/api/v1/network/dns/device-name/create"
+        | "/api/v1/network/dns/device-name/remove"
+        | "/api/v1/network/dns/adblock"
+        | "/api/v1/network/dns/blocklist/update"
+        | "/api/v1/network/dns/upstream" => {
+            MutationActionTarget::attended_parent("caduceus.network.dns", path)
+        }
+        _ => MutationActionTarget::caduceus("caduceus.network.dns", path),
+    };
     let readback = if path == "/api/v1/network/dns/blocklist/update" {
         caduceus_actuate(&mutation_authority(), &headers, mapping, path)
     } else {
