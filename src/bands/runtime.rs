@@ -180,7 +180,20 @@ fn app(state: AppState) -> Router {
         .nest_service("/static", ServeDir::new(static_root()))
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
         .fallback(route_boundary_fallback)
+        .layer(axum::middleware::from_fn(own_origin_request_middleware))
         .with_state(state)
+}
+
+async fn own_origin_request_middleware(
+    mut request: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let peer = request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|connect_info| connect_info.0);
+    crate::caduceus_access::seal_own_origin_request(request.headers_mut(), peer);
+    next.run(request).await
 }
 
 fn static_root() -> PathBuf {

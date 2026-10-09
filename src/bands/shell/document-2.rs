@@ -237,17 +237,39 @@ fn shell_document_2() -> &'static str {
         documentIncarnation: (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^a-zA-Z0-9._-]/g, ''),
         inactivityHeadless: false,
         currentAttendance: null,
+        pinAdmissionFlight: null,
+        activePinAdmission: null,
+        pinAdmissionSequence: 0,
         lastEligibleActivity: Date.now(),
         lastAttendanceTouch: 0,
         fetchDecorationCount: 1,
         htmxHandlerInstallCount: 0,
         activityCensusInstallCount: 0,
       };
-      const decoratedFetch = (input, init = {}) => {
-        const headers = new Headers(init.headers || {});
+      const attendanceHeaderNames = new Set(['x-caduceus-document', 'x-caduceus-attendance']);
+      const stripAttendanceHeaders = headers => {
+        for (const name of Array.from(headers.keys())) if (attendanceHeaderNames.has(name.toLowerCase())) headers.delete(name);
+      };
+      const decoratedFetch = (input, init) => {
+        const requestInput = input instanceof Request;
+        let ownedTarget = false;
+        try {
+          const target = new URL(requestInput ? input.url : input, window.location.href);
+          ownedTarget = target.origin === window.location.origin;
+        } catch (_) {}
+        const hasHeaderOverride = init && Object.prototype.hasOwnProperty.call(init, 'headers') && init.headers !== undefined;
+        const headers = hasHeaderOverride ? new Headers(init.headers) : (requestInput ? new Headers(input.headers) : new Headers());
+        const hasExplicitAttendance = hasHeaderOverride && headers.has('X-Caduceus-Attendance');
+        if (!ownedTarget) {
+          stripAttendanceHeaders(headers);
+          return nativeFetch(input, { ...(init || {}), headers });
+        }
         headers.set('X-Caduceus-Document', coronatioAttendanceRuntime.documentIncarnation);
-        if (coronatioAttendanceRuntime.currentAttendance) headers.set('X-Caduceus-Attendance', coronatioAttendanceRuntime.currentAttendance);
-        return nativeFetch(input, { ...init, headers, credentials: 'same-origin' });
+        if (!hasExplicitAttendance) {
+          if (coronatioAttendanceRuntime.currentAttendance) headers.set('X-Caduceus-Attendance', coronatioAttendanceRuntime.currentAttendance);
+          else headers.delete('X-Caduceus-Attendance');
+        }
+        return nativeFetch(input, { ...(init || {}), headers });
       };
       Object.defineProperty(decoratedFetch, '__coronatioAttendanceDecoratorDepth', { value: 1 });
       coronatioAttendanceRuntime.decoratedFetch = decoratedFetch;
@@ -256,8 +278,13 @@ fn shell_document_2() -> &'static str {
     }
     if (!coronatioAttendanceRuntime.htmxConfigRequestHandler) {
       coronatioAttendanceRuntime.htmxConfigRequestHandler = event => {
-        event.detail.headers['X-Caduceus-Document'] = coronatioAttendanceRuntime.documentIncarnation;
-        if (coronatioAttendanceRuntime.currentAttendance) event.detail.headers['X-Caduceus-Attendance'] = coronatioAttendanceRuntime.currentAttendance;
+        const headers = event.detail?.headers || {};
+        let ownedTarget = false;
+        try { ownedTarget = new URL(event.detail?.path, window.location.href).origin === window.location.origin; } catch (_) {}
+        for (const name of Object.keys(headers)) if (['x-caduceus-document', 'x-caduceus-attendance'].includes(name.toLowerCase())) delete headers[name];
+        if (!ownedTarget) return;
+        headers['X-Caduceus-Document'] = coronatioAttendanceRuntime.documentIncarnation;
+        if (coronatioAttendanceRuntime.currentAttendance) headers['X-Caduceus-Attendance'] = coronatioAttendanceRuntime.currentAttendance;
       };
       document.addEventListener('htmx:configRequest', coronatioAttendanceRuntime.htmxConfigRequestHandler);
       coronatioAttendanceRuntime.htmxHandlerInstallCount++;

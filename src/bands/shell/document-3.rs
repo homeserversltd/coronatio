@@ -48,10 +48,129 @@ fn shell_document_3() -> &'static str {
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
     }
+    function pinAdmissionMessage(kind) {
+      return ({
+        pin: 'Invalid PIN.',
+        origin: 'This page origin could not be verified. Open Coronatio at its current address and try again.',
+        document: 'This page could not be identified. Reload Coronatio and try again.',
+        upstream: 'PIN verification is unavailable. Confirm Coronatio and Caduceus are reachable.',
+        network: 'Could not reach Coronatio. Check your connection and try again.',
+        render: 'Admin Mode could not be prepared. Reload Coronatio and try again.',
+        busy: 'A PIN check is already in progress.',
+        cancelled: 'PIN entry was canceled.',
+        uploadCleanup: 'A partial upload could not be safely cleared. Refresh the upload pane before retrying.'
+      })[kind] || 'PIN check is unavailable. Try again.';
+    }
+    coronatioAttendanceRuntime.pinAdmissionMessage = pinAdmissionMessage;
+    async function invalidatePinAdmission(admission) {
+      if (!admission?.attendance || admission.invalidated) return;
+      admission.invalidated = true;
+      await fetch('/api/v1/attendance/invalidate', {
+        method: 'POST',
+        headers: {
+          'X-Caduceus-Document': coronatioAttendanceRuntime.documentIncarnation,
+          'X-Caduceus-Attendance': admission.attendance
+        },
+        cache: 'no-store'
+      }).catch(() => {});
+    }
+    coronatioAttendanceRuntime.invalidatePinAdmission = invalidatePinAdmission;
+    coronatioAttendanceRuntime.cancelPinAdmission = surface => {
+      const flight = coronatioAttendanceRuntime.pinAdmissionFlight;
+      if (flight?.surface === surface) flight.cancelled = true;
+      const admission = coronatioAttendanceRuntime.activePinAdmission;
+      if (admission?.surface === surface) admission.cancelled = true;
+    };
+    coronatioAttendanceRuntime.finishPinAdmission = admission => {
+      if (coronatioAttendanceRuntime.activePinAdmission === admission) coronatioAttendanceRuntime.activePinAdmission = null;
+    };
+    function pinAdmissionFailureKind(status, signal) {
+      if (signal === 'caduceus-attendance-pin-wrong') return 'pin';
+      if (signal === 'caduceus-access-origin-refused' || signal === 'caduceus-attendance-origin-refused') return 'origin';
+      if ([
+        'caduceus-attendance-document-required', 'caduceus-attendance-wrong-document',
+        'caduceus-attendance-document-wrong', 'caduceus-attendance-document-mismatch',
+        'caduceus-attendance-document-incarnation-mismatch', 'caduceus-access-request-invalid',
+        'caduceus-attendance-request-invalid'
+      ].includes(signal) || status === 400) return 'document';
+      if (status >= 500 || status === 0) return 'upstream';
+      return 'upstream';
+    }
+    coronatioAttendanceRuntime.pinAdmissionFailureKind = pinAdmissionFailureKind;
+    coronatioAttendanceRuntime.requestPinAdmission = (pin, surface) => {
+      if (coronatioAttendanceRuntime.pinAdmissionFlight || coronatioAttendanceRuntime.activePinAdmission) return Promise.resolve({ ok: false, kind: 'busy' });
+      const flight = { id: ++coronatioAttendanceRuntime.pinAdmissionSequence, surface, cancelled: false };
+      coronatioAttendanceRuntime.pinAdmissionFlight = flight;
+      return (async () => {
+        try {
+          let response;
+          try {
+            response = await fetch('/api/v1/attendance/open', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              cache: 'no-store',
+              body: JSON.stringify({ pin })
+            });
+          } catch (_) {
+            return { ok: false, kind: 'network' };
+          }
+          let result = {};
+          try { result = await response.json(); }
+          catch (_) { return { ok: false, kind: response.ok ? 'render' : pinAdmissionFailureKind(response.status, '') }; }
+          const attendance = typeof result?.attendance === 'string' && result.attendance ? result.attendance : null;
+          const admission = attendance ? { attendance, surface, invalidated: false, cancelled: flight.cancelled } : null;
+          if (flight.cancelled && !(response.ok && result?.admin === true && attendance)) {
+            if (admission) await invalidatePinAdmission(admission);
+            return { ok: false, kind: 'cancelled' };
+          }
+          if (response.ok && result?.admin === true && attendance) {
+            if (flight.cancelled || coronatioAttendanceRuntime.pinAdmissionFlight !== flight) {
+              await invalidatePinAdmission(admission);
+              return { ok: false, kind: 'cancelled' };
+            }
+            admission.patch = result.adminPatch;
+            admission.tabs = result.adminTabs;
+            coronatioAttendanceRuntime.activePinAdmission = admission;
+            return { ok: true, admission };
+          }
+          if (admission) await invalidatePinAdmission(admission);
+          if (response.ok && result?.admin === true) return { ok: false, kind: 'render' };
+          return { ok: false, kind: pinAdmissionFailureKind(response.status, typeof result?.firstMissingSignal === 'string' ? result.firstMissingSignal : '') };
+        } finally {
+          if (coronatioAttendanceRuntime.pinAdmissionFlight === flight) coronatioAttendanceRuntime.pinAdmissionFlight = null;
+        }
+      })();
+    };
     function setAdminMode(value, options = {}) {
       const previousActive = currentActiveTabId();
       const previousAdmin = headerState.isAdmin;
-      headerState.isAdmin = Boolean(value);
+      const nextAdmin = Boolean(value);
+      if (nextAdmin && options.admission) {
+        const shielded = [...document.querySelectorAll('[data-admin-only]'), tabBar].filter(Boolean);
+        const previousInert = shielded.map(element => [element, element.inert]);
+        shielded.forEach(element => { element.inert = true; });
+        headerState.isAdmin = true;
+        return AdminChromeProjection(previousActive).then(projected => {
+          if (!projected || options.admission.cancelled) {
+            headerState.isAdmin = previousAdmin;
+            previousInert.forEach(([element, inert]) => { element.inert = inert; });
+            void downgradeOpenStreams();
+            return false;
+          }
+          headerState.isAdmin = true;
+          saveHeaderState();
+          applyAdminDomState();
+          previousInert.forEach(([element, inert]) => { element.inert = inert; });
+          void upgradeOpenStreams();
+          return true;
+        }).catch(() => {
+          headerState.isAdmin = previousAdmin;
+          previousInert.forEach(([element, inert]) => { element.inert = inert; });
+          void downgradeOpenStreams();
+          return false;
+        });
+      }
+      headerState.isAdmin = nextAdmin;
       if (!headerState.isAdmin) retireAdminDiskSnapshot();
       saveHeaderState();
       applyAdminDomState();
@@ -61,7 +180,6 @@ fn shell_document_3() -> &'static str {
       if (headerState.isAdmin) void upgradeOpenStreams();
       else void downgradeOpenStreams();
       if (options.boot) return Promise.resolve(true);
-      if (headerState.isAdmin && options.admission) return AdminChromeProjection(previousActive);
       return refreshTabBar(previousActive).then(selectedTab => {
         refreshElementFragment('stats');
         if (!sessionLawfulTab(selectedTab)) void runFavoriteLadder({ startAt: 1 });
@@ -69,18 +187,46 @@ fn shell_document_3() -> &'static str {
       });
     }
     let adminDocumentPatchPendingHydration = false;
-    function installAdminDocumentPatch(patch, tabsHtml) {
-      if (typeof patch !== 'string' || typeof tabsHtml !== 'string' || !immortalFloorGuestSlot) return false;
+    function prepareAdminDocumentPatch(patch, tabsHtml) {
+      if (typeof patch !== 'string' || typeof tabsHtml !== 'string' || patch.length > 256 * 1024 || tabsHtml.length > 64 * 1024 || !immortalFloorGuestSlot || !tabBar) return null;
       const template = document.createElement('template');
       template.innerHTML = patch;
-      const admitted = template.content.querySelector('[data-admin-document-patch="true"]');
-      if (!admitted) return false;
+      const admittedNodes = template.content.querySelectorAll('[data-admin-document-patch="true"]');
+      if (admittedNodes.length !== 1 || template.content.querySelector('script')) return null;
+      const tabsTemplate = document.createElement('template');
+      tabsTemplate.innerHTML = tabsHtml;
+      const stagedTabs = [...tabsTemplate.content.querySelectorAll('[data-pane]')];
+      if (!stagedTabs.length || tabsTemplate.content.querySelector('script')) return null;
+      const paneIds = stagedTabs.map(tab => tab.dataset.pane);
+      if (paneIds.some(id => !id) || new Set(paneIds).size !== paneIds.length) return null;
+      return { patch: admittedNodes[0], tabsHtml, previousTabBarHtml: tabBar.innerHTML };
+    }
+    function installAdminDocumentPatch(prepared) {
+      if (!prepared || !immortalFloorGuestSlot || !tabBar) return null;
+      const transaction = { previousTabBarHtml: prepared.previousTabBarHtml };
+      try {
+        document.querySelector('[data-admin-document-patch="true"]')?.remove();
+        immortalFloorGuestSlot.appendChild(prepared.patch);
+        panes = [...document.querySelectorAll('[data-pane-panel]')];
+        adminDocumentPatchPendingHydration = true;
+        replaceTabBar(prepared.tabsHtml);
+        return transaction;
+      } catch (_) {
+        rollbackAdminDocumentPatch(transaction);
+        return null;
+      }
+    }
+    function rollbackAdminDocumentPatch(transaction) {
       document.querySelector('[data-admin-document-patch="true"]')?.remove();
-      immortalFloorGuestSlot.appendChild(admitted);
       panes = [...document.querySelectorAll('[data-pane-panel]')];
-      adminDocumentPatchPendingHydration = true;
-      replaceTabBar(tabsHtml);
-      return true;
+      adminDocumentPatchPendingHydration = false;
+      if (transaction && tabBar) {
+        try { replaceTabBar(transaction.previousTabBarHtml); }
+        catch (_) { tabBar.innerHTML = transaction.previousTabBarHtml; tabs = [...document.querySelectorAll('[data-pane]')]; }
+      }
+      headerState.isAdmin = false;
+      saveHeaderState();
+      applyAdminDomState();
     }
     function removeAdminDocumentPatch() {
       retireAdminDiskSnapshot();
@@ -117,7 +263,7 @@ fn shell_document_3() -> &'static str {
       modalBackdrop.setAttribute('aria-hidden', 'false');
       (mode === 'change' ? changeCurrentPinInput : currentPinInput).focus();
     }
-    function closePinModal() { [currentPinInput, changeCurrentPinInput, newPinInput, confirmPinInput].forEach(input => { input.value = ''; });
+    function closePinModal() { coronatioAttendanceRuntime.cancelPinAdmission?.('header'); [currentPinInput, changeCurrentPinInput, newPinInput, confirmPinInput].forEach(input => { input.value = ''; });
       modalBackdrop.classList.remove('open');
       modalBackdrop.setAttribute('aria-hidden', 'true');
     }
@@ -647,31 +793,73 @@ fn shell_document_3() -> &'static str {
     });
     changePinButton?.addEventListener('click', () => openPinModal('change'));
     document.querySelector('[data-pin-cancel]')?.addEventListener('click', closePinModal);
-    document.querySelector('[data-pin-confirm-button]')?.addEventListener('click', async () => {
+    document.querySelector('[data-pin-modal-form]')?.addEventListener('submit', event => { event.preventDefault(); document.querySelector('[data-pin-confirm-button]')?.click(); });
+    const pinConfirmButton = document.querySelector('[data-pin-confirm-button]');
+    pinConfirmButton?.addEventListener('click', async () => {
       if (modalMode === 'change') {
         if (!changeCurrentPinInput.value || !newPinInput.value || !confirmPinInput.value) { modalMessage.textContent = 'Please fill in all fields'; return; }
         if (newPinInput.value !== confirmPinInput.value) { modalMessage.textContent = 'New PINs do not match'; return; }
         try { const response = await fetch('/api/v1/attendance/change-pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ currentPin: changeCurrentPinInput.value, newPin: newPinInput.value }) }); const result = await response.json().catch(() => ({}));
-          if (!response.ok || result.ok !== true) { const returnedError = result?.error || result?.message || (result?.firstMissingSignal !== 'none' ? result?.firstMissingSignal : ''); modalMessage.textContent = returnedError || 'Failed to change PIN'; return; }
-        } catch (_) { modalMessage.textContent = 'Failed to change PIN'; return; }
+          if (!response.ok || result.ok !== true) { const kind = pinAdmissionFailureKind(response.status, typeof result?.firstMissingSignal === 'string' ? result.firstMissingSignal : ''); modalMessage.textContent = kind === 'pin' ? 'Current PIN is incorrect.' : pinAdmissionMessage(kind); return; }
+        } catch (_) { modalMessage.textContent = pinAdmissionMessage('network'); return; }
         [changeCurrentPinInput, newPinInput, confirmPinInput].forEach(input => { input.value = ''; }); modalMessage.textContent = 'PIN changed successfully'; window.setTimeout(closePinModal, 1000); return;
       }
       if (modalMode === 'enter' && !currentPinInput.value) { modalMessage.textContent = 'Enter PIN'; return; }
       if (modalMode === 'enter') {
+        if (pinConfirmButton?.disabled) return;
+        if (coronatioAttendanceRuntime.pinAdmissionFlight || coronatioAttendanceRuntime.activePinAdmission) {
+          modalMessage.textContent = pinAdmissionMessage('busy');
+          return;
+        }
+        const request = coronatioAttendanceRuntime.requestPinAdmission(currentPinInput.value, 'header');
+        if (pinConfirmButton) pinConfirmButton.disabled = true;
+        modalMessage.textContent = 'Checking PIN…';
         try {
-          const response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
-          const result = await response.json().catch(() => ({}));
-          const explicitPinRefusal = response.status === 401 && result?.firstMissingSignal === 'caduceus-attendance-refused';
-          if (explicitPinRefusal) { modalMessage.textContent = 'Invalid PIN'; return; }
-          if (!response.ok || result.admin !== true) { modalMessage.textContent = 'PIN check unavailable'; return; }
-          coronatioAttendanceRuntime.currentAttendance = typeof result.attendance === 'string' ? result.attendance : null;
-          if (!coronatioAttendanceRuntime.currentAttendance || !installAdminDocumentPatch(result.adminPatch, result.adminTabs)) { coronatioAttendanceRuntime.currentAttendance = null; modalMessage.textContent = 'PIN check unavailable'; return; }
-        } catch (_) { modalMessage.textContent = 'PIN check unavailable'; return; }
+          const result = await request;
+          if (!result.ok) {
+            if (result.kind !== 'cancelled') modalMessage.textContent = pinAdmissionMessage(result.kind);
+            return;
+          }
+          const admission = result.admission;
+          if (admission.cancelled) {
+            await invalidatePinAdmission(admission);
+            coronatioAttendanceRuntime.finishPinAdmission(admission);
+            return;
+          }
+          const prepared = prepareAdminDocumentPatch(admission.patch, admission.tabs);
+          if (!prepared) {
+            await invalidatePinAdmission(admission);
+            coronatioAttendanceRuntime.finishPinAdmission(admission);
+            modalMessage.textContent = pinAdmissionMessage('render');
+            return;
+          }
+          coronatioAttendanceRuntime.currentAttendance = admission.attendance;
+          const transaction = installAdminDocumentPatch(prepared);
+          if (!transaction) {
+            coronatioAttendanceRuntime.currentAttendance = null;
+            await invalidatePinAdmission(admission);
+            coronatioAttendanceRuntime.finishPinAdmission(admission);
+            modalMessage.textContent = pinAdmissionMessage('render');
+            return;
+          }
+          const projected = await setAdminMode(true, { admission });
+          if (!projected || admission.cancelled) {
+            coronatioAttendanceRuntime.currentAttendance = null;
+            rollbackAdminDocumentPatch(transaction);
+            await setAdminMode(false, { boot: true });
+            await invalidatePinAdmission(admission);
+            coronatioAttendanceRuntime.finishPinAdmission(admission);
+            if (!admission.cancelled) modalMessage.textContent = pinAdmissionMessage('render');
+            return;
+          }
+          coronatioAttendanceRuntime.finishPinAdmission(admission);
+          modalMessage.textContent = '✓ Admin access confirmed. Loading…';
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          closePinModal();
+        } finally {
+          if (pinConfirmButton) pinConfirmButton.disabled = false;
+        }
       }
-      modalMessage.textContent = '✓ Admin access confirmed. Loading…';
-      await new Promise(resolve => requestAnimationFrame(resolve));
-      const admitted = await setAdminMode(true, { admission: true });
-      if (admitted) closePinModal();
     });
     async function enterInactivityHeadless() {
       if (coronatioAttendanceRuntime.inactivityHeadless) return;

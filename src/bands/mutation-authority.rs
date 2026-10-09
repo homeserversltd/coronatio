@@ -75,7 +75,7 @@ impl MutationRequestContext {
 
     fn attended_document_from_headers(headers: &axum::http::HeaderMap) -> Self {
         Self {
-            same_origin: true,
+            same_origin: same_origin_state_change(headers),
             document: document_incarnation_from_headers(headers),
             attendance: attendance_from_headers(headers),
         }
@@ -199,7 +199,9 @@ fn mutation_context_refusal(headers: &axum::http::HeaderMap) -> Option<MutationR
 
 fn admin_fragment_context_refusal(headers: &axum::http::HeaderMap) -> Option<MutationRefusal> {
     let context = MutationRequestContext::attended_document_from_headers(headers);
-    if context.document.is_none() {
+    if !context.same_origin {
+        Some(MutationRefusal { code: "caduceus-access-origin-refused".to_string(), status: 403 })
+    } else if context.document.is_none() {
         Some(MutationRefusal { code: "caduceus-attendance-document-required".to_string(), status: 400 })
     } else if context.attendance.is_none() {
         Some(MutationRefusal { code: "caduceus-attendance-required".to_string(), status: 401 })

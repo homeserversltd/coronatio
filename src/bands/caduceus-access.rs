@@ -361,14 +361,17 @@ pub(crate) fn staff_socket_path() -> PathBuf {
 pub(crate) fn document_incarnation_from_headers(headers:&axum::http::HeaderMap)->Option<String>{headers.get("x-caduceus-document").and_then(|v|v.to_str().ok()).map(str::trim).filter(|v|!v.is_empty()&&v.len()<=128&&v.bytes().all(|b|b.is_ascii_alphanumeric()||matches!(b,b'-'|b'_'|b'.'))).map(ToOwned::to_owned)}
 pub(crate) fn attendance_from_headers(headers:&axum::http::HeaderMap)->Option<AttendanceProof>{headers.get("x-caduceus-attendance").and_then(|v|v.to_str().ok()).and_then(AttendanceProof::parse)}
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg(test)]
 pub(crate) struct MutationOriginPolicy { allowed_origins: Vec<BrowserOrigin> }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct BrowserOrigin { scheme: String, host: String, port: u16 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg(test)]
 pub(crate) enum MutationOriginConfigError { HomeserverJson(String), MissingAllowedOrigins, EmptyAllowedOrigins, InvalidAllowedOrigins, InvalidOrigin(String) }
 
+#[cfg(test)]
 pub(crate) fn mutation_origin_policy_from_homeserver(value: &serde_json::Value) -> Result<MutationOriginPolicy, MutationOriginConfigError> {
     let origins = value.get("global").and_then(serde_json::Value::as_object).and_then(|global| global.get("cors")).and_then(serde_json::Value::as_object).and_then(|cors| cors.get("allowed_origins")).ok_or(MutationOriginConfigError::MissingAllowedOrigins)?;
     let origins = origins.as_array().ok_or(MutationOriginConfigError::InvalidAllowedOrigins)?;
@@ -380,11 +383,13 @@ pub(crate) fn mutation_origin_policy_from_homeserver(value: &serde_json::Value) 
     Ok(MutationOriginPolicy { allowed_origins })
 }
 
+#[cfg(test)]
 pub(crate) fn load_mutation_origin_policy_sync() -> Result<MutationOriginPolicy, MutationOriginConfigError> {
     let (_, value) = crate::load_homeserver_json_sync().map_err(MutationOriginConfigError::HomeserverJson)?;
     mutation_origin_policy_from_homeserver(&value)
 }
 
+#[cfg(test)]
 pub(crate) fn same_origin_state_change_with_policy(headers: &axum::http::HeaderMap, policy: &MutationOriginPolicy) -> bool {
     let origin = match headers.get(header::ORIGIN) {
         Some(value) => match value.to_str().ok().and_then(parse_browser_origin) {
@@ -403,15 +408,167 @@ pub(crate) fn same_origin_state_change_with_policy(headers: &axum::http::HeaderM
 }
 
 pub(crate) fn same_origin_state_change(headers: &axum::http::HeaderMap) -> bool {
-    load_mutation_origin_policy_sync().map(|policy| same_origin_state_change_with_policy(headers, &policy)).unwrap_or(false)
+    headers
+        .get(OWN_ORIGIN_REQUEST_SEAL)
+        .and_then(|value| value.to_str().ok())
+        == Some(OWN_ORIGIN_REQUEST_SEAL_VALUE)
+}
+
+const OWN_ORIGIN_REQUEST_SEAL: &str = "x-coronatio-own-origin-seal";
+const OWN_ORIGIN_REQUEST_SEAL_VALUE: &str = "same-origin";
+
+/// Seal the middleware's request-origin decision into a header that is removed
+/// from the client request before it is written. Forwarding assertions are read
+/// only for a loopback peer, then removed before application routes run.
+pub(crate) fn seal_own_origin_request(
+    headers: &mut axum::http::HeaderMap,
+    peer: Option<std::net::SocketAddr>,
+) {
+    let same_origin = peer.is_some_and(|peer| request_is_same_origin(headers, peer));
+
+    headers.remove(OWN_ORIGIN_REQUEST_SEAL);
+    headers.remove("x-forwarded-host");
+    headers.remove("x-forwarded-proto");
+    headers.remove("forwarded");
+
+    if same_origin {
+        headers.insert(
+            OWN_ORIGIN_REQUEST_SEAL,
+            axum::http::HeaderValue::from_static(OWN_ORIGIN_REQUEST_SEAL_VALUE),
+        );
+    }
+}
+
+fn request_is_same_origin(headers: &axum::http::HeaderMap, peer: std::net::SocketAddr) -> bool {
+    let Some(effective_origin) = effective_request_origin(headers, peer) else { return false; };
+    match exactly_one_header(headers, header::ORIGIN.as_str()) {
+        Ok(Some(raw_origin)) => {
+            let Some(origin) = parse_browser_origin(raw_origin) else { return false; };
+            origin == effective_origin
+        }
+        Ok(None) => same_origin_without_origin(headers, &effective_origin),
+        Err(()) => false,
+    }
+}
+
+fn effective_request_origin(
+    headers: &axum::http::HeaderMap,
+    peer: std::net::SocketAddr,
+) -> Option<BrowserOrigin> {
+    let host = exactly_one_header(headers, header::HOST.as_str()).ok()??;
+    if !peer.ip().is_loopback() {
+        return parse_request_authority(host, "http");
+    }
+
+    let forwarded_host = exactly_one_header(headers, "x-forwarded-host").ok()?;
+    let forwarded_proto = exactly_one_header(headers, "x-forwarded-proto").ok()?;
+    match (forwarded_host, forwarded_proto) {
+        (None, None) => parse_request_authority(host, "http"),
+        (Some(forwarded_host), Some(forwarded_proto)) => {
+            let scheme = if forwarded_proto.eq_ignore_ascii_case("http") {
+                "http"
+            } else if forwarded_proto.eq_ignore_ascii_case("https") {
+                "https"
+            } else {
+                return None;
+            };
+            let host_origin = parse_request_authority(host, scheme)?;
+            let forwarded_origin = parse_request_authority(forwarded_host, scheme)?;
+            (host_origin == forwarded_origin).then_some(forwarded_origin)
+        }
+        _ => None,
+    }
+}
+
+fn same_origin_without_origin(
+    headers: &axum::http::HeaderMap,
+    effective_origin: &BrowserOrigin,
+) -> bool {
+    let referer = match exactly_one_header(headers, "referer") {
+        Ok(value) => value,
+        Err(()) => return false,
+    };
+    let fetch_site = match exactly_one_header(headers, "sec-fetch-site") {
+        Ok(value) => value,
+        Err(()) => return false,
+    };
+    match referer {
+        Some(raw_referer) => {
+            let Some(referer_origin) = parse_referer_origin(raw_referer) else { return false; };
+            referer_origin == *effective_origin
+                && fetch_site.map_or(true, |site| site == "same-origin")
+        }
+        None => fetch_site.is_some_and(|site| site == "same-origin"),
+    }
+}
+
+fn exactly_one_header<'a>(
+    headers: &'a axum::http::HeaderMap,
+    name: &str,
+) -> Result<Option<&'a str>, ()> {
+    let mut values = headers.get_all(name).iter();
+    let Some(value) = values.next() else { return Ok(None); };
+    if values.next().is_some() { return Err(()); }
+    value.to_str().map(Some).map_err(|_| ())
+}
+
+fn parse_request_authority(raw: &str, scheme: &str) -> Option<BrowserOrigin> {
+    if raw.is_empty()
+        || raw.trim() != raw
+        || raw.bytes().any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+        || raw.contains([',', '/', '?', '#', '@', '\\'])
+    {
+        return None;
+    }
+    let url = url::Url::parse(&format!("{scheme}://{raw}/")).ok()?;
+    if url.scheme() != scheme
+        || url.cannot_be_a_base()
+        || url.username() != ""
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    Some(BrowserOrigin {
+        scheme: scheme.to_string(),
+        host: url.host_str()?.to_ascii_lowercase(),
+        port: url.port_or_known_default()?,
+    })
+}
+
+fn parse_referer_origin(raw: &str) -> Option<BrowserOrigin> {
+    if raw.is_empty()
+        || raw.trim() != raw
+        || raw.contains(',')
+        || raw.bytes().any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+    {
+        return None;
+    }
+    let url = url::Url::parse(raw).ok()?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.cannot_be_a_base()
+        || url.username() != ""
+        || url.password().is_some()
+    {
+        return None;
+    }
+    Some(BrowserOrigin {
+        scheme: url.scheme().to_ascii_lowercase(),
+        host: url.host_str()?.to_ascii_lowercase(),
+        port: url.port_or_known_default()?,
+    })
 }
 
 fn parse_browser_origin(raw: &str) -> Option<BrowserOrigin> {
-    let url = url::Url::parse(raw.trim()).ok()?;
+    if raw.trim() != raw || raw.contains(',') || raw.bytes().any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control()) { return None; }
+    let url = url::Url::parse(raw).ok()?;
     if !matches!(url.scheme(), "http" | "https") || url.cannot_be_a_base() || url.username() != "" || url.password().is_some() || url.path() != "/" || url.query().is_some() || url.fragment().is_some() { return None; }
     Some(BrowserOrigin { scheme: url.scheme().to_ascii_lowercase(), host: url.host_str()?.to_ascii_lowercase(), port: url.port_or_known_default()? })
 }
 
+#[cfg(test)]
 fn parse_host_authority(raw: &str) -> Option<(String, Option<u16>)> {
     let raw = raw.trim();
     if raw.is_empty() || raw.contains(['/', '?', '#', '@']) { return None; }
@@ -420,6 +577,7 @@ fn parse_host_authority(raw: &str) -> Option<(String, Option<u16>)> {
     Some((url.host_str()?.to_ascii_lowercase(), url.port()))
 }
 
+#[cfg(test)]
 fn forwarded_first<'a>(headers:&'a axum::http::HeaderMap,name:&str)->Option<&'a str>{headers.get(name)?.to_str().ok()?.split(',').next().map(str::trim).filter(|v|!v.is_empty())}
 
 #[cfg(test)]
