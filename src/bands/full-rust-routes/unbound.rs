@@ -5,8 +5,14 @@ struct DnsRecordInput {
 }
 
 fn dns_refusal(path: &str, readback: CaduceusHttpReadback) -> Response {
+    let status = if readback.status > 0 {
+        StatusCode::from_u16(readback.status).ok()
+    } else {
+        None
+    }
+    .unwrap_or_else(|| mutation_response_status(&readback));
     (
-        mutation_response_status(&readback),
+        status,
         Json(serde_json::json!({
             "schema": "coronatio.unbound.refusal.v1",
             "ok": false,
@@ -20,7 +26,14 @@ fn dns_refusal(path: &str, readback: CaduceusHttpReadback) -> Response {
         .into_response()
 }
 
+fn dns_is_local_mutation_refusal(readback: &CaduceusHttpReadback) -> bool {
+    !readback.ok && readback.body == serde_json::json!({"error": "caduceus-mutation-refused"})
+}
+
 fn dns_response(path: &str, readback: CaduceusHttpReadback) -> Response {
+    if dns_is_local_mutation_refusal(&readback) {
+        return dns_refusal(path, readback);
+    }
     if readback.status > 0 {
         if let Ok(status) = StatusCode::from_u16(readback.status) {
             return (status, Json(readback.body)).into_response();

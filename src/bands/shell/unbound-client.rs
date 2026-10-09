@@ -58,9 +58,10 @@ fn shell_unbound_client() -> &'static str {
     function renderDnsModalRoster() { const target = document.querySelector('[data-dns-device-roster]'); if (!target) return; const devices = dnsArray(identityState?.roster); target.innerHTML = `<table class="identity-roster"><thead><tr><th>Device</th><th>Address</th><th>Names</th><th>Pick</th></tr></thead><tbody>${devices.map(device => { const mac = String(device?.mac || ''); const selected = mac === dnsUiState.pickedMac; return `<tr data-device-mac="${escapeHtml(mac)}"><td><code>${escapeHtml(dnsValue(dnsDeviceLabel(device)))}</code><br><small>${escapeHtml(dnsValue(mac))}</small></td><td><code>${escapeHtml(dnsValue(dnsAddress(device)))}</code></td><td>${escapeHtml(dnsArray(device?.dns_names).join(', ') || '—')}</td><td><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-device-pick="${escapeHtml(mac)}" aria-pressed="${selected}"${!dnsUiState.identityReady || dnsUiState.mutationBusy ? ' disabled' : ''}>${selected ? 'Selected' : 'Pick'}</button></td></tr>`; }).join('') || '<tr><td colspan="4">No devices reported.</td></tr>'}</tbody></table>`; }
     function renderDnsModalRecords() { const target = document.querySelector('[data-dns-modal-records]'); if (!target) return; const rows = dnsNameRows(); target.innerHTML = `<h3>Records</h3><table class="ui-table"><thead><tr><th>Name</th><th>Address</th><th>PTR</th><th>Provenance</th></tr></thead><tbody>${rows.map(row => `<tr><td><code>${escapeHtml(dnsValue(row.name))}</code></td><td><code>${escapeHtml(dnsValue(row.address))}</code></td><td><code>${escapeHtml(dnsValue(row.ptr))}</code></td><td>${escapeHtml(Array.isArray(row.provenance) ? row.provenance.join(', ') : dnsValue(row.provenance))}</td></tr>`).join('') || '<tr><td colspan="4">No records reported.</td></tr>'}</tbody></table>`; }
     function resolverReceipt(envelope) { return dnsFindObject(envelope, node => ['adblockEnabled', 'upstreams', 'dnsOverTls', 'blocklistDomainCount', 'blocklistLastUpdate', 'unboundActive'].some(key => Object.prototype.hasOwnProperty.call(node, key))) || {}; }
-    function dnsUpstreamBase(address, dot) { const value = String(address); return dot && value.endsWith('@853') ? value.slice(0, -4) : value; }
-    function dnsSelectedUpstreamAddresses() { const selected = [...document.querySelectorAll('[data-dns-upstream-provider]:checked')].flatMap(input => dnsProviders[input.value] || []); const customToggle = document.querySelector('[data-dns-upstream-custom-toggle]'); const custom = customToggle?.checked ? (document.querySelector('[data-dns-upstream-custom-addresses]')?.value || '').split(',').map(value => value.trim()).filter(Boolean) : []; return [...new Set([...selected, ...custom])]; }
-    function renderDnsUpstreamReadout() { const target = document.querySelector('[data-dns-upstream-readout]'); if (!target) return; const dot = Boolean(document.querySelector('[data-dns-dot]')?.checked); const addresses = dnsSelectedUpstreamAddresses().map(address => dot && !address.endsWith('@853') ? `${address}@853` : address); target.textContent = `Upstreams: [${addresses.join(', ')}] · DoT: ${dot ? 'on' : 'off'}`; }
+    function dnsUpstreamBase(address) { return String(address ?? '').trim().split(/[@#]/, 1)[0].trim(); }
+    function dnsNormalizeUpstreams(addresses) { return [...new Set(dnsArray(addresses).map(dnsUpstreamBase).filter(Boolean))]; }
+    function dnsSelectedUpstreamAddresses() { const selected = [...document.querySelectorAll('[data-dns-upstream-provider]:checked')].flatMap(input => dnsProviders[input.value] || []); const customToggle = document.querySelector('[data-dns-upstream-custom-toggle]'); const custom = customToggle?.checked ? (document.querySelector('[data-dns-upstream-custom-addresses]')?.value || '').split(',').map(dnsUpstreamBase).filter(Boolean) : []; return [...new Set([...selected, ...custom])]; }
+    function renderDnsUpstreamReadout() { const target = document.querySelector('[data-dns-upstream-readout]'); if (!target) return; const dot = Boolean(document.querySelector('[data-dns-dot]')?.checked); const addresses = dnsSelectedUpstreamAddresses().map(address => dot ? `${address}@853` : address); target.textContent = `Upstreams: [${addresses.join(', ')}] · DoT: ${dot ? 'on' : 'off'}`; }
     function renderResolverStatus(status) {
       const target = document.querySelector('[data-dns-resolver-status]');
       const adblock = document.querySelector('[data-dns-adblock]');
@@ -84,7 +85,7 @@ fn shell_unbound_client() -> &'static str {
       const hasUpstreams = Array.isArray(status.upstreams);
       const hasDot = typeof status.dnsOverTls === 'boolean';
       const upstreams = hasUpstreams ? status.upstreams.map(String) : [];
-      const normalized = upstreams.map(address => dnsUpstreamBase(address, hasDot && status.dnsOverTls));
+      const normalized = dnsNormalizeUpstreams(upstreams);
       if (adblock) adblock.checked = typeof status.adblockEnabled === 'boolean' ? status.adblockEnabled : false;
       if (dotInput) dotInput.checked = hasDot ? status.dnsOverTls : false;
       const selectedProviders = [];
@@ -99,7 +100,7 @@ fn shell_unbound_client() -> &'static str {
       if (customToggle) customToggle.checked = hasUpstreams && custom.length > 0;
       if (customLabel) customLabel.hidden = !hasUpstreams || custom.length === 0;
       if (customInput) customInput.value = custom.join(', ');
-      if (readout) readout.textContent = `Upstreams: ${hasUpstreams ? upstreams.join(', ') || 'None' : 'unavailable'} · DoT: ${hasDot ? (status.dnsOverTls ? 'on' : 'off') : 'unavailable'}`;
+      if (readout) { if (hasUpstreams && hasDot) renderDnsUpstreamReadout(); else readout.textContent = `Upstreams: ${hasUpstreams ? normalized.join(', ') || 'None' : 'unavailable'} · DoT: ${hasDot ? (status.dnsOverTls ? 'on' : 'off') : 'unavailable'}`; }
       const updated = status.blocklistLastUpdate === null ? 'Never' : Number.isFinite(status.blocklistLastUpdate) ? new Date(status.blocklistLastUpdate * 1000).toLocaleString() : 'Unavailable';
       const count = Number.isFinite(status.blocklistDomainCount) ? status.blocklistDomainCount.toLocaleString() : 'Unavailable';
       const active = typeof status.unboundActive === 'boolean' ? (status.unboundActive ? 'Active' : 'Inactive') : 'Unavailable';
@@ -229,11 +230,13 @@ fn shell_unbound_client() -> &'static str {
     }
     async function saveDnsUpstream() {
       if (!dnsUiState.resolverReady || !Array.isArray(dnsUiState.resolver?.upstreams) || typeof dnsUiState.resolver?.dnsOverTls !== 'boolean' || dnsUiState.mutationBusy) return;
-      const providers = [...document.querySelectorAll('[data-dns-upstream-provider]:checked')].map(input => input.value).filter(name => dnsProviders[name]);
+      const providers = [...new Set([...document.querySelectorAll('[data-dns-upstream-provider]:checked')].map(input => input.value).filter(name => dnsProviders[name]))];
       const customToggle = document.querySelector('[data-dns-upstream-custom-toggle]');
-      const custom = customToggle?.checked ? (document.querySelector('[data-dns-upstream-custom-addresses]')?.value || '').split(',').map(value => value.trim()).filter(Boolean) : [];
-      const addresses = [...new Set([...providers.flatMap(name => dnsProviders[name]), ...custom])];
-      const result = providers.length || custom.length ? null : 'Choose at least one upstream resolver.';
+      const typedCustom = customToggle?.checked ? (document.querySelector('[data-dns-upstream-custom-addresses]')?.value || '').split(',').map(dnsUpstreamBase).filter(Boolean) : [];
+      const providerAddresses = [...new Set(providers.flatMap(name => dnsProviders[name]))];
+      const custom = [...new Set(typedCustom)].filter(address => !providerAddresses.includes(address));
+      const addresses = [...new Set([...providerAddresses, ...custom])];
+      const result = addresses.length ? null : 'Choose at least one upstream resolver.';
       if (result) { dnsSetState(result); return; }
       if (addresses.length > 8) { dnsSetState('Caduceus accepts at most eight upstream addresses.'); return; }
       const dot = Boolean(document.querySelector('[data-dns-dot]')?.checked);
