@@ -335,6 +335,313 @@ fn parse_probe_detail(detail: &str) -> Option<(&str, &str)> {
     (!probe_signal.is_empty() && !endpoint.is_empty()).then_some((probe_signal, endpoint))
 }
 
+fn xenia_response_has_mime(response: &Response, expected: &str) -> bool {
+    response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case(expected))
+}
+
+async fn xenia_read_proxy_body_bounded(mut body: Body) -> Result<Bytes, &'static str> {
+    tokio::time::timeout(xenia_discovery::PROXY_TIMEOUT, async {
+        let mut bytes = Vec::new();
+        while let Some(frame) = http_body_util::BodyExt::frame(&mut body).await {
+            let frame = frame.map_err(|_| "proxy-read-failed")?;
+            if let Ok(data) = frame.into_data() {
+                if bytes.len().saturating_add(data.len()) > xenia_discovery::MAX_BODY {
+                    return Err("response-body-too-large");
+                }
+                bytes.extend_from_slice(&data);
+            }
+        }
+        Ok::<Bytes, &'static str>(Bytes::from(bytes))
+    })
+    .await
+    .map_err(|_| "proxy-timeout")?
+}
+
+fn xenia_style_sheet_recovery(tab_id: &str, signal: &str, message: &str) -> Response {
+    let rung = format!("style-sheet-{signal}");
+    xenia_visible_recovery(tab_id, &rung, message)
+}
+
+fn xenia_unknown_style_mode(tab_id: &str, mode: &str) {
+    caduceus_hyalos_reflect_best_effort(
+        "xenia",
+        "error".to_string(),
+        format!("Unsupported Xenia style mode: {mode}"),
+        Some(tab_id.to_string()),
+        Some(serde_json::json!({"phase": "admit-style", "mode": mode})),
+    );
+}
+
+fn xenia_pack_css_refused(tab_id: &str, offender: &str, already_recorded: bool) -> Response {
+    let signal = format!("pack-css-refused:{offender}");
+    let message = format!("PackCssRefused: {offender}");
+    let mut response = if already_recorded {
+        let receipt = CartridgeFaultReceipt {
+            tab_id: tab_id.to_string(),
+            fault_kind: CartridgeFaultKind::PackCssRefused,
+            occurred_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0),
+            first_missing_signal: signal.clone(),
+            probe_signal: None,
+            probe_endpoint: None,
+        };
+        render_fragment_fault(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            tab_id,
+            &receipt,
+            &signal,
+            &message,
+        )
+    } else {
+        fragment_fault_with_signal(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            tab_id,
+            CartridgeFaultKind::PackCssRefused,
+            &signal,
+            &message,
+        )
+    };
+    response.headers_mut().insert(
+        "x-coronatio-fault",
+        HeaderValue::from_static("pack-css-refused"),
+    );
+    response
+}
+
+async fn admit_process_fragment(
+    tab: &CoronatioTabContract,
+    endpoint: &str,
+    path: &str,
+) -> Response {
+    let fragment_response = match xenia_discovery::proxy(
+        &tab.id,
+        endpoint,
+        Method::GET,
+        path,
+        &axum::http::HeaderMap::new(),
+        Body::empty(),
+    )
+    .await
+    {
+        Ok(response)
+            if response.status().is_success()
+                && response
+                    .headers()
+                    .get(header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .is_some_and(|value| value.to_ascii_lowercase().starts_with("text/html")) =>
+        {
+            response
+        }
+        Ok(_) => {
+            return xenia_visible_recovery(
+                &tab.id,
+                "fragment-nonrenderable",
+                "The fragment route did not return renderable HTML.",
+            );
+        }
+        Err(signal) => {
+            return xenia_visible_recovery(
+                &tab.id,
+                signal,
+                "The fragment route did not answer within its boundary.",
+            );
+        }
+    };
+
+    let Some(style) = tab
+        .xenia_entry
+        .as_ref()
+        .and_then(|entry| entry.get("style"))
+        .filter(|style| !style.is_null())
+    else {
+        return fragment_response;
+    };
+    let Some(mode_value) = style.get("mode").filter(|mode| !mode.is_null()) else {
+        return fragment_response;
+    };
+    let Some(mode) = mode_value.as_str() else {
+        xenia_unknown_style_mode(&tab.id, "non-string");
+        return fragment_response;
+    };
+    match mode {
+        "crown" | "replace" => return fragment_response,
+        "extend" => {}
+        _ => {
+            xenia_unknown_style_mode(&tab.id, mode);
+            return fragment_response;
+        }
+    }
+
+    let Some(sheet) = style
+        .get("sheet")
+        .and_then(serde_json::Value::as_str)
+        .filter(|sheet| !sheet.is_empty())
+    else {
+        return xenia_style_sheet_recovery(
+            &tab.id,
+            "missing",
+            "The declared guest style sheet is missing.",
+        );
+    };
+    let sheet_path = format!("/{sheet}");
+    if let Err(signal) = xenia_discovery::validate_proxy_path(&sheet_path) {
+        return xenia_style_sheet_recovery(
+            &tab.id,
+            signal,
+            "The declared guest style-sheet path is invalid.",
+        );
+    }
+    let sheet_response = match xenia_discovery::proxy(
+        &tab.id,
+        endpoint,
+        Method::GET,
+        &sheet_path,
+        &axum::http::HeaderMap::new(),
+        Body::empty(),
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(signal) => {
+            return xenia_style_sheet_recovery(
+                &tab.id,
+                signal,
+                "The guest style sheet did not answer within its boundary.",
+            );
+        }
+    };
+    let sheet_status = sheet_response.status();
+    let legacy_pack_css_refused = sheet_path == "/static/pack.css"
+        && sheet_status == StatusCode::UNPROCESSABLE_ENTITY
+        && sheet_response
+            .headers()
+            .get("x-coronatio-fault")
+            .and_then(|value| value.to_str().ok())
+            == Some("pack-css-refused")
+        && xenia_response_has_mime(&sheet_response, "text/plain");
+    if legacy_pack_css_refused {
+        let body = match xenia_read_proxy_body_bounded(sheet_response.into_body()).await {
+            Ok(body) => body,
+            Err(signal) => {
+                return xenia_style_sheet_recovery(
+                    &tab.id,
+                    signal,
+                    "The guest style-sheet refusal could not be read within its boundary.",
+                );
+            }
+        };
+        let Some(payload) = std::str::from_utf8(&body).ok() else {
+            return xenia_style_sheet_recovery(
+                &tab.id,
+                "refusal-body-invalid",
+                "The guest style-sheet refusal could not be read.",
+            );
+        };
+        let Some(offender) = payload
+            .strip_prefix("PackCssRefused: ")
+            .map(|value| value.trim_end_matches(&['\r', '\n'][..]))
+            .filter(|offender| !offender.is_empty())
+        else {
+            return xenia_style_sheet_recovery(
+                &tab.id,
+                "refusal-body-invalid",
+                "The guest style-sheet refusal could not be read.",
+            );
+        };
+        return xenia_pack_css_refused(&tab.id, offender, true);
+    }
+    if !sheet_status.is_success() {
+        return xenia_style_sheet_recovery(
+            &tab.id,
+            "status",
+            &format!("The guest style sheet returned HTTP {sheet_status}."),
+        );
+    }
+    if !xenia_response_has_mime(&sheet_response, "text/css") {
+        return xenia_style_sheet_recovery(
+            &tab.id,
+            "content-type",
+            "The guest style sheet did not return text/css.",
+        );
+    }
+    let css_bytes = match xenia_read_proxy_body_bounded(sheet_response.into_body()).await {
+        Ok(bytes) => bytes,
+        Err(signal) => {
+            return xenia_style_sheet_recovery(
+                &tab.id,
+                signal,
+                "The guest style sheet could not be read within its boundary.",
+            );
+        }
+    };
+    let lint_offender = xenia_discovery::pack_css_offender(&css_bytes);
+    let markup_offender = css_bytes
+        .iter()
+        .position(|byte| *byte == b'<')
+        .map(|_| "html-markup-byte".to_string());
+    if let Some(offender) = lint_offender.or(markup_offender) {
+        return xenia_pack_css_refused(&tab.id, &offender, false);
+    }
+
+    let (mut parts, fragment_body) = fragment_response.into_parts();
+    let fragment_bytes = match xenia_read_proxy_body_bounded(fragment_body).await {
+        Ok(bytes) => bytes,
+        Err(signal) => {
+            return xenia_visible_recovery(
+                &tab.id,
+                &format!("fragment-{signal}"),
+                "The fragment body could not be read within its boundary.",
+            );
+        }
+    };
+    let opening = format!(
+        "<style data-xenia-style=\"{}\">",
+        html_escape(&tab.id)
+    );
+    let closing = b"</style>";
+    let Some(total_len) = opening
+        .len()
+        .checked_add(css_bytes.len())
+        .and_then(|length| length.checked_add(closing.len()))
+        .and_then(|length| length.checked_add(fragment_bytes.len()))
+    else {
+        return xenia_style_sheet_recovery(
+            &tab.id,
+            "combined-body-too-large",
+            "The guest style sheet and fragment exceed the crown body bound.",
+        );
+    };
+    if total_len > xenia_discovery::MAX_BODY {
+        return xenia_style_sheet_recovery(
+            &tab.id,
+            "combined-body-too-large",
+            "The guest style sheet and fragment exceed the crown body bound.",
+        );
+    }
+    let mut styled_fragment = Vec::with_capacity(total_len);
+    styled_fragment.extend_from_slice(opening.as_bytes());
+    styled_fragment.extend_from_slice(&css_bytes);
+    styled_fragment.extend_from_slice(closing);
+    styled_fragment.extend_from_slice(&fragment_bytes);
+    if parts.headers.contains_key(header::CONTENT_LENGTH) {
+        let content_length = total_len.to_string();
+        parts.headers.insert(
+            header::CONTENT_LENGTH,
+            HeaderValue::from_bytes(content_length.as_bytes())
+                .expect("decimal content length is a valid header value"),
+        );
+    }
+    Response::from_parts(parts, Body::from(Bytes::from(styled_fragment)))
+}
+
 fn fragment_probe_fault(status: StatusCode, tab_id: &str, fault_kind: CartridgeFaultKind, rung: &str, probe_signal: &str, probe_endpoint: &str, message: &str) -> Response {
     let receipt = record_cartridge_probe_fault(tab_id, fault_kind, rung, probe_signal, probe_endpoint);
     render_fragment_fault(status, tab_id, &receipt, rung, message)
@@ -404,11 +711,7 @@ async fn admit_xenos(tab: CoronatioTabContract) -> Response {
                 )).into_response(),
                 "fragment" => {
                     let path = xenia_text(&tab, "fragment_path").or_else(|| xenia_text(&tab, "fragmentPath")).unwrap_or_else(|| "/fragment".to_string());
-                    match xenia_discovery::proxy(&tab.id, endpoint, Method::GET, &path, &axum::http::HeaderMap::new(), Body::empty()).await {
-                        Ok(response) if response.status().is_success() && response.headers().get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()).is_some_and(|value| value.to_ascii_lowercase().starts_with("text/html")) => response,
-                        Ok(_) => xenia_visible_recovery(&tab.id, "fragment-nonrenderable", "The fragment route did not return renderable HTML."),
-                        Err(signal) => xenia_visible_recovery(&tab.id, signal, "The fragment route did not answer within its boundary."),
-                    }
+                    admit_process_fragment(&tab, endpoint, &path).await
                 }
                 _ => xenia_visible_recovery(&tab.id, "client-class", "The guest presentation class is not renderable."),
             }

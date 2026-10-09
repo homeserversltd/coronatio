@@ -12,9 +12,9 @@ use tokio::sync::mpsc;
 const DISCOVERY_TTL: Duration = Duration::from_secs(30);
 const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_millis(5_000);
 const MIN_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
-const PROXY_TIMEOUT: Duration = Duration::from_secs(8);
+pub(super) const PROXY_TIMEOUT: Duration = Duration::from_secs(8);
 const SSE_STREAM_LIMIT: Duration = Duration::from_secs(35);
-const MAX_BODY: usize = 2 * 1024 * 1024;
+pub(super) const MAX_BODY: usize = 2 * 1024 * 1024;
 const MAX_HEALTH_BODY: usize = 64 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
