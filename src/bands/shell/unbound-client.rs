@@ -42,7 +42,7 @@ fn shell_unbound_client() -> &'static str {
           const aOwned = dnsProvenanceHas(record?.provenance, 'owned');
           const ptrOwned = Boolean(ptrRecord) && dnsProvenanceHas(ptrRecord?.provenance, 'owned');
           const provenance = record?.provenance ?? 'observed';
-          add({ name, address, ptr: ptrRecord?.name || '', provenance: aOwned && ptrOwned ? 'owned A/PTR pair' : provenance, removable: aOwned && ptrOwned }, aOwned && ptrOwned ? 'dns-owned-pair' : 'dns-device');
+          add({ name, address, ptr: ptrRecord?.name || '', provenance: aOwned && ptrOwned ? 'owned A/PTR pair' : provenance, removable: aOwned && ptrOwned && Boolean(dnsNormalizeBareLabel(name).label) }, aOwned && ptrOwned ? 'dns-owned-pair' : 'dns-device');
         });
       });
       dnsEnvelopeNodes(identityState?.dns || {}).forEach(node => {
@@ -181,14 +181,16 @@ fn shell_unbound_client() -> &'static str {
     }
     function openDnsModal() { if (!dnsUiState.identityReady || dnsUiState.mutationBusy) return; const modal = document.querySelector('[data-dns-add-modal]'); if (!modal) return; modal.hidden = false; renderDnsModalRoster(); renderDnsModalRecords(); if (dnsUiState.pickedMac) renderDnsIpCalendar(); document.querySelector('[data-dns-new-name]')?.focus(); }
     function closeDnsModal() { const modal = document.querySelector('[data-dns-add-modal]'); if (modal) modal.hidden = true; dnsUiState.pickedMac = null; dnsUiState.selectedOctet = null; dnsUiState.nameDefault = ''; const nameInput = document.querySelector('[data-dns-new-name]'); if (nameInput) nameInput.value = ''; const picked = document.querySelector('[data-dns-picked-device]'); if (picked) picked.textContent = 'Choose a device for this name.'; const calendar = document.querySelector('[data-dns-ip-calendar]'); if (calendar) calendar.hidden = true; dnsUpdateAddSave(); }
-    function dnsFullHostname(value) { const hostname = String(value || '').trim().toLowerCase().replace(/\.$/, ''); if (!hostname) return ''; return hostname.endsWith('.home.arpa') ? hostname : `${hostname}.home.arpa`; }
+    function dnsNormalizeBareLabel(value) { const label = String(value ?? '').trim().toLowerCase().replace(/\.$/, '').replace(/\.home\.arpa$/, ''); if (!label) return { label: '', error: 'Enter a hostname.' }; if (label.includes('.')) return { label: '', error: 'Use a single hostname label; additional dots are not allowed.' }; if (label.length > 63) return { label: '', error: 'Hostname must be 63 characters or fewer.' }; if (label.match(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/)?.[0] !== label) return { label: '', error: /^[a-z0-9]/.test(label) && /[a-z0-9]$/.test(label) ? 'Hostname may contain only letters, numbers, and hyphens.' : 'Hostname must start and end with a letter or number; hyphens are allowed only inside the label.' }; return { label, error: '' }; }
     async function saveDnsName() {
       const input = document.querySelector('[data-dns-new-name]');
-      const hostname = dnsFullHostname(input?.value);
+      const result = document.querySelector('[data-dns-add-result]');
+      const normalized = dnsNormalizeBareLabel(input?.value);
+      if (normalized.error) { if (result) result.textContent = normalized.error; return; }
+      const hostname = normalized.label;
       const device = dnsRosterDevice();
       const address = dnsSelectedIp();
-      const result = document.querySelector('[data-dns-add-result]');
-      if (!hostname || !device || !address || !dnsUiState.identityReady || dnsUiState.mutationBusy) { if (result) result.textContent = 'Choose a device, name, and available DHCP address.'; return; }
+      if (!device || !address || !dnsUiState.identityReady || dnsUiState.mutationBusy) { if (result) result.textContent = 'Choose a device and available DHCP address.'; return; }
       if (result) result.textContent = 'Adding name…';
       dnsSetMutationBusy(true);
       try {
@@ -204,10 +206,11 @@ fn shell_unbound_client() -> &'static str {
       const name = button?.dataset?.dnsNameRemove;
       const address = button?.dataset?.dnsIp;
       const row = dnsNameRows().find(item => item.name === name && item.address === address && item.removable);
-      if (!row || !dnsUiState.identityReady || dnsUiState.mutationBusy) return;
+      const normalized = dnsNormalizeBareLabel(row?.name);
+      if (!row || !row.removable || !normalized.label || !dnsUiState.identityReady || dnsUiState.mutationBusy) return;
       dnsSetMutationBusy(true);
       try {
-        const receipt = await dnsJson('/api/v1/network/dns/device-name/remove', { method: 'POST', body: JSON.stringify({ hostname: row.name, ip: row.address }) });
+        const receipt = await dnsJson('/api/v1/network/dns/device-name/remove', { method: 'POST', body: JSON.stringify({ hostname: normalized.label, ip: row.address }) });
         dnsRequireAccepted(receipt);
         showCoronatioToast('Owned A and PTR records removed.', 'success');
         await hydrateDns();
