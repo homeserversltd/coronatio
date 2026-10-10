@@ -227,13 +227,25 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
         );
     }
     let path = format!("/api/v1/appliance/service/{service}/{action}");
-    let caduceus = caduceus_actuate_json(
-        &mutation_authority(),
-        &headers,
-        MutationActionTarget::caduceus("coronatio.portals.service_control", &path),
-        &path,
-        serde_json::json!({}),
-    );
+    // Slow service mutations get a bounded long socket timeout; status and fallback actions stay short.
+    let timeout = match action.as_str() {
+        "start" | "stop" | "restart" | "enable" | "disable" => std::time::Duration::from_secs(180),
+        "status" => std::time::Duration::from_secs(4),
+        _ => std::time::Duration::from_secs(4),
+    };
+    let refusal_path = path.clone();
+    let caduceus = tokio::task::spawn_blocking(move || {
+        caduceus_actuate_json_with_timeout(
+            &mutation_authority(),
+            &headers,
+            MutationActionTarget::caduceus("coronatio.portals.service_control", &path),
+            &path,
+            serde_json::json!({}),
+            timeout,
+        )
+    })
+    .await
+    .unwrap_or_else(|_| mutation_task_failure_readback(&refusal_path));
     portal_service_mutation_response(caduceus)
 }
 

@@ -77,24 +77,34 @@ async fn transmission_keys_replace_route(headers: axum::http::HeaderMap, body: B
     }
 
     let downstream = serde_json::json!({"service":"pia","username":username,"password":password});
-    let readback = caduceus_actuate_json(
-        &mutation_authority(),
-        &headers,
-        MutationActionTarget::caduceus("coronatio.transmission.keys.replace", TRANSMISSION_KEYS_REPLACE_TARGET),
-        TRANSMISSION_KEYS_REPLACE_TARGET,
-        downstream,
-    );
+    let readback = tokio::task::spawn_blocking(move || {
+        caduceus_actuate_json_with_timeout(
+            &mutation_authority(),
+            &headers,
+            MutationActionTarget::caduceus("coronatio.transmission.keys.replace", TRANSMISSION_KEYS_REPLACE_TARGET),
+            TRANSMISSION_KEYS_REPLACE_TARGET,
+            downstream,
+            std::time::Duration::from_secs(180),
+        )
+    })
+    .await
+    .unwrap_or_else(|_| mutation_task_failure_readback(TRANSMISSION_KEYS_REPLACE_TARGET));
     transmission_keys_mutation_response(readback, &[username, password])
 }
 
 async fn transmission_keys_rotate_route(headers: axum::http::HeaderMap, _body: Bytes) -> Response {
-    let readback = caduceus_actuate_json(
-        &mutation_authority(),
-        &headers,
-        MutationActionTarget::caduceus("coronatio.transmission.keys.rotate", TRANSMISSION_KEYS_ROTATE_TARGET),
-        TRANSMISSION_KEYS_ROTATE_TARGET,
-        serde_json::json!({"service":"transmission"}),
-    );
+    let readback = tokio::task::spawn_blocking(move || {
+        caduceus_actuate_json_with_timeout(
+            &mutation_authority(),
+            &headers,
+            MutationActionTarget::caduceus("coronatio.transmission.keys.rotate", TRANSMISSION_KEYS_ROTATE_TARGET),
+            TRANSMISSION_KEYS_ROTATE_TARGET,
+            serde_json::json!({"service":"transmission"}),
+            std::time::Duration::from_secs(180),
+        )
+    })
+    .await
+    .unwrap_or_else(|_| mutation_task_failure_readback(TRANSMISSION_KEYS_ROTATE_TARGET));
     transmission_keys_mutation_response(readback, &[])
 }
 

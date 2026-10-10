@@ -305,21 +305,50 @@ fn caduceus_actuate_json(
     path: &str,
     body: serde_json::Value,
 ) -> CaduceusHttpReadback {
+    caduceus_actuate_json_with_timeout(
+        authority,
+        headers,
+        mapping,
+        path,
+        body,
+        std::time::Duration::from_secs(4),
+    )
+}
+
+fn caduceus_actuate_json_with_timeout(
+    authority: &MutationAuthority,
+    headers: &axum::http::HeaderMap,
+    mapping: MutationActionTarget,
+    path: &str,
+    body: serde_json::Value,
+    timeout: std::time::Duration,
+) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
         Ok(attendance) => invalidate_scoped_attendance(
             authority,
             &attendance,
-            caduceus_http_json_with_attendance_and_document(
+            caduceus_http_json_with_attendance_and_document_timeout(
                 "POST",
                 path,
                 body,
                 Some(&attendance.proof),
                 Some(&attendance.document),
+                timeout,
             ),
         ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
+}
+
+fn mutation_task_failure_readback(path: &str) -> CaduceusHttpReadback {
+    mutation_refusal_readback(
+        path,
+        MutationRefusal {
+            code: "caduceus-mutation-task-failed".to_string(),
+            status: 503,
+        },
+    )
 }
 
 fn caduceus_actuate(
