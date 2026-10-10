@@ -18,9 +18,40 @@ fn storage_disk_census_route_status(readback: &CaduceusHttpReadback) -> StatusCo
     if readback.ok { StatusCode::OK } else { mutation_response_status(readback) }
 }
 
+fn storage_project_local_mutation_refusal(readback: &mut CaduceusHttpReadback) {
+    let first_missing_signal = readback.first_missing_signal.clone();
+    if !readback.ok
+        && first_missing_signal != "caduceus-http-not-ok"
+        && readback.body == serde_json::json!({ "error": "caduceus-mutation-refused" })
+    {
+        if let Some(body) = readback.body.as_object_mut() {
+            body.insert(
+                "firstMissingSignal".to_string(),
+                serde_json::Value::String(first_missing_signal),
+            );
+        }
+    }
+}
+
 async fn storage_disk_census_route(headers: axum::http::HeaderMap) -> Response {
     let path = "/api/v1/storage/disk/census";
-    let readback = admin_fragment_caduceus_request(&headers, "GET", path);
+    let authority = mutation_authority();
+    let mapping = MutationActionTarget::attended_parent("coronatio.storage.disk.census", path);
+    let context = mapping.request_context(&headers);
+    let mut readback = match authority.authorize(&context, mapping) {
+        Ok(attendance) => invalidate_scoped_attendance(
+            &authority,
+            &attendance,
+            caduceus_http_with_attendance_and_document(
+                "GET",
+                path,
+                Some(&attendance.proof),
+                Some(&attendance.document),
+            ),
+        ),
+        Err(refusal) => mutation_refusal_readback(path, refusal),
+    };
+    storage_project_local_mutation_refusal(&mut readback);
     (storage_disk_census_route_status(&readback), Json(readback.body)).into_response()
 }
 
@@ -41,7 +72,7 @@ fn storage_receipt_reports_success(body: &serde_json::Value) -> bool {
         || body.get("success").and_then(serde_json::Value::as_bool) == Some(true)
 }
 
-fn storage_operation_response(readback: CaduceusHttpReadback, receipt_ok: bool, redact_secrets: bool) -> Response {
+fn storage_operation_response(mut readback: CaduceusHttpReadback, receipt_ok: bool, redact_secrets: bool) -> Response {
     let status = if !readback.ok {
         mutation_response_status(&readback)
     } else if receipt_ok {
@@ -49,6 +80,7 @@ fn storage_operation_response(readback: CaduceusHttpReadback, receipt_ok: bool, 
     } else {
         StatusCode::BAD_GATEWAY
     };
+    storage_project_local_mutation_refusal(&mut readback);
     let body = if redact_secrets { redact_keyman_receipt(readback.body) } else { readback.body };
     (status, Json(body)).into_response()
 }
@@ -72,7 +104,7 @@ async fn storage_vault_unlock_route(
     let readback = caduceus_actuate_json(
         &mutation_authority(),
         &headers,
-        MutationActionTarget::caduceus("coronatio.storage.vault.unlock", path),
+        MutationActionTarget::attended_parent("coronatio.storage.vault.unlock", path),
         path,
         serde_json::json!({ "password": request.password }),
     );
@@ -177,7 +209,7 @@ async fn storage_nas_setup_route(
         storage_actuate_json_timeout(
             &mutation_authority(),
             &headers,
-            MutationActionTarget::caduceus("coronatio.storage.nas.setup", path),
+            MutationActionTarget::attended_parent("coronatio.storage.nas.setup", path),
             path,
             body,
             NAS_SETUP_UPSTREAM_TIMEOUT,
