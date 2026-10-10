@@ -81,7 +81,7 @@ async fn transmission_keys_replace_route(headers: axum::http::HeaderMap, body: B
         caduceus_actuate_json_with_timeout(
             &mutation_authority(),
             &headers,
-            MutationActionTarget::caduceus("coronatio.transmission.keys.replace", TRANSMISSION_KEYS_REPLACE_TARGET),
+            MutationActionTarget::attended_parent("coronatio.transmission.keys.replace", TRANSMISSION_KEYS_REPLACE_TARGET),
             TRANSMISSION_KEYS_REPLACE_TARGET,
             downstream,
             std::time::Duration::from_secs(180),
@@ -97,7 +97,7 @@ async fn transmission_keys_rotate_route(headers: axum::http::HeaderMap, _body: B
         caduceus_actuate_json_with_timeout(
             &mutation_authority(),
             &headers,
-            MutationActionTarget::caduceus("coronatio.transmission.keys.rotate", TRANSMISSION_KEYS_ROTATE_TARGET),
+            MutationActionTarget::attended_parent("coronatio.transmission.keys.rotate", TRANSMISSION_KEYS_ROTATE_TARGET),
             TRANSMISSION_KEYS_ROTATE_TARGET,
             serde_json::json!({"service":"transmission"}),
             std::time::Duration::from_secs(180),
