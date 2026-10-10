@@ -377,7 +377,7 @@ fn admin_fragment_caduceus_request(headers: &axum::http::HeaderMap, method: &str
     let authority = mutation_authority();
     match authority.authorize(
         &MutationRequestContext::attended_document_from_headers(headers),
-        MutationActionTarget::caduceus("coronatio.admin.fragment", path),
+        MutationActionTarget::attended_parent("coronatio.admin.fragment", path),
     ) {
         Ok(attendance) => invalidate_scoped_attendance(
             &authority,
@@ -402,7 +402,7 @@ fn admin_fragment_caduceus_json_request(
     let authority = mutation_authority();
     match authority.authorize(
         &MutationRequestContext::attended_document_from_headers(headers),
-        MutationActionTarget::caduceus("coronatio.admin.fragment", path),
+        MutationActionTarget::attended_parent("coronatio.admin.fragment", path),
     ) {
         Ok(attendance) => invalidate_scoped_attendance(
             &authority,
