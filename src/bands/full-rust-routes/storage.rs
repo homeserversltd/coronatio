@@ -37,7 +37,7 @@ async fn storage_disk_census_route(headers: axum::http::HeaderMap) -> Response {
     let path = "/api/v1/storage/disk/census";
     let authority = mutation_authority();
     let mapping = MutationActionTarget::attended_parent("coronatio.storage.disk.census", path);
-    let context = mapping.request_context(&headers);
+    let context = MutationRequestContext::attended_document_from_headers(&headers);
     let mut readback = match authority.authorize(&context, mapping) {
         Ok(attendance) => invalidate_scoped_attendance(
             &authority,
