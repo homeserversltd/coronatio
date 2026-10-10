@@ -115,17 +115,6 @@ Candidate: `candidate-only: current network/tailnet family (/api/v1/network/tail
 | `R085` `POST` `/api/status/tailscale/enable` → `/api/status/tailscale/enable` |
 | `R086` `POST` `/api/status/tailscale/update-tailnet` → `/api/status/tailscale/update-tailnet` |
 
-### network/vpn — 4 rows
-
-Candidate: `candidate-only: current network/vpn family (/api/v1/network/vpn) is plausible; no target selected`
-
-| IDs and call sites |
-|---|
-| `R087` `POST` `/api/status/vpn/disable` → `/api/status/vpn/disable` |
-| `R088` `POST` `/api/status/vpn/enable` → `/api/status/vpn/enable` |
-| `R089` `POST` `/api/status/vpn/updatekey/pia` → `/api/status/vpn/updatekey/pia` |
-| `R090` `POST` `/api/status/vpn/updatekey/transmission` → `/api/status/vpn/updatekey/transmission` |
-
 ### portals/linker/upload — 9 rows
 
 Candidate: `candidate-only: current portals family (/api/v1/portals/...) is plausible; no target selected`

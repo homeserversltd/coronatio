@@ -205,7 +205,7 @@
         assert!(shell.contains(r#"data-admin-surface="indicator-modal""#));
         assert!(shell.contains(r#"headerState.isAdmin ? `<div data-admin-only data-admin-surface="indicator-modal""#));
         assert!(shell.contains("!headerState.isAdmin && button.closest('[data-admin-only]')"));
-        for admin_action in ["Update Tailnet", "Authenticate", "Run Speed Test", "Create PIA Key", "Create Transmission", "Enable Transmission over PIA VPN", "PIA Key Exists", "Service Data"] {
+        for admin_action in ["Update Tailnet", "Authenticate", "Run Speed Test", "Service Data"] {
             assert!(shell.contains(admin_action), "missing gated admin action {admin_action}");
         }
     }

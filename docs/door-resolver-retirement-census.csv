@@ -85,10 +85,6 @@ R083,POST,/api/status/tailscale/disable,/api/status/tailscale/disable,src/bands/
 R084,POST,/api/status/tailscale/disconnect,/api/status/tailscale/disconnect,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
 R085,POST,/api/status/tailscale/enable,/api/status/tailscale/enable,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
 R086,POST,/api/status/tailscale/update-tailnet,/api/status/tailscale/update-tailnet,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/tailnet family (/api/v1/network/tailnet) is plausible; no target selected
-R087,POST,/api/status/vpn/disable,/api/status/vpn/disable,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/vpn family (/api/v1/network/vpn) is plausible; no target selected
-R088,POST,/api/status/vpn/enable,/api/status/vpn/enable,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/vpn family (/api/v1/network/vpn) is plausible; no target selected
-R089,POST,/api/status/vpn/updatekey/pia,/api/status/vpn/updatekey/pia,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/vpn family (/api/v1/network/vpn) is plausible; no target selected
-R090,POST,/api/status/vpn/updatekey/transmission,/api/status/vpn/updatekey/transmission,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current network/vpn family (/api/v1/network/vpn) is plausible; no target selected
 R091,POST,/api/system/log,/api/system/log,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current log family (/api/v1/log/...) is plausible; no target selected
 R092,POST,/api/system/update,/api/system/update,src/bands/full-rust-routes.rs,translation-debt,,,candidate-only: current update/interactables families (/api/v1/update/... and /api/v1/interactables/...) are plausible; no target selected
 R093,POST,/api/test/analytics/process,/api/test/analytics/process,src/bands/full-rust-routes.rs,translation-debt,,,none

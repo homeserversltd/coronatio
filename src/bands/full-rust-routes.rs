@@ -58,13 +58,9 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/status/tailscale/update-tailnet", post(network_identity_mutation_route))
         .route("/api/status/vpn/pia", get(homeserver_rust_read_route))
         .route("/api/status/vpn/transmission", get(homeserver_rust_read_route))
-        .route("/api/status/vpn/updatekey/pia", post(admin_class_generic_mutation_route))
-        .route("/api/status/vpn/updatekey/transmission", post(admin_class_generic_mutation_route))
-        .route("/api/status/vpn/pia/exists", get(homeserver_rust_read_route))
-        .route("/api/status/vpn/transmission/exists", get(homeserver_rust_read_route))
-        .route("/api/status/vpn/enable", post(admin_class_generic_mutation_route))
-        .route("/api/status/vpn/disable", post(admin_class_generic_mutation_route))
-        .route("/api/status/vpn/check-enabled", get(homeserver_rust_read_route))
+        .route("/api/transmission/keys", get(transmission_keys_route))
+        .route("/api/transmission/keys/replace", post(transmission_keys_replace_route))
+        .route("/api/transmission/keys/rotate", post(transmission_keys_rotate_route))
         .route("/api/files/browse", get(upload_browse_hierarchical_route))
         .route("/api/files/browse-hierarchical", get(upload_browse_hierarchical_route))
         .route("/api/files/upload", post(upload_file_route))
@@ -543,6 +539,8 @@ fn homeserver_mutation_response(headers: &axum::http::HeaderMap, method: &str, p
 
 include!("full-rust-routes/portals.rs");
 
+include!("full-rust-routes/transmission.rs");
+
 fn homeserver_route_family(path: &str) -> &'static str {
     if path.contains("/storage/") || path.contains("/vault") || path.contains("/crypto") || path.contains("/keyman") {
         "admin-storage"
@@ -624,13 +622,9 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/status/tailscale/update-tailnet", &["post"]),
         ("/api/status/vpn/pia", &["get"]),
         ("/api/status/vpn/transmission", &["get"]),
-        ("/api/status/vpn/updatekey/pia", &["post"]),
-        ("/api/status/vpn/updatekey/transmission", &["post"]),
-        ("/api/status/vpn/pia/exists", &["get"]),
-        ("/api/status/vpn/transmission/exists", &["get"]),
-        ("/api/status/vpn/enable", &["post"]),
-        ("/api/status/vpn/disable", &["post"]),
-        ("/api/status/vpn/check-enabled", &["get"]),
+        ("/api/transmission/keys", &["get"]),
+        ("/api/transmission/keys/replace", &["post"]),
+        ("/api/transmission/keys/rotate", &["post"]),
         ("/api/files/browse", &["get"]),
         ("/api/files/browse-hierarchical", &["get"]),
         ("/api/files/upload", &["post"]),

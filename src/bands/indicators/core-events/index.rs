@@ -115,11 +115,38 @@ pub(crate) fn subscribe_core_stream(session: Session, lease: Duration) -> (Strin
         let refresh_due = state.last_collected.get(entry.topic_id).map(|last| now.duration_since(*last) >= minimum_refresh_interval(entry.topic_id)).unwrap_or(true);
         let payload = if refresh_due {
             tracing::debug!(topic_id = entry.topic_id, "collecting core indicator topic");
-            let payload = match entry.collector.map(|collector| collector(state.session)) {
-                Some(Ok(value)) => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"snapshot","snapshot":value}),
-                Some(Err(error)) => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":error}),
-                None => serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":"collector absent"}),
+            let collected = if entry.topic_id == "vpn.status" {
+                Some(collect_transmission_indicator_sample(state.session))
+            } else {
+                entry.collector.map(|collector| collector(state.session).map(|snapshot| IndicatorTopicSample {
+                    snapshot,
+                    indicator_state: None,
+                }))
+            };
+            let payload = match collected {
+                Some(Ok(sample)) => {
+                    let mut envelope = serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"snapshot","snapshot":sample.snapshot});
+                    if let Some(indicator_state) = sample.indicator_state {
+                        envelope["indicatorState"] = serde_json::Value::String(indicator_state.to_string());
+                    }
+                    envelope
+                }
+                Some(Err(error)) => {
+                    let mut envelope = serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":error});
+                    if entry.topic_id == "vpn.status" {
+                        envelope["indicatorState"] = serde_json::Value::String("unavailable".to_string());
+                    }
+                    envelope
+                }
+                None => {
+                    let mut envelope = serde_json::json!({"schema":"coronatio.core.topic.v1","topicId":entry.topic_id,"status":"unavailable","fault":"collector absent"});
+                    if entry.topic_id == "vpn.status" {
+                        envelope["indicatorState"] = serde_json::Value::String("unavailable".to_string());
+                    }
+                    envelope
+                }
             }.to_string();
+
             state.last_collected.insert(entry.topic_id, now);
             state.last_payload.insert(entry.topic_id, payload.clone());
             payload
@@ -177,6 +204,11 @@ async fn validate_core_host_membership(stream_id: &str, headers: &axum::http::He
     }
 }
 
+pub(crate) struct IndicatorTopicSample {
+    pub(crate) snapshot: serde_json::Value,
+    pub(crate) indicator_state: Option<&'static str>,
+}
+
 pub(crate) fn collect_indicator_topic(topic_id: &str, session: Session) -> Result<serde_json::Value, String> {
     match topic_id {
         "internet.status" => {
@@ -194,13 +226,69 @@ pub(crate) fn collect_indicator_topic(topic_id: &str, session: Session) -> Resul
         "tailscale.status" => collect_caduceus_indicator("/api/v1/tailscale/status", session, &[
             "ok", "success", "status", "interface", "timestamp", "firstMissingSignal",
         ]),
-        "vpn.status" => collect_caduceus_indicator("/api/v1/vpn/status", session, &[
-            "ok", "success", "vpnStatus", "transmissionStatus", "timestamp", "firstMissingSignal",
-        ]),
+        "vpn.status" => collect_transmission_indicator_sample(session).map(|sample| sample.snapshot),
         "services.status" => collect_services_indicator(),
         "source.currency" => collect_source_currency_indicator(session),
         _ => Err(format!("unknown topic: {topic_id}")),
     }
+}
+
+fn collect_transmission_indicator_sample(session: Session) -> Result<IndicatorTopicSample, String> {
+    const PATH: &str = "/api/v1/transmission/status";
+    let readback = caduceus_http("GET", PATH);
+    if !readback.ok {
+        return Err(format!("{}: {PATH}", readback.first_missing_signal));
+    }
+    let Some(object) = readback.body.as_object() else {
+        return Err(format!("caduceus-invalid-json: {PATH}"));
+    };
+    Ok(project_transmission_status(object, session))
+}
+
+pub(crate) fn project_transmission_status(
+    object: &serde_json::Map<String, serde_json::Value>,
+    session: Session,
+) -> IndicatorTopicSample {
+    let conditions = object.get("conditions").and_then(serde_json::Value::as_object);
+    let condition = |name: &str| {
+        conditions
+            .and_then(|values| values.get(name))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let namespace = condition("namespace");
+    let tunnel = condition("tunnel");
+    let forward = condition("forward");
+    let daemon = condition("daemon");
+    let peer_port = condition("peerPort");
+    let vpn_status = if namespace && tunnel && forward { "running" } else { "stopped" };
+    let transmission_status = if daemon { "running" } else { "stopped" };
+    let satisfied = [namespace, tunnel, forward, daemon, peer_port]
+        .into_iter()
+        .filter(|condition| *condition)
+        .count();
+    let indicator_state = match satisfied {
+        5 => "ok",
+        1..=4 => "warn",
+        _ => "error",
+    };
+    let timestamp = object.get("timestamp").cloned().unwrap_or(serde_json::Value::Null);
+
+    if session == Session::Guest {
+        let mut projection = serde_json::Map::new();
+        projection.insert("ok".to_string(), object.get("ok").cloned().unwrap_or(serde_json::Value::Null));
+        projection.insert("vpnStatus".to_string(), serde_json::Value::String(vpn_status.to_string()));
+        projection.insert("transmissionStatus".to_string(), serde_json::Value::String(transmission_status.to_string()));
+        projection.insert("timestamp".to_string(), timestamp);
+        projection.insert("firstMissingSignal".to_string(), object.get("firstMissingSignal").cloned().unwrap_or(serde_json::Value::Null));
+        return IndicatorTopicSample { snapshot: serde_json::Value::Object(projection), indicator_state: Some(indicator_state) };
+    }
+
+    let mut projection = object.clone();
+    projection.insert("vpnStatus".to_string(), serde_json::Value::String(vpn_status.to_string()));
+    projection.insert("transmissionStatus".to_string(), serde_json::Value::String(transmission_status.to_string()));
+    projection.entry("timestamp".to_string()).or_insert(timestamp);
+    IndicatorTopicSample { snapshot: serde_json::Value::Object(projection), indicator_state: Some(indicator_state) }
 }
 
 fn collect_caduceus_indicator(path: &str, session: Session, guest_fields: &[&str]) -> Result<serde_json::Value, String> {

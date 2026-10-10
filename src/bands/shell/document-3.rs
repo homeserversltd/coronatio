@@ -52,7 +52,10 @@ fn shell_document_3() -> &'static str {
       const previousActive = currentActiveTabId();
       const previousAdmin = headerState.isAdmin;
       headerState.isAdmin = Boolean(value);
-      if (!headerState.isAdmin) retireAdminDiskSnapshot();
+      if (!headerState.isAdmin) {
+        retireAdminDiskSnapshot();
+        if (previousAdmin) invalidateAdminIndicatorModal();
+      }
       saveHeaderState();
       applyAdminDomState();
       if (previousAdmin !== headerState.isAdmin && infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="source-currency"]')) {
@@ -65,6 +68,9 @@ fn shell_document_3() -> &'static str {
       return refreshTabBar(previousActive).then(selectedTab => {
         refreshElementFragment('stats');
         if (!sessionLawfulTab(selectedTab)) void runFavoriteLadder({ startAt: 1 });
+        if (previousAdmin !== headerState.isAdmin && infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="openvpn"]')) {
+          openInfoModal(infoTitle.textContent, 'openvpn');
+        }
         return true;
       });
     }
@@ -180,6 +186,25 @@ fn shell_document_3() -> &'static str {
     }
     const sourceCurrencyUpdateState = { inFlight: false, latestEnvelope: null };
     let sourceCurrencyModalGeneration = 0;
+    let infoModalGeneration = 0;
+    function clearTransmissionSecrets(root = infoBody) {
+      root.querySelectorAll('[data-transmission-password], [data-transmission-username]').forEach(input => { input.value = ''; });
+    }
+    function clearTransmissionAdminDetails(root = infoBody) {
+      root.querySelectorAll('[data-transmission-detail], [data-transmission-condition], [data-transmission-key-presence], [data-transmission-service-active], [data-transmission-service-enabled]').forEach(node => { node.textContent = 'Unavailable'; });
+    }
+    function invalidateAdminIndicatorModal() {
+      infoModalGeneration += 1;
+      clearTransmissionSecrets();
+      clearTransmissionAdminDetails();
+    }
+    function modalResponseIsCurrent(generation, expectedModal, expectedAdmin) {
+      return generation === infoModalGeneration &&
+        headerState.isAdmin === expectedAdmin &&
+        infoBackdrop.classList.contains('open') &&
+        expectedModal instanceof Element &&
+        infoBody.querySelector('[data-modal-kind-body]') === expectedModal;
+    }
     function setSourceCurrencyIndicatorState(envelope) {
       sourceCurrencyUpdateState.latestEnvelope = envelope;
       const button = document.querySelector('[data-indicator="source-currency"]');
@@ -317,6 +342,68 @@ fn shell_document_3() -> &'static str {
         setSourceCurrencyIndicatorState(sourceCurrencyUpdateState.latestEnvelope);
       }
     }
+    function transmissionStatusText(value) {
+      return value === 'running' ? 'Running' : (value === 'stopped' ? 'Stopped' : 'Unavailable');
+    }
+    function hydrateTransmissionModal(data, modal = infoBody.querySelector('[data-modal-kind-body="openvpn"]')) {
+      if (!modal) return;
+      const vpnNode = modal.querySelector('[data-modal-status]');
+      const transmissionNode = modal.querySelector('[data-modal-secondary-status]');
+      if (vpnNode) vpnNode.textContent = transmissionStatusText(data?.vpnStatus);
+      if (transmissionNode) transmissionNode.textContent = transmissionStatusText(data?.transmissionStatus);
+      if (!headerState.isAdmin) return;
+      const details = {
+        provider: data?.provider,
+        forwardPort: data?.forwardPort,
+        peerPort: data?.peerPort,
+        rpcPort: data?.rpcPort,
+        firstMissingSignal: data?.firstMissingSignal
+      };
+      Object.entries(details).forEach(([name, value]) => {
+        const node = modal.querySelector(`[data-transmission-detail="${name}"]`);
+        if (node) node.textContent = value === undefined || value === null ? 'Unavailable' : String(value);
+      });
+      const conditions = data?.conditions && typeof data.conditions === 'object' ? data.conditions : {};
+      modal.querySelectorAll('[data-transmission-condition]').forEach(node => {
+        const value = conditions[node.dataset.transmissionCondition];
+        node.textContent = typeof value === 'boolean' ? (value ? 'Met' : 'Not met') : 'Unavailable';
+      });
+    }
+    function renderTransmissionKeyPresence(modal, data) {
+      const presence = data?.presence || {};
+      for (const [service, label] of [['pia', 'PIA'], ['transmission', 'Transmission']]) {
+        const node = modal.querySelector(`[data-transmission-key-presence="${service}"]`);
+        const value = presence[service];
+        const state = typeof value === 'boolean' ? (value ? 'present' : 'absent') : 'unavailable';
+        if (node) node.textContent = `${label} key: ${state}`;
+      }
+    }
+    function renderTransmissionServiceStatus(modal, data) {
+      const successful = (data?.ok === true || data?.success === true) && data?.success !== false && data?.ok !== false;
+      const active = successful && typeof data?.active === 'boolean' ? (data.active ? 'active' : 'inactive') : 'unavailable';
+      const enabled = successful && typeof data?.enabled === 'boolean' ? (data.enabled ? 'enabled' : 'disabled') : 'unavailable';
+      const activeNode = modal.querySelector('[data-transmission-service-active]');
+      const enabledNode = modal.querySelector('[data-transmission-service-enabled]');
+      if (activeNode) activeNode.textContent = active;
+      if (enabledNode) enabledNode.textContent = enabled;
+    }
+    async function hydrateTransmissionAdminReads(generation, modal) {
+      if (!headerState.isAdmin || !modal) return;
+      const isCurrent = () => modalResponseIsCurrent(generation, modal, true);
+      try {
+        const [keys, service] = await Promise.all([
+          fetch('/api/transmission/keys', { cache: 'no-store' }).then(async response => ({ httpOk: response.ok, data: await response.json().catch(() => ({})) })),
+          fetch('/api/service/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ service: 'transmissionVPN', action: 'status' }) }).then(async response => ({ httpOk: response.ok, data: await response.json().catch(() => ({})) }))
+        ]);
+        if (!isCurrent()) return;
+        renderTransmissionKeyPresence(modal, keys.httpOk ? keys.data : null);
+        renderTransmissionServiceStatus(modal, service.httpOk ? service.data : null);
+      } catch (_) {
+        if (!isCurrent()) return;
+        renderTransmissionKeyPresence(modal, null);
+        renderTransmissionServiceStatus(modal, null);
+      }
+    }
     function routeReadLabel(route, data) {
       const ok = data && (data.ok === true || data.success === true);
       const status = data?.status || (ok ? 'ok' : 'unavailable');
@@ -327,8 +414,8 @@ fn shell_document_3() -> &'static str {
         return internetStatusModalText();
       }
       if (route.includes('tailscale')) return ok ? 'Tailscale status: ' + status + missing : 'Tailscale status unavailable';
-      if (route.includes('/api/status/vpn/pia')) return ok ? 'VPN status: ' + status + missing : 'VPN status unavailable';
-      if (route.includes('/api/status/vpn/transmission')) return ok ? 'Transmission status: ' + status + missing : 'Transmission status unavailable';
+      if (route === '/api/status/vpn/pia') return data?.vpnStatus ? 'VPN status: ' + String(data.vpnStatus).toUpperCase() : 'VPN status unavailable';
+      if (route === '/api/status/vpn/transmission') return data?.transmissionStatus ? 'Transmission status: ' + String(data.transmissionStatus).toUpperCase() : 'Transmission status unavailable';
       if (route.includes('services')) return ok ? 'Services status: ' + status + missing : 'Services status unavailable';
       if (route.includes('power')) return ok && typeof data?.current === 'number' ? formatPowerWatts(data.current) : (ok ? 'Power readback: ' + status + missing : 'Power readback unavailable');
       return ok ? 'Internet status: ' + status + missing : 'Internet status unavailable';
@@ -497,6 +584,15 @@ fn shell_document_3() -> &'static str {
       const route = button.dataset.modalFetch || '';
       if (route.endsWith('/update-tailnet')) return JSON.stringify({ tailnetName: infoBody.querySelector('[data-tailnet-input]')?.value || '' });
       if (route.endsWith('/authkey')) return JSON.stringify({ authKey: infoBody.querySelector('[data-authkey-input]')?.value || '' });
+      if (route === '/api/service/control' && button.dataset.serviceAction) return JSON.stringify({ service: 'transmissionVPN', action: button.dataset.serviceAction });
+      if (route === '/api/transmission/keys/replace') {
+        const username = infoBody.querySelector('[data-transmission-username]')?.value || '';
+        const passwordInput = infoBody.querySelector('[data-transmission-password]');
+        const password = passwordInput?.value || '';
+        if (passwordInput) passwordInput.value = '';
+        return JSON.stringify({ service: 'pia', username, password });
+      }
+      if (route === '/api/transmission/keys/rotate') return JSON.stringify({ service: 'transmission' });
       return undefined;
     }
     async function hydrateInternetIndicator() {
@@ -509,36 +605,44 @@ fn shell_document_3() -> &'static str {
       }
     }
     async function hydrateModalRouteReads(kind) {
+      const generation = infoModalGeneration;
+      const expectedModal = infoBody.querySelector('[data-modal-kind-body]');
+      const expectedAdmin = headerState.isAdmin;
       const nodes = [...infoBody.querySelectorAll('[data-route-read]')];
       await Promise.all(nodes.map(async node => {
         const route = node.dataset.routeRead;
         try {
           const response = await fetch(route, { cache: 'no-store' });
           const data = await response.json();
+          if (!modalResponseIsCurrent(generation, expectedModal, expectedAdmin) || !infoBody.contains(node)) return;
           const servicesRoute = kind === 'services' && route === '/api/status/services';
+          const transmissionRoute = kind === 'openvpn' && (route === '/api/status/vpn/pia' || route === '/api/status/vpn/transmission');
           if (kind === 'tailscale' && route === '/api/status/tailscale') hydrateTailscaleModal(data);
           else if (servicesRoute) hydrateServicesModal(data);
+          else if (transmissionRoute) hydrateTransmissionModal(data, expectedModal);
           const label = routeReadLabel(route, data);
           if (servicesRoute) {}
           else if (node.matches('ul')) node.innerHTML = `<li>${label}</li>`;
           else if (node.classList.contains('power-value')) node.querySelector('[data-modal-status]').textContent = label.replace('Power readback: ', '').replace('Power readback unavailable', 'unavailable');
-          else if (!(kind === 'tailscale' && route === '/api/status/tailscale')) node.textContent = label;
+          else if (!transmissionRoute && !(kind === 'tailscale' && route === '/api/status/tailscale')) node.textContent = label;
           if (route === '/api/status') {
             node.classList.remove('loading', 'connected', 'disconnected', 'error');
             node.classList.add(internetState.status || 'loading');
           }
           node.classList.remove('loading');
           node.dataset.hydrated = 'true';
-        } catch (error) {
+        } catch (_) {
+          if (!modalResponseIsCurrent(generation, expectedModal, expectedAdmin) || !infoBody.contains(node)) return;
           const fallback = 'Status unavailable: ' + route;
-          if (node.matches('ul')) node.innerHTML = `<li>${fallback}</li>`;
+          if (kind === 'openvpn' && (route === '/api/status/vpn/pia' || route === '/api/status/vpn/transmission')) hydrateTransmissionModal(null, expectedModal);
+          else if (node.matches('ul')) node.innerHTML = `<li>${fallback}</li>`;
           else if (node.classList.contains('power-value')) node.querySelector('[data-modal-status]').textContent = 'unavailable';
           else node.textContent = fallback;
           node.classList.remove('loading');
           node.dataset.hydrated = 'false';
         }
       }));
-      if (kind === 'internet') {
+      if (kind === 'internet' && modalResponseIsCurrent(generation, expectedModal, expectedAdmin)) {
         const statusNode = infoBody.querySelector('[data-modal-status][data-route-read="/api/status"]');
         if (statusNode) statusNode.textContent = internetStatusModalText();
       }
@@ -547,8 +651,16 @@ fn shell_document_3() -> &'static str {
       infoBody.querySelectorAll('[data-modal-fetch]').forEach(button => button.addEventListener('click', async () => {
         const output = infoBody.querySelector('[data-modal-output]');
         if (!headerState.isAdmin && button.closest('[data-admin-only]')) { if (output) output.textContent = 'Enter Admin Mode'; return; }
+        const route = button.dataset.modalFetch || '';
+        const requiresAdmin = Boolean(button.closest('[data-admin-only]')) || route.startsWith('/api/transmission/keys') || route === '/api/service/control';
+        if (!headerState.isAdmin && requiresAdmin) { if (output) output.textContent = 'Enter Admin Mode'; return; }
         const originalLabel = button.textContent;
         const isSpeedTest = button.hasAttribute('data-speed-test-button');
+        const isTransmissionKeysMutation = route === '/api/transmission/keys/replace' || route === '/api/transmission/keys/rotate';
+        const requestGeneration = infoModalGeneration;
+        const requestModal = infoBody.querySelector('[data-modal-kind-body]');
+        const expectedAdmin = headerState.isAdmin;
+        const isCurrent = () => modalResponseIsCurrent(requestGeneration, requestModal, expectedAdmin);
         if (isSpeedTest) {
           internetState.isSpeedTesting = true;
           internetState.speedTestResults = null;
@@ -557,13 +669,16 @@ fn shell_document_3() -> &'static str {
         } else if (button.dataset.operationLabel) button.textContent = button.dataset.operationLabel;
         button.classList.add('pending-operation');
         button.disabled = true;
-        if (output) output.textContent = 'Loading ' + button.dataset.modalFetch + '…';
+        if (output) output.textContent = isTransmissionKeysMutation ? 'Submitting key operation…' : ('Loading ' + route + '…');
+        let requestBody;
         try {
-          const body = modalRequestBody(button);
-          const response = await fetch(button.dataset.modalFetch, { method: button.dataset.method || 'GET', headers: body ? { 'Content-Type': 'application/json' } : undefined, body });
+          requestBody = modalRequestBody(button);
+          const response = await fetch(route, { method: button.dataset.method || 'GET', headers: requestBody ? { 'Content-Type': 'application/json' } : undefined, body: requestBody });
           const text = await response.text();
+          requestBody = undefined;
           let parsed = null;
           try { parsed = JSON.parse(text); } catch (_) {}
+          if (!isCurrent()) return;
           if (isSpeedTest) {
             if (parsed?.error) throw new Error(parsed.error);
             if (parsed && (parsed.download !== undefined || parsed.upload !== undefined || parsed.latency !== undefined)) {
@@ -576,20 +691,42 @@ fn shell_document_3() -> &'static str {
             openInfoModal('Internet Status', 'internet');
             return;
           }
-          if (output) { output.textContent = parsed ? JSON.stringify(parsed, null, 2) : text; }
+          if (isTransmissionKeysMutation) {
+            const signal = typeof parsed?.firstMissingSignal === 'string' && /^[A-Za-z0-9._:-]{1,160}$/.test(parsed.firstMissingSignal) ? parsed.firstMissingSignal : 'transmission-keys-refused';
+            const success = response.ok && (parsed?.ok === true || parsed?.accepted === true);
+            if (output) output.textContent = success ? 'Key operation accepted.' : signal;
+            if (success && expectedAdmin) void hydrateTransmissionAdminReads(requestGeneration, requestModal);
+          } else if (route === '/api/service/control' && parsed && isCurrent()) {
+            if (requestModal?.dataset.modalKindBody === 'openvpn') renderTransmissionServiceStatus(requestModal, parsed);
+            if (output) output.textContent = parsed?.firstMissingSignal && parsed.firstMissingSignal !== 'none' ? String(parsed.firstMissingSignal) : (response.ok ? 'Service action completed.' : 'Service action refused.');
+            if (expectedAdmin && button.dataset.serviceAction !== 'status') void hydrateTransmissionAdminReads(requestGeneration, requestModal);
+          } else if (output) {
+            output.textContent = parsed ? JSON.stringify(parsed, null, 2) : text;
+          }
         } catch (error) {
+          if (!isCurrent()) return;
           if (isSpeedTest) {
             internetState.speedTestError = error?.message || 'Speed test failed unexpectedly.';
+            internetState.isSpeedTesting = false;
             openInfoModal('Internet Status', 'internet');
             return;
           }
-          if (output) output.textContent = 'fetch failed: ' + error;
+          if (output) output.textContent = isTransmissionKeysMutation ? 'transmission-keys-request-failed' : ('fetch failed: ' + (error?.message || 'request-failed'));
+        } finally {
+          requestBody = undefined;
+          if (isSpeedTest) internetState.isSpeedTesting = false;
+          if (isCurrent()) {
+            button.textContent = originalLabel;
+            button.classList.remove('pending-operation');
+            button.disabled = false;
+          }
         }
-        finally { if (isSpeedTest) internetState.isSpeedTesting = false; button.textContent = originalLabel; button.classList.remove('pending-operation'); button.disabled = false; }
       }));
     }
     function openInfoModal(title, kind = 'status') {
       sourceCurrencyModalGeneration += 1;
+      infoModalGeneration += 1;
+      clearTransmissionSecrets();
       const modalGeneration = sourceCurrencyModalGeneration;
       infoTitle.textContent = title;
       infoBody.innerHTML = modalTemplate(kind);
@@ -598,6 +735,9 @@ fn shell_document_3() -> &'static str {
       infoBackdrop.setAttribute('aria-hidden', 'false');
       wireModalFetches();
       hydrateModalRouteReads(kind);
+      if (kind === 'openvpn' && headerState.isAdmin) {
+        void hydrateTransmissionAdminReads(infoModalGeneration, infoBody.querySelector('[data-modal-kind-body="openvpn"]'));
+      }
       if (kind === 'source-currency') {
         setSourceCurrencyIndicatorState(sourceCurrencyUpdateState.latestEnvelope);
         void refreshSourceCurrencyUpdateServiceStatus(modalGeneration);
@@ -606,6 +746,8 @@ fn shell_document_3() -> &'static str {
     }
     function closeInfoModal() {
       sourceCurrencyModalGeneration += 1;
+      infoModalGeneration += 1;
+      clearTransmissionSecrets();
       infoBackdrop.classList.remove('open');
       infoBackdrop.setAttribute('aria-hidden', 'true');
     }
@@ -727,6 +869,9 @@ fn shell_document_3() -> &'static str {
     const coreTopicIds = ['internet.status', 'tailscale.status', 'vpn.status', 'services.status', 'power.status', 'source.currency'];
     function applyCoreTopic(topicId, envelope) {
       const data = envelope?.snapshot || {};
+      if (topicId === 'vpn.status' && infoBackdrop.classList.contains('open')) {
+        hydrateTransmissionModal(envelope?.status === 'snapshot' ? data : null);
+      }
       if (topicId === 'internet.status') setInternetIndicatorState(data);
       if (topicId === 'services.status') setServicesIndicatorState(data);
       if (topicId === 'power.status') {
@@ -739,7 +884,17 @@ fn shell_document_3() -> &'static str {
       const button = indicatorId ? document.querySelector(`[data-indicator="${indicatorId}"]`) : null;
       if (button && topicId !== 'services.status') {
         button.classList.remove('loading', 'ok', 'warn', 'error');
-        button.classList.add(envelope?.status === 'snapshot' && data?.ok !== false ? 'ok' : 'warn');
+        if (topicId === 'vpn.status') {
+          const state = envelope?.status === 'snapshot' && ['ok', 'warn', 'error'].includes(envelope?.indicatorState)
+            ? envelope.indicatorState
+            : 'unavailable';
+          button.classList.add(state === 'unavailable' ? 'loading' : state);
+          button.dataset.indicatorState = state;
+          button.title = state === 'unavailable' ? 'VPN & Transmission status unavailable' : `VPN & Transmission ${state}`;
+          button.setAttribute('aria-label', state === 'unavailable' ? 'VPN & Transmission status unavailable' : `VPN & Transmission ${state}`);
+        } else {
+          button.classList.add(envelope?.status === 'snapshot' && data?.ok !== false ? 'ok' : 'warn');
+        }
       }
     }
     function scheduleCoreRenewal(route) {

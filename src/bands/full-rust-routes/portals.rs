@@ -265,6 +265,7 @@ fn portal_service_mutation_response(caduceus: CaduceusHttpReadback) -> Response 
         .and_then(serde_json::Value::as_str)
         .unwrap_or(first_missing_signal);
     let active = body.get("active").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let enabled = body.get("enabled").and_then(serde_json::Value::as_bool);
     let status = if success {
         StatusCode::OK
     } else if (400..=599).contains(&caduceus.status) {
@@ -281,6 +282,7 @@ fn portal_service_mutation_response(caduceus: CaduceusHttpReadback) -> Response 
             "message": message,
             "output": output,
             "active": active,
+            "enabled": enabled,
             "firstMissingSignal": first_missing_signal
         })),
     )
