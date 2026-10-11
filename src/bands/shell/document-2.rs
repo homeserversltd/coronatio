@@ -275,7 +275,17 @@ fn shell_document_2() -> &'static str {
       htmxOrgan.config.selfRequestsOnly = true;
       htmxOrgan.config.includeIndicatorStyles = false;
     }
+    function serviceCardFromHtmxEvent(event) {
+      const detail = event.detail || {};
+      for (const candidate of [detail.target, detail.elt, event.target]) {
+        if (!(candidate instanceof Element)) continue;
+        const card = candidate.closest('[data-service-card]');
+        if (card instanceof HTMLElement) return card;
+      }
+      return null;
+    }
     function panelFromHtmxEvent(event) {
+      if (serviceCardFromHtmxEvent(event)) return null;
       const detail = event.detail || {};
       const candidate = detail.target || detail.elt || event.target;
       return candidate instanceof Element ? candidate.closest('[data-view-panel]') : null;
@@ -289,6 +299,7 @@ fn shell_document_2() -> &'static str {
       return fault instanceof HTMLElement && fault.dataset.cartridgeFaultKind ? fault.dataset.cartridgeFaultKind : fallback;
     }
     function presentCartridgeFault(kind, event) {
+      if (presentServiceCardFault(kind, event)) return;
       const panel = panelFromHtmxEvent(event);
       const panelId = panel instanceof HTMLElement ? (panel.dataset.viewPanel || panel.dataset.panePanel || '') : '';
       if (panel instanceof HTMLElement) {
@@ -302,6 +313,34 @@ fn shell_document_2() -> &'static str {
         xeniaRetryIntent = panelId;
         scheduleXeniaColdRetry(panelId);
       }
+    }
+    function presentServiceCardFault(kind, event) {
+      const card = serviceCardFromHtmxEvent(event);
+      if (!(card instanceof HTMLElement)) return false;
+      const id = card.dataset.serviceCard || '';
+      const samba = id === 'samba-file-sharing';
+      const status = document.createElement('div');
+      status.className = samba ? 'samba-status' : 'ssh-status';
+      status.dataset.adminToggleCard = id || 'service';
+      status.dataset.serviceCardFaultKind = String(kind || 'service-card-unavailable');
+      const heading = document.createElement('h3');
+      heading.textContent = id === 'ssh-password-authentication'
+        ? 'SSH Password Authentication'
+        : id === 'ssh-service'
+          ? 'SSH Service'
+          : samba
+            ? 'Samba File Sharing'
+            : 'Service';
+      const controls = document.createElement('div');
+      controls.className = samba ? 'samba-toggle' : 'ssh-toggle';
+      const label = document.createElement('span');
+      label.className = 'toggle-label';
+      label.textContent = 'Unavailable';
+      controls.append(label);
+      status.append(heading, controls);
+      card.replaceChildren(status);
+      card.dataset.serviceCardFaultKind = String(kind || 'service-card-unavailable');
+      return true;
     }
     document.body.addEventListener('htmx:timeout', event => presentCartridgeFault('timeout', event));
     document.body.addEventListener('htmx:responseError', event => presentCartridgeFault(faultKindFromResponse(event, 'upstream-error'), event));
@@ -358,6 +397,16 @@ fn shell_document_2() -> &'static str {
     }, true);
     let statsHydrationInFlight = false;
     document.body.addEventListener('htmx:afterSwap', event => {
+      const card = serviceCardFromHtmxEvent(event);
+      if (card instanceof HTMLElement) {
+        const fault = card.querySelector('[data-service-card-fault-kind]');
+        if (fault instanceof HTMLElement && fault.dataset.serviceCardFaultKind) {
+          card.dataset.serviceCardFaultKind = fault.dataset.serviceCardFaultKind;
+        } else {
+          delete card.dataset.serviceCardFaultKind;
+        }
+        return;
+      }
       const panel = panelFromHtmxEvent(event);
       if (!(panel instanceof HTMLElement)) return;
       panel.dataset.viewportFaulted = 'false';

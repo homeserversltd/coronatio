@@ -276,38 +276,97 @@ fn caduceus_absent_units(body: &serde_json::Value) -> Vec<String> {
 }
 
 fn caduceus_admin_service_state(id: &str, readback: &CaduceusHttpReadback) -> AdminServiceStateReadback {
-    let (label, enabled, state) = match id {
+    let label = match id {
+        "ssh-password-authentication" => "SSH Password Authentication",
+        "ssh-service" => "SSH Service",
+        "samba-file-sharing" => "Samba File Sharing",
+        _ => "Service",
+    };
+    if !readback.ok {
+        return AdminServiceStateReadback {
+            id: id.to_string(),
+            label: label.to_string(),
+            enabled: false,
+            state: "Unavailable".to_string(),
+            source: format!("Caduceus {} unavailable: {}", readback.path, readback.first_missing_signal),
+        };
+    }
+    let (enabled, state, source) = match id {
         "ssh-password-authentication" => {
-            let enabled = caduceus_service_bool(&readback.body, &["passwordAuthentication", "password_authentication", "enabled"]);
-            ("SSH Password Authentication", enabled.unwrap_or(false), enabled.map(|value| if value { "Enabled" } else { "Disabled" }.to_string()).unwrap_or_else(|| "Unavailable".to_string()))
+            let value = readback
+                .body
+                .get("readback")
+                .and_then(|readback| readback.get("directives"))
+                .and_then(|directives| directives.get("PasswordAuthentication"))
+                .and_then(serde_json::Value::as_str);
+            match value {
+                Some(value) if value.eq_ignore_ascii_case("yes") => (
+                    true,
+                    "Enabled".to_string(),
+                    format!("Caduceus {} readback.directives.PasswordAuthentication", readback.path),
+                ),
+                Some(value) if value.eq_ignore_ascii_case("no") => (
+                    false,
+                    "Disabled".to_string(),
+                    format!("Caduceus {} readback.directives.PasswordAuthentication", readback.path),
+                ),
+                _ => (
+                    false,
+                    "Unavailable".to_string(),
+                    format!("Caduceus {} unavailable: ssh-password-authentication-readback-unknown", readback.path),
+                ),
+            }
         }
         "ssh-service" => {
-            let running = caduceus_service_bool(&readback.body, &["running", "active"]);
-            ("SSH Service", running.unwrap_or(false), running.map(|value| if value { "Running" } else { "Stopped" }.to_string()).unwrap_or_else(|| "Unavailable".to_string()))
+            let service = readback.body.get("readback").and_then(|readback| readback.get("service"));
+            let unit = service
+                .and_then(|service| service.get("unit"))
+                .and_then(serde_json::Value::as_str)
+                .filter(|unit| !unit.trim().is_empty());
+            let active = service
+                .and_then(|service| service.get("active"))
+                .and_then(serde_json::Value::as_bool);
+            match (unit, active) {
+                (Some(unit), Some(active)) => (
+                    active,
+                    if active { "Running" } else { "Stopped" }.to_string(),
+                    format!("Caduceus {} readback.service.active ({})", readback.path, unit),
+                ),
+                _ => (
+                    false,
+                    "Unavailable".to_string(),
+                    format!("Caduceus {} unavailable: ssh-service-readback-unknown", readback.path),
+                ),
+            }
         }
         "samba-file-sharing" => {
             let enabled = caduceus_service_bool(&readback.body, &["allEnabled", "all_enabled"]);
             let running = caduceus_service_bool(&readback.body, &["allRunning", "all_running"]);
             let absent = caduceus_absent_units(&readback.body);
-            let state = match (running, absent.is_empty()) {
-                (Some(true), true) => "Running".to_string(),
-                (Some(true), false) => format!("Running (absent: {})", absent.join(", ")),
-                (Some(false), true) => "Stopped".to_string(),
-                (Some(false), false) => format!("Stopped (absent: {})", absent.join(", ")),
-                (None, false) => format!("Unavailable (absent: {})", absent.join(", ")),
-                (None, true) => "Unavailable".to_string(),
-            };
-            ("Samba File Sharing", enabled.unwrap_or(false), state)
+            match (enabled, running) {
+                (Some(enabled), Some(running)) => {
+                    let state = match (running, absent.is_empty()) {
+                        (true, true) => "Running".to_string(),
+                        (true, false) => format!("Running (absent: {})", absent.join(", ")),
+                        (false, true) => "Stopped".to_string(),
+                        (false, false) => format!("Stopped (absent: {})", absent.join(", ")),
+                    };
+                    (enabled, state, format!("Caduceus {} systemctl readback", readback.path))
+                }
+                _ => (
+                    false,
+                    "Unavailable".to_string(),
+                    format!("Caduceus {} unavailable: samba-service-readback-unknown", readback.path),
+                ),
+            }
         }
-        _ => ("Service", false, "Unavailable".to_string()),
+        _ => (
+            false,
+            "Unavailable".to_string(),
+            format!("Caduceus {} unavailable: unknown-admin-service", readback.path),
+        ),
     };
-    AdminServiceStateReadback {
-        id: id.to_string(),
-        label: label.to_string(),
-        enabled,
-        state,
-        source: if readback.ok { format!("Caduceus {} systemctl readback", readback.path) } else { format!("Caduceus {} unavailable: {}", readback.path, readback.first_missing_signal) },
-    }
+    AdminServiceStateReadback { id: id.to_string(), label: label.to_string(), enabled, state, source }
 }
 
 fn render_admin_service_card_html(id: &str, readback: Option<&CaduceusHttpReadback>) -> String {
@@ -315,13 +374,26 @@ fn render_admin_service_card_html(id: &str, readback: Option<&CaduceusHttpReadba
         admin_runtime_readback().services.into_iter().find(|service| service.id == id)
     });
     let Some(service) = service else {
-        return "<div class=\"ssh-status\"><h3>Service</h3><div class=\"ssh-toggle\"><span class=\"toggle-label\">Unavailable</span></div></div>".to_string();
+        return "<div class=\"ssh-status\" data-service-card-fault-kind=\"admin-service-state-unavailable\"><h3>Service</h3><div class=\"ssh-toggle\"><span class=\"toggle-label\">Unavailable</span></div></div>".to_string();
     };
-    let checked = if service.enabled { " checked" } else { "" };
+    let state_known = !matches!(service.state.as_str(), "Unavailable" | "Unknown")
+        && !service.state.starts_with("Unavailable (");
     let fault_kind = readback
         .filter(|readback| !readback.ok)
-        .map(|readback| format!(" data-cartridge-fault-kind=\"{}\"", html_escape(&readback.first_missing_signal)))
-        .unwrap_or_default();
+        .map(|readback| readback.first_missing_signal.clone())
+        .or_else(|| (!state_known).then(|| "admin-service-state-unavailable".to_string()));
+    if let Some(fault_kind) = fault_kind {
+        let outer_class = if id == "samba-file-sharing" { "samba-status" } else { "ssh-status" };
+        let toggle_class = if id == "samba-file-sharing" { "samba-toggle" } else { "ssh-toggle" };
+        return format!(
+            "<div class=\"{outer_class}\" data-admin-toggle-card=\"{}\" data-service-card-fault-kind=\"{}\" data-real-state=\"Unavailable\" data-real-state-source=\"{}\"><h3>{}</h3><div class=\"{toggle_class}\"><span class=\"toggle-label\">Unavailable</span></div></div>",
+            html_escape(id),
+            html_escape(&fault_kind),
+            html_escape(&service.source),
+            html_escape(&service.label),
+        );
+    }
+    let checked = if service.enabled { " checked" } else { "" };
     let icon_class = if service.enabled { "enabled" } else { "disabled" };
     let icon = match id {
         "ssh-password-authentication" if service.enabled => "🔓",
@@ -334,7 +406,7 @@ fn render_admin_service_card_html(id: &str, readback: Option<&CaduceusHttpReadba
     let toggle_class = if id == "samba-file-sharing" { "samba-toggle" } else { "ssh-toggle" };
     let icon_span_class = if id == "samba-file-sharing" { "samba-icon" } else { "ssh-icon" };
     format!(
-        "<div class=\"{outer_class}\" data-admin-toggle-card=\"{}\"{fault_kind} data-real-state=\"{}\" data-real-state-source=\"{}\"><h3>{}</h3><div class=\"{toggle_class}\"><label class=\"ui-toggle ui-toggle--medium toggle-switch\"><span class=\"ui-toggle__switch\"><input type=\"checkbox\" class=\"ui-toggle__input\"{checked} data-state-source=\"{}\" hx-post=\"/admit/admin/toggle/{}\" hx-target=\"closest [data-service-card]\" hx-swap=\"innerHTML\" hx-disabled-elt=\"this\"><span class=\"ui-toggle__slider toggle-slider\"></span></span></label><span class=\"toggle-label\">{}</span><span class=\"{icon_span_class} {icon_class}\">{icon}</span></div></div>",
+        "<div class=\"{outer_class}\" data-admin-toggle-card=\"{}\" data-real-state=\"{}\" data-real-state-source=\"{}\"><h3>{}</h3><div class=\"{toggle_class}\"><label class=\"ui-toggle ui-toggle--medium toggle-switch\"><span class=\"ui-toggle__switch\"><input type=\"checkbox\" class=\"ui-toggle__input\"{checked} data-state-source=\"{}\" hx-post=\"/admit/admin/toggle/{}\" hx-target=\"closest [data-service-card]\" hx-swap=\"innerHTML\" hx-disabled-elt=\"this\"><span class=\"ui-toggle__slider toggle-slider\"></span></span></label><span class=\"toggle-label\">{}</span><span class=\"{icon_span_class} {icon_class}\">{icon}</span></div></div>",
         html_escape(id),
         html_escape(&service.state),
         html_escape(&service.source),
@@ -352,7 +424,7 @@ fn render_admin_service_card_result_html(id: &str, readback: Option<&CaduceusHtt
         card.push_str(&format!(
             "<div class=\"update-status-container {class}\" data-admin-mutation-result=\"{}\"{} data-og-affordance=\"toast-mapped-to-result-strip\"><strong>{}</strong><span>{}</span><code>{}</code></div>",
             html_escape(&result.action),
-            if result.ok { String::new() } else { format!(" data-cartridge-fault-kind=\"{}\"", html_escape(&result.first_missing_signal)) },
+            if result.ok { String::new() } else { format!(" data-service-card-fault-kind=\"{}\"", html_escape(&result.first_missing_signal)) },
             html_escape(&result.title),
             html_escape(&result.message),
             html_escape(&result.first_missing_signal),

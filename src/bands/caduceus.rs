@@ -632,8 +632,7 @@ fn admin_toggle_target(toggle_id: &str) -> Option<(&'static str, &'static str)> 
 
 fn admin_service_status_target(toggle_id: &str) -> Option<&'static str> {
     match toggle_id {
-        "ssh-password-authentication" => Some("/api/admin/ssh/status"),
-        "ssh-service" => Some("/api/admin/ssh/service/status"),
+        "ssh-password-authentication" | "ssh-service" => Some("/api/v1/settings/ssh/status"),
         "samba-file-sharing" => Some("/api/admin/samba/status"),
         _ => None,
     }
@@ -721,19 +720,29 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
     if let Some(refusal) = admin_fragment_context_refusal(&headers) {
         let readback = mutation_refusal_readback("/api/v1/appliance/report", refusal);
         return admin_html_fragment_response(
-            mutation_response_status(&readback),
-            admin_membrane_refusal_fragment(&toggle_id, &readback.first_missing_signal),
+            StatusCode::OK,
+            render_admin_service_card_result_html(&toggle_id, Some(&readback), None),
         );
     }
     let Some((label, path)) = admin_toggle_target(&toggle_id) else {
+        let readback = mutation_refusal_readback(
+            "/api/v1/appliance/report",
+            MutationRefusal { code: "unknown-admin-toggle".to_string(), status: 404 },
+        );
         return admin_html_fragment_response(
             StatusCode::NOT_FOUND,
-            admin_membrane_refusal_fragment("unknown admin toggle", "unknown-admin-toggle"),
+            render_admin_service_card_result_html(&toggle_id, Some(&readback), None),
         );
     };
     let readback = admin_fragment_translation_debt(&headers, "POST", path);
     let status_readback = admin_service_status_target(&toggle_id)
-        .map(|status_path| admin_fragment_caduceus_request(&headers, "POST", status_path))
+        .map(|status_path| {
+            if matches!(toggle_id.as_str(), "ssh-password-authentication" | "ssh-service") {
+                admin_fragment_caduceus_json_request(&headers, "GET", status_path, serde_json::json!({}))
+            } else {
+                admin_fragment_caduceus_request(&headers, "POST", status_path)
+            }
+        })
         .unwrap_or_else(|| mutation_refusal_readback(path, MutationRefusal { code: "unknown-admin-toggle".to_string(), status: 404 }));
     let result = AdminMutationResult {
         action: toggle_id.clone(),
@@ -742,25 +751,33 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
         ok: readback.ok,
         first_missing_signal: if readback.ok { "none".to_string() } else { readback.first_missing_signal.clone() },
     };
-    admin_html_fragment_response(mutation_response_status(&readback), render_admin_service_card_result_html(&toggle_id, Some(&status_readback), Some(&result)))
+    admin_html_fragment_response(StatusCode::OK, render_admin_service_card_result_html(&toggle_id, Some(&status_readback), Some(&result)))
 }
 
 async fn admin_service_card_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
     if let Some(refusal) = admin_fragment_context_refusal(&headers) {
         let readback = mutation_refusal_readback("/api/v1/appliance/report", refusal);
         return admin_html_fragment_response(
-            mutation_response_status(&readback),
-            admin_membrane_refusal_fragment(&toggle_id, &readback.first_missing_signal),
+            StatusCode::OK,
+            render_admin_service_card_result_html(&toggle_id, Some(&readback), None),
         );
     }
     let Some(path) = admin_service_status_target(&toggle_id) else {
+        let readback = mutation_refusal_readback(
+            "/api/v1/appliance/report",
+            MutationRefusal { code: "unknown-admin-service".to_string(), status: 404 },
+        );
         return admin_html_fragment_response(
             StatusCode::NOT_FOUND,
-            admin_membrane_refusal_fragment("unknown admin service", "unknown-admin-service"),
+            render_admin_service_card_result_html(&toggle_id, Some(&readback), None),
         );
     };
-    let readback = admin_fragment_caduceus_json_request(&headers, "POST", path, serde_json::json!({}));
-    admin_html_fragment_response(mutation_response_status(&readback), render_admin_service_card_result_html(&toggle_id, Some(&readback), None))
+    let readback = if matches!(toggle_id.as_str(), "ssh-password-authentication" | "ssh-service") {
+        admin_fragment_caduceus_json_request(&headers, "GET", path, serde_json::json!({}))
+    } else {
+        admin_fragment_caduceus_json_request(&headers, "POST", path, serde_json::json!({}))
+    };
+    admin_html_fragment_response(StatusCode::OK, render_admin_service_card_result_html(&toggle_id, Some(&readback), None))
 }
 
 async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>) -> impl IntoResponse {
