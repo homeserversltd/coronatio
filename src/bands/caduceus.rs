@@ -633,7 +633,7 @@ fn admin_toggle_target(toggle_id: &str) -> Option<(&'static str, &'static str)> 
 fn admin_service_status_target(toggle_id: &str) -> Option<&'static str> {
     match toggle_id {
         "ssh-password-authentication" | "ssh-service" => Some("/api/v1/settings/ssh/status"),
-        "samba-file-sharing" => Some("/api/admin/samba/status"),
+        "samba-file-sharing" => Some("/api/v1/settings/samba/status"),
         _ => None,
     }
 }
@@ -737,7 +737,7 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
     let readback = admin_fragment_translation_debt(&headers, "POST", path);
     let status_readback = admin_service_status_target(&toggle_id)
         .map(|status_path| {
-            if matches!(toggle_id.as_str(), "ssh-password-authentication" | "ssh-service") {
+            if matches!(toggle_id.as_str(), "ssh-password-authentication" | "ssh-service" | "samba-file-sharing") {
                 admin_fragment_caduceus_json_request(&headers, "GET", status_path, serde_json::json!({}))
             } else {
                 admin_fragment_caduceus_request(&headers, "POST", status_path)
@@ -772,7 +772,7 @@ async fn admin_service_card_fragment_route(headers: axum::http::HeaderMap, Path(
             render_admin_service_card_result_html(&toggle_id, Some(&readback), None),
         );
     };
-    let readback = if matches!(toggle_id.as_str(), "ssh-password-authentication" | "ssh-service") {
+    let readback = if matches!(toggle_id.as_str(), "ssh-password-authentication" | "ssh-service" | "samba-file-sharing") {
         admin_fragment_caduceus_json_request(&headers, "GET", path, serde_json::json!({}))
     } else {
         admin_fragment_caduceus_json_request(&headers, "POST", path, serde_json::json!({}))

@@ -240,6 +240,26 @@ fn shell_document_4_tail() -> &'static str {
     function diskCensusDevices(payload) { return Array.isArray(payload?.devices) ? payload.devices : []; }
     function diskCensusDeviceName(device) { return typeof device?.name === 'string' ? device.name : ''; }
     function diskDisplayValue(value) { if (value === null || value === undefined || value === '') return '—'; return typeof value === 'object' ? JSON.stringify(value) : String(value); }
+    function diskSpaceDisplayValue(value) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return diskDisplayValue(value);
+      const availableBytes = value.availableBytes;
+      const sizeBytes = value.sizeBytes;
+      if (typeof availableBytes !== 'number' || !Number.isFinite(availableBytes) || availableBytes < 0
+          || typeof sizeBytes !== 'number' || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
+        return diskDisplayValue(value);
+      }
+      const formatBytes = bytes => {
+        const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+        let scaled = bytes;
+        let unit = 0;
+        while (scaled >= 1024 && unit < units.length - 1) {
+          scaled /= 1024;
+          unit += 1;
+        }
+        return `${scaled.toFixed(1)} ${units[unit]}`;
+      };
+      return `${formatBytes(availableBytes)} free of ${formatBytes(sizeBytes)}`;
+    }
     function diskNameCanNormalize(name) { const bare = name.startsWith('/dev/') ? name.slice(5) : name; return bare !== '.' && bare !== '..' && /^[A-Za-z0-9_.-]+$/.test(bare); }
     function diskRowMounted(device) { return (typeof device?.mountpoint === 'string' && device.mountpoint.length > 0) || device?.mounted === true || device?.isMounted === true; }
     function bareDiskName(name) { return typeof name === 'string' ? (name.startsWith('/dev/') ? name.slice(5) : name) : ''; }
@@ -340,7 +360,7 @@ fn shell_document_4_tail() -> &'static str {
       const foreignFilesystem = typeof device?.foreign === 'string' && device.foreign ? device.foreign : '';
       const filesystem = foreignFilesystem ? `${foreignFilesystem} (will be erased)` : diskDisplayValue(device?.fstype);
       const encryption = device?.encryption && typeof device.encryption === 'object' ? device.encryption : {};
-      const details = `<div class="disk-census-fields"><span><strong>Device:</strong> ${escapeDiskHtml(name || 'Unknown device')}</span><span><strong>Partition:</strong> ${escapeDiskHtml(partition)}</span><span><strong>Size:</strong> ${escapeDiskHtml(diskDisplayValue(device?.sizeBytes))} bytes</span><span><strong>Filesystem:</strong> ${escapeDiskHtml(filesystem)}</span><span><strong>Encryption:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.state))}</span><span><strong>Mapper:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.mapper))}</span><span><strong>Mount:</strong> ${escapeDiskHtml(diskDisplayValue(device?.mountpoint))}</span><span><strong>Space:</strong> ${escapeDiskHtml(diskDisplayValue(device?.space))}</span></div>`;
+      const details = `<div class="disk-census-fields"><span><strong>Device:</strong> ${escapeDiskHtml(name || 'Unknown device')}</span><span><strong>Partition:</strong> ${escapeDiskHtml(partition)}</span><span><strong>Size:</strong> ${escapeDiskHtml(diskDisplayValue(device?.sizeBytes))} bytes</span><span><strong>Filesystem:</strong> ${escapeDiskHtml(filesystem)}</span><span><strong>Encryption:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.state))}</span><span><strong>Mapper:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.mapper))}</span><span><strong>Mount:</strong> ${escapeDiskHtml(diskDisplayValue(device?.mountpoint))}</span><span><strong>Space:</strong> ${escapeDiskHtml(diskSpaceDisplayValue(device?.space))}</span></div>`;
       const action = eligible
         ? `<div class="disk-census-action"><span>${owner.nasSetupStateUnknown ? 'Refresh disk status before setup' : `Set up as NAS ${role}`}</span><button type="button" class="action-button" data-nas-setup-open data-nas-device="${escapeDiskHtml(name)}" data-nas-role="${role}"${owner.nasSetupStateUnknown || adminNasSetupRequests.has(diskIdentity(name)) || adminNasSetupInFlight ? ' disabled' : ''}>Make this my NAS</button></div>`
         : '';

@@ -348,20 +348,23 @@ fn caduceus_admin_service_state(id: &str, readback: &CaduceusHttpReadback) -> Ad
             }
         }
         "samba-file-sharing" => {
-            let enabled = caduceus_service_bool(&readback.body, &["allEnabled", "all_enabled"]);
-            let running = caduceus_service_bool(&readback.body, &["allRunning", "all_running"]);
-            let absent = caduceus_absent_units(&readback.body);
-            match (enabled, running) {
-                (Some(enabled), Some(running)) => {
-                    let state = match (running, absent.is_empty()) {
-                        (true, true) => "Running".to_string(),
-                        (true, false) => format!("Running (absent: {})", absent.join(", ")),
-                        (false, true) => "Stopped".to_string(),
-                        (false, false) => format!("Stopped (absent: {})", absent.join(", ")),
-                    };
-                    (enabled, state, format!("Caduceus {} systemctl readback", readback.path))
-                }
-                _ => (
+            let running = readback
+                .body
+                .get("readback")
+                .and_then(|readback| readback.get("running"))
+                .and_then(serde_json::Value::as_bool);
+            match running {
+                Some(true) => (
+                    true,
+                    "Running".to_string(),
+                    format!("Caduceus {} readback.running", readback.path),
+                ),
+                Some(false) => (
+                    false,
+                    "Stopped".to_string(),
+                    format!("Caduceus {} readback.running", readback.path),
+                ),
+                None => (
                     false,
                     "Unavailable".to_string(),
                     format!("Caduceus {} unavailable: samba-service-readback-unknown", readback.path),
