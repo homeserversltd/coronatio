@@ -4,19 +4,6 @@ const NAS_SETUP_UPSTREAM_TIMEOUT: Duration = Duration::from_secs(600);
 #[serde(deny_unknown_fields)]
 struct StorageVaultUnlockRequest {
     password: String,
-    flags: Option<StorageVaultUnlockFlags>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StorageVaultUnlockFlags {
-    exousia: Option<StorageVaultUnlockExousiaFlags>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StorageVaultUnlockExousiaFlags {
-    pin: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -103,7 +90,7 @@ async fn storage_vault_unlock_route(
     Json(request): Json<StorageVaultUnlockRequest>,
 ) -> Response {
     let result = tokio::task::spawn_blocking(move || {
-        let StorageVaultUnlockRequest { password, flags } = request;
+        let StorageVaultUnlockRequest { password } = request;
         if password.is_empty() {
             return (
                 StatusCode::BAD_REQUEST,
@@ -117,7 +104,7 @@ async fn storage_vault_unlock_route(
         }
         let path = "/api/v1/storage/vault/unlock";
         let readback = match face_stage() {
-            FaceStage::Vault { .. } => {
+            FaceStage::Vault => {
                 if !crate::caduceus_access::same_origin_state_change(&headers) {
                     return storage_operation_response(
                         mutation_refusal_readback(
@@ -131,15 +118,8 @@ async fn storage_vault_unlock_route(
                         true,
                     );
                 }
-                let mut body = serde_json::json!({ "password": password });
-                if let Some(pin) = flags
-                    .and_then(|flags| flags.exousia)
-                    .and_then(|exousia| exousia.pin)
-                {
-                    body["flags"] = serde_json::json!({ "exousia": { "pin": pin } });
-                }
                 caduceus_http_json_with_attendance_and_document(
-                    "POST", path, body, None, None,
+                    "POST", path, serde_json::json!({ "password": password }), None, None,
                 )
             }
             FaceStage::Face => caduceus_actuate_json(

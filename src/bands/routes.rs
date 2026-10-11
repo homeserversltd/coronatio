@@ -1,6 +1,6 @@
 async fn crown_shell_route() -> Response {
     let rendered = tokio::task::spawn_blocking(|| match face_stage() {
-        FaceStage::Vault { pin_required } => render_stage_document(pin_required),
+        FaceStage::Vault => render_stage_document(),
         FaceStage::Face => render_crown_shell(),
     })
     .await;
