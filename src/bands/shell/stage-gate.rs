@@ -70,16 +70,13 @@ const CROWN_STAGE_LOADER_JS: &str = r###"(function () {
   }
 
   document.addEventListener('input', event => {
-    const input = event.target instanceof Element ? event.target.closest('[data-stage-vault-password], [data-stage-vault-pin]') : null;
+    const input = event.target instanceof Element ? event.target.closest('[data-stage-vault-password]') : null;
     if (!input) return;
     const form = input.closest('[data-stage-vault-form]');
-    const stage = input.closest('[data-face-stage="vault"]');
     const password = form?.querySelector('[data-stage-vault-password]');
-    const pin = form?.querySelector('[data-stage-vault-pin]');
     const submit = form?.querySelector('[data-stage-vault-submit]');
     if (!submit) return;
-    const pinRequired = stage?.dataset.pinRequired === 'true';
-    submit.disabled = !password?.value || (pinRequired && !pin?.value) || form.dataset.inFlight === 'true';
+    submit.disabled = !password?.value || form.dataset.inFlight === 'true';
   });
 
   document.addEventListener('submit', async event => {
@@ -88,18 +85,13 @@ const CROWN_STAGE_LOADER_JS: &str = r###"(function () {
     event.preventDefault();
     if (form.dataset.inFlight === 'true') return;
     const root = stageRoot();
-    const stage = form.closest('[data-face-stage="vault"]');
     const password = form.querySelector('[data-stage-vault-password]');
-    const pin = form.querySelector('[data-stage-vault-pin]');
     const submit = form.querySelector('[data-stage-vault-submit]');
-    const pinRequired = stage?.dataset.pinRequired === 'true';
-    if (!root || !password || !submit || !password.value || (pinRequired && !pin?.value)) return;
+    if (!root || !password || !submit || !password.value) return;
 
     const payload = { password: password.value };
-    if (pinRequired) payload.flags = { exousia: { pin: pin.value } };
     const requestBody = JSON.stringify(payload);
     password.value = '';
-    if (pin) pin.value = '';
     form.dataset.inFlight = 'true';
     submit.disabled = true;
     setStageMessage('Unlocking vault…', 'pending');
@@ -121,7 +113,6 @@ const CROWN_STAGE_LOADER_JS: &str = r###"(function () {
       setStageMessage('Vault unlock could not be completed.', 'error');
     } finally {
       password.value = '';
-      if (pin) pin.value = '';
       form.dataset.inFlight = 'false';
       if (submit.isConnected) submit.disabled = true;
     }
@@ -131,7 +122,7 @@ const CROWN_STAGE_LOADER_JS: &str = r###"(function () {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FaceStage {
     Face,
-    Vault { pin_required: bool },
+    Vault,
 }
 
 fn face_stage() -> FaceStage {
@@ -146,13 +137,7 @@ fn face_stage() -> FaceStage {
     {
         return FaceStage::Face;
     }
-    let pin_required = readback
-        .body
-        .get("pin")
-        .and_then(|pin| pin.get("pin_required"))
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    FaceStage::Vault { pin_required }
+    FaceStage::Vault
 }
 
 async fn face_stage_async() -> FaceStage {
@@ -162,7 +147,7 @@ async fn face_stage_async() -> FaceStage {
 }
 
 async fn face_stage_fallback(method: Method, uri: Uri) -> Response {
-    if matches!(face_stage_async().await, FaceStage::Vault { .. }) {
+    if matches!(face_stage_async().await, FaceStage::Vault) {
         return face_stage_locked_response();
     }
     let normalized = uri.path().to_string();
@@ -200,7 +185,7 @@ async fn face_stage_route_gate(request: axum::http::Request<Body>, next: axum::m
     if face_stage_exempts_gate(request.method(), request.uri().path()) {
         return next.run(request).await;
     }
-    if matches!(face_stage_async().await, FaceStage::Vault { .. }) {
+    if matches!(face_stage_async().await, FaceStage::Vault) {
         return face_stage_locked_response();
     }
     next.run(request).await
@@ -228,7 +213,7 @@ fn face_stage_html_response(markup: String) -> Response {
 
 async fn crown_stage_route() -> Response {
     let rendered = tokio::task::spawn_blocking(|| match face_stage() {
-        FaceStage::Vault { pin_required } => render_stage_fragment(pin_required),
+        FaceStage::Vault => render_stage_fragment(),
         FaceStage::Face => render_crown_face_fragment(),
     })
     .await;
@@ -249,9 +234,9 @@ async fn crown_stage_script_route() -> impl IntoResponse {
     )
 }
 
-fn render_stage_fragment(pin_required: bool) -> String {
+fn render_stage_fragment() -> String {
     let mut markup = String::from(
-        r#"<section class="pane active stage-vault" data-face-stage="vault" data-pin-required="" aria-labelledby="face-stage-vault-title">
+        r#"<section class="pane active stage-vault" data-face-stage="vault" aria-labelledby="face-stage-vault-title">
   <div class="vault-unlock-panel" aria-label="Vault unlock">
     <h1 id="face-stage-vault-title">Unlock encrypted storage</h1>
     <p>Unlock the vault to continue to HOMESERVER.</p>
@@ -260,13 +245,6 @@ fn render_stage_fragment(pin_required: bool) -> String {
       <input id="face-stage-vault-password" class="ui-input ui-input--medium" type="password" autocomplete="current-password" data-stage-vault-password>
 "#,
     );
-    if pin_required {
-        markup.push_str(
-            r#"      <label for="face-stage-vault-pin">Appliance PIN</label>
-      <input id="face-stage-vault-pin" class="ui-input ui-input--medium" type="password" autocomplete="off" data-stage-vault-pin>
-"#,
-        );
-    }
     markup.push_str(
         r#"      <button type="submit" class="action-button" data-stage-vault-submit disabled>Unlock Vault</button>
     </form>
@@ -274,18 +252,10 @@ fn render_stage_fragment(pin_required: bool) -> String {
   </div>
 </section>"#,
     );
-    markup = markup.replace(
-        "data-pin-required=\"\"",
-        if pin_required {
-            "data-pin-required=\"true\""
-        } else {
-            "data-pin-required=\"false\""
-        },
-    );
     markup
 }
 
-fn render_stage_document(pin_required: bool) -> String {
+fn render_stage_document() -> String {
     let mut document = shell_document_1().to_string();
     document.push_str(&shell_ux_css());
     document.push_str(
@@ -298,7 +268,7 @@ fn render_stage_document(pin_required: bool) -> String {
   <div class="stage-app" data-stage-root data-admin-mode="false">
 "#,
     );
-    document.push_str(&render_stage_fragment(pin_required));
+    document.push_str(&render_stage_fragment());
     document.push_str(
         &format!(
             "\n  </div>\n  <script defer src=\"{}\" data-htmx-organ=\"2.0.10\"></script>\n  <script defer src=\"{}\" data-coronatio-stage-loader></script>\n</body>\n</html>",
