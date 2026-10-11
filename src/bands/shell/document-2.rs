@@ -178,7 +178,7 @@ fn shell_document_2() -> &'static str {
         <div class="firewall-tablet" data-firewall-tablet data-admin-only="true" data-admin-viewport="firewall">
           <header class="firewall-header"><div><h2>Firewall</h2><p>Child-device website access.</p></div><button class="ui-button ui-button--secondary ui-button--small" type="button" data-firewall-refresh>Refresh</button></header>
           <div class="firewall-banner firewall-banner--error" data-firewall-error role="alert" hidden></div>
-          <section class="firewall-section"><h3>Observed devices</h3><p>MAC addresses seen on the network.</p><ul class="firewall-list" data-firewall-observed></ul></section>
+          <section class="firewall-section"><h3>Observed devices</h3><p>Hostname, IP address and MAC address seen on the network.</p><ul class="firewall-list" data-firewall-observed></ul></section>
           <section class="firewall-section"><h3>Child devices</h3><p>Registered child devices can have a website whitelist.</p><ul class="firewall-list" data-firewall-children></ul></section>
           <pre class="firewall-receipt" data-firewall-receipt aria-live="polite"></pre>
         </div>
