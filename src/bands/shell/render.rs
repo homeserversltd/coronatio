@@ -78,7 +78,22 @@ fn crown_chrome_js() -> String {
         "__FIREWALL_CLIENT__",
         &format!("{}{}{}", shell_backblaze_client(), shell_firewall_client(), shell_wake_on_lan_client()),
     );
-    extract_between(&raw, "<script>", "</script>").unwrap_or_default()
+    let body = extract_between(&raw, "<script>", "</script>").unwrap_or_default();
+    let mut script = String::from(
+        r#"window.initializeCoronatioFace = window.initializeCoronatioFace || function() {
+  if (globalThis[Symbol.for('coronatio.face.initialized.v1')] || !document.querySelector('[data-product="Coronatio"]')) return false;
+  globalThis[Symbol.for('coronatio.face.initialized.v1')] = true;
+"#,
+    );
+    script.push_str(&body);
+    script.push_str(
+        r#"
+  return true;
+};
+if (document.querySelector('[data-product="Coronatio"]')) window.initializeCoronatioFace();
+"#,
+    );
+    script
 }
 
 fn extract_between(source: &str, open: &str, close: &str) -> Option<String> {

@@ -45,18 +45,6 @@ fn shell_admin_document_patch() -> &'static str {
           </section>
 
           <section class="mb-6" style="margin-bottom: 0.5rem">
-            <div class="vault-unlock-panel" aria-label="Vault unlock">
-              <h3>Unlock encrypted storage</h3>
-              <form data-vault-unlock-form autocomplete="off">
-                <label for="vault-unlock-password">Vault password</label>
-                <input id="vault-unlock-password" class="ui-input ui-input--medium" type="password" autocomplete="current-password" data-vault-unlock-password>
-                <button type="submit" class="action-button" data-vault-unlock-submit disabled>Unlock Vault</button>
-              </form>
-              <p class="vault-unlock-result" data-vault-unlock-result aria-live="polite"></p>
-            </div>
-          </section>
-
-          <section class="mb-6" style="margin-bottom: 0.5rem">
             <div class="disk-manager">
               <div class="disk-manager-container">
                 <div class="disk-column"><h4>Available Devices</h4><p class="admin-nas-status" data-admin-nas-status aria-live="polite">Checking NAS status…</p><div class="disk-list" data-disk-census-readback="/api/v1/storage/disk/census"><div class="disk-item empty"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">Reading available devices…</div></div></div></div></div>

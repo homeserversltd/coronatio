@@ -458,41 +458,6 @@ fn shell_document_4_tail() -> &'static str {
     });
     window.addEventListener('pagehide', () => { adminDiskPageHidden = true; retireAdminDiskSnapshot(); });
     window.addEventListener('pageshow', () => { adminDiskPageHidden = false; reconcileAdminDiskSnapshot(); });
-    function vaultUnlockSucceeded(result) {
-      if (!result || typeof result !== 'object') return false;
-      const positive = result.ok === true || result.success === true;
-      const negative = result.ok === false || result.success === false || result.converged === false || result.rolledBack === true || (typeof result.failure === 'string' && result.failure.length > 0);
-      return positive && !negative;
-    }
-    function vaultUnlockMessage(result, success) {
-      const keys = success ? ['message', 'failure', 'error', 'firstMissingSignal'] : ['failure', 'error', 'firstMissingSignal', 'message'];
-      const detail = keys.map(key => result?.[key]).find(value => typeof value === 'string' && value.length > 0);
-      if (!success) return detail ? `Vault unlock failed: ${detail}` : 'Vault unlock failed.';
-      return detail || 'Vault unlocked.';
-    }
-    async function submitVaultUnlock(form) {
-      const input = form.querySelector('[data-vault-unlock-password]');
-      const submit = form.querySelector('[data-vault-unlock-submit]');
-      const resultNode = form.closest('[data-vault-unlock]')?.querySelector('[data-vault-unlock-result]') || form.parentElement?.querySelector('[data-vault-unlock-result]');
-      if (!input || !submit || form.dataset.inFlight === 'true' || input.value.length === 0) return;
-      const password = input.value;
-      input.value = '';
-      form.dataset.inFlight = 'true';
-      submit.disabled = true;
-      if (resultNode) { resultNode.textContent = 'Unlocking vault…'; resultNode.dataset.state = 'pending'; }
-      try {
-        const response = await fetch('/api/v1/storage/vault/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
-        const result = await response.json().catch(() => null);
-        const success = response.ok && vaultUnlockSucceeded(result);
-        if (resultNode) { resultNode.textContent = vaultUnlockMessage(result, success); resultNode.dataset.state = success ? 'success' : 'error'; }
-      } catch (_) {
-        if (resultNode) { resultNode.textContent = 'Vault unlock could not be completed.'; resultNode.dataset.state = 'error'; }
-      } finally {
-        input.value = '';
-        form.dataset.inFlight = 'false';
-        submit.disabled = true;
-      }
-    }
     function nasReceiptHasFailure(result) {
       const negative = result?.ok === false || result?.success === false || result?.converged === false || result?.rolledBack === true;
       const failure = result?.failure !== undefined && result.failure !== null && result.failure !== false && result.failure !== '';
@@ -615,19 +580,6 @@ fn shell_document_4_tail() -> &'static str {
       input.focus();
     }
     function hardDriveTestModal() { const modal = managerModal('hard-drive-test', 'Hard Drive Test', '<p>Choose a NAS drive and the test depth.</p><label>Device<select class="ui-input ui-input--medium" data-hard-drive-test-device><option value="">Reading available devices…</option></select></label><label>Test type<select class="ui-input ui-input--medium" data-hard-drive-test-type><option value="quick">Quick</option><option value="full">Full</option><option value="ultimate">Ultimate</option></select></label><p data-hard-drive-test-state aria-live="polite">Choose a device to begin.</p>', 'Start Test'); const device = modal.querySelector('[data-hard-drive-test-device]'); const type = modal.querySelector('[data-hard-drive-test-type]'); const state = modal.querySelector('[data-hard-drive-test-state]'); const confirm = modal.querySelector('[data-manager-confirm]'); const ready = () => { confirm.disabled = !device.value; }; const census = hydrateDiskCensus(); const censusOwner = adminDiskSnapshotOwner; census.then(devices => { if (!modal.isConnected || !adminDiskSnapshotCurrent(censusOwner)) return; const message = censusOwner.error || (devices.length ? 'Choose a NAS drive' : 'No NAS drives available'); device.innerHTML = `<option value="">${escapeDiskHtml(message)}</option>${devices.map(item => `<option value="${escapeDiskHtml(diskCensusDeviceName(item))}">${escapeDiskHtml(diskCensusDeviceName(item))}</option>`).join('')}`; if (censusOwner.error || !devices.length) state.textContent = message; ready(); }); device.addEventListener('change', ready); confirm.addEventListener('click', async () => { confirm.disabled = true; state.textContent = 'Starting drive test…'; try { const response = await fetch('/api/admin/hard-drive-test/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: device.value, testType: type.value }) }); if (!response.ok) throw new Error('start-refused'); state.textContent = 'Drive test started. Reading progress…'; const timer = window.setInterval(async () => { try { const progress = await fetch('/api/admin/hard-drive-test/progress', { cache: 'no-store' }).then(result => result.json()); const results = await fetch('/api/admin/hard-drive-test/results', { cache: 'no-store' }).then(result => result.json()); state.textContent = String(progress?.message || progress?.status || results?.message || results?.status || 'Running'); if (progress?.complete || progress?.done || results?.complete || results?.done) { window.clearInterval(timer); confirm.disabled = false; } } catch (_) {} }, 1000); } catch (_) { state.textContent = 'Hard Drive Test could not be started.'; confirm.disabled = false; } }); }
-    document.body.addEventListener('submit', event => {
-      const form = event.target instanceof Element ? event.target.closest('[data-vault-unlock-form]') : null;
-      if (!form) return;
-      event.preventDefault();
-      submitVaultUnlock(form);
-    });
-    document.body.addEventListener('input', event => {
-      const input = event.target instanceof Element ? event.target.closest('[data-vault-unlock-password]') : null;
-      if (!input) return;
-      const form = input.closest('[data-vault-unlock-form]');
-      const submit = form?.querySelector('[data-vault-unlock-submit]');
-      if (submit) submit.disabled = input.value.length === 0 || form.dataset.inFlight === 'true';
-    });
     document.body.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null;
       const nasButton = target?.closest('[data-nas-setup-open]');

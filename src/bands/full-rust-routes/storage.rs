@@ -4,6 +4,19 @@ const NAS_SETUP_UPSTREAM_TIMEOUT: Duration = Duration::from_secs(600);
 #[serde(deny_unknown_fields)]
 struct StorageVaultUnlockRequest {
     password: String,
+    flags: Option<StorageVaultUnlockFlags>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageVaultUnlockFlags {
+    exousia: Option<StorageVaultUnlockExousiaFlags>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageVaultUnlockExousiaFlags {
+    pin: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -89,29 +102,71 @@ async fn storage_vault_unlock_route(
     headers: axum::http::HeaderMap,
     Json(request): Json<StorageVaultUnlockRequest>,
 ) -> Response {
-    if request.password.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
+    let result = tokio::task::spawn_blocking(move || {
+        let StorageVaultUnlockRequest { password, flags } = request;
+        if password.is_empty() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "schema": "coronatio.storage.vault.unlock.refusal.v1",
+                    "ok": false,
+                    "firstMissingSignal": "vault-password-required"
+                })),
+            )
+                .into_response();
+        }
+        let path = "/api/v1/storage/vault/unlock";
+        let readback = match face_stage() {
+            FaceStage::Vault { .. } => {
+                if !crate::caduceus_access::same_origin_state_change(&headers) {
+                    return storage_operation_response(
+                        mutation_refusal_readback(
+                            path,
+                            MutationRefusal {
+                                code: "caduceus-access-origin-refused".to_string(),
+                                status: 403,
+                            },
+                        ),
+                        false,
+                        true,
+                    );
+                }
+                let mut body = serde_json::json!({ "password": password });
+                if let Some(pin) = flags
+                    .and_then(|flags| flags.exousia)
+                    .and_then(|exousia| exousia.pin)
+                {
+                    body["flags"] = serde_json::json!({ "exousia": { "pin": pin } });
+                }
+                caduceus_http_json_with_attendance_and_document(
+                    "POST", path, body, None, None,
+                )
+            }
+            FaceStage::Face => caduceus_actuate_json(
+                &mutation_authority(),
+                &headers,
+                MutationActionTarget::attended_parent("coronatio.storage.vault.unlock", path),
+                path,
+                serde_json::json!({ "password": password }),
+            ),
+        };
+        let receipt_ok = readback.ok
+            && storage_receipt_reports_success(&readback.body)
+            && !storage_receipt_has_failure(&readback.body);
+        storage_operation_response(readback, receipt_ok, true)
+    })
+    .await;
+    result.unwrap_or_else(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
-                "schema": "coronatio.storage.vault.unlock.refusal.v1",
+                "schema": "coronatio.storage.vault.unlock.error.v1",
                 "ok": false,
-                "firstMissingSignal": "vault-password-required"
+                "firstMissingSignal": "vault-unlock-worker-failed"
             })),
         )
-            .into_response();
-    }
-    let path = "/api/v1/storage/vault/unlock";
-    let readback = caduceus_actuate_json(
-        &mutation_authority(),
-        &headers,
-        MutationActionTarget::attended_parent("coronatio.storage.vault.unlock", path),
-        path,
-        serde_json::json!({ "password": request.password }),
-    );
-    let receipt_ok = readback.ok
-        && storage_receipt_reports_success(&readback.body)
-        && !storage_receipt_has_failure(&readback.body);
-    storage_operation_response(readback, receipt_ok, true)
+            .into_response()
+    })
 }
 
 fn normalized_storage_device(display_name: &str) -> Option<String> {

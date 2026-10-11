@@ -1,8 +1,17 @@
-async fn crown_shell_route() -> impl IntoResponse {
-    (
-        [(header::CONTENT_SECURITY_POLICY, CROWN_CONTENT_SECURITY_POLICY)],
-        Html(render_crown_shell()),
-    )
+async fn crown_shell_route() -> Response {
+    let rendered = tokio::task::spawn_blocking(|| match face_stage() {
+        FaceStage::Vault { pin_required } => render_stage_document(pin_required),
+        FaceStage::Face => render_crown_shell(),
+    })
+    .await;
+    match rendered {
+        Ok(markup) => face_stage_html_response(markup),
+        Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "code": "face-stage-render-unavailable" })),
+        )
+            .into_response(),
+    }
 }
 
 async fn crown_htmx_script_route() -> impl IntoResponse {
