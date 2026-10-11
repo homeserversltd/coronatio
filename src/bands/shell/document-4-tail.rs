@@ -337,8 +337,10 @@ fn shell_document_4_tail() -> &'static str {
       const eligible = Boolean(name && diskNameCanNormalize(name) && !owner.protectedParents.has(diskIdentity(name)));
       const role = owner.primaryNasExists ? 'backup' : 'primary';
       const partition = diskDisplayValue(device?.partition);
+      const foreignFilesystem = typeof device?.foreign === 'string' && device.foreign ? device.foreign : '';
+      const filesystem = foreignFilesystem ? `${foreignFilesystem} (will be erased)` : diskDisplayValue(device?.fstype);
       const encryption = device?.encryption && typeof device.encryption === 'object' ? device.encryption : {};
-      const details = `<div class="disk-census-fields"><span><strong>Device:</strong> ${escapeDiskHtml(name || 'Unknown device')}</span><span><strong>Partition:</strong> ${escapeDiskHtml(partition)}</span><span><strong>Size:</strong> ${escapeDiskHtml(diskDisplayValue(device?.sizeBytes))} bytes</span><span><strong>Filesystem:</strong> ${escapeDiskHtml(diskDisplayValue(device?.fstype))}</span><span><strong>Encryption:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.state))}</span><span><strong>Mapper:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.mapper))}</span><span><strong>Mount:</strong> ${escapeDiskHtml(diskDisplayValue(device?.mountpoint))}</span><span><strong>Space:</strong> ${escapeDiskHtml(diskDisplayValue(device?.space))}</span></div>`;
+      const details = `<div class="disk-census-fields"><span><strong>Device:</strong> ${escapeDiskHtml(name || 'Unknown device')}</span><span><strong>Partition:</strong> ${escapeDiskHtml(partition)}</span><span><strong>Size:</strong> ${escapeDiskHtml(diskDisplayValue(device?.sizeBytes))} bytes</span><span><strong>Filesystem:</strong> ${escapeDiskHtml(filesystem)}</span><span><strong>Encryption:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.state))}</span><span><strong>Mapper:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.mapper))}</span><span><strong>Mount:</strong> ${escapeDiskHtml(diskDisplayValue(device?.mountpoint))}</span><span><strong>Space:</strong> ${escapeDiskHtml(diskDisplayValue(device?.space))}</span></div>`;
       const action = eligible
         ? `<div class="disk-census-action"><span>${owner.nasSetupStateUnknown ? 'Refresh disk status before setup' : `Set up as NAS ${role}`}</span><button type="button" class="action-button" data-nas-setup-open data-nas-device="${escapeDiskHtml(name)}" data-nas-role="${role}"${owner.nasSetupStateUnknown || adminNasSetupRequests.has(diskIdentity(name)) || adminNasSetupInFlight ? ' disabled' : ''}>Make this my NAS</button></div>`
         : '';
@@ -543,7 +545,8 @@ fn shell_document_4_tail() -> &'static str {
       const device = owner.devices.find(item => diskCensusDeviceName(item) === name);
       if (!device || owner.nasSetupStateUnknown || owner.protectedParents.has(diskIdentity(name)) || !diskNameCanNormalize(name)) return;
       const role = owner.primaryNasExists ? 'backup' : 'primary';
-      const body = `<p>This will erase all data on <code>${escapeDiskHtml(name)}</code> and prepare it as the ${role} NAS.</p><p>Type the displayed device name exactly to confirm erasure.</p><label for="nas-setup-confirmation">Confirm device name<input id="nas-setup-confirmation" class="ui-input ui-input--medium" type="text" autocomplete="off" data-nas-setup-confirmation></label><p data-nas-setup-state aria-live="polite">Waiting for exact confirmation.</p>`;
+      const foreignFilesystem = typeof device.foreign === 'string' && device.foreign ? ` (${escapeDiskHtml(device.foreign)})` : '';
+      const body = `<p>This will erase all data on <code>${escapeDiskHtml(name)}</code>${foreignFilesystem} and prepare it as the ${role} NAS.</p><p>Type the displayed device name exactly to confirm erasure.</p><label for="nas-setup-confirmation">Confirm device name<input id="nas-setup-confirmation" class="ui-input ui-input--medium" type="text" autocomplete="off" data-nas-setup-confirmation></label><p data-nas-setup-state aria-live="polite">Waiting for exact confirmation.</p>`;
       const modal = managerModal('nas-setup', 'Make this my NAS', body, 'Erase and set up NAS');
       const input = modal.querySelector('[data-nas-setup-confirmation]');
       const confirm = modal.querySelector('[data-manager-confirm]');
@@ -583,6 +586,10 @@ fn shell_document_4_tail() -> &'static str {
           adminNasSetupInFlight = false;
           refreshNasSetupButtons(owner);
           modal.querySelectorAll('[data-manager-close]').forEach(button => { button.disabled = false; });
+          if (admittedAdminDiskHost() === owner.host && owner.attendance === coronatioAttendanceRuntime.currentAttendance) {
+            retireAdminDiskSnapshot();
+            hydrateDiskCensus();
+          }
         }
       });
       input.focus();
