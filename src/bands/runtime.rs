@@ -86,7 +86,14 @@ async fn main() {
     };
 
     let app = app(state);
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let host = match env::var("CORONATIO_HOST") {
+        Ok(raw) => raw.parse::<std::net::IpAddr>().expect("invalid CORONATIO_HOST"),
+        Err(env::VarError::NotPresent) => {
+            std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)
+        }
+        Err(error) => panic!("read CORONATIO_HOST: {error}"),
+    };
+    let addr = SocketAddr::new(host, port);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .expect("bind coronatio listener");
@@ -103,6 +110,8 @@ fn app(state: AppState) -> Router {
     pulse::ensure_stats_ticker_started();
     Router::new()
         .route("/", get(crown_shell_route))
+        .route("/stage", get(crown_stage_route))
+        .route(CROWN_STAGE_SCRIPT_PATH, get(crown_stage_script_route))
         .route("/health", get(health_route))
         .route("/api", get(api_root_route))
         .route("/api/panes", get(panes_route))
@@ -179,7 +188,8 @@ fn app(state: AppState) -> Router {
         .merge(full_rust_route_table())
         .nest_service("/static", ServeDir::new(static_root()))
         .nest_service("/tabs", ServeDir::new((*state.tab_root).clone()))
-        .fallback(route_boundary_fallback)
+        .fallback(face_stage_fallback)
+        .route_layer(axum::middleware::from_fn(face_stage_route_gate))
         .with_state(state)
 }
 
