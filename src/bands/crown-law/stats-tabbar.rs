@@ -293,22 +293,30 @@ fn caduceus_admin_service_state(id: &str, readback: &CaduceusHttpReadback) -> Ad
     }
     let (enabled, state, source) = match id {
         "ssh-password-authentication" => {
-            let value = readback
-                .body
-                .get("readback")
+            let readback_body = readback.body.get("readback");
+            let directives_value = readback_body
                 .and_then(|readback| readback.get("directives"))
-                .and_then(|directives| directives.get("PasswordAuthentication"))
-                .and_then(serde_json::Value::as_str);
+                .and_then(|directives| directives.get("PasswordAuthentication"));
+            let (source_field, selected_value) = match directives_value {
+                Some(value) => ("readback.directives.PasswordAuthentication", Some(value)),
+                None => (
+                    "readback.effective.PasswordAuthentication",
+                    readback_body
+                        .and_then(|readback| readback.get("effective"))
+                        .and_then(|effective| effective.get("PasswordAuthentication")),
+                ),
+            };
+            let value = selected_value.and_then(serde_json::Value::as_str);
             match value {
                 Some(value) if value.eq_ignore_ascii_case("yes") => (
                     true,
                     "Enabled".to_string(),
-                    format!("Caduceus {} readback.directives.PasswordAuthentication", readback.path),
+                    format!("Caduceus {} {}", readback.path, source_field),
                 ),
                 Some(value) if value.eq_ignore_ascii_case("no") => (
                     false,
                     "Disabled".to_string(),
-                    format!("Caduceus {} readback.directives.PasswordAuthentication", readback.path),
+                    format!("Caduceus {} {}", readback.path, source_field),
                 ),
                 _ => (
                     false,
