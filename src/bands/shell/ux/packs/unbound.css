@@ -46,7 +46,7 @@
   padding: 1rem;
   border: 1px solid var(--border);
   border-radius: var(--border-radius, 6px);
-  background: var(--primary);
+  background: var(--surface);
 }
 
 .dns-name-table,
@@ -57,7 +57,7 @@
 
 .dns-name-table code,
 .dns-info-row strong {
-  color: var(--accent);
+  color: var(--text);
 }
 
 .dns-resolver-controls .ui-select-wrapper {
