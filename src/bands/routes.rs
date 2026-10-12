@@ -479,37 +479,68 @@ fn appliance_cartridge(tab_id: &str) -> Option<ApplianceCartridge> {
     load_appliance_cartridges().into_iter().find(|cartridge| cartridge.id == tab_id)
 }
 
-// Cache successes and failures: a missing staff must not cause a socket call
-// for every viewer. Pulse pulls consume held facts only, even on a cold cache.
+// Keep the last good register snapshot across failed reads and tab changes.
+// Refreshes are serialized separately so pulse readers can consume held facts
+// while the bounded Caduceus UDS read is in flight.
 const XENIA_STATUS_TTL: Duration = Duration::from_secs(30);
-static XENIA_STATUS_CACHE: OnceLock<Mutex<Option<(std::time::Instant, serde_json::Value)>>> = OnceLock::new();
+#[derive(Default)]
+struct XeniaStatusCache {
+    last_good: Option<(std::time::Instant, serde_json::Value)>,
+    stale: bool,
+    invalidation_generation: u64,
+}
+static XENIA_STATUS_CACHE: OnceLock<Mutex<XeniaStatusCache>> = OnceLock::new();
+static XENIA_STATUS_REFRESH: OnceLock<Mutex<()>> = OnceLock::new();
 
-fn xenia_status_cache() -> &'static Mutex<Option<(std::time::Instant, serde_json::Value)>> {
-    XENIA_STATUS_CACHE.get_or_init(|| Mutex::new(None))
+fn xenia_status_cache() -> &'static Mutex<XeniaStatusCache> {
+    XENIA_STATUS_CACHE.get_or_init(|| Mutex::new(XeniaStatusCache::default()))
+}
+
+fn xenia_status_refresh_lock() -> &'static Mutex<()> {
+    XENIA_STATUS_REFRESH.get_or_init(|| Mutex::new(()))
 }
 
 fn invalidate_xenia_status_cache() {
-    *xenia_status_cache().lock().unwrap_or_else(|error| error.into_inner()) = None;
+    let mut cache = xenia_status_cache().lock().unwrap_or_else(|error| error.into_inner());
+    cache.stale = true;
+    cache.invalidation_generation = cache.invalidation_generation.wrapping_add(1);
 }
 
 fn xenia_status(refresh: bool) -> serde_json::Value {
     if !refresh {
-        return xenia_status_cache().try_lock().ok()
-            .and_then(|cache| cache.as_ref().filter(|(at, _)| at.elapsed() < XENIA_STATUS_TTL).map(|(_, value)| value.clone()))
+        return xenia_status_cache().lock().unwrap_or_else(|error| error.into_inner())
+            .last_good.as_ref().map(|(_, value)| value.clone())
             .unwrap_or(serde_json::Value::Null);
     }
-    // Coalesce concurrent pane entries across the existing bounded UDS read.
-    let mut cache = xenia_status_cache().lock().unwrap_or_else(|error| error.into_inner());
-    if let Some((at, value)) = cache.as_ref() {
-        if at.elapsed() < XENIA_STATUS_TTL { return value.clone(); }
-    }
+
+    // Coalesce concurrent pane entries across the bounded Caduceus UDS read.
+    let _refresh = xenia_status_refresh_lock().lock().unwrap_or_else(|error| error.into_inner());
+    let generation = {
+        let cache = xenia_status_cache().lock().unwrap_or_else(|error| error.into_inner());
+        if let Some((at, value)) = cache.last_good.as_ref() {
+            if !cache.stale && at.elapsed() < XENIA_STATUS_TTL { return value.clone(); }
+        }
+        cache.invalidation_generation
+    };
+
     let readback = caduceus_http("GET", "/api/v1/xenia/status");
+    let mut cache = xenia_status_cache().lock().unwrap_or_else(|error| error.into_inner());
     if !readback.ok {
-        *cache = None;
-        return serde_json::Value::Null;
+        cache.stale = true;
+        eprintln!("{}", serde_json::json!({
+            "event": "coronatio.xenia.status.refresh.failed",
+            "method": "GET",
+            "route": "/api/v1/xenia/status",
+            "status": readback.status,
+            "first_missing_signal": crate::caduceus_access::safe_access_code(&readback.first_missing_signal),
+        }));
+        return cache.last_good.as_ref().map(|(_, value)| value.clone())
+            .unwrap_or(serde_json::Value::Null);
     }
+
     let value = readback.body;
-    *cache = Some((std::time::Instant::now(), value.clone()));
+    cache.last_good = Some((std::time::Instant::now(), value.clone()));
+    cache.stale = cache.invalidation_generation != generation;
     value
 }
 

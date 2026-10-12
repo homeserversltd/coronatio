@@ -419,17 +419,28 @@ async fn admit_process_fragment(
     tab: &CoronatioTabContract,
     endpoint: &str,
     path: &str,
+    fragment_handoff: Option<Response>,
 ) -> Response {
-    let fragment_response = match xenia_discovery::proxy(
-        &tab.id,
-        endpoint,
-        Method::GET,
-        path,
-        &axum::http::HeaderMap::new(),
-        Body::empty(),
-    )
-    .await
-    {
+    let response = match fragment_handoff {
+        Some(response) => Ok(response),
+        None => xenia_discovery::proxy(
+            &tab.id,
+            endpoint,
+            Method::GET,
+            path,
+            &axum::http::HeaderMap::new(),
+            Body::empty(),
+        )
+        .await,
+    };
+    let fragment_response = match response {
+        Ok(response) if response.status().is_redirection() => {
+            return xenia_visible_recovery(
+                &tab.id,
+                "redirect-refused",
+                "The guest fragment route attempted a redirect.",
+            );
+        }
         Ok(response)
             if response.status().is_success()
                 && response
@@ -497,6 +508,13 @@ async fn admit_process_fragment(
             &tab.id,
             signal,
             "The declared guest style-sheet path is invalid.",
+        );
+    }
+    if sheet_path == path {
+        return xenia_style_sheet_recovery(
+            &tab.id,
+            "fragment-path-reused-as-style-sheet",
+            "The guest fragment route cannot also serve as its style sheet.",
         );
     }
     let sheet_response = match xenia_discovery::proxy(
@@ -688,7 +706,10 @@ async fn admit_xenos(tab: CoronatioTabContract) -> Response {
             None => xenia_visible_recovery(&tab.id, "static-dir", "The static guest has no safe static directory."),
         },
         "cartridge-process" => {
-            let discovery = xenia_discovery::discover(&tab).await;
+            let handoff_fragment = client_class == "fragment";
+            let outcome = xenia_discovery::discover(&tab, handoff_fragment).await;
+            let discovery = outcome.discovery;
+            let fragment_handoff = outcome.fragment_response;
             if discovery.content_kind.as_deref() == Some("static") {
                 return discovery.static_dir.as_deref()
                     .map(|static_dir| xenia_static_admission(&tab, static_dir, &client_class))
@@ -711,7 +732,7 @@ async fn admit_xenos(tab: CoronatioTabContract) -> Response {
                 )).into_response(),
                 "fragment" => {
                     let path = xenia_text(&tab, "fragment_path").or_else(|| xenia_text(&tab, "fragmentPath")).unwrap_or_else(|| "/fragment".to_string());
-                    admit_process_fragment(&tab, endpoint, &path).await
+                    admit_process_fragment(&tab, endpoint, &path, fragment_handoff).await
                 }
                 _ => xenia_visible_recovery(&tab.id, "client-class", "The guest presentation class is not renderable."),
             }
@@ -764,7 +785,7 @@ async fn xenia_proxy_response(tab_id: String, path: String, method: Method, uri:
     if xenia_kind(&tab).as_deref() != Some("cartridge-process") {
         return fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound);
     }
-    let discovery = xenia_discovery::discover(&tab).await;
+    let discovery = xenia_discovery::discover(&tab, false).await.discovery;
     let Some(endpoint) = discovery.endpoint.as_deref() else {
         let fault = discovery.fault_signal.as_deref().unwrap_or("none:no-process-transport");
         let mut parts = fault.splitn(2, ':');

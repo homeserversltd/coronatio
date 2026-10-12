@@ -27,6 +27,11 @@ pub(super) struct Discovery {
     pub fault_signal: Option<String>,
 }
 
+pub(super) struct DiscoveryOutcome {
+    pub discovery: Discovery,
+    pub fragment_response: Option<Response>,
+}
+
 #[derive(Clone)]
 struct HeldDiscovery {
     at: Instant,
@@ -104,8 +109,8 @@ fn health_path(entry: &serde_json::Value) -> String {
     }
 }
 
-fn fragment_path(entry: &serde_json::Value) -> &str {
-    string_field(entry, &["fragment_path", "fragmentPath"]).unwrap_or("/")
+fn fragment_path<'a>(entry: &'a serde_json::Value, default: &'a str) -> &'a str {
+    string_field(entry, &["fragment_path", "fragmentPath"]).unwrap_or(default)
 }
 
 fn loopback_endpoint(raw: &str) -> Option<String> {
@@ -234,24 +239,224 @@ fn upstream_uri(endpoint: &str, path_and_query: &str) -> Result<HyperUri, &'stat
     Ok(combined)
 }
 
-async fn probe(endpoint: &str, path: &str, timeout: Duration) -> Result<(Option<String>, u16), &'static str> {
+struct ProbeReadback {
+    content_kind: Option<&'static str>,
+    fragment_response: Option<Response>,
+    health_signal: Option<&'static str>,
+}
+
+fn proxy_response_builder(
+    status: StatusCode,
+    headers: &axum::http::HeaderMap,
+    response_kind: Option<&str>,
+) -> axum::http::response::Builder {
+    let mut builder = Response::builder().status(status);
+    for (name, value) in headers {
+        if !hop_header(name)
+            && !sensitive_response_header(name)
+            && name != hyper::header::CACHE_CONTROL
+            && name != hyper::header::CONTENT_SECURITY_POLICY
+            && name.as_str() != "x-content-type-options"
+        {
+            builder = builder.header(name, value);
+        }
+    }
+    builder = builder.header(hyper::header::CACHE_CONTROL, "no-store");
+    builder = builder.header("x-content-type-options", "nosniff");
+    if response_kind == Some("html") {
+        builder = builder.header(
+            hyper::header::CONTENT_SECURITY_POLICY,
+            CROWN_CONTENT_SECURITY_POLICY,
+        );
+    }
+    builder
+}
+
+async fn read_upstream_body_bounded(
+    mut upstream: hyper::body::Incoming,
+) -> Result<Bytes, &'static str> {
+    tokio::time::timeout(PROXY_TIMEOUT, async {
+        let mut body = Vec::new();
+        while let Some(frame) = upstream.frame().await {
+            let frame = frame.map_err(|_| "proxy-read-failed")?;
+            if let Ok(data) = frame.into_data() {
+                if body.len().saturating_add(data.len()) > MAX_BODY {
+                    return Err("response-body-too-large");
+                }
+                body.extend_from_slice(&data);
+            }
+        }
+        Ok::<Bytes, &'static str>(Bytes::from(body))
+    })
+    .await
+    .map_err(|_| "proxy-timeout")?
+}
+
+async fn read_health_body(
+    mut upstream: hyper::body::Incoming,
+    timeout: Duration,
+) -> Result<Bytes, &'static str> {
+    tokio::time::timeout(timeout, async {
+        let mut body = Vec::new();
+        while let Some(frame) = upstream.frame().await {
+            let frame = frame.map_err(|_| "health-read-failed")?;
+            if let Ok(data) = frame.into_data() {
+                if body.len().saturating_add(data.len()) > MAX_HEALTH_BODY {
+                    return Err("health-body-too-large");
+                }
+                body.extend_from_slice(&data);
+            }
+        }
+        Ok::<Bytes, &'static str>(Bytes::from(body))
+    })
+    .await
+    .map_err(|_| "health-timeout")?
+}
+
+fn health_body_signal(status: StatusCode, body: &[u8]) -> Option<&'static str> {
+    if !status.is_success() {
+        return Some("health-http-not-ok");
+    }
+    if body.len() > MAX_HEALTH_BODY {
+        return Some("health-body-too-large");
+    }
+    let value: serde_json::Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(_) => return Some("health-json-invalid"),
+    };
+    if value.get("schema").and_then(serde_json::Value::as_str) != Some("xenia.health.v1") {
+        return Some("health-schema-invalid");
+    }
+    if value.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Some("health-not-ok");
+    }
+    None
+}
+
+fn pack_css_refusal_for_offender(tab_id: &str, offender: &str) -> Response {
+    record_cartridge_fault_signal(
+        tab_id,
+        CartridgeFaultKind::PackCssRefused,
+        &format!("pack-css-refused:{offender}"),
+    );
+    caduceus_hyalos_reflect_best_effort(
+        "xenia",
+        "error".to_string(),
+        format!("PackCssRefused {offender}"),
+        Some(tab_id.to_string()),
+        Some(serde_json::json!({"first_offender": offender, "rung": "pack-css"})),
+    );
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        [
+            ("content-type", "text/plain; charset=utf-8"),
+            ("x-coronatio-fault", "pack-css-refused"),
+            ("cache-control", "no-store"),
+            ("x-content-type-options", "nosniff"),
+        ],
+        format!("PackCssRefused: {offender}\n"),
+    )
+        .into_response()
+}
+
+fn pack_css_refusal(tab_id: &str, path_and_query: &str, body: &[u8]) -> Option<Response> {
+    if path_and_query.split('?').next() != Some("/static/pack.css") {
+        return None;
+    }
+    pack_css_offender(body).map(|offender| pack_css_refusal_for_offender(tab_id, &offender))
+}
+
+async fn probe(
+    endpoint: &str,
+    path: &str,
+    timeout: Duration,
+    tab_id: &str,
+    handoff_fragment: bool,
+    shared_health: bool,
+) -> Result<ProbeReadback, &'static str> {
     let uri = upstream_uri(endpoint, path)?;
-    let request = Request::builder()
-        .method("GET")
-        .uri(uri)
-        .header(hyper::header::ACCEPT, "*/*")
+    let mut builder = Request::builder().method("GET").uri(uri);
+    if handoff_fragment {
+        builder = builder.header("x-forwarded-prefix", format!("/api/tabs/{tab_id}"));
+    } else {
+        builder = builder.header(hyper::header::ACCEPT, "*/*");
+    }
+    let request = builder
         .body(Full::new(Bytes::new()))
         .map_err(|_| "probe-request-invalid")?;
     let response = tokio::time::timeout(timeout, client().request(request))
         .await
         .map_err(|_| "probe-timeout")?
         .map_err(|_| "probe-unreachable")?;
-    let status = response.status().as_u16();
-    let kind = content_kind(response.headers()).map(str::to_string);
-    if !(200..400).contains(&status) {
+    let status = response.status();
+    let kind = content_kind(response.headers());
+    if !(200..400).contains(&status.as_u16()) {
         return Err("probe-not-ok");
     }
-    Ok((kind, status))
+    let pack_css_path = path.split('?').next() == Some("/static/pack.css");
+    let mut health_signal = None;
+    let mut fragment_response = None;
+    if status.is_redirection() {
+        if shared_health {
+            health_signal = Some("health-http-not-ok");
+        }
+        if handoff_fragment && kind == Some("html") {
+            fragment_response = Some(
+                Response::builder()
+                    .status(status)
+                    .body(Body::empty())
+                    .map_err(|_| "probe-response-invalid")?,
+            );
+        }
+    } else if handoff_fragment && pack_css_path && kind == Some("stream") {
+        fragment_response = Some(pack_css_refusal_for_offender(
+            tab_id,
+            "stream-response-not-inspectable",
+        ));
+        if shared_health {
+            health_signal = Some("health-stream-not-json");
+        }
+    } else if handoff_fragment && (kind == Some("html") || pack_css_path) {
+        if kind != Some("stream")
+            && response
+                .headers()
+                .get(hyper::header::CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<usize>().ok())
+                .is_some_and(|length| length > MAX_BODY)
+        {
+            return Err("response-body-too-large");
+        }
+        let (parts, upstream) = response.into_parts();
+        let body = read_upstream_body_bounded(upstream).await?;
+        if shared_health {
+            health_signal = health_body_signal(parts.status, &body);
+        }
+        if let Some(refusal) = pack_css_refusal(tab_id, path, &body) {
+            fragment_response = Some(refusal);
+        } else if kind == Some("html") {
+            fragment_response = Some(
+                proxy_response_builder(parts.status, &parts.headers, kind)
+                    .body(Body::from(body))
+                    .map_err(|_| "probe-response-invalid")?,
+            );
+        }
+    } else if shared_health {
+        if kind == Some("stream") {
+            health_signal = Some("health-stream-not-json");
+        } else {
+            let (parts, upstream) = response.into_parts();
+            health_signal = match read_health_body(upstream, timeout).await {
+                Ok(body) => health_body_signal(parts.status, &body),
+                Err(signal) => Some(signal),
+            };
+        }
+    }
+    Ok(ProbeReadback {
+        content_kind: kind,
+        fragment_response,
+        health_signal,
+    })
 }
 
 async fn probe_health(endpoint: &str, path: &str, timeout: Duration) -> Result<(), &'static str> {
@@ -266,7 +471,8 @@ async fn probe_health(endpoint: &str, path: &str, timeout: Duration) -> Result<(
         .await
         .map_err(|_| "health-timeout")?
         .map_err(|_| "health-unreachable")?;
-    if !response.status().is_success() {
+    let status = response.status();
+    if !status.is_success() {
         return Err("health-http-not-ok");
     }
     let mut upstream = response.into_body();
@@ -285,13 +491,8 @@ async fn probe_health(endpoint: &str, path: &str, timeout: Duration) -> Result<(
     })
     .await
     .map_err(|_| "health-timeout")??;
-    let value: serde_json::Value =
-        serde_json::from_slice(&body).map_err(|_| "health-json-invalid")?;
-    if value.get("schema").and_then(serde_json::Value::as_str) != Some("xenia.health.v1") {
-        return Err("health-schema-invalid");
-    }
-    if value.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
-        return Err("health-not-ok");
+    if let Some(signal) = health_body_signal(status, &body) {
+        return Err(signal);
     }
     Ok(())
 }
@@ -337,7 +538,10 @@ fn stamp_if_changed(tab_id: &str, result: &Discovery) {
     });
 }
 
-pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
+pub(super) async fn discover(
+    tab: &CoronatioTabContract,
+    handoff_fragment: bool,
+) -> DiscoveryOutcome {
     if let Some(held) = cache()
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -345,7 +549,10 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
         .cloned()
     {
         if held.at.elapsed() < DISCOVERY_TTL {
-            return held.result;
+            return DiscoveryOutcome {
+                discovery: held.result,
+                fragment_response: None,
+            };
         }
     }
     let entry = tab
@@ -356,7 +563,9 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
     let probe_timeout = entry.get("fault_recovery").and_then(|recovery| recovery.get("timeout_ms")).and_then(serde_json::Value::as_u64).map(|milliseconds| Duration::from_millis(milliseconds).max(MIN_PROBE_TIMEOUT)).unwrap_or(DEFAULT_PROBE_TIMEOUT);
     let static_dir = static_dir(&entry);
     let health_path = health_path(&entry);
-    let fragment_path = fragment_path(&entry);
+    let probe_path = fragment_path(&entry, if handoff_fragment { "/fragment" } else { "/" });
+    let shared_health = handoff_fragment
+        && probe_path.split('?').next() == health_path.split('?').next();
     let declared = declared_endpoint_text(tab).is_some();
     let source_rung = if declared { "declared" } else { "listening" };
     let endpoint = if declared {
@@ -364,13 +573,28 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
     } else {
         one_runtime_listener(tab)
     };
+    let mut fragment_response = None;
     let result = if let Some(endpoint) = endpoint {
-        match probe(&endpoint, fragment_path, probe_timeout).await {
-            Ok((kind, _)) => {
-                let health = probe_health(&endpoint, &health_path, probe_timeout)
-                    .await
-                    .err()
-                    .map(str::to_string);
+        match probe(
+            &endpoint,
+            probe_path,
+            probe_timeout,
+            &tab.id,
+            handoff_fragment,
+            shared_health,
+        )
+        .await
+        {
+            Ok(probe) => {
+                fragment_response = probe.fragment_response;
+                let health = if shared_health {
+                    probe.health_signal.map(str::to_string)
+                } else {
+                    probe_health(&endpoint, &health_path, probe_timeout)
+                        .await
+                        .err()
+                        .map(str::to_string)
+                };
                 if let Some(signal) = health.as_deref() {
                     record_cartridge_fault_signal(
                         &tab.id,
@@ -381,7 +605,7 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
                 Discovery {
                     health,
                     endpoint: Some(endpoint),
-                    content_kind: kind,
+                    content_kind: probe.content_kind.map(str::to_string),
                     rung: source_rung.to_string(),
                     static_dir: static_dir.clone(),
                     fault_signal: None,
@@ -431,7 +655,10 @@ pub(super) async fn discover(tab: &CoronatioTabContract) -> Discovery {
         }
     }
     stamp_if_changed(&tab.id, &result);
-    result
+    DiscoveryOutcome {
+        discovery: result,
+        fragment_response,
+    }
 }
 
 fn hop_header(name: &hyper::header::HeaderName) -> bool {
@@ -609,25 +836,7 @@ pub(super) async fn proxy(
     {
         return Err("response-body-too-large");
     }
-    let mut response_builder = Response::builder().status(status);
-    for (name, value) in response.headers() {
-        if !hop_header(name)
-            && !sensitive_response_header(name)
-            && name != hyper::header::CACHE_CONTROL
-            && name != hyper::header::CONTENT_SECURITY_POLICY
-            && name.as_str() != "x-content-type-options"
-        {
-            response_builder = response_builder.header(name, value);
-        }
-    }
-    response_builder = response_builder.header(hyper::header::CACHE_CONTROL, "no-store");
-    response_builder = response_builder.header("x-content-type-options", "nosniff");
-    if response_kind == Some("html") {
-        response_builder = response_builder.header(
-            hyper::header::CONTENT_SECURITY_POLICY,
-            CROWN_CONTENT_SECURITY_POLICY,
-        );
-    }
+    let response_builder = proxy_response_builder(status, response.headers(), response_kind);
     if response_kind == Some("stream") {
         let mut upstream = response.into_body();
         let (sender, receiver) = mpsc::channel::<Bytes>(8);
@@ -656,48 +865,10 @@ pub(super) async fn proxy(
             .body(Body::from_stream(stream))
             .map_err(|_| "proxy-response-invalid");
     }
-    let mut upstream = response.into_body();
-    let bytes = tokio::time::timeout(PROXY_TIMEOUT, async {
-        let mut body = Vec::new();
-        while let Some(frame) = upstream.frame().await {
-            let frame = frame.map_err(|_| "proxy-read-failed")?;
-            if let Ok(data) = frame.into_data() {
-                if body.len().saturating_add(data.len()) > MAX_BODY {
-                    return Err("response-body-too-large");
-                }
-                body.extend_from_slice(&data);
-            }
-        }
-        Ok::<Bytes, &'static str>(Bytes::from(body))
-    })
-    .await
-    .map_err(|_| "proxy-timeout")??;
-    if path_and_query.split('?').next() == Some("/static/pack.css") {
-        if let Some(offender) = pack_css_offender(&bytes) {
-            record_cartridge_fault_signal(
-                tab_id,
-                CartridgeFaultKind::PackCssRefused,
-                &format!("pack-css-refused:{offender}"),
-            );
-            caduceus_hyalos_reflect_best_effort(
-                "xenia",
-                "error".to_string(),
-                format!("PackCssRefused {offender}"),
-                Some(tab_id.to_string()),
-                Some(serde_json::json!({"first_offender": offender, "rung": "pack-css"})),
-            );
-            return Ok((
-                StatusCode::UNPROCESSABLE_ENTITY,
-                [
-                    ("content-type", "text/plain; charset=utf-8"),
-                    ("x-coronatio-fault", "pack-css-refused"),
-                    ("cache-control", "no-store"),
-                    ("x-content-type-options", "nosniff"),
-                ],
-                format!("PackCssRefused: {offender}\n"),
-            )
-                .into_response());
-        }
+    let upstream = response.into_body();
+    let bytes = read_upstream_body_bounded(upstream).await?;
+    if let Some(refusal) = pack_css_refusal(tab_id, path_and_query, &bytes) {
+        return Ok(refusal);
     }
 
     response_builder
