@@ -63,7 +63,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/transmission/keys/rotate", post(transmission_keys_rotate_route))
         .route("/api/files/browse", get(upload_browse_hierarchical_route))
         .route("/api/files/browse-hierarchical", get(upload_browse_hierarchical_route))
-        .route("/api/files/upload", post(upload_file_route))
+        .route("/api/files/upload", post(upload_file_route).layer(axum::extract::DefaultBodyLimit::disable()))
         .route("/api/files/upload/start", post(upload_start_route))
         .route(
             "/api/files/upload/:upload_id/chunk/:index",
@@ -211,7 +211,115 @@ fn full_rust_route_table() -> Router<AppState> {
 }
 
 
-async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multipart) -> impl IntoResponse {
+const MULTIPART_UPLOAD_CHUNK_SIZE: u64 = 4 * 1024 * 1024;
+const MULTIPART_UPLOAD_FRAME_SIZE: usize = 64 * 1024;
+
+struct TransientUploadSpool {
+    path: PathBuf,
+}
+
+impl Drop for TransientUploadSpool {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn create_transient_upload_spool() -> Result<(TransientUploadSpool, tokio::fs::File), String> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let path = env::temp_dir().join(format!(
+        "coronatio-upload-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true).mode(0o600);
+    let file = options
+        .open(&path)
+        .map_err(|_| "upload-spool-create-failed".to_string())?;
+    Ok((TransientUploadSpool { path }, tokio::fs::File::from_std(file)))
+}
+
+async fn multipart_upload_body_range(
+    path: &FsPath,
+    offset: u64,
+    length: u64,
+) -> Result<Body, String> {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| "upload-spool-open-failed".to_string())?;
+    tokio::io::AsyncSeekExt::seek(&mut file, std::io::SeekFrom::Start(offset))
+        .await
+        .map_err(|_| "upload-spool-seek-failed".to_string())?;
+    let stream = futures_util::stream::try_unfold((file, length), |(mut file, remaining)| async move {
+        if remaining == 0 {
+            return Ok(None);
+        }
+        let mut buffer = vec![0u8; remaining.min(MULTIPART_UPLOAD_FRAME_SIZE as u64) as usize];
+        let read = tokio::io::AsyncReadExt::read(&mut file, &mut buffer).await?;
+        if read == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "upload spool ended before the declared chunk range",
+            ));
+        }
+        buffer.truncate(read);
+        Ok(Some((Bytes::from(buffer), (file, remaining - read as u64))))
+    });
+    Ok(Body::from_stream(stream))
+}
+
+fn upload_forward_headers(
+    source: &axum::http::HeaderMap,
+    content_type: Option<&'static str>,
+) -> axum::http::HeaderMap {
+    let mut headers = source.clone();
+    headers.remove(axum::http::header::CONTENT_LENGTH);
+    headers.remove(axum::http::header::CONTENT_TYPE);
+    if let Some(content_type) = content_type {
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static(content_type),
+        );
+    }
+    headers
+}
+
+fn upload_submit_response(
+    status: StatusCode,
+    ok: bool,
+    filename: &str,
+    byte_count: u64,
+    destination: &str,
+    caduceus: serde_json::Value,
+) -> Response {
+    let status = if !ok && status.is_success() {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        status
+    };
+    let signal = if ok {
+        "none".to_string()
+    } else {
+        upload_refusal_signal(Some(&caduceus))
+    };
+    (
+        status,
+        Json(serde_json::json!({
+            "schema": "coronatio.upload.submit.v1",
+            "ok": ok,
+            "accepted": ok,
+            "filename": filename,
+            "bytes": byte_count,
+            "destination": destination,
+            "authority": "Coronatio Rust upload route to Caduceus",
+            "caduceus": caduceus,
+            "firstMissingSignal": signal
+        })),
+    )
+        .into_response()
+}
+
+async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multipart) -> Response {
     if upload_pin_required() && session_from_headers(&headers) != Session::Admin {
         return (
             StatusCode::PRECONDITION_REQUIRED,
@@ -227,44 +335,133 @@ async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multip
     }
     let mut filename = "upload.bin".to_string();
     let mut destination = "/mnt/nas".to_string();
-    let mut payload = Vec::new();
+    let mut spool: Option<TransientUploadSpool> = None;
+    let mut byte_count = 0u64;
+    let mut payload_sha256: Option<String> = None;
 
-    while let Ok(Some(field)) = multipart.next_field().await {
+    loop {
+        let mut field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            Err(error) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "schema": "coronatio.upload.error.v1",
+                        "ok": false,
+                        "error": error.to_string(),
+                        "firstMissingSignal": "upload-form-read-failed"
+                    })),
+                )
+                    .into_response();
+            }
+        };
         let name = field.name().unwrap_or("").to_string();
         if name == "path" || name == "destination" {
             if let Ok(text) = field.text().await {
-                if !text.trim().is_empty() { destination = text.trim().to_string(); }
+                if !text.trim().is_empty() {
+                    destination = text.trim().to_string();
+                }
             }
             continue;
         }
         if name == "file" {
-            if let Some(raw_name) = field.file_name() { filename = raw_name.to_string(); }
-            match field.bytes().await {
-                Ok(data) => payload = data.to_vec(),
-                Err(err) => {
-                    return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            if let Some(raw_name) = field.file_name() {
+                filename = raw_name.to_string();
+            }
+            let (next_spool, mut output) = match create_transient_upload_spool() {
+                Ok(spool) => spool,
+                Err(signal) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({
+                            "schema": "coronatio.upload.error.v1",
+                            "ok": false,
+                            "firstMissingSignal": signal
+                        })),
+                    )
+                        .into_response();
+                }
+            };
+            use sha2::Digest as _;
+            let mut hasher = sha2::Sha256::new();
+            let mut next_byte_count = 0u64;
+            loop {
+                let chunk = match field.chunk().await {
+                    Ok(Some(chunk)) => chunk,
+                    Ok(None) => break,
+                    Err(error) => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            Json(serde_json::json!({
+                                "schema": "coronatio.upload.error.v1",
+                                "ok": false,
+                                "error": error.to_string(),
+                                "firstMissingSignal": "upload-form-read-failed"
+                            })),
+                        )
+                            .into_response();
+                    }
+                };
+                if tokio::io::AsyncWriteExt::write_all(&mut output, &chunk).await.is_err() {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({
+                            "schema": "coronatio.upload.error.v1",
+                            "ok": false,
+                            "firstMissingSignal": "upload-spool-write-failed"
+                        })),
+                    )
+                        .into_response();
+                }
+                let Some(count) = next_byte_count.checked_add(chunk.len() as u64) else {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({
+                            "schema": "coronatio.upload.error.v1",
+                            "ok": false,
+                            "firstMissingSignal": "upload-size-overflow"
+                        })),
+                    )
+                        .into_response();
+                };
+                next_byte_count = count;
+                hasher.update(&chunk);
+            }
+            if tokio::io::AsyncWriteExt::flush(&mut output).await.is_err() {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({
                         "schema": "coronatio.upload.error.v1",
                         "ok": false,
-                        "error": err.to_string(),
-                        "firstMissingSignal": "upload-form-read-failed"
-                    }))).into_response();
-                }
+                        "firstMissingSignal": "upload-spool-flush-failed"
+                    })),
+                )
+                    .into_response();
             }
+            drop(output);
+            spool = Some(next_spool);
+            byte_count = next_byte_count;
+            payload_sha256 = Some(hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect());
         }
     }
 
-    if payload.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "schema": "coronatio.upload.error.v1",
-            "ok": false,
-            "error": "file field is empty or missing",
-            "firstMissingSignal": "upload-file-missing"
-        }))).into_response();
+    if spool.is_none() || byte_count == 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "schema": "coronatio.upload.error.v1",
+                "ok": false,
+                "error": "file field is empty or missing",
+                "firstMissingSignal": "upload-file-missing"
+            })),
+        )
+            .into_response();
     }
 
     let root = upload_root_path();
     let display_root = upload_display_root(&root);
-    let filename_path = std::path::Path::new(&filename);
+    let filename_path = FsPath::new(&filename);
     if filename_path.file_name().and_then(|value| value.to_str()) != Some(filename.as_str())
         || upload_resolve_path(&root, &display_root, &destination).is_none()
         || upload_path_blacklisted(&destination)
@@ -279,30 +476,137 @@ async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multip
         )
             .into_response();
     }
-    let byte_count = payload.len();
 
-    let caduceus = route_translation_debt(
-        &mutation_authority(),
-        &headers,
-        "POST",
-        "/api/files/upload",
-        Some("/api/v1/file/ingress"),
-        Some("/api/v1/portals/deploy"),
-    );
-    (
-        if caduceus.ok { StatusCode::OK } else { mutation_response_status(&caduceus) },
-        Json(serde_json::json!({
-            "schema": "coronatio.upload.submit.v1",
-            "ok": caduceus.ok,
-            "accepted": caduceus.ok,
-            "filename": filename,
-            "bytes": byte_count,
-            "destination": destination,
-            "authority": "Coronatio Rust upload route to Caduceus",
-            "caduceus": caduceus,
-            "firstMissingSignal": if caduceus.ok { "none".to_string() } else { caduceus.first_missing_signal }
-        })),
-    ).into_response()
+    let start_body = serde_json::json!({
+        "filename": filename,
+        "total_size": byte_count,
+        "target_dir": destination,
+        "chunk_size": MULTIPART_UPLOAD_CHUNK_SIZE
+    });
+    let start_headers = upload_forward_headers(&headers, Some("application/json"));
+    let start_response = upload_start_route(start_headers, Body::from(start_body.to_string())).await;
+    let (start_response, start_readback) = capture_upload_response(start_response).await;
+    let start_status = start_response.status();
+    let Some(start_readback) = start_readback else {
+        return upload_submit_response(
+            start_status,
+            false,
+            &filename,
+            byte_count,
+            &destination,
+            serde_json::json!({"ok":false,"firstMissingSignal":"upload-start-response-invalid"}),
+        );
+    };
+    if !start_status.is_success() {
+        return upload_submit_response(
+            start_status,
+            false,
+            &filename,
+            byte_count,
+            &destination,
+            start_readback,
+        );
+    }
+    let upload_id = start_readback
+        .get("upload_id")
+        .or_else(|| start_readback.get("uploadId"))
+        .or_else(|| start_readback.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let Some(upload_id) = upload_id else {
+        return upload_submit_response(
+            StatusCode::BAD_GATEWAY,
+            false,
+            &filename,
+            byte_count,
+            &destination,
+            serde_json::json!({"ok":false,"firstMissingSignal":"upload-start-id-missing"}),
+        );
+    };
+    if let Some(sha256) = payload_sha256 {
+        set_upload_projection_expected_sha256(&upload_id, sha256);
+    }
+
+    let spool = spool.expect("a non-empty file field created a transient spool");
+    let mut offset = 0u64;
+    let mut index = 0u64;
+    while offset < byte_count {
+        let chunk_bytes = (byte_count - offset).min(MULTIPART_UPLOAD_CHUNK_SIZE);
+        let body = match multipart_upload_body_range(&spool.path, offset, chunk_bytes).await {
+            Ok(body) => body,
+            Err(signal) => {
+                let abort_headers = upload_forward_headers(&headers, None);
+                let _ = upload_delete_route(
+                    Path(upload_id.clone()),
+                    abort_headers,
+                    Body::empty(),
+                )
+                .await;
+                return upload_submit_response(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    false,
+                    &filename,
+                    byte_count,
+                    &destination,
+                    serde_json::json!({"ok":false,"firstMissingSignal":signal}),
+                );
+            }
+        };
+        let chunk_headers = upload_forward_headers(&headers, Some("application/octet-stream"));
+        let chunk_response = upload_chunk_route(
+            Path((upload_id.clone(), index.to_string())),
+            chunk_headers,
+            body,
+        )
+        .await;
+        let (chunk_response, chunk_readback) = capture_upload_response(chunk_response).await;
+        if !chunk_response.status().is_success() {
+            let abort_headers = upload_forward_headers(&headers, None);
+            let _ = upload_delete_route(
+                Path(upload_id.clone()),
+                abort_headers,
+                Body::empty(),
+            )
+            .await;
+            return upload_submit_response(
+                chunk_response.status(),
+                false,
+                &filename,
+                byte_count,
+                &destination,
+                chunk_readback.unwrap_or_else(|| serde_json::json!({
+                    "ok": false,
+                    "firstMissingSignal": "upload-chunk-response-invalid"
+                })),
+            );
+        }
+        offset += chunk_bytes;
+        index += 1;
+    }
+
+    let complete_headers = upload_forward_headers(&headers, None);
+    let complete_response = upload_complete_route(
+        Path(upload_id),
+        complete_headers,
+        Body::empty(),
+    )
+    .await;
+    let (complete_response, complete_readback) = capture_upload_response(complete_response).await;
+    let complete_status = complete_response.status();
+    let complete_readback = complete_readback.unwrap_or_else(|| serde_json::json!({
+        "ok": false,
+        "firstMissingSignal": "upload-complete-response-invalid"
+    }));
+    let ok = complete_status.is_success()
+        && complete_readback.get("ok").and_then(serde_json::Value::as_bool) == Some(true);
+    upload_submit_response(
+        complete_status,
+        ok,
+        &filename,
+        byte_count,
+        &destination,
+        complete_readback,
+    )
 }
 
 
