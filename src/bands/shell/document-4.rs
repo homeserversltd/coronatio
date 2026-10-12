@@ -472,9 +472,15 @@ fn shell_document_4() -> &'static str {
       const legend = document.getElementById('io-chart-legend');
       if (legend) morphLivePane(legend, datasets.map(dataset => `<span id="io-series-${statsDomKey(dataset.label)}" data-io-series="${escapeHtml(dataset.label)}">${escapeHtml(dataset.label)}</span>`).join(''));
     }
+    const lastGoodMemory = { memory: null, swap: null };
     function renderMemory(data) {
-      const memory = data.resources?.memory || {};
-      const swap = data.resources?.swap || {};
+      // A zero read is a dropped sample, never a real reading: hold the last known good.
+      const freshMemory = data.resources?.memory || {};
+      const freshSwap = data.resources?.swap || {};
+      if (Number(freshMemory.totalBytes) > 0 && Number(freshMemory.usedBytes) > 0) lastGoodMemory.memory = freshMemory;
+      if (Number(freshSwap.totalBytes) > 0) lastGoodMemory.swap = freshSwap;
+      const memory = lastGoodMemory.memory || freshMemory;
+      const swap = lastGoodMemory.swap || freshSwap;
       const memoryPercent = Number(memory.percent || 0);
       const swapPercent = Number(swap.percent || 0);
       document.getElementById('memory-bar-fill').style.width = memoryPercent + '%';
