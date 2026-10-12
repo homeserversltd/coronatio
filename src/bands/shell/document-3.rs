@@ -54,10 +54,19 @@ fn shell_document_3() -> &'static str {
       headerState.isAdmin = Boolean(value);
       if (!headerState.isAdmin) {
         retireAdminDiskSnapshot();
-        if (previousAdmin) invalidateAdminIndicatorModal();
+        if (previousAdmin) {
+          invalidateAdminIndicatorModal();
+          internetState.publicIp = undefined;
+        }
       }
       saveHeaderState();
       applyAdminDomState();
+      if (previousAdmin && !headerState.isAdmin) setInternetIndicatorState({ status: internetState.status });
+      const currentIndicatorKind = infoBody.querySelector('[data-modal-kind-body]')?.dataset.modalKindBody;
+      if (previousAdmin !== headerState.isAdmin && infoBackdrop.classList.contains('open') && ['power-meter', 'tailscale', 'internet', 'services'].includes(currentIndicatorKind)) {
+        if (!headerState.isAdmin && currentIndicatorKind === 'power-meter') cancelPowerCalibrationEditing();
+        openInfoModal(infoTitle.textContent, currentIndicatorKind);
+      }
       if (previousAdmin !== headerState.isAdmin && infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="source-currency"]')) {
         openInfoModal(infoTitle.textContent, 'source-currency');
       }
@@ -144,57 +153,53 @@ fn shell_document_3() -> &'static str {
     function internetStatusModalText() {
       if (internetState.status === 'loading') return 'CHECKING...';
       const base = String(internetState.status || 'loading').toUpperCase();
-      return headerState.isAdmin && internetState.publicIp ? `${base} (${internetState.publicIp})` : base;
-    }
-    function internetAdminDetailsHtml() {
-      if (!headerState.isAdmin || !internetState.ipDetails) return '';
-      const details = internetState.ipDetails;
-      const rows = [];
-      if (details.city && details.region) rows.push(`<p><strong>Location:</strong> ${details.city}, ${details.region}, ${details.country || ''}</p>`);
-      if (details.org) rows.push(`<p><strong>ISP:</strong> ${details.org}</p>`);
-      if (details.timezone) rows.push(`<p><strong>Timezone:</strong> ${details.timezone}</p>`);
-      return rows.length ? `<div class="admin-details-section" data-admin-details-section><div class="ip-details">${rows.join('')}</div></div>` : '';
-    }
-    function internetSpeedTestHtml() {
-      if (internetState.speedTestError) return `<div class="error-message">${internetState.speedTestError}</div>`;
-      const result = internetState.speedTestResults;
-      if (!result) return '';
-      return `<div class="speed-results"><p>Download: ${result.download} Mbps</p><p>Upload: ${result.upload} Mbps</p><p>Latency: ${result.latency} ms</p></div>`;
+      const status = headerState.isAdmin && internetState.publicIp ? `${base} (${internetState.publicIp})` : base;
+      return internetState.firstMissingSignal ? `${status} · ${internetState.firstMissingSignal}` : status;
     }
     function setInternetIndicatorState(data) {
       if (!data) return;
-      internetState.status = data.status || 'loading';
-      internetState.publicIp = data.publicIp;
-      internetState.ipDetails = data.ipDetails;
-      if (!internetIndicator) return;
-      internetIndicator.classList.remove('ok', 'warn', 'error', 'loading');
-      if (internetState.status === 'connected') internetIndicator.classList.add('ok');
-      else if (internetState.status === 'disconnected' || internetState.status === 'error') internetIndicator.classList.add('error');
-      else internetIndicator.classList.add('loading');
-      const title = internetState.status === 'loading' ? 'Checking internet connection...' : (headerState.isAdmin && internetState.publicIp ? `Internet: ${internetState.status} (${internetState.publicIp})` : `Internet: ${internetState.status}`);
-      internetIndicator.title = title;
-      internetIndicator.setAttribute('aria-label', internetState.status === 'loading' ? 'Checking Internet Status' : 'Internet Status');
+      internetState.status = data.status || 'unavailable';
+      internetState.publicIp = headerState.isAdmin && typeof data.publicIp === 'string' ? data.publicIp : undefined;
+      internetState.firstMissingSignal = readSignal(data, 'firstMissingSignal', 'first_missing_signal');
+      if (internetIndicator) {
+        internetIndicator.classList.remove('ok', 'warn', 'error', 'loading');
+        if (internetState.status === 'connected') internetIndicator.classList.add('ok');
+        else if (internetState.status === 'disconnected' || internetState.status === 'error' || internetState.status === 'unavailable') internetIndicator.classList.add('error');
+        else internetIndicator.classList.add('loading');
+        const title = internetState.status === 'loading' ? 'Checking internet connection...' : (headerState.isAdmin && internetState.publicIp ? `Internet: ${internetState.status} (${internetState.publicIp})` : `Internet: ${internetState.status}`);
+        internetIndicator.title = internetState.firstMissingSignal ? `${title} · ${internetState.firstMissingSignal}` : title;
+        internetIndicator.setAttribute('aria-label', internetState.status === 'loading' ? 'Checking Internet Status' : 'Internet Status ' + internetState.status);
+      }
+      const modalStatus = infoBody.querySelector('[data-modal-kind-body="internet"] [data-modal-status][data-route-read="/api/status"]');
+      if (modalStatus) {
+        modalStatus.textContent = internetStatusModalText();
+        modalStatus.classList.remove('loading', 'connected', 'disconnected', 'error', 'unavailable');
+        modalStatus.classList.add(internetState.status);
+      }
     }
     function setServicesIndicatorState(data) {
       const button = document.querySelector('[data-indicator="services"]');
       if (!button) return;
-      const status = data?.status || 'unknown';
+      const status = data?.status || 'unavailable';
       button.classList.remove('loading', 'ok', 'warn', 'error');
-      button.classList.add(status === 'up' ? 'ok' : (status === 'partial' ? 'warn' : (status === 'down' ? 'error' : 'loading')));
-      button.title = status === 'unknown' ? 'Services status unavailable' : 'Services: ' + status;
+      const indicatorClass = status === 'up' ? 'ok' : (status === 'partial' || status === 'unknown' ? 'warn' : (status === 'unavailable' || status === 'down' ? 'error' : 'loading'));
+      button.classList.add(indicatorClass);
+      const signal = readSignal(data, 'firstMissingSignal');
+      button.title = status === 'unavailable' ? `Services status unavailable${signal ? ': ' + signal : ''}` : `Services: ${status}${signal ? ' · ' + signal : ''}`;
       button.setAttribute('aria-label', 'Services Status ' + status);
     }
     const sourceCurrencyUpdateState = { inFlight: false, latestEnvelope: null };
     let sourceCurrencyModalGeneration = 0;
     let infoModalGeneration = 0;
     function clearTransmissionSecrets(root = infoBody) {
-      root.querySelectorAll('[data-transmission-password], [data-transmission-username]').forEach(input => { input.value = ''; });
+      root.querySelectorAll('[data-transmission-password], [data-transmission-username], [data-authkey-input]').forEach(input => { input.value = ''; });
     }
     function clearTransmissionAdminDetails(root = infoBody) {
-      root.querySelectorAll('[data-transmission-detail], [data-transmission-condition], [data-transmission-key-presence], [data-transmission-service-active], [data-transmission-service-enabled]').forEach(node => { node.textContent = 'Unavailable'; });
+      root.querySelectorAll('[data-transmission-detail], [data-transmission-condition], [data-transmission-key-presence], [data-transmission-service-active], [data-transmission-service-enabled], [data-vpn-projection-enabled], [data-vpn-projection-unit]').forEach(node => { node.textContent = 'Unavailable'; });
     }
     function invalidateAdminIndicatorModal() {
       infoModalGeneration += 1;
+      cancelPowerCalibrationEditing();
       clearTransmissionSecrets();
       clearTransmissionAdminDetails();
     }
@@ -345,29 +350,34 @@ fn shell_document_3() -> &'static str {
     function transmissionStatusText(value) {
       return value === 'running' ? 'Running' : (value === 'stopped' ? 'Stopped' : 'Unavailable');
     }
+    function setVpnIndicatorState(data, stateOverride = null) {
+      const button = document.querySelector('[data-indicator="openvpn"]');
+      if (!button) return;
+      const valid = ['running', 'stopped'].includes(data?.vpnStatus) && ['running', 'stopped'].includes(data?.transmissionStatus);
+      const state = ['ok', 'warn', 'error'].includes(stateOverride) ? stateOverride : (data?.status === 'available' && valid
+        ? (data.vpnStatus === 'running' && data.transmissionStatus === 'running' ? 'ok' : (data.vpnStatus === 'running' || data.transmissionStatus === 'running' ? 'warn' : 'error'))
+        : 'unavailable');
+      button.classList.remove('loading', 'ok', 'warn', 'error');
+      button.classList.add(state === 'unavailable' ? 'error' : state);
+      button.dataset.indicatorState = state;
+      const signal = readSignal(data, 'firstMissingSignal');
+      button.title = state === 'unavailable' ? `VPN & Transmission status unavailable${signal ? ': ' + signal : ''}` : `VPN & Transmission ${state}`;
+      button.setAttribute('aria-label', state === 'unavailable' ? 'VPN & Transmission status unavailable' : `VPN & Transmission ${state}`);
+    }
     function hydrateTransmissionModal(data, modal = infoBody.querySelector('[data-modal-kind-body="openvpn"]')) {
       if (!modal) return;
+      setVpnIndicatorState(data);
       const vpnNode = modal.querySelector('[data-modal-status]');
       const transmissionNode = modal.querySelector('[data-modal-secondary-status]');
       if (vpnNode) vpnNode.textContent = transmissionStatusText(data?.vpnStatus);
       if (transmissionNode) transmissionNode.textContent = transmissionStatusText(data?.transmissionStatus);
+      const signalNode = modal.querySelector('[data-vpn-first-missing-signal]');
+      if (signalNode) signalNode.textContent = readSignal(data, 'firstMissingSignal') || (data?.status === 'available' ? 'none' : 'vpn-status-unavailable');
       if (!headerState.isAdmin) return;
-      const details = {
-        provider: data?.provider,
-        forwardPort: data?.forwardPort,
-        peerPort: data?.peerPort,
-        rpcPort: data?.rpcPort,
-        firstMissingSignal: data?.firstMissingSignal
-      };
-      Object.entries(details).forEach(([name, value]) => {
-        const node = modal.querySelector(`[data-transmission-detail="${name}"]`);
-        if (node) node.textContent = value === undefined || value === null ? 'Unavailable' : String(value);
-      });
-      const conditions = data?.conditions && typeof data.conditions === 'object' ? data.conditions : {};
-      modal.querySelectorAll('[data-transmission-condition]').forEach(node => {
-        const value = conditions[node.dataset.transmissionCondition];
-        node.textContent = typeof value === 'boolean' ? (value ? 'Met' : 'Not met') : 'Unavailable';
-      });
+      const enabledNode = modal.querySelector('[data-vpn-projection-enabled]');
+      if (enabledNode) enabledNode.textContent = data?.enabled === true ? 'Enabled' : (data?.enabled === false ? 'Disabled' : 'Unavailable');
+      const unitNode = modal.querySelector('[data-vpn-projection-unit]');
+      if (unitNode) unitNode.textContent = typeof data?.transmissionUnit === 'string' && data.transmissionUnit ? data.transmissionUnit : 'Unavailable';
     }
     function renderTransmissionKeyPresence(modal, data) {
       const presence = data?.presence || {};
@@ -404,186 +414,564 @@ fn shell_document_3() -> &'static str {
         renderTransmissionServiceStatus(modal, null);
       }
     }
+    function readSignal(data, ...keys) {
+      for (const key of keys) {
+        const value = data?.[key];
+        if (typeof value === 'string' && value.trim() && value !== 'none') return value;
+      }
+      return '';
+    }
+    function unavailableReadData(data, fallback) {
+      return {
+        ok: false,
+        success: false,
+        status: 'unavailable',
+        firstMissingSignal: readSignal(data, 'firstMissingSignal', 'first_missing_signal') || fallback
+      };
+    }
+    function unavailablePowerUsage(data, fallback, firstMissingSignal = '') {
+      const unavailable = unavailableReadData(data, fallback);
+      if (firstMissingSignal) unavailable.firstMissingSignal = firstMissingSignal;
+      const factor = data?.calibration;
+      unavailable.calibration = typeof factor === 'number' && Number.isFinite(factor) && factor >= POWER_CALIBRATION_MIN && factor <= POWER_CALIBRATION_MAX
+        ? factor
+        : powerState.calibrationFactor;
+      unavailable.historyFirstMissingSignal = readSignal(data, 'historyFirstMissingSignal', 'history_first_missing_signal') || unavailable.firstMissingSignal;
+      return unavailable;
+    }
+    function routeUnavailableSignal(route) {
+      return ({
+        '/api/status': 'internet-status-unavailable',
+        '/api/status/tailscale': 'tailscale-status-unavailable',
+        '/api/status/tailscale/config': 'tailscale-config-unavailable',
+        '/api/status/vpn/pia': 'vpn-status-unavailable',
+        '/api/status/vpn/transmission': 'transmission-status-unavailable',
+        '/api/status/services': 'services-status-unavailable',
+        '/api/status/power/usage': 'power-usage-unavailable'
+      })[route] || 'status-read-unavailable';
+    }
+    function routeReadWasRefused(response, data) {
+      return !response.ok || !data || typeof data !== 'object' || Array.isArray(data) || data?.ok === false || data?.success === false || data?.refused === true;
+    }
     function routeReadLabel(route, data) {
       const ok = data && (data.ok === true || data.success === true);
-      const status = data?.status || (ok ? 'ok' : 'unavailable');
-      const missing = data?.firstMissingSignal && data.firstMissingSignal !== 'none' ? ' · ' + data.firstMissingSignal : '';
-      if (route.includes('/api/status/tailscale/config')) return data?.tailnet || data?.tailnetName || data?.readback?.tailnet || (ok ? 'Loading...' + missing : 'Loading...');
+      const signal = readSignal(data, 'firstMissingSignal', 'first_missing_signal');
+      const missing = signal ? ' · ' + signal : '';
+      if (route === '/api/status/tailscale/config') return ok && typeof data.tailnet === 'string' ? data.tailnet : (signal || 'Tailnet unavailable');
       if (route === '/api/status') {
         setInternetIndicatorState(data);
         return internetStatusModalText();
       }
-      if (route.includes('tailscale')) return ok ? 'Tailscale status: ' + status + missing : 'Tailscale status unavailable';
-      if (route === '/api/status/vpn/pia') return data?.vpnStatus ? 'VPN status: ' + String(data.vpnStatus).toUpperCase() : 'VPN status unavailable';
-      if (route === '/api/status/vpn/transmission') return data?.transmissionStatus ? 'Transmission status: ' + String(data.transmissionStatus).toUpperCase() : 'Transmission status unavailable';
-      if (route.includes('services')) return ok ? 'Services status: ' + status + missing : 'Services status unavailable';
-      if (route.includes('power')) return ok && typeof data?.current === 'number' ? formatPowerWatts(data.current) : (ok ? 'Power readback: ' + status + missing : 'Power readback unavailable');
-      return ok ? 'Internet status: ' + status + missing : 'Internet status unavailable';
+      if (route === '/api/status/tailscale') return ok ? 'Tailscale status: ' + String(data.status || 'unavailable') + missing : (signal || 'Tailscale status unavailable');
+      if (route === '/api/status/vpn/pia') return data?.vpnStatus ? String(data.vpnStatus).toUpperCase() : (signal || 'VPN status unavailable');
+      if (route === '/api/status/vpn/transmission') return data?.transmissionStatus ? String(data.transmissionStatus).toUpperCase() : (signal || 'Transmission status unavailable');
+      if (route === '/api/status/services') return ok ? 'Services status: ' + String(data.status || 'unavailable') + missing : (signal || 'Services status unavailable');
+      if (route.includes('power')) return typeof data?.current === 'number' && Number.isFinite(data.current) ? formatPowerWatts(data.current) + ' W' : (signal || 'Power readback unavailable');
+      return ok ? 'Internet status: ' + String(data.status || 'unavailable') + missing : (signal || 'Internet status unavailable');
     }
-    const POWER_DISPLAY_FACTOR = 1.6;
-    const powerChartState = { labels: [], watts: [], chart: null };
-    function formatPowerWatts(watts) {
-      const value = Number(watts);
-      return Number.isFinite(value) ? (value * POWER_DISPLAY_FACTOR).toFixed(1) : 'unavailable';
+    const POWER_CALIBRATION_MIN = 0.1;
+    const POWER_CALIBRATION_MAX = 10;
+    const powerState = { usage: null, calibrationFactor: 1, calibrationReadbackConfirmed: false, previewFactor: null, previewInvalid: false, usageSignal: '', historySignal: '', calibrationSignal: '' };
+    const powerChartState = { chart: null };
+    let powerPreviewFrame = null;
+    let powerCalibrationRevision = 0;
+    let powerCalibrationSaveTimer = null;
+    const POWER_CALIBRATION_SAVE_DEBOUNCE_MS = 400;
+    let powerSaveQueuedFactor = null;
+    let powerSaveRunner = null;
+    let powerSaveController = null;
+    let powerSaveEpoch = 0;
+    function currentPowerFactor() {
+      const factor = powerState.previewFactor ?? powerState.calibrationFactor;
+      return Number.isFinite(factor) && factor >= POWER_CALIBRATION_MIN && factor <= POWER_CALIBRATION_MAX ? factor : 1;
     }
-    function powerStatusColor(watts) {
-      if (watts < 1) return 'var(--statusUp)';
-      if (watts < 5) return 'var(--statusPartial)';
+    function powerFactorSuffix(factor = currentPowerFactor()) { return Math.abs(factor - 1) < 1e-9 ? '' : ` ×${factor.toFixed(2)}`; }
+    function formatPowerWatts(rawWatts, factor = currentPowerFactor()) {
+      return typeof rawWatts === 'number' && Number.isFinite(rawWatts) ? (rawWatts * factor).toFixed(1) : 'unavailable';
+    }
+    function calibratedPowerValue(rawWatts) {
+      return typeof rawWatts === 'number' && Number.isFinite(rawWatts) ? rawWatts * currentPowerFactor() : null;
+    }
+    function powerStatusColor(displayWatts) {
+      if (displayWatts < 1) return 'var(--statusUp)';
+      if (displayWatts < 5) return 'var(--statusPartial)';
       return 'var(--statusDown)';
     }
-    function pushPowerChartPoint(label, watts) {
-      powerChartState.labels.push(label);
-      powerChartState.watts.push(watts);
-      if (powerChartState.labels.length > 60) {
-        powerChartState.labels.shift();
-        powerChartState.watts.shift();
+    function powerIndicatorState(displayWatts) {
+      if (displayWatts === null) return powerState.usage === null ? 'loading' : 'error';
+      return displayWatts < 1 ? 'ok' : (displayWatts < 5 ? 'warn' : 'error');
+    }
+    function setPowerUsage(data) {
+      if (!data || typeof data !== 'object') return;
+      powerState.usage = data;
+      powerState.usageSignal = readSignal(data, 'firstMissingSignal');
+      powerState.historySignal = readSignal(data, 'historyFirstMissingSignal');
+      const factor = data.calibration;
+      if (!powerState.calibrationReadbackConfirmed && !powerState.previewInvalid && powerState.previewFactor === null && typeof factor === 'number' && Number.isFinite(factor) && factor >= POWER_CALIBRATION_MIN && factor <= POWER_CALIBRATION_MAX) {
+        powerState.calibrationFactor = factor;
       }
+      hydratePowerIndicator();
+      if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]')) renderPowerModal();
     }
-    function averagePowerSamples(seconds) {
-      const values = powerChartState.watts.slice(-seconds);
-      return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+    function hydratePowerIndicator() {
+      const button = document.querySelector('[data-indicator="power-meter"]');
+      const number = button?.querySelector('.power-value-small-number');
+      if (!button || !number) return;
+      const current = powerState.usage?.current;
+      const display = calibratedPowerValue(current);
+      const label = button.querySelector('[data-power-factor-label]');
+      const suffix = powerFactorSuffix();
+      number.textContent = display === null ? '—' : display.toFixed(1);
+      if (label) { label.textContent = suffix; label.hidden = !suffix; }
+      button.classList.remove('ok', 'warn', 'error', 'loading');
+      const state = powerIndicatorState(display);
+      button.classList.add(state);
+      const color = display === null ? 'var(--statusUnknown)' : powerStatusColor(display);
+      button.style.color = color;
+      button.querySelector('.indicator-icon')?.style.setProperty('color', color);
+      button.querySelector('.power-value-small')?.style.setProperty('color', color);
+      const signal = readSignal(powerState.usage, 'firstMissingSignal');
+      button.title = display === null ? `Power readback unavailable${signal ? ': ' + signal : ''}` : `Power: ${display.toFixed(1)}W${suffix}`;
+      button.setAttribute('aria-label', display === null ? 'Power readback unavailable' : `Power Usage ${display.toFixed(1)} Watts${suffix}`);
     }
-    function hydratePowerHistoryUI() {
+    function powerTimestamp(data = powerState.usage) {
+      const value = data?.timestamp ?? data?.ts;
+      return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+    }
+    function renderPowerModal() {
       const modal = infoBody.querySelector('[data-modal-kind-body="power-meter"]');
       if (!modal) return;
-      const latest = powerChartState.watts.at(-1);
+      const factor = currentPowerFactor();
+      const suffix = powerFactorSuffix(factor);
+      const current = calibratedPowerValue(powerState.usage?.current);
       const latestNode = modal.querySelector('.power-value-number');
-      const color = latest === undefined ? 'var(--statusUnknown)' : powerStatusColor(latest / POWER_DISPLAY_FACTOR);
-      if (latestNode) latestNode.textContent = latest === undefined ? '—' : latest.toFixed(1);
+      if (latestNode) latestNode.textContent = current === null ? '—' : current.toFixed(1);
+      const factorNode = modal.querySelector('[data-power-modal-factor]');
+      if (factorNode) { factorNode.textContent = suffix; factorNode.hidden = !suffix; }
       const powerValue = modal.querySelector('.power-value');
-      if (powerValue) powerValue.style.color = color;
+      if (powerValue) powerValue.style.color = current === null ? 'var(--statusUnknown)' : powerStatusColor(current);
       [5, 30, 60].forEach(seconds => {
         const node = modal.querySelector(`[data-power-average="${seconds}"]`);
-        const average = averagePowerSamples(seconds);
-        if (node) { node.textContent = average === null ? '—W' : average.toFixed(1) + 'W'; node.style.color = color; }
+        const rawAverage = powerState.usage?.averages?.[`${seconds}s`];
+        const average = typeof rawAverage === 'number' && Number.isFinite(rawAverage) ? rawAverage * factor : null;
+        if (node) {
+          node.textContent = average === null ? '—W' : `${average.toFixed(1)}W${suffix}`;
+          node.style.color = average === null ? 'var(--statusUnknown)' : powerStatusColor(average);
+        }
       });
+      const signalNode = modal.querySelector('[data-power-reading-signal]');
+      const signals = [];
+      const currentValid = typeof powerState.usage?.current === 'number' && Number.isFinite(powerState.usage.current);
+      if (powerState.usageSignal) {
+        const label = !currentValid ? 'Current' : (powerState.usageSignal.toLowerCase().includes('calibration') ? 'Calibration' : 'Read');
+        signals.push(label + ': ' + powerState.usageSignal);
+      }
+      if (powerState.historySignal && powerState.historySignal !== powerState.usageSignal) signals.push('History: ' + powerState.historySignal);
+      if (!currentValid && !powerState.usageSignal) signals.push('Current: unavailable');
+      if (powerState.calibrationSignal && powerState.calibrationSignal !== powerState.usageSignal) signals.push('Calibration: ' + powerState.calibrationSignal);
+      if (signalNode) { signalNode.textContent = signals.join(' · '); signalNode.hidden = signals.length === 0; }
+      const timestampNode = modal.querySelector('[data-power-timestamp]');
+      if (timestampNode) timestampNode.textContent = powerTimestamp() ? 'Latest sample: ' + powerTimestamp() : 'Latest sample time unavailable';
+      const canvas = modal.querySelector('[data-power-chart]');
+      if (!canvas || !window.Chart) return;
+      if (powerChartState.chart && powerChartState.chart.canvas !== canvas) { powerChartState.chart.destroy(); powerChartState.chart = null; }
+      const chart = powerChartState.chart || createPowerChart(canvas);
+      const rawHistory = Array.isArray(powerState.usage?.historical) ? powerState.usage.historical.filter(value => typeof value === 'number' && Number.isFinite(value)) : [];
+      const labels = rawHistory.map((_, index) => index === rawHistory.length - 1 ? powerTimestamp() : '');
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = rawHistory.map(value => value * factor);
+      chart.data.datasets[0].label = 'Power' + suffix;
+      chart.update();
     }
     function createPowerChart(canvas) {
-      if (powerChartState.chart) return powerChartState.chart;
       powerChartState.chart = new Chart(canvas, {
         type: 'line',
-        data: { labels: powerChartState.labels, datasets: [lineDataset('Power', powerChartState.watts, themeCssColor('--accent', '#90cff3'), 'y')] },
+        data: { labels: [], datasets: [lineDataset('Power', [], themeCssColor('--accent', '#90cff3'), 'y')] },
         options: Object.assign(chartCommonOptions(), {
-          plugins: { legend: { display: false }, tooltip: chartTooltip(context => Number(context.parsed.y || 0).toFixed(1) + 'W') },
+          plugins: { legend: { display: false }, tooltip: chartTooltip(context => {
+            const value = Number(context.parsed.y);
+            return Number.isFinite(value) ? `${value.toFixed(1)}W${powerFactorSuffix()}` : 'unavailable';
+          }) },
           scales: {
-            x: { ticks: chartTicks('--hiddenTabText', value => powerChartState.labels[value] || value), grid: { display: false } },
-            y: { beginAtZero: true, ticks: chartTicks('--hiddenTabText', value => Number(value).toFixed(0) + 'W'), grid: chartGrid() }
+            x: { ticks: chartTicks('--hiddenTabText', value => powerChartState.chart?.data.labels[value] || ''), grid: { display: false } },
+            y: { beginAtZero: true, ticks: chartTicks('--hiddenTabText', value => Number(value).toFixed(0) + 'W' + powerFactorSuffix()), grid: chartGrid() }
           }
         })
       });
       return powerChartState.chart;
     }
-    function renderPowerModal() {
-      hydratePowerHistoryUI();
-      const canvas = infoBody.querySelector('[data-power-chart]');
-      if (!canvas || !window.Chart) return;
-      if (powerChartState.chart && powerChartState.chart.canvas !== canvas) { powerChartState.chart.destroy(); powerChartState.chart = null; }
-      const existing = powerChartState.chart;
-      const chart = createPowerChart(canvas);
-      if (existing) {
-        chart.data.labels = powerChartState.labels;
-        chart.data.datasets[0].data = powerChartState.watts;
-        chart.update();
+    function powerModalIsCurrent(generation, modal, expectedAdmin = headerState.isAdmin) {
+      return headerState.isAdmin === expectedAdmin && modalResponseIsCurrent(generation, modal, expectedAdmin) && modal.dataset.modalKindBody === 'power-meter';
+    }
+    function setPowerCalibrationStatus(modal, message, kind = '') {
+      if (!(modal instanceof Element) || !modal.isConnected) return;
+      const node = modal.querySelector('[data-power-calibration-status]');
+      if (node) { node.textContent = message; node.dataset.state = kind; }
+    }
+    function syncPowerCalibrationControls(modal, factor = currentPowerFactor()) {
+      const slider = modal?.querySelector('[data-power-factor-slider]');
+      const number = modal?.querySelector('[data-power-factor-number]');
+      if (slider) slider.value = String(factor);
+      if (number) number.value = String(factor);
+      const save = modal?.querySelector('[data-power-factor-save]');
+      if (save) save.disabled = !headerState.isAdmin || powerState.previewInvalid;
+    }
+    function updatePowerPreview(modal, input, generation, isRange) {
+      if (!headerState.isAdmin || !powerModalIsCurrent(generation, modal)) return;
+      if (powerCalibrationSaveTimer !== null) window.clearTimeout(powerCalibrationSaveTimer);
+      powerCalibrationSaveTimer = null;
+      powerCalibrationRevision += 1;
+      powerSaveQueuedFactor = null;
+      const revision = powerCalibrationRevision;
+      const factor = input.valueAsNumber;
+      if (!Number.isFinite(factor) || factor < POWER_CALIBRATION_MIN || factor > POWER_CALIBRATION_MAX) {
+        powerState.previewInvalid = true;
+        const save = modal.querySelector('[data-power-factor-save]');
+        if (save) save.disabled = true;
+        setPowerCalibrationStatus(modal, 'Enter a finite factor from 0.1 to 10. Automatic save cancelled.', 'invalid');
+        return;
+      }
+      powerState.previewInvalid = false;
+      powerState.previewFactor = factor;
+      const slider = modal.querySelector('[data-power-factor-slider]');
+      const number = modal.querySelector('[data-power-factor-number]');
+      if (isRange && number) number.value = input.value;
+      if (!isRange && slider) slider.value = input.value;
+      const save = modal.querySelector('[data-power-factor-save]');
+      if (save) save.disabled = false;
+      setPowerCalibrationStatus(modal, `Preview factor ×${factor.toFixed(2)}; saving automatically…`, 'preview');
+      if (powerPreviewFrame !== null) cancelAnimationFrame(powerPreviewFrame);
+      powerPreviewFrame = requestAnimationFrame(() => {
+        powerPreviewFrame = null;
+        if (!powerModalIsCurrent(generation, modal)) return;
+        hydratePowerIndicator();
+        renderPowerModal();
+      });
+      powerCalibrationSaveTimer = window.setTimeout(() => {
+        powerCalibrationSaveTimer = null;
+        if (revision !== powerCalibrationRevision || powerState.previewInvalid || powerState.previewFactor !== factor || !powerModalIsCurrent(generation, modal)) return;
+        enqueuePowerCalibrationSave(factor, generation, modal);
+      }, POWER_CALIBRATION_SAVE_DEBOUNCE_MS);
+    }
+    function wirePowerCalibrationControls(generation, modal) {
+      if (!headerState.isAdmin || !modal) return;
+      const slider = modal.querySelector('[data-power-factor-slider]');
+      const number = modal.querySelector('[data-power-factor-number]');
+      const save = modal.querySelector('[data-power-factor-save]');
+      if (!slider || !number || !save) return;
+      const factor = powerState.previewFactor ?? powerState.calibrationFactor;
+      syncPowerCalibrationControls(modal, factor);
+      slider.addEventListener('input', () => updatePowerPreview(modal, slider, generation, true));
+      number.addEventListener('input', () => updatePowerPreview(modal, number, generation, false));
+      save.addEventListener('click', () => {
+        if (!powerModalIsCurrent(generation, modal) || powerState.previewInvalid) return;
+        const requested = powerState.previewFactor ?? powerState.calibrationFactor;
+        if (!Number.isFinite(requested) || requested < POWER_CALIBRATION_MIN || requested > POWER_CALIBRATION_MAX) {
+          setPowerCalibrationStatus(modal, 'Enter a finite factor from 0.1 to 10.', 'invalid');
+          return;
+        }
+        enqueuePowerCalibrationSave(requested, generation, modal);
+      });
+    }
+    function calibrationReadSucceeded(response, data) {
+      const factor = data?.factor;
+      return response.ok && data?.ok === true && !readSignal(data, 'firstMissingSignal') && typeof factor === 'number' && Number.isFinite(factor) && factor >= POWER_CALIBRATION_MIN && factor <= POWER_CALIBRATION_MAX;
+    }
+    async function loadPowerCalibration(generation, modal) {
+      if (!headerState.isAdmin || !powerModalIsCurrent(generation, modal, true)) return;
+      const revision = powerCalibrationRevision;
+      const hasPreview = () => powerState.previewFactor !== null || powerState.previewInvalid;
+      const preservePreviewStatus = message => {
+        if (powerState.previewInvalid) setPowerCalibrationStatus(modal, 'Enter a finite factor from 0.1 to 10. Automatic save cancelled. ' + message, 'invalid');
+        else if (powerState.previewFactor !== null) setPowerCalibrationStatus(modal, `Preview factor ×${powerState.previewFactor.toFixed(2)}; saving automatically… ${message}`, 'preview');
+      };
+      try {
+        const response = await fetch('/api/status/power/calibration', { cache: 'no-store' });
+        const data = await response.json().catch(() => ({}));
+        if (!powerModalIsCurrent(generation, modal, true) || revision !== powerCalibrationRevision) return;
+        if (!calibrationReadSucceeded(response, data)) {
+          powerState.calibrationSignal = readSignal(data, 'firstMissingSignal') || 'power-calibration-read-unavailable';
+          const message = 'Saved calibration read unavailable: ' + powerState.calibrationSignal;
+          if (hasPreview()) preservePreviewStatus(message);
+          else setPowerCalibrationStatus(modal, message, 'error');
+          return;
+        }
+        powerState.calibrationFactor = data.factor;
+        powerState.calibrationReadbackConfirmed = true;
+        powerState.calibrationSignal = '';
+        if (hasPreview()) {
+          preservePreviewStatus(`Current saved factor ×${data.factor.toFixed(2)}.`);
+        } else {
+          syncPowerCalibrationControls(modal, data.factor);
+          setPowerCalibrationStatus(modal, `Current saved factor ×${data.factor.toFixed(2)}.`, 'current');
+        }
+        hydratePowerIndicator();
+        renderPowerModal();
+      } catch (_) {
+        if (!powerModalIsCurrent(generation, modal, true) || revision !== powerCalibrationRevision) return;
+        powerState.calibrationSignal = 'power-calibration-read-failed';
+        const message = 'Saved calibration read unavailable: ' + powerState.calibrationSignal;
+        if (hasPreview()) preservePreviewStatus(message);
+        else setPowerCalibrationStatus(modal, message, 'error');
       }
     }
-    function hydratePowerIndicator(data) {
-      const button = document.querySelector('[data-indicator="power-meter"]');
-      const number = button?.querySelector('.power-value-small-number');
-      if (!button || !number) return;
-      if (data?.ok && typeof data.current === 'number') {
-        const display = formatPowerWatts(data.current);
-        const color = powerStatusColor(data.current);
-        number.textContent = display;
-        button.classList.remove('ok', 'warn', 'error');
-        button.style.color = color;
-        button.querySelector('.indicator-icon')?.style.setProperty('color', color);
-        button.querySelector('.power-value-small')?.style.setProperty('color', color);
-        button.title = 'Power: ' + display + 'W';
-        button.setAttribute('aria-label', 'Power Usage ' + display + ' Watts');
-      } else {
-        number.textContent = '—';
-        button.classList.remove('ok', 'warn', 'error');
-        button.style.color = 'var(--statusUnknown)';
-        button.title = 'Power readback unavailable';
-        button.setAttribute('aria-label', 'Power readback unavailable');
-      }
-    }
-    async function refreshPowerIndicator() {
+    async function loadPowerUsage(generation, modal, expectedAdmin = headerState.isAdmin) {
       try {
         const response = await fetch('/api/status/power/usage', { cache: 'no-store' });
-        const data = await response.json();
-        hydratePowerIndicator(data);
-        if (response.ok && data?.ok && typeof data.current === 'number') {
-          pushPowerChartPoint(formatChartTime(), Number(formatPowerWatts(data.current)));
-          if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]')) renderPowerModal();
-        }
-      } catch (error) {
-        hydratePowerIndicator(null);
+        const data = await response.json().catch(() => ({}));
+        if (!powerModalIsCurrent(generation, modal, expectedAdmin)) return;
+        if (routeReadWasRefused(response, data)) setPowerUsage(unavailablePowerUsage(data, 'power-usage-read-unavailable'));
+        else if (data && typeof data === 'object') setPowerUsage(data);
+        else setPowerUsage(unavailablePowerUsage(null, 'power-usage-read-invalid'));
+      } catch (_) {
+        if (!powerModalIsCurrent(generation, modal, expectedAdmin)) return;
+        setPowerUsage(unavailablePowerUsage(null, 'power-usage-read-failed'));
       }
+    }
+    async function savePowerCalibration(requested, epoch, revision, generation, modal) {
+      if (epoch !== powerSaveEpoch || !powerModalIsCurrent(generation, modal)) return;
+      const controller = new AbortController();
+      powerSaveController = controller;
+      const signal = receipt => readSignal(receipt, 'firstMissingSignal', 'first_missing_signal');
+      let writeAccepted = false;
+      try {
+        if (revision === powerCalibrationRevision) setPowerCalibrationStatus(modal, 'Saving calibration…', 'pending');
+        const response = await fetch('/api/status/power/calibration', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', signal: controller.signal,
+          body: JSON.stringify({ factor: requested })
+        });
+        const receipt = await response.json().catch(() => ({}));
+        const accepted = response.ok && (receipt?.ok === true || receipt?.accepted === true || receipt?.success === true) && receipt?.ok !== false && receipt?.accepted !== false && receipt?.success !== false && receipt?.refused !== true && !signal(receipt);
+        if (epoch !== powerSaveEpoch || !powerModalIsCurrent(generation, modal)) return;
+        if (!accepted) {
+          if (revision === powerCalibrationRevision) {
+            const refusal = signal(receipt) || receipt?.error || receipt?.refusal || 'power-calibration-write-refused';
+            setPowerCalibrationStatus(modal, 'Calibration not confirmed: ' + String(refusal), 'error');
+          }
+          return;
+        }
+        writeAccepted = true;
+        const readResponse = await fetch('/api/status/power/calibration', { cache: 'no-store', signal: controller.signal });
+        const readback = await readResponse.json().catch(() => ({}));
+        if (epoch !== powerSaveEpoch || !powerModalIsCurrent(generation, modal) || revision !== powerCalibrationRevision) return;
+        if (!calibrationReadSucceeded(readResponse, readback)) {
+          const refusal = signal(readback) || 'power-calibration-readback-unavailable';
+          powerState.calibrationSignal = refusal;
+          setPowerCalibrationStatus(modal, 'Write accepted; saved factor not confirmed: ' + refusal, 'error');
+          return;
+        }
+        const actual = readback.factor;
+        powerState.calibrationFactor = actual;
+        powerState.calibrationReadbackConfirmed = true;
+        powerState.calibrationSignal = '';
+        const matches = Math.abs(actual - requested) <= 1e-9 * Math.max(1, Math.abs(requested));
+        if (matches && powerState.previewFactor === requested) powerState.previewFactor = null;
+        if (powerState.previewFactor === null) syncPowerCalibrationControls(modal, actual);
+        setPowerCalibrationStatus(modal, matches ? `Saved factor ×${actual.toFixed(2)} (read back).` : `Saved factor read back as ×${actual.toFixed(2)}; requested ×${requested.toFixed(2)}.`, matches ? 'saved' : 'mismatch');
+        hydratePowerIndicator();
+        renderPowerModal();
+      } catch (error) {
+        if (epoch !== powerSaveEpoch || !powerModalIsCurrent(generation, modal) || revision !== powerCalibrationRevision) return;
+        const refusal = error?.name === 'AbortError'
+          ? 'power-calibration-request-cancelled'
+          : (writeAccepted ? 'power-calibration-readback-failed' : 'power-calibration-write-failed');
+        setPowerCalibrationStatus(modal, writeAccepted ? 'Write accepted; saved factor not confirmed: ' + refusal : 'Calibration not confirmed: ' + refusal, 'error');
+      } finally {
+        if (powerSaveController === controller) powerSaveController = null;
+      }
+    }
+    function enqueuePowerCalibrationSave(factor, generation, modal) {
+      if (!headerState.isAdmin || !powerModalIsCurrent(generation, modal) || powerState.previewInvalid) return;
+      if (!Number.isFinite(factor) || factor < POWER_CALIBRATION_MIN || factor > POWER_CALIBRATION_MAX) return;
+      if (powerCalibrationSaveTimer !== null) window.clearTimeout(powerCalibrationSaveTimer);
+      powerCalibrationSaveTimer = null;
+      const revision = ++powerCalibrationRevision;
+      powerSaveQueuedFactor = { factor, revision };
+      if (powerSaveRunner) return;
+      const epoch = powerSaveEpoch;
+      const runner = (async () => {
+        while (epoch === powerSaveEpoch && powerSaveQueuedFactor !== null && powerModalIsCurrent(generation, modal)) {
+          const next = powerSaveQueuedFactor;
+          powerSaveQueuedFactor = null;
+          await savePowerCalibration(next.factor, epoch, next.revision, generation, modal);
+        }
+      })();
+      powerSaveRunner = runner;
+      void runner.finally(() => { if (powerSaveEpoch === epoch && powerSaveRunner === runner) powerSaveRunner = null; });
+    }
+    function cancelPowerCalibrationEditing() {
+      powerSaveEpoch += 1;
+      powerCalibrationRevision += 1;
+      if (powerCalibrationSaveTimer !== null) window.clearTimeout(powerCalibrationSaveTimer);
+      powerCalibrationSaveTimer = null;
+      powerSaveQueuedFactor = null;
+      powerSaveRunner = null;
+      powerSaveController?.abort();
+      powerSaveController = null;
+      if (powerPreviewFrame !== null) cancelAnimationFrame(powerPreviewFrame);
+      powerPreviewFrame = null;
+      powerState.previewFactor = null;
+      powerState.previewInvalid = false;
+      hydratePowerIndicator();
+      renderPowerModal();
+    }
+    function internetSpeedTestHtml() {
+      if (internetState.speedTestError) return `<div class="error-message">${internetState.speedTestError}</div>`;
+      const result = internetState.speedTestResults;
+      if (!result) return '';
+      return `<div class="speed-results"><p>Download: ${result.download} Mbps</p><p>Upload: ${result.upload} Mbps</p><p>Latency: ${result.latency} ms</p></div>`;
+    }
+    function safeHttpUrl(value) {
+      if (typeof value !== 'string' || !value.trim()) return null;
+      try {
+        const url = new URL(value.trim());
+        return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+      } catch (_) { return null; }
+    }
+    function projectionText(value) {
+      if (value === null || value === undefined || value === '') return 'Unavailable';
+      if (typeof value === 'number' && !Number.isFinite(value)) return 'Unavailable';
+      return String(value);
     }
     function tailscaleStatusClass(data) {
-      if (!data || data.status === 'loading') return 'loading';
-      if (data.status === 'connected') return 'connected';
-      if (data.status === 'disconnected' && data.loginUrl) return 'disconnected login-required';
-      if (data.status === 'disconnected') return 'disconnected';
-      if (data.status === 'error') return 'error';
-      return data.status || 'unknown';
+      const status = data?.status;
+      if (status === 'loading') return 'loading';
+      return ['connected', 'disconnected', 'needs-login', 'absent'].includes(status) ? status : 'unavailable';
+    }
+    function setTailscaleIndicatorState(data) {
+      const button = document.querySelector('[data-indicator="tailscale"]');
+      if (!button) return;
+      const status = tailscaleStatusClass(data);
+      button.classList.remove('loading', 'ok', 'warn', 'error');
+      const indicatorClass = status === 'connected' ? 'ok' : (status === 'needs-login' ? 'warn' : (status === 'loading' ? 'loading' : 'error'));
+      button.classList.add(indicatorClass);
+      button.dataset.tailscaleStatus = status;
+      const signal = readSignal(data, 'firstMissingSignal');
+      button.title = status === 'loading' ? 'Checking Tailscale status…' : `Tailscale: ${status}${signal ? ' · ' + signal : ''}`;
+      button.setAttribute('aria-label', 'Tailscale Status ' + status);
     }
     function hydrateTailscaleModal(data) {
-      const statusNode = infoBody.querySelector('[data-modal-kind-body="tailscale"] [data-modal-status]');
-      if (!statusNode) return;
-      const state = data?.status || (data?.ok ? 'rust-route' : 'loading');
-      statusNode.className = 'status-text ' + tailscaleStatusClass(data);
-      statusNode.textContent = state === 'loading' ? 'LOADING...' : String(state).toUpperCase() + (headerState.isAdmin && data?.ip ? ' (' + data.ip + ')' : '');
-      const login = data?.loginUrl || data?.authUrl || data?.url;
-      const loginSection = infoBody.querySelector('[data-tailscale-login-section]');
-      const loginLink = infoBody.querySelector('[data-tailscale-login-url]');
-      const showLogin = Boolean(headerState.isAdmin && login && state === 'disconnected');
-      if (loginSection) loginSection.hidden = !showLogin;
-      if (loginLink && login) { loginLink.href = login; loginLink.textContent = login; }
-      infoBody.querySelector('[data-copy-login-url]')?.addEventListener('click', () => navigator.clipboard?.writeText(loginLink?.href || ''));
-      const input = infoBody.querySelector('[data-tailnet-input]');
-      if (input && data?.tailnet && !input.value) input.value = data.tailnet;
+      const modal = infoBody.querySelector('[data-modal-kind-body="tailscale"]');
+      const statusNode = modal?.querySelector('[data-modal-status]');
+      if (!modal || !statusNode) return;
+      const status = tailscaleStatusClass(data);
+      setTailscaleIndicatorState(data);
+      statusNode.className = 'status-text ' + status;
+      const ip = headerState.isAdmin && typeof data?.ip === 'string' && data.ip ? ` (${data.ip})` : '';
+      statusNode.textContent = status === 'loading' ? 'LOADING...' : status.toUpperCase() + ip;
+      const interfaceNode = modal.querySelector('[data-tailscale-interface]');
+      if (interfaceNode) interfaceNode.textContent = projectionText(data?.interface);
+      const timestampNode = modal.querySelector('[data-tailscale-timestamp]');
+      if (timestampNode) timestampNode.textContent = projectionText(data?.timestamp ?? data?.ts);
+      const firstMissing = modal.querySelector('[data-tailscale-first-missing-signal]');
+      if (firstMissing) firstMissing.textContent = readSignal(data, 'firstMissingSignal') || (data?.ok === true ? 'none' : 'tailscale-status-unavailable');
+      const ipNode = modal.querySelector('[data-tailscale-ip]');
+      if (ipNode) ipNode.textContent = headerState.isAdmin ? projectionText(data?.ip) : 'Unavailable';
+      const enabledNode = modal.querySelector('[data-tailscale-enabled]');
+      if (enabledNode) enabledNode.textContent = data?.isEnabled === true ? 'Enabled' : (data?.isEnabled === false ? 'Disabled' : 'Unavailable');
+      const enabledSignalNode = modal.querySelector('[data-tailscale-enabled-signal]');
+      if (enabledSignalNode) enabledSignalNode.textContent = readSignal(data, 'enabledFirstMissingSignal') || (typeof data?.isEnabled === 'boolean' ? 'none' : 'Unavailable');
+      const loginSection = modal.querySelector('[data-tailscale-login-section]');
+      const loginLink = modal.querySelector('[data-tailscale-login-url]');
+      const copyButton = modal.querySelector('[data-copy-login-url]');
+      const loginUnavailable = modal.querySelector('[data-tailscale-login-unavailable]');
+      const login = headerState.isAdmin && status === 'needs-login' ? safeHttpUrl(data?.loginUrl) : null;
+      if (loginSection) loginSection.hidden = !(headerState.isAdmin && status === 'needs-login');
+      if (loginLink) { loginLink.hidden = !login; if (login) { loginLink.href = login; loginLink.textContent = login; } else loginLink.removeAttribute('href'); }
+      if (copyButton) copyButton.hidden = !login;
+      if (loginUnavailable) loginUnavailable.hidden = Boolean(login) || !(headerState.isAdmin && status === 'needs-login');
+      if (copyButton && copyButton.dataset.copyBound !== 'true') {
+        copyButton.dataset.copyBound = 'true';
+        copyButton.addEventListener('click', () => { const href = modal.querySelector('[data-tailscale-login-url]')?.href; if (href) void navigator.clipboard?.writeText(href); });
+      }
+    }
+    function serviceBoolean(value) {
+      return typeof value === 'boolean' ? (value ? 'Yes' : 'No') : 'Unavailable';
+    }
+    function appendServiceFact(parent, label, value) {
+      const fact = document.createElement('span');
+      fact.className = 'service-status-fact';
+      fact.textContent = `${label}: ${projectionText(value)}`;
+      parent.appendChild(fact);
     }
     function hydrateServicesModal(data) {
-      const status = data?.status || 'unknown';
+      const status = typeof data?.status === 'string' ? data.status : 'unavailable';
       const statusNode = infoBody.querySelector('[data-modal-kind-body="services"] [data-modal-status]');
+      const signal = readSignal(data, 'firstMissingSignal');
+      const successful = Boolean(data && (data.ok === true || data.success === true));
       if (statusNode) {
-        statusNode.className = 'loading-section ' + (status === 'up' ? 'ok' : (status === 'partial' ? 'warn' : (status === 'down' ? 'error' : 'loading')));
-        statusNode.textContent = String(status).toUpperCase();
+        const statusClass = status === 'up' ? 'ok' : (status === 'partial' ? 'warn' : (status === 'down' || status === 'unavailable' ? 'error' : 'loading'));
+        statusNode.className = 'loading-section ' + statusClass;
+        statusNode.textContent = String(status).toUpperCase() + (signal ? ' · ' + signal : '');
       }
       const list = infoBody.querySelector('[data-modal-kind-body="services"] .service-status-list');
+      const services = Array.isArray(data?.services) ? data.services : [];
       if (list) {
         list.replaceChildren();
-        const services = Array.isArray(data?.services) ? data.services : [];
-        if (!services.length) {
+        if (!successful || !services.length) {
           const item = document.createElement('li');
-          item.textContent = 'No service status data available';
+          item.textContent = !successful ? 'Services status unavailable: ' + (signal || 'services-status-unavailable') : 'No service rows returned.';
           list.appendChild(item);
         }
         services.forEach(service => {
           const item = document.createElement('li');
-          item.className = 'service-status-item ' + String(service?.status || 'unknown');
+          const serviceStatus = ['up', 'down', 'partial', 'unknown'].includes(service?.status) ? service.status : 'unknown';
+          item.className = 'service-status-item ' + serviceStatus;
           const content = document.createElement('div');
           content.className = 'service-item-content';
+          const identity = document.createElement('div');
+          identity.className = 'service-identity';
+          const name = document.createElement('strong');
+          name.className = 'service-name';
+          name.textContent = projectionText(service?.name ?? service?.systemdName);
           const description = document.createElement('span');
           description.className = 'service-description';
-          description.textContent = service?.description || '';
-          const name = document.createElement('span');
-          name.className = 'service-name';
-          name.textContent = String(service?.name || service?.systemdName || 'Service');
-          content.appendChild(description);
-          content.appendChild(name);
+          description.textContent = projectionText(service?.description);
+          identity.append(name, description);
+          const state = document.createElement('span');
+          state.className = 'service-state';
+          state.textContent = projectionText(service?.status);
+          content.append(identity, state);
           item.appendChild(content);
+          const facts = document.createElement('div');
+          facts.className = 'service-status-facts';
+          appendServiceFact(facts, 'Unit', service?.systemdName);
+          appendServiceFact(facts, 'Details', service?.statusDetails);
+          appendServiceFact(facts, 'Active', typeof service?.isActive === 'boolean' ? service.isActive : null);
+          appendServiceFact(facts, 'Managed by script', typeof service?.isScriptManaged === 'boolean' ? service.isScriptManaged : null);
+          appendServiceFact(facts, 'Port', service?.port);
+          appendServiceFact(facts, 'Needs reboot', typeof service?.needsReboot === 'boolean' ? service.needsReboot : null);
+          const rowSignal = readSignal(service, 'firstMissingSignal');
+          if (rowSignal) appendServiceFact(facts, 'First missing signal', rowSignal);
+          if (headerState.isAdmin) {
+            const enabled = typeof service?.enabled === 'boolean' ? service.enabled : service?.isEnabled;
+            appendServiceFact(facts, 'Enabled', typeof enabled === 'boolean' ? enabled : null);
+            const enabledSignal = readSignal(service, 'enabledFirstMissingSignal');
+            if (enabledSignal) appendServiceFact(facts, 'Enablement signal', enabledSignal);
+          }
+          item.appendChild(facts);
           list.appendChild(item);
         });
       }
+      const adminSummary = infoBody.querySelector('[data-services-enable-summary]');
+      if (adminSummary) {
+        const rows = services.map(service => typeof service?.enabled === 'boolean' ? service.enabled : service?.isEnabled).filter(value => typeof value === 'boolean');
+        const missing = services.length - rows.length;
+        adminSummary.textContent = successful ? `Enabled: ${rows.filter(Boolean).length}; disabled: ${rows.filter(value => !value).length}; unavailable: ${missing}.` : 'Enablement unavailable: ' + (signal || 'services-status-unavailable');
+      }
+      const unitsNode = infoBody.querySelector('[data-service-units]');
+      if (unitsNode) unitsNode.textContent = headerState.isAdmin && Array.isArray(data?.units) ? JSON.stringify(data.units, null, 2) : 'Unavailable';
       setServicesIndicatorState(data);
     }
     function modalRequestBody(button) {
       const route = button.dataset.modalFetch || '';
-      if (route.endsWith('/update-tailnet')) return JSON.stringify({ tailnetName: infoBody.querySelector('[data-tailnet-input]')?.value || '' });
-      if (route.endsWith('/authkey')) return JSON.stringify({ authKey: infoBody.querySelector('[data-authkey-input]')?.value || '' });
+      if (route.endsWith('/update-tailnet')) return JSON.stringify({ name: infoBody.querySelector('[data-tailnet-input]')?.value || '' });
+      if (route.endsWith('/authkey')) {
+        const input = infoBody.querySelector('[data-authkey-input]');
+        const key = input?.value || '';
+        if (input) input.value = '';
+        return JSON.stringify({ key });
+      }
       if (route === '/api/service/control' && button.dataset.serviceAction) return JSON.stringify({ service: 'transmissionVPN', action: button.dataset.serviceAction });
       if (route === '/api/transmission/keys/replace') {
         const username = infoBody.querySelector('[data-transmission-username]')?.value || '';
@@ -616,28 +1004,63 @@ fn shell_document_3() -> &'static str {
           const data = await response.json();
           if (!modalResponseIsCurrent(generation, expectedModal, expectedAdmin) || !infoBody.contains(node)) return;
           const servicesRoute = kind === 'services' && route === '/api/status/services';
+          const tailscaleStatusRoute = kind === 'tailscale' && route === '/api/status/tailscale';
+          const tailscaleConfigRoute = kind === 'tailscale' && route === '/api/status/tailscale/config';
           const transmissionRoute = kind === 'openvpn' && (route === '/api/status/vpn/pia' || route === '/api/status/vpn/transmission');
-          if (kind === 'tailscale' && route === '/api/status/tailscale') hydrateTailscaleModal(data);
-          else if (servicesRoute) hydrateServicesModal(data);
-          else if (transmissionRoute) hydrateTransmissionModal(data, expectedModal);
-          const label = routeReadLabel(route, data);
+          const powerRoute = kind === 'power-meter' && route === '/api/status/power/usage';
+          const failed = routeReadWasRefused(response, data);
+          const readData = failed ? unavailableReadData(data, routeUnavailableSignal(route)) : data;
+          const powerData = failed ? unavailablePowerUsage(data, routeUnavailableSignal(route)) : data;
+          if (tailscaleStatusRoute) hydrateTailscaleModal(readData);
+          else if (servicesRoute) hydrateServicesModal(readData);
+          else if (transmissionRoute) hydrateTransmissionModal(readData, expectedModal);
+          if (powerRoute) {
+            setPowerUsage(powerData);
+            renderPowerModal();
+          }
+          if (tailscaleConfigRoute) {
+            const input = expectedModal?.querySelector('[data-tailnet-input]');
+            if (!failed && data?.ok === true && typeof data.tailnet === 'string' && input && !input.dataset.userEdited) input.value = data.tailnet;
+          }
+          const labelData = powerRoute ? powerData : readData;
+          const label = routeReadLabel(route, labelData);
           if (servicesRoute) {}
           else if (node.matches('ul')) node.innerHTML = `<li>${label}</li>`;
-          else if (node.classList.contains('power-value')) node.querySelector('[data-modal-status]').textContent = label.replace('Power readback: ', '').replace('Power readback unavailable', 'unavailable');
-          else if (!transmissionRoute && !(kind === 'tailscale' && route === '/api/status/tailscale')) node.textContent = label;
+          else if (node.classList.contains('power-value')) {
+            const statusNode = node.querySelector('[data-modal-status]');
+            if (statusNode) statusNode.textContent = failed ? powerData.firstMissingSignal : label.replace('Power readback: ', '').replace('Power readback unavailable', 'unavailable');
+          } else if (!transmissionRoute && !tailscaleStatusRoute) node.textContent = label;
           if (route === '/api/status') {
-            node.classList.remove('loading', 'connected', 'disconnected', 'error');
+            node.classList.remove('loading', 'connected', 'disconnected', 'error', 'unavailable');
             node.classList.add(internetState.status || 'loading');
           }
           node.classList.remove('loading');
           node.dataset.hydrated = 'true';
         } catch (_) {
           if (!modalResponseIsCurrent(generation, expectedModal, expectedAdmin) || !infoBody.contains(node)) return;
+          const signal = routeUnavailableSignal(route);
+          const unavailable = unavailableReadData(null, signal);
           const fallback = 'Status unavailable: ' + route;
-          if (kind === 'openvpn' && (route === '/api/status/vpn/pia' || route === '/api/status/vpn/transmission')) hydrateTransmissionModal(null, expectedModal);
+          const servicesRoute = kind === 'services' && route === '/api/status/services';
+          const tailscaleStatusRoute = kind === 'tailscale' && route === '/api/status/tailscale';
+          const transmissionRoute = kind === 'openvpn' && (route === '/api/status/vpn/pia' || route === '/api/status/vpn/transmission');
+          const powerRoute = kind === 'power-meter' && route === '/api/status/power/usage';
+          if (tailscaleStatusRoute) hydrateTailscaleModal(unavailable);
+          else if (servicesRoute) hydrateServicesModal(unavailable);
+          else if (transmissionRoute) hydrateTransmissionModal(unavailable, expectedModal);
           else if (node.matches('ul')) node.innerHTML = `<li>${fallback}</li>`;
-          else if (node.classList.contains('power-value')) node.querySelector('[data-modal-status]').textContent = 'unavailable';
-          else node.textContent = fallback;
+          else if (powerRoute || node.classList.contains('power-value')) {
+            const powerUnavailable = unavailablePowerUsage(null, signal);
+            setPowerUsage(powerUnavailable);
+            renderPowerModal();
+            const statusNode = node.querySelector('[data-modal-status]');
+            if (statusNode) statusNode.textContent = powerUnavailable.firstMissingSignal;
+          } else if (route === '/api/status') {
+            setInternetIndicatorState(unavailable);
+            node.textContent = internetStatusModalText();
+            node.classList.remove('loading', 'connected', 'disconnected', 'error');
+            node.classList.add('unavailable');
+          } else node.textContent = fallback;
           node.classList.remove('loading');
           node.dataset.hydrated = 'false';
         }
@@ -646,6 +1069,22 @@ fn shell_document_3() -> &'static str {
         const statusNode = infoBody.querySelector('[data-modal-status][data-route-read="/api/status"]');
         if (statusNode) statusNode.textContent = internetStatusModalText();
       }
+    }
+    function redactTailscaleAuthkeyReceipt(value, secret) {
+      if (typeof value === 'string') return secret ? value.split(secret).join('[redacted]') : value;
+      if (Array.isArray(value)) return value.map(item => redactTailscaleAuthkeyReceipt(item, secret));
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, /^(auth.?key|key)$/i.test(name) ? '[redacted]' : redactTailscaleAuthkeyReceipt(item, secret)]));
+      }
+      return value;
+    }
+    function setTailscaleActionLogin(modal, value, secret = '') {
+      const section = modal?.querySelector('[data-tailscale-action-login-section]');
+      const link = modal?.querySelector('[data-tailscale-action-login-url]');
+      const raw = typeof value === 'string' ? value : '';
+      const safe = secret && raw.includes(secret) ? null : safeHttpUrl(raw);
+      if (section) section.hidden = !safe;
+      if (link) { if (safe) { link.href = safe; link.textContent = safe; } else { link.removeAttribute('href'); link.textContent = ''; } }
     }
     function wireModalFetches() {
       infoBody.querySelectorAll('[data-modal-fetch]').forEach(button => button.addEventListener('click', async () => {
@@ -657,6 +1096,8 @@ fn shell_document_3() -> &'static str {
         const originalLabel = button.textContent;
         const isSpeedTest = button.hasAttribute('data-speed-test-button');
         const isTransmissionKeysMutation = route === '/api/transmission/keys/replace' || route === '/api/transmission/keys/rotate';
+        const isTailscaleAction = route.startsWith('/api/status/tailscale/') && route !== '/api/status/tailscale/config';
+        let requestSecret = '';
         const requestGeneration = infoModalGeneration;
         const requestModal = infoBody.querySelector('[data-modal-kind-body]');
         const expectedAdmin = headerState.isAdmin;
@@ -672,6 +1113,7 @@ fn shell_document_3() -> &'static str {
         if (output) output.textContent = isTransmissionKeysMutation ? 'Submitting key operation…' : ('Loading ' + route + '…');
         let requestBody;
         try {
+          if (route.endsWith('/authkey')) requestSecret = infoBody.querySelector('[data-authkey-input]')?.value || '';
           requestBody = modalRequestBody(button);
           const response = await fetch(route, { method: button.dataset.method || 'GET', headers: requestBody ? { 'Content-Type': 'application/json' } : undefined, body: requestBody });
           const text = await response.text();
@@ -700,6 +1142,16 @@ fn shell_document_3() -> &'static str {
             if (requestModal?.dataset.modalKindBody === 'openvpn') renderTransmissionServiceStatus(requestModal, parsed);
             if (output) output.textContent = parsed?.firstMissingSignal && parsed.firstMissingSignal !== 'none' ? String(parsed.firstMissingSignal) : (response.ok ? 'Service action completed.' : 'Service action refused.');
             if (expectedAdmin && button.dataset.serviceAction !== 'status') void hydrateTransmissionAdminReads(requestGeneration, requestModal);
+          } else if (isTailscaleAction) {
+            const refusalSignal = readSignal(parsed, 'firstMissingSignal', 'first_missing_signal');
+            const explicitSuccess = parsed?.ok === true || parsed?.accepted === true || parsed?.success === true;
+            const success = response.ok && explicitSuccess && parsed?.ok !== false && parsed?.accepted !== false && parsed?.success !== false && parsed?.refused !== true && !refusalSignal;
+            const action = route.split('/').pop() || 'action';
+            const safeReceipt = redactTailscaleAuthkeyReceipt(parsed, requestSecret);
+            const safeSignal = requestSecret ? String(refusalSignal || parsed?.error || parsed?.refusal || '').split(requestSecret).join('[redacted]') : (refusalSignal || parsed?.error || parsed?.refusal || 'tailscale-action-refused');
+            if (output) output.textContent = `${success ? 'Accepted' : 'Refused'} Tailscale ${action}${success ? '' : ': ' + safeSignal}\n${safeReceipt ? JSON.stringify(safeReceipt, null, 2) : (requestSecret ? text.split(requestSecret).join('[redacted]') : text)}`;
+            if (action === 'connect') setTailscaleActionLogin(requestModal, success ? parsed?.loginUrl : null, requestSecret);
+            requestSecret = '';
           } else if (output) {
             output.textContent = parsed ? JSON.stringify(parsed, null, 2) : text;
           }
@@ -714,6 +1166,7 @@ fn shell_document_3() -> &'static str {
           if (output) output.textContent = isTransmissionKeysMutation ? 'transmission-keys-request-failed' : ('fetch failed: ' + (error?.message || 'request-failed'));
         } finally {
           requestBody = undefined;
+          requestSecret = '';
           if (isSpeedTest) internetState.isSpeedTesting = false;
           if (isCurrent()) {
             button.textContent = originalLabel;
@@ -724,6 +1177,7 @@ fn shell_document_3() -> &'static str {
       }));
     }
     function openInfoModal(title, kind = 'status') {
+      if (infoBody.querySelector('[data-modal-kind-body="power-meter"]')) cancelPowerCalibrationEditing();
       sourceCurrencyModalGeneration += 1;
       infoModalGeneration += 1;
       clearTransmissionSecrets();
@@ -735,6 +1189,10 @@ fn shell_document_3() -> &'static str {
       infoBackdrop.setAttribute('aria-hidden', 'false');
       wireModalFetches();
       hydrateModalRouteReads(kind);
+      if (kind === 'tailscale') {
+        const tailnetInput = infoBody.querySelector('[data-tailnet-input]');
+        tailnetInput?.addEventListener('input', () => { tailnetInput.dataset.userEdited = 'true'; });
+      }
       if (kind === 'openvpn' && headerState.isAdmin) {
         void hydrateTransmissionAdminReads(infoModalGeneration, infoBody.querySelector('[data-modal-kind-body="openvpn"]'));
       }
@@ -742,9 +1200,17 @@ fn shell_document_3() -> &'static str {
         setSourceCurrencyIndicatorState(sourceCurrencyUpdateState.latestEnvelope);
         void refreshSourceCurrencyUpdateServiceStatus(modalGeneration);
       }
-      if (kind === 'power-meter') renderPowerModal();
+      if (kind === 'power-meter') {
+        const generation = infoModalGeneration;
+        const modal = infoBody.querySelector('[data-modal-kind-body="power-meter"]');
+        wirePowerCalibrationControls(generation, modal);
+        void loadPowerUsage(generation, modal, headerState.isAdmin);
+        if (headerState.isAdmin) void loadPowerCalibration(generation, modal);
+        renderPowerModal();
+      }
     }
     function closeInfoModal() {
+      if (infoBody.querySelector('[data-modal-kind-body="power-meter"]')) cancelPowerCalibrationEditing();
       sourceCurrencyModalGeneration += 1;
       infoModalGeneration += 1;
       clearTransmissionSecrets();
@@ -868,33 +1334,39 @@ fn shell_document_3() -> &'static str {
     }
     const coreTopicIds = ['internet.status', 'tailscale.status', 'vpn.status', 'services.status', 'power.status', 'source.currency'];
     function applyCoreTopic(topicId, envelope) {
-      const data = envelope?.snapshot || {};
-      if (topicId === 'vpn.status' && infoBackdrop.classList.contains('open')) {
-        hydrateTransmissionModal(envelope?.status === 'snapshot' ? data : null);
+      if (topicId === 'source.currency') {
+        setSourceCurrencyIndicatorState(envelope);
+        return;
+      }
+      const snapshotData = envelope?.snapshot;
+      const snapshot = envelope?.status === 'snapshot' && snapshotData && typeof snapshotData === 'object' && !Array.isArray(snapshotData);
+      const fallbackSignal = ({
+        'internet.status': 'internet-status-unavailable',
+        'tailscale.status': 'tailscale-status-unavailable',
+        'vpn.status': 'vpn-status-unavailable',
+        'services.status': 'services-status-unavailable',
+        'power.status': 'power-usage-unavailable'
+      })[topicId] || 'core-status-unavailable';
+      const firstMissingSignal = readSignal(envelope, 'firstMissingSignal', 'first_missing_signal') || readSignal(snapshotData, 'firstMissingSignal', 'first_missing_signal') || fallbackSignal;
+      const data = snapshot
+        ? snapshotData
+        : { ok: false, success: false, status: 'unavailable', firstMissingSignal };
+      if (topicId === 'vpn.status') {
+        if (infoBackdrop.classList.contains('open')) hydrateTransmissionModal(data);
+        setVpnIndicatorState(data, snapshot ? envelope?.indicatorState : null);
       }
       if (topicId === 'internet.status') setInternetIndicatorState(data);
-      if (topicId === 'services.status') setServicesIndicatorState(data);
-      if (topicId === 'power.status') {
-        hydratePowerIndicator(data);
-        if (data?.ok && typeof data.current === 'number') pushPowerChartPoint(formatChartTime(), Number(formatPowerWatts(data.current)));
-        if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]')) renderPowerModal();
+      if (topicId === 'tailscale.status') {
+        setTailscaleIndicatorState(data);
+        if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="tailscale"]')) hydrateTailscaleModal(data);
       }
-      if (topicId === 'source.currency') setSourceCurrencyIndicatorState(envelope);
-      const indicatorId = ({ 'tailscale.status': 'tailscale', 'vpn.status': 'openvpn', 'services.status': 'services' })[topicId];
-      const button = indicatorId ? document.querySelector(`[data-indicator="${indicatorId}"]`) : null;
-      if (button && topicId !== 'services.status') {
-        button.classList.remove('loading', 'ok', 'warn', 'error');
-        if (topicId === 'vpn.status') {
-          const state = envelope?.status === 'snapshot' && ['ok', 'warn', 'error'].includes(envelope?.indicatorState)
-            ? envelope.indicatorState
-            : 'unavailable';
-          button.classList.add(state === 'unavailable' ? 'loading' : state);
-          button.dataset.indicatorState = state;
-          button.title = state === 'unavailable' ? 'VPN & Transmission status unavailable' : `VPN & Transmission ${state}`;
-          button.setAttribute('aria-label', state === 'unavailable' ? 'VPN & Transmission status unavailable' : `VPN & Transmission ${state}`);
-        } else {
-          button.classList.add(envelope?.status === 'snapshot' && data?.ok !== false ? 'ok' : 'warn');
-        }
+      if (topicId === 'services.status') {
+        setServicesIndicatorState(data);
+        if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="services"]')) hydrateServicesModal(data);
+      }
+      if (topicId === 'power.status') {
+        const powerData = snapshot ? data : unavailablePowerUsage(snapshotData, fallbackSignal, firstMissingSignal);
+        setPowerUsage(powerData);
       }
     }
     function scheduleCoreRenewal(route) {

@@ -1,6 +1,7 @@
 mod indicators {
     use super::*;
     include!("indicators/registry/index.rs");
+    include!("indicators/stats-cache/index.rs");
     include!("indicators/core-events/index.rs");
     include!("indicators/tailscale/index.rs");
     include!("indicators/internet/index.rs");
@@ -10,4 +11,7 @@ mod indicators {
     include!("indicators/source-currency/index.rs");
 }
 
-use indicators::{collect_indicator_topic, render_indicator_modal_registry, render_indicator_strip};
+pub(crate) use indicators::{
+    collect_indicator_topic, collect_indicator_topic_for_request, render_indicator_modal_registry,
+    render_indicator_strip, IndicatorTopicSample,
+};

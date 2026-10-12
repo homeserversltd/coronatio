@@ -285,7 +285,28 @@ fn caduceus_http_with_attendance(method: &str, path: &str, attendance: Option<&c
     caduceus_http_with_attendance_and_document(method, path, attendance, None)
 }
 
-fn caduceus_http_with_attendance_and_document(method: &str, path: &str, attendance: Option<&crate::caduceus_access::AttendanceProof>, document: Option<&str>) -> CaduceusHttpReadback {
+fn caduceus_http_with_attendance_and_document(
+    method: &str,
+    path: &str,
+    attendance: Option<&crate::caduceus_access::AttendanceProof>,
+    document: Option<&str>,
+) -> CaduceusHttpReadback {
+    caduceus_http_with_attendance_and_document_timeout(
+        method,
+        path,
+        attendance,
+        document,
+        Duration::from_secs(4),
+    )
+}
+
+fn caduceus_http_with_attendance_and_document_timeout(
+    method: &str,
+    path: &str,
+    attendance: Option<&crate::caduceus_access::AttendanceProof>,
+    document: Option<&str>,
+    timeout: Duration,
+) -> CaduceusHttpReadback {
     let mut stream = match UnixStream::connect(caduceus_socket_path()) {
         Ok(stream) => stream,
         Err(_err) => {
@@ -298,8 +319,8 @@ fn caduceus_http_with_attendance_and_document(method: &str, path: &str, attendan
             };
         }
     };
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(4)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(4)));
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
     let attendance_header = attendance
             .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
         .unwrap_or_default();

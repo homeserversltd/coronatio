@@ -357,16 +357,33 @@ fn caduceus_actuate(
     mapping: MutationActionTarget,
     path: &str,
 ) -> CaduceusHttpReadback {
+    caduceus_actuate_with_timeout(
+        authority,
+        headers,
+        mapping,
+        path,
+        std::time::Duration::from_secs(4),
+    )
+}
+
+fn caduceus_actuate_with_timeout(
+    authority: &MutationAuthority,
+    headers: &axum::http::HeaderMap,
+    mapping: MutationActionTarget,
+    path: &str,
+    timeout: std::time::Duration,
+) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
         Ok(attendance) => invalidate_scoped_attendance(
             authority,
             &attendance,
-            caduceus_http_with_attendance_and_document(
+            caduceus_http_with_attendance_and_document_timeout(
                 "POST",
                 path,
                 Some(&attendance.proof),
                 Some(&attendance.document),
+                timeout,
             ),
         ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
@@ -502,13 +519,17 @@ fn mutation_config_set(
     path: &str,
     value: serde_json::Value,
 ) -> CaduceusHttpReadback {
-    caduceus_actuate_json(
+    let readback = caduceus_actuate_json(
         authority,
         headers,
         MutationActionTarget::config(path),
         "/api/v1/config/set",
         serde_json::json!({"path": path, "value": value}),
-    )
+    );
+    if readback.ok && path.starts_with("tabs.portals.visibility.") {
+        crate::indicators::invalidate_indicator_portal_metadata();
+    }
+    readback
 }
 
 #[cfg(test)]

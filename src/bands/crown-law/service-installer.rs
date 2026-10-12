@@ -258,7 +258,11 @@ fn installer_lane_mapping() -> Vec<InstallerLaneMapping> {
 pub(crate) fn caduceus_stats_value(path: &str) -> serde_json::Value {
     #[cfg(test)]
     STATS_CURRENT_PULLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    caduceus_http("GET", path).body
+    if path == "/api/v1/appliance/stats" {
+        indicators::caduceus_stats_value()
+    } else {
+        caduceus_http("GET", path).body
+    }
 }
 #[cfg(test)]
 static STATS_CURRENT_PULLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);

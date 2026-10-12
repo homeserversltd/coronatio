@@ -45,19 +45,19 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/admin/hard-drive-test/start", post(admin_class_generic_mutation_route))
         .route("/api/admin/hard-drive-test/devices", get(homeserver_rust_read_route))
 
-        .route("/api/status/services", get(homeserver_rust_read_route))
+        .route("/api/status/services", get(indicator_legacy_read_route))
         .route("/api/status", get(internet_status_route))
         .route("/api/uptime", get(uptime_route))
-        .route("/api/status/tailscale", get(homeserver_rust_read_route))
-        .route("/api/status/tailscale/connect", post(network_identity_mutation_route))
-        .route("/api/status/tailscale/authkey", post(network_identity_mutation_route))
-        .route("/api/status/tailscale/disconnect", post(network_identity_mutation_route))
-        .route("/api/status/tailscale/enable", post(network_identity_mutation_route))
-        .route("/api/status/tailscale/disable", post(network_identity_mutation_route))
-        .route("/api/status/tailscale/config", get(homeserver_rust_read_route).post(network_identity_mutation_route))
-        .route("/api/status/tailscale/update-tailnet", post(network_identity_mutation_route))
-        .route("/api/status/vpn/pia", get(homeserver_rust_read_route))
-        .route("/api/status/vpn/transmission", get(homeserver_rust_read_route))
+        .route("/api/status/tailscale", get(indicator_legacy_read_route))
+        .route("/api/status/tailscale/connect", post(tailscale_mutation_route))
+        .route("/api/status/tailscale/authkey", post(tailscale_mutation_route))
+        .route("/api/status/tailscale/disconnect", post(tailscale_mutation_route))
+        .route("/api/status/tailscale/enable", post(tailscale_mutation_route))
+        .route("/api/status/tailscale/disable", post(tailscale_mutation_route))
+        .route("/api/status/tailscale/config", get(tailscale_config_route).post(tailscale_mutation_route))
+        .route("/api/status/tailscale/update-tailnet", post(tailscale_mutation_route))
+        .route("/api/status/vpn/pia", get(indicator_legacy_read_route))
+        .route("/api/status/vpn/transmission", get(indicator_legacy_read_route))
         .route("/api/transmission/keys", get(transmission_keys_route))
         .route("/api/transmission/keys/replace", post(transmission_keys_replace_route))
         .route("/api/transmission/keys/rotate", post(transmission_keys_rotate_route))
@@ -87,8 +87,9 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/service/control", post(portal_service_control_route))
         .route("/api/portals/images/:filename", get(portal_image_route))
         .route("/api/status/internet/speedtest", post(internet_speedtest_route))
-        .route("/status/power/usage", get(homeserver_rust_read_route))
-        .route("/api/status/power/usage", get(homeserver_rust_read_route))
+        .route("/api/status/power/usage", get(power_usage_route))
+        .route("/status/power/usage", get(power_usage_route))
+        .route("/api/status/power/calibration", get(power_calibration_get_route).post(power_calibration_post_route))
         .route("/api/kea-leases", get(homeserver_rust_read_route))
         .route("/api/network/notes", get(network_notes_read_route).put(network_notes_write_route))
         .route("/api/version", get(homeserver_rust_read_route))
@@ -336,45 +337,6 @@ async fn upload_history_route() -> impl IntoResponse {
 fn clear_upload_history_route() -> Response {
     hyalos_channel_clear_refusal_response("coronatio.upload.history.clear.v1", "/api/upload/history/clear")
 }
-
-async fn internet_status_route(headers: axum::http::HeaderMap) -> Response {
-    let raw = internet_status_snapshot();
-    match session_projection_from_headers(&headers).await {
-        Session::Admin => Json(project_internet_status_admin(&raw)).into_response(),
-        Session::Guest => Json(project_internet_status_guest(&raw)).into_response(),
-    }
-}
-
-fn internet_status_snapshot() -> InternetStatusSnapshot {
-    const INTERNET_STATUS_PROBE_HOSTS: [&str; 3] = ["1.1.1.1", "8.8.8.8", "208.67.222.222"];
-    const INTERNET_STATUS_TIMEOUT_SECONDS: u64 = 3;
-    let connected = INTERNET_STATUS_PROBE_HOSTS
-        .iter()
-        .map(|host| format!("{host}:53"))
-        .any(|authority| {
-            authority
-                .parse::<SocketAddr>()
-                .ok()
-                .and_then(|addr| TcpStream::connect_timeout(&addr, Duration::from_secs(INTERNET_STATUS_TIMEOUT_SECONDS)).ok())
-                .is_some()
-        });
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs_f64())
-        .unwrap_or(0.0);
-    InternetStatusSnapshot {
-        schema: "coronatio.internet.status.v1".to_string(),
-        ok: true,
-        success: true,
-        status: if connected { "connected" } else { "disconnected" }.to_string(),
-        timestamp,
-        authority: "Coronatio Rust route port of Flask InternetStatusMonitor.check_connectivity".to_string(),
-        hosts: INTERNET_STATUS_PROBE_HOSTS.iter().map(|host| (*host).to_string()).collect(),
-        timeout_seconds: INTERNET_STATUS_TIMEOUT_SECONDS,
-        first_missing_signal: "none".to_string(),
-    }
-}
-
 
 async fn uptime_route() -> impl IntoResponse {
     let uptime_seconds = std::fs::read_to_string("/proc/uptime")
@@ -648,6 +610,7 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/status/internet/speedtest", &["post"]),
         ("/status/power/usage", &["get"]),
         ("/api/status/power/usage", &["get"]),
+        ("/api/status/power/calibration", &["get", "post"]),
         ("/api/kea-leases", &["get"]),
         ("/api/network/notes", &["get", "put"]),
         ("/api/version", &["get"]),

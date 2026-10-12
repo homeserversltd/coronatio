@@ -13,7 +13,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     env,
     io::{BufRead, BufReader, Read, Write},
-    net::{SocketAddr, TcpStream},
+    net::SocketAddr,
     os::unix::net::UnixStream,
     path::{Path as FsPath, PathBuf},
     process::Command,

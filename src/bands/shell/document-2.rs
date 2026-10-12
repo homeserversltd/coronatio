@@ -449,7 +449,7 @@ fn shell_document_2() -> &'static str {
     const newPinInput = document.querySelector('[data-pin-new]');
     const confirmPinInput = document.querySelector('[data-pin-confirm]');
     const internetIndicator = document.querySelector('[data-internet-status-indicator]');
-    const internetState = { status: 'loading', publicIp: undefined, ipDetails: undefined, speedTestResults: null, speedTestError: null, isSpeedTesting: false };
+    const internetState = { status: 'loading', publicIp: undefined, speedTestResults: null, speedTestError: null, isSpeedTesting: false };
     let modalMode = 'enter';
     function themeToCss(theme) {
       if (!theme) return '';
