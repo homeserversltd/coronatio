@@ -35,6 +35,7 @@ fn shell_document_3() -> &'static str {
     }
     const adminDiskSnapshotFamily = Object.freeze({ paneId: 'admin', topics: [], snapshotRoutes: ['/api/v1/storage/disk/census'], authClass: 'admin', timeoutMs: 15000 });
     let adminDiskSnapshotOwner = null;
+    let adminDiskSnapshotLastGood = null;
     let adminDiskPageHidden = false;
     function applyAdminDomState() {
       if (adminButton) {

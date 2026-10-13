@@ -367,7 +367,6 @@ fn shell_document_4_tail() -> &'static str {
       const classes = eligible ? 'disk-item disk-census-row' : 'disk-item disk-census-row unavailable';
       return `<article class="${classes}" data-disk-parent="${escapeDiskHtml(name)}" data-scaffold-key="disk-census-${escapeDiskHtml(name || label)}"><span class="disk-icon" aria-hidden="true">▣</span><div class="disk-info"><div class="disk-name">${escapeDiskHtml(label)}</div>${details}${action}</div></article>`;
     }
-    let adminDiskSnapshotLastGood = null;
     function admittedAdminDiskHost() {
       const family = adminDiskSnapshotFamily;
       if (adminDiskPageHidden || family.authClass !== 'admin' || !headerState.isAdmin || !coronatioAttendanceRuntime.currentAttendance || !sessionLawfulTab(family.paneId) || !viewportFamilyAdmitted(family.paneId)) return null;
