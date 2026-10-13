@@ -746,14 +746,20 @@ async fn admit_tab_route(headers: axum::http::HeaderMap, Path(tab_id): Path<Stri
     let mut response = if !is_safe_tab_id(&tab_id) {
         fragment_fault(StatusCode::BAD_REQUEST, &tab_id, CartridgeFaultKind::UpstreamError)
     } else if tab_id == "linker" {
-        linker_fragment_route(headers.clone(), Query(LinkerQuery::default())).await
+        let facts = load_iris_facts_sync();
+        let visible = iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == tab_id && grant.state == RenderState::Visible);
+        if visible { linker_fragment_route(headers.clone(), Query(LinkerQuery::default())).await }
+        else { fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound) }
     } else if let Some(cartridge) = appliance_cartridge(&tab_id) {
         let facts = load_iris_facts_sync();
         let visible = iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == tab_id && grant.state == RenderState::Visible);
         if !visible { fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound) }
         else { Html(render_cartridge_iframe_fragment(&cartridge)).into_response() }
-    } else if native_crown_panes().into_iter().any(|pane| pane.id == tab_id) {
-        Html(render_og_pane_fragment(&tab_id, session)).into_response()
+    } else if let Some(pane) = native_crown_panes().into_iter().find(|pane| pane.id == tab_id) {
+        let facts = load_iris_facts_sync();
+        let visible = iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == pane.id && grant.state == RenderState::Visible);
+        if visible { Html(render_og_pane_fragment(&tab_id, session)).into_response() }
+        else { fragment_fault(StatusCode::NOT_FOUND, &tab_id, CartridgeFaultKind::TabNotFound) }
     } else if let Some(xenos) = paired_xenos(&tab_id).await {
         let facts = load_iris_facts_sync();
         let visible = iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == tab_id && grant.state == RenderState::Visible);
@@ -879,23 +885,44 @@ fn no_store(mut response: Response) -> Response {
 }
 
 fn render_og_pane_fragment(tab_id: &str, session: Session) -> String {
-    let shell = render_crown_shell_for_session(session);
-    let fragment = extract_pane_inner_html(&shell, tab_id).unwrap_or_else(|| {
+    let Some(pane) = native_crown_panes().into_iter().find(|pane| pane.id == tab_id) else {
         record_cartridge_fault(tab_id, CartridgeFaultKind::TabNotFound);
-        format!(
-            r#"<div hidden data-cartridge-fault="true" data-cartridge-fault-kind="tab-not-found" data-tab-id="{}"></div>"#,
-            tab_id
-        )
-    });
-    if tab_id == "portals" {
-        fragment.replacen(
-            "data-portals-fragment=\"/api/portals/elements\"",
-            "data-portals-fragment=\"/api/portals/elements\" hx-get=\"/api/portals/elements\" hx-trigger=\"load\" hx-swap=\"innerHTML\"",
-            1,
-        )
-    } else {
-        fragment
+        return format!(r#"<div hidden data-cartridge-fault="true" data-cartridge-fault-kind="tab-not-found" data-tab-id="{}"></div>"#, tab_id);
+    };
+    if pane.admin_only && session != Session::Admin {
+        record_cartridge_fault(tab_id, CartridgeFaultKind::TabNotFound);
+        return format!(r#"<div hidden data-cartridge-fault="true" data-cartridge-fault-kind="tab-not-found" data-tab-id="{}"></div>"#, tab_id);
     }
+    let fragment = if tab_id == "admin" {
+        let patch = render_admin_document_patch();
+        extract_pane_inner_html(&patch, "admin").unwrap_or_default()
+    } else {
+        let stats = if tab_id == "stats" { render_stats_elements_fragment(session) } else { String::new() };
+        let upload = if tab_id == "upload" { render_upload_tree_placeholder() } else { "" };
+        let test = if tab_id == "test" { render_test_showcase() } else { String::new() };
+        let unbound = if tab_id == "unbound" && session == Session::Admin { DNS_PANE } else { "" };
+        let shell = shell_document_2()
+            .replace("__NAV__", "")
+            .replace("__INDICATOR_SPINE__", "")
+            .replace("__STATS_ELEMENTS_FRAGMENT__", &stats)
+            .replace("__UPLOAD_TREE_FRAGMENT__", upload)
+            .replace("__TEST__", &test)
+            .replace("__CARTRIDGE_PANES__", "")
+            .replace("__UNBOUND_PANE__", unbound);
+        let fragment = extract_pane_inner_html(&shell, tab_id).unwrap_or_else(|| {
+            record_cartridge_fault(tab_id, CartridgeFaultKind::TabNotFound);
+            format!(r#"<div hidden data-cartridge-fault="true" data-cartridge-fault-kind="tab-not-found" data-tab-id="{}"></div>"#, tab_id)
+        });
+        if tab_id == "portals" {
+            fragment.replace(
+                r#"data-portals-fragment="/api/portals/elements""#,
+                r#"data-portals-fragment="/api/portals/elements" hx-get="/api/portals/elements" hx-trigger="portals-admitted" hx-target="this" hx-swap="innerHTML" hx-request='{"timeout":8000}'"#,
+            )
+        } else {
+            fragment
+        }
+    };
+    fragment
 }
 
 fn extract_pane_inner_html(shell: &str, tab_id: &str) -> Option<String> {

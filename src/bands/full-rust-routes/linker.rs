@@ -172,7 +172,7 @@ fn linker_fragment(s: &LinkerState, readback: Option<&CaduceusHttpReadback>) -> 
     };
     let script = r#"<style>.linker-cursor{visibility:hidden}.linker-row.cursor{outline:2px solid currentColor;background:color-mix(in srgb,currentColor 10%,transparent)}.linker-row.cursor>.linker-cursor{visibility:visible}</style><script>(function(){const x=document.getElementById('linker-fragment');if(!x)return;let r=[...x.querySelectorAll('[data-linker-entry]')],i=0;const next=window.__linkerCursorNext;if(next){const n=r.findIndex(z=>z.dataset.linkerPath===next);if(n>=0)i=(n+1)%r.length;window.__linkerCursorNext=null;}const f=()=>{r=[...x.querySelectorAll('[data-linker-entry]')];if(r.length){i=(i+r.length)%r.length;r.forEach((z,n)=>z.classList.toggle('cursor',n===i));r[i].focus()}};f();x.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select,button,[contenteditable]'))return;r=[...x.querySelectorAll('[data-linker-entry]')];if(!r.length)return;const k=e.key.toLowerCase(),cur=r[i],go=p=>htmx.ajax('GET','/admit/linker?path='+encodeURIComponent(p),{target:'#linker-fragment',swap:'outerHTML'});if(k==='j'||k==='arrowdown'){e.preventDefault();i=(i+1)%r.length;f()}else if(k==='k'||k==='arrowup'){e.preventDefault();i=(i+r.length-1)%r.length;f()}else if(k==='h'||k==='arrowleft'){e.preventDefault();const p=x.dataset.linkerPath||'/';if(p!=='/'){const q=p.replace(/\/+$/,'').split('/');q.pop();go(q.join('/')||'/')}}else if((k==='l'||k==='arrowright'||k==='enter')&&cur.dataset.linkerDirectory==='true'){e.preventDefault();cur.click()}else if(k===' '){e.preventDefault();window.__linkerCursorNext=cur.dataset.linkerPath;cur.querySelector('input[type=checkbox]').click()}})})();</script>"#;
     format!(
-        r###"<section id="linker-fragment" data-linker-state="{}" data-linker-path="{}"><header><h2>Linker</h2><nav aria-label="Ancestor trail"><a href="/admit/linker" hx-get="/admit/linker" hx-target="#linker-fragment" hx-swap="outerHTML">/</a>{}</nav><p>Current path: {} · Visible: {} · Selected: {} · Last feedback: <span aria-live="polite">{}</span></p></header><nav class="directory-tree-container" role="tree" data-linker-tree aria-label="Child directories">{}</nav><form method="get" action="/admit/linker" hx-get="/admit/linker" hx-target="#linker-fragment" hx-swap="outerHTML"><label>Name filter <input name="filter" type="search" value="{}"></label><input type="hidden" name="path" value="{}"><button>Filter</button></form><div class="linker-list" role="list">{}</div>{}<form class="linker-action-shelf" method="post"><button formaction="/admit/linker/deploy" hx-post="/admit/linker/deploy" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Deploy selected</button><button formaction="/admit/linker/naming" hx-post="/admit/linker/naming" hx-target="#linker-fragment" hx-swap="outerHTML">New directory</button><button formaction="/admit/linker/rename" hx-post="/admit/linker/rename" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Rename selected</button><button formaction="/admit/linker/delete" hx-post="/admit/linker/delete" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Delete selected</button></form>{}{}<p hidden>Browsing Naming Result Fault</p></section>"###,
+        r###"<section id="linker-fragment" data-linker-state="{}" data-linker-path="{}"><header><h2>Linker</h2><nav aria-label="Ancestor trail"><a href="/admit/linker?path=%2F" hx-get="/admit/linker?path=%2F" hx-target="#linker-fragment" hx-swap="outerHTML">/</a>{}</nav><p>Current path: {} · Visible: {} · Selected: {} · Last feedback: <span data-linker-read-status aria-live="polite">{}</span></p></header><nav class="directory-tree-container" role="tree" data-linker-tree aria-label="Child directories">{}</nav><form method="get" action="/admit/linker" hx-get="/admit/linker" hx-target="#linker-fragment" hx-swap="outerHTML"><label>Name filter <input name="filter" type="search" value="{}"></label><input type="hidden" name="path" value="{}"><button>Filter</button></form><div class="linker-list" role="list">{}</div>{}<form class="linker-action-shelf" method="post"><button formaction="/admit/linker/deploy" hx-post="/admit/linker/deploy" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Deploy selected</button><button formaction="/admit/linker/naming" hx-post="/admit/linker/naming" hx-target="#linker-fragment" hx-swap="outerHTML">New directory</button><button formaction="/admit/linker/rename" hx-post="/admit/linker/rename" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Rename selected</button><button formaction="/admit/linker/delete" hx-post="/admit/linker/delete" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Delete selected</button></form>{}{}<p hidden>Browsing Naming Result Fault</p></section>"###,
         s.mode.as_str(),
         linker_escape(&s.path),
         trail,
@@ -266,6 +266,22 @@ fn linker_browse(
     Ok(r)
 }
 async fn linker_fragment_route(h: axum::http::HeaderMap, Query(q): Query<LinkerQuery>) -> Response {
+    let session = session_projection_from_headers(&h).await;
+    let facts = load_iris_facts_sync();
+    let visible = iris::plan(&facts, session).tabs.into_iter().any(|grant| grant.tab_id == "linker" && grant.state == RenderState::Visible);
+    if !visible { return (StatusCode::NOT_FOUND, Html(String::new())).into_response(); }
+    if q.path.is_none() && q.filter.is_none() {
+        let mut skeleton = LinkerState::default();
+        skeleton.feedback = "Directory data loads after this view is admitted.".into();
+        let body = linker_fragment(&skeleton, None).replacen(
+            "<section id=\"linker-fragment\"",
+            r#"<section id="linker-fragment" data-linker-readback hx-get="/admit/linker?path=%2F" hx-trigger="linker-readback" hx-target="this" hx-swap="outerHTML" hx-request='{"timeout":8000}'"#,
+            1,
+        );
+        let mut response = (StatusCode::OK, Html(body)).into_response();
+        response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        return response;
+    }
     let k = linker_key(&h);
     let mut all = linker_states().lock().expect("linker states lock");
     let s = all.entry(k).or_default();

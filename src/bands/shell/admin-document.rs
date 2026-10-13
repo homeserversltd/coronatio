@@ -17,10 +17,10 @@ fn shell_admin_document_patch() -> &'static str {
               </div>
               <div class="system-service-controls" data-admin-service-controls data-state-source="/api/services/data">
                 <div class="ssh-controls">
-                  <div class="ssh-control" data-service-card="ssh-password-authentication" hx-get="/admit/admin/service/ssh-password-authentication" hx-trigger="load" hx-target="this" hx-swap="innerHTML"><div class="ssh-status" data-admin-toggle-card="ssh-password-authentication"><h3>SSH Password Authentication</h3><div class="ssh-toggle"><span class="toggle-label">Loading…</span></div></div></div>
-                  <div class="ssh-control" data-service-card="ssh-service" hx-get="/admit/admin/service/ssh-service" hx-trigger="load" hx-target="this" hx-swap="innerHTML"><div class="ssh-status" data-admin-toggle-card="ssh-service"><h3>SSH Service</h3><div class="ssh-toggle"><span class="toggle-label">Loading…</span></div></div></div>
+                  <div class="ssh-control" data-service-card="ssh-password-authentication" hx-get="/admit/admin/service/ssh-password-authentication" hx-trigger="admin-ready" hx-target="this" hx-swap="innerHTML"><div class="ssh-status" data-admin-toggle-card="ssh-password-authentication"><h3>SSH Password Authentication</h3><div class="ssh-toggle"><span class="toggle-label">Loading…</span></div></div></div>
+                  <div class="ssh-control" data-service-card="ssh-service" hx-get="/admit/admin/service/ssh-service" hx-trigger="admin-ready" hx-target="this" hx-swap="innerHTML"><div class="ssh-status" data-admin-toggle-card="ssh-service"><h3>SSH Service</h3><div class="ssh-toggle"><span class="toggle-label">Loading…</span></div></div></div>
                 </div>
-                <div class="samba-control" data-service-card="samba-file-sharing" hx-get="/admit/admin/service/samba-file-sharing" hx-trigger="load" hx-target="this" hx-swap="innerHTML"><div class="samba-status" data-admin-toggle-card="samba-file-sharing"><h3>Samba File Sharing</h3><div class="samba-toggle"><span class="toggle-label">Loading…</span></div></div></div>
+                <div class="samba-control" data-service-card="samba-file-sharing" hx-get="/admit/admin/service/samba-file-sharing" hx-trigger="admin-ready" hx-target="this" hx-swap="innerHTML"><div class="samba-status" data-admin-toggle-card="samba-file-sharing"><h3>Samba File Sharing</h3><div class="samba-toggle"><span class="toggle-label">Loading…</span></div></div></div>
               </div>
               <div class="update-status-container" data-admin-action-result data-og-affordance="toast-mapped-to-result-strip" aria-live="polite"></div>
             </div>

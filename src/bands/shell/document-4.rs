@@ -6,13 +6,39 @@ fn shell_document_4() -> &'static str {
         catch (_) { el.textContent = text; }
       } catch (error) { el.textContent = 'fetch failed: ' + error; }
     }
-    document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET'))); const uploadState = { currentPath: '/mnt/nas', selectedFiles: [], activeUploads: new Map(), pinRequired: false, uploading: false, blacklist: [], history: [] };
+    document.querySelectorAll('[data-fetch]').forEach(button => button.addEventListener('click', () => fetchInto(button.dataset.fetch, button.dataset.target, button.dataset.method || 'GET'))); const uploadState = { currentPath: '/mnt/nas', selectedFiles: [], activeUploads: new Map(), pinRequired: false, policyReady: false, policyStale: false, binding: null, uploading: false, blacklist: [], blacklistReady: false, blacklistStale: false, history: [], historyReady: false, historyStale: false };
     const uploadFileInput = () => document.querySelector('[data-upload-file]'); const uploadSubmit = () => document.querySelector('[data-upload-submit]');
     const uploadProgressList = () => document.querySelector('[data-upload-progress-list]'); const uploadBreadcrumbs = () => document.querySelector('[data-upload-breadcrumbs]');
     const uploadReadout = () => document.getElementById('upload-readout'); function uploadFormatSize(bytes) {
       const units = ['B', 'KB', 'MB', 'GB']; let size = Number(bytes || 0);
       let unit = 0; while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
       return size.toFixed(1) + ' ' + units[unit]; }
+    function uploadCurrent(binding = uploadState.binding) { return Boolean(binding && uploadState.binding === binding && viewportFamilyAdmitted('upload') && scaffoldRegistry.current(binding)); }
+    function uploadBinding() {
+      const binding = viewportFamilyAdmitted('upload') ? scaffoldRegistry.capture('upload') : null;
+      if (!binding) return null;
+      if (uploadState.binding !== binding) {
+        uploadState.binding = binding; uploadState.policyReady = false; uploadState.policyStale = false; uploadState.historyReady = false; uploadState.historyStale = false; uploadState.blacklistReady = false; uploadState.blacklistStale = false;
+        binding.root.querySelectorAll('[data-upload-submit], [data-upload-pin-toggle]').forEach(node => { node.disabled = true; });
+        scaffoldRegistry.onRetire(binding, () => {
+          if (uploadState.binding !== binding) return;
+          uploadState.binding = null; uploadState.policyReady = false; uploadState.policyStale = true;
+          uploadState.history = []; uploadState.historyReady = false; uploadState.historyStale = true; uploadState.blacklist = []; uploadState.blacklistReady = false; uploadState.blacklistStale = true;
+          const root = binding.root; root?.querySelectorAll('[data-upload-submit], [data-upload-pin-toggle]').forEach(node => { node.disabled = true; });
+          root?.querySelectorAll('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]').forEach(node => { node.hidden = true; node.setAttribute('aria-hidden', 'true'); });
+          root?.querySelectorAll('[data-upload-history-list], [data-upload-blacklist-entries]').forEach(node => node.replaceChildren());
+        });
+      }
+      return binding;
+    }
+    function uploadReadStatus(container, key, message, state = 'stale', retry = false) {
+      if (!container) return;
+      let node = container.querySelector(':scope > [data-upload-read-status]');
+      if (!message) { node?.remove(); return; }
+      if (!node) { node = document.createElement('p'); node.dataset.uploadReadStatus = key; node.setAttribute('role', 'status'); container.prepend(node); }
+      node.replaceChildren(document.createTextNode(message)); node.dataset.state = state;
+      if (retry) { const button = document.createElement('button'); button.type = 'button'; button.dataset.uploadReadRetry = key; button.textContent = 'Retry'; node.append(document.createTextNode(' '), button); }
+    }
     function uploadStatusIcon(status) {
       if (status === 'pending') return '⏳'; if (status === 'uploading') return '📤';
       if (status === 'completed') return '✅'; if (status === 'error') return '❌';
@@ -28,7 +54,8 @@ fn shell_document_4() -> &'static str {
           <div class="progress-section"><div class="progress-bar-container" role="progressbar" aria-label="${upload.filename}: ${upload.status}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${upload.progress.toFixed(1)}"><div class="progress-bar" style="width:${upload.progress}%"><span class="progress-text">${upload.progress.toFixed(1)}%</span></div></div><div class="upload-stats"><span class="size">${uploadFormatSize(upload.uploaded)} / ${uploadFormatSize(upload.total)}</span><span class="speed">${upload.speed ? uploadFormatSize(upload.speed) + '/s' : upload.status}</span></div>${upload.error ? `<div class="error-message" role="alert">${upload.error}</div>` : ''}</div>
         </div>`).join('');
     }
-    function setUpload(filename, update) {
+    function setUpload(filename, update, binding = uploadState.binding) {
+      if (!uploadCurrent(binding)) return;
       const current = uploadState.activeUploads.get(filename) || { filename, progress: 0, speed: 0, uploaded: 0, total: 0, status: 'pending' };
       uploadState.activeUploads.set(filename, Object.assign(current, update));
       renderUploadProgress();
@@ -36,7 +63,7 @@ fn shell_document_4() -> &'static str {
     function setUploadSelection() {
       uploadState.selectedFiles = Array.from(uploadFileInput()?.files || []);
       const submit = uploadSubmit();
-      if (submit) submit.disabled = uploadState.selectedFiles.length === 0 || uploadState.uploading;
+      if (submit) submit.disabled = uploadState.selectedFiles.length === 0 || uploadState.uploading || !uploadState.policyReady || uploadState.policyStale || !uploadCurrent();
       const display = document.querySelector('[data-upload-file-display]');
       if (display) {
         const label = uploadState.selectedFiles.length ? uploadState.selectedFiles.map(file => file.name).join(', ') : 'No files selected';
@@ -58,10 +85,11 @@ fn shell_document_4() -> &'static str {
       breadcrumbs.innerHTML = crumbs.map((crumb, index) => `<button type="button" class="breadcrumb-item ${crumb.path === selectedPath ? 'current' : ''}" data-upload-breadcrumb-path="${crumb.path}" aria-current="${crumb.path === selectedPath ? 'page' : 'false'}">${crumb.name}</button>${index < crumbs.length - 1 ? '<span class="breadcrumb-separator" aria-hidden="true"> / </span>' : ''}`).join('');
     }
     function syncUploadTreeSelection() {
-      const activeUploadTree = document.querySelector('[data-upload-tree]');
+      const binding = uploadBinding(); if (!binding || !uploadCurrent(binding)) return;
+      const activeUploadTree = binding.root.querySelector('[data-upload-tree]');
       const selected = activeUploadTree?.querySelector('.directory-entry[aria-selected="true"]')?.dataset.directoryPath || uploadCurrentPath();
       uploadState.currentPath = selected || '/mnt/nas';
-      const field = document.querySelector('[data-upload-current-path]');
+      const field = binding.root.querySelector('[data-upload-current-path]');
       if (field) field.value = uploadState.currentPath;
       renderUploadBreadcrumbs(uploadState.currentPath);
     }
@@ -79,9 +107,10 @@ fn shell_document_4() -> &'static str {
       }
       applyAdminDomState();
     });
-    async function uploadOneFile(file, scopedAttendance = null) {
+    async function uploadOneFile(file, scopedAttendance = null, binding = uploadState.binding) {
+      if (!uploadCurrent(binding) || !uploadState.policyReady || uploadState.policyStale) throw new Error('Upload view is not current');
       const CHUNK_SIZE = 4194304;
-      setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending', uploadId: null, xhr: null, removed: false, attendance: scopedAttendance || coronatioAttendanceRuntime.currentAttendance });
+      setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending', uploadId: null, xhr: null, removed: false, attendance: scopedAttendance || coronatioAttendanceRuntime.currentAttendance }, binding);
       const uploadHeaders = (uploadAttendance = scopedAttendance) => {
         const headers = { 'X-Caduceus-Document': coronatioAttendanceRuntime.documentIncarnation };
         if (uploadAttendance || coronatioAttendanceRuntime.currentAttendance) headers['X-Caduceus-Attendance'] = uploadAttendance || coronatioAttendanceRuntime.currentAttendance;
@@ -111,7 +140,7 @@ fn shell_document_4() -> &'static str {
         xhr.send(JSON.stringify({ filename: file.name, total_size: file.size, target_dir: uploadCurrentPath(), chunk_size: CHUNK_SIZE }));
       });
       if (removed()) throw Object.assign(new Error('Upload removed'), { uploadRemoved: true });
-      setUpload(file.name, { uploadId: startUpload, status: 'uploading', xhr: null, uploaded: 0, total: file.size });
+      setUpload(file.name, { uploadId: startUpload, status: 'uploading', xhr: null, uploaded: 0, total: file.size }, binding);
       const startedAt = Date.now(); let index = 0; let uploaded = 0;
       while (uploaded < file.size) {
         const offset = uploaded; const end = Math.min(file.size, offset + CHUNK_SIZE); const chunk = file.slice(offset, end);
@@ -121,7 +150,7 @@ fn shell_document_4() -> &'static str {
             if (!event.lengthComputable) return;
             const cumulative = Math.min(file.size, offset + event.loaded); const elapsed = Math.max(1, Date.now() - startedAt) / 1000;
             if (removed()) return;
-            setUpload(file.name, { progress: file.size ? (cumulative / file.size) * 100 : 0, speed: cumulative / elapsed, uploaded: cumulative, total: file.size, status: 'uploading', uploadId: startUpload, xhr });
+            setUpload(file.name, { progress: file.size ? (cumulative / file.size) * 100 : 0, speed: cumulative / elapsed, uploaded: cumulative, total: file.size, status: 'uploading', uploadId: startUpload, xhr }, binding);
           };
           xhr.onload = () => {
             if (removed()) { reject(Object.assign(new Error('Upload removed'), { uploadRemoved: true })); return; }
@@ -137,61 +166,141 @@ fn shell_document_4() -> &'static str {
         if (removed()) throw Object.assign(new Error('Upload removed'), { uploadRemoved: true });
         uploaded = end; index += 1;
         const elapsed = Math.max(1, Date.now() - startedAt) / 1000;
-        setUpload(file.name, { progress: file.size ? (uploaded / file.size) * 100 : 0, speed: uploaded / elapsed, uploaded, total: file.size, status: 'uploading', uploadId: startUpload });
+        setUpload(file.name, { progress: file.size ? (uploaded / file.size) * 100 : 0, speed: uploaded / elapsed, uploaded, total: file.size, status: 'uploading', uploadId: startUpload }, binding);
       }
       const complete = await fetch('/api/files/upload/' + encodeURIComponent(startUpload) + '/complete', { method: 'POST', headers: uploadHeaders(), cache: 'no-store' });
       const completeText = await complete.text();
       if (removed()) throw Object.assign(new Error('Upload removed'), { uploadRemoved: true });
       if (!complete.ok) throw uploadFailure(complete.status, completeText);
       if (removed()) throw Object.assign(new Error('Upload removed'), { uploadRemoved: true });
-      setUpload(file.name, { progress: 100, uploaded: file.size, total: file.size, speed: file.size / Math.max(1, Date.now() - startedAt) * 1000, status: 'completed', uploadId: startUpload, xhr: null });
-      const readout = uploadReadout(); if (readout) readout.textContent = completeText;
+      setUpload(file.name, { progress: 100, uploaded: file.size, total: file.size, speed: file.size / Math.max(1, Date.now() - startedAt) * 1000, status: 'completed', uploadId: startUpload, xhr: null }, binding);
+      const readout = uploadCurrent(binding) ? uploadReadout() : null; if (readout) readout.textContent = completeText;
       return { removed: false };
     }
-    async function uploadSelectedFiles(scopedAttendance = null) {
+    async function uploadSelectedFiles(scopedAttendance = null, binding = uploadBinding()) {
+      if (!binding || !uploadCurrent(binding) || !uploadState.policyReady || uploadState.policyStale) return;
       if (!uploadState.selectedFiles.length) { showCoronatioToast('No files selected for upload', 'error'); return; }
-      if (uploadState.pinRequired && !headerState.isAdmin && !scopedAttendance) { openUploadModal('[data-upload-pin-modal]'); document.querySelector('[data-upload-pin-input]')?.focus(); return; }
+      if (uploadState.pinRequired && !headerState.isAdmin && !scopedAttendance) { openUploadModal('[data-upload-pin-modal]'); binding.root.querySelector('[data-upload-pin-input]')?.focus(); return; }
       uploadState.uploading = true;
       const submit = uploadSubmit();
       if (submit) { submit.disabled = true; submit.textContent = 'Uploading...'; }
       let success = 0; let failed = 0; let pinRequired = false;
       for (const file of uploadState.selectedFiles) {
-        try { const outcome = await uploadOneFile(file, scopedAttendance); if (!outcome?.removed) success += 1; }
-        catch (error) { if (error?.uploadRemoved) continue; if (error?.uploadPinRequired && !headerState.isAdmin) { pinRequired = true; setUpload(file.name, { status: 'pending', error: '' }); break; } failed += 1; setUpload(file.name, { status: 'error', error: error?.message || String(error) }); showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error'); }
+        if (!uploadCurrent(binding)) break;
+        try { const outcome = await uploadOneFile(file, scopedAttendance, binding); if (!outcome?.removed) success += 1; }
+        catch (error) { if (!uploadCurrent(binding)) break; if (error?.uploadRemoved) continue; if (error?.uploadPinRequired && !headerState.isAdmin) { pinRequired = true; setUpload(file.name, { status: 'pending', error: '' }, binding); break; } failed += 1; setUpload(file.name, { status: 'error', error: error?.message || String(error) }, binding); showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error'); }
       }
       uploadState.uploading = false;
+      if (!uploadCurrent(binding)) return;
       const submitAfterUpload = uploadSubmit();
-      if (submitAfterUpload) { submitAfterUpload.textContent = 'Upload Selected Files'; submitAfterUpload.disabled = uploadState.selectedFiles.length === 0; } if (pinRequired) { openUploadModal('[data-upload-pin-modal]'); document.querySelector('[data-upload-pin-input]')?.focus(); return; }
+      if (submitAfterUpload) { submitAfterUpload.textContent = 'Upload Selected Files'; submitAfterUpload.disabled = uploadState.selectedFiles.length === 0 || !uploadState.policyReady || uploadState.policyStale; } if (pinRequired) { openUploadModal('[data-upload-pin-modal]'); binding.root.querySelector('[data-upload-pin-input]')?.focus(); return; }
       const summary = failed ? `Uploaded ${success} file(s), ${failed} failed` : `Successfully uploaded ${success} file(s)`;
       const readout = uploadReadout();
       if (readout) readout.textContent = summary;
       if (success && failed) showCoronatioToast(summary, 'warning'); else if (success) showCoronatioToast(summary, 'success');
     }
     function uploadAdminHeaders(json = false) { return json ? { 'content-type': 'application/json' } : {}; }
+    async function hydrateUploadPolicy(binding = uploadBinding()) {
+      if (!binding || !uploadCurrent(binding)) return false;
+      const host = binding.root.querySelector('[data-upload-viewport]') || binding.root;
+      return scaffoldRegistry.run(binding, 'upload-policy', async context => {
+        const data = await context.fetchJson('/api/upload/pin-required-status', { headers: uploadAdminHeaders() });
+        if (!context.current() || !uploadCurrent(binding)) return false;
+        if (!data || typeof data !== 'object' || Array.isArray(data) || data.ok === false || typeof data.isPinRequired !== 'boolean') throw new Error('Upload policy response is incomplete');
+        uploadState.pinRequired = data.isPinRequired; uploadState.policyReady = true; uploadState.policyStale = false;
+        const toggle = binding.root.querySelector('[data-upload-pin-toggle]');
+        if (toggle) { toggle.classList.toggle('active', uploadState.pinRequired); toggle.disabled = !headerState.isAdmin || uploadState.policyStale; }
+        uploadReadStatus(host, 'upload-policy', '', 'ready');
+        setUploadSelection();
+        return true;
+      }, {
+        slots: [], timeoutMs: 8000, slowMs: 750,
+        onFailure: ({ current, reason }) => {
+          if (!current() || !uploadCurrent(binding)) return;
+          uploadState.policyStale = true;
+          binding.root.querySelector('[data-upload-pin-toggle]')?.setAttribute('disabled', '');
+          uploadReadStatus(host, 'upload-policy', `Upload policy unavailable: ${reason || 'Read failed'}. ${uploadState.policyReady ? 'Showing last known policy.' : 'Uploads remain disabled.'}`, 'stale', true);
+          setUploadSelection();
+        }
+      });
+    }
     function openUploadModal(selector) { const modal = document.querySelector(selector); if (modal) { modal.hidden = false; modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); } }
     function closeUploadModal(modal) { if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); modal.hidden = true; const pin = modal.querySelector('[data-upload-pin-input]'); if (pin) pin.value = ''; const message = modal.querySelector('[data-upload-pin-message]'); if (message) message.textContent = ''; } }
-    async function refreshUploadHistory() {
-      const modal = document.querySelector('[data-upload-history-modal]'), list = modal?.querySelector('.upload-history-list'), empty = modal?.querySelector('.uploadHistoryModal'), clear = modal?.querySelector('[data-upload-clear-history]');
-      try { const data = await fetch('/api/upload/history', { headers: uploadAdminHeaders() }).then(r => r.json()); uploadState.history = data.history || []; } catch (_) { uploadState.history = []; }
-      if (list) { list.hidden = uploadState.history.length === 0; list.innerHTML = uploadState.history.map(line => `<div class="history-item ${String(line).includes('Successfully') ? 'success' : 'error'}">${line}</div>`).join(''); }
-      if (empty) empty.hidden = uploadState.history.length !== 0;
-      if (clear) clear.disabled = uploadState.history.length === 0;
+    async function refreshUploadHistory(binding = uploadBinding()) {
+      const modal = binding?.root.querySelector('[data-upload-history-modal]'), list = modal?.querySelector('.upload-history-list'), empty = modal?.querySelector('.uploadHistoryModal'), clear = modal?.querySelector('[data-upload-clear-history]');
+      if (!binding || !uploadCurrent(binding) || !headerState.isAdmin || !modal) return false;
+      return scaffoldRegistry.run(binding, 'upload-history', async context => {
+        const data = await context.fetchJson('/api/upload/history', { headers: uploadAdminHeaders() });
+        if (!context.current() || !uploadCurrent(binding) || !headerState.isAdmin) return false;
+        if (!data || typeof data !== 'object' || Array.isArray(data) || data.ok === false || !Array.isArray(data.history)) throw new Error('Upload history response is incomplete');
+        uploadState.history = data.history.map(line => String(line)); uploadState.historyReady = true; uploadState.historyStale = false;
+        if (!context.current() || !uploadCurrent(binding)) return false;
+        if (list) { list.hidden = uploadState.history.length === 0; morphLivePane(list, uploadState.history.map((line, index) => `<div class="history-item ${line.includes('Successfully') ? 'success' : 'error'}" data-upload-history-row="${index}">${escapeHtml(line)}</div>`).join('')); }
+        if (empty) empty.hidden = uploadState.history.length !== 0;
+        if (clear) clear.disabled = uploadState.history.length === 0 || uploadState.historyStale;
+        uploadReadStatus(modal.querySelector('.modal-content'), 'upload-history', '', 'ready');
+        return true;
+      }, { slots: [], timeoutMs: 8000, slowMs: 750, onFailure: ({ current, reason }) => {
+        if (!current() || !uploadCurrent(binding) || !headerState.isAdmin) return;
+        uploadState.historyStale = true;
+        if (empty) empty.hidden = !uploadState.historyReady || uploadState.history.length !== 0;
+        if (list) list.hidden = !uploadState.historyReady || uploadState.history.length === 0;
+        if (clear) clear.disabled = true;
+        uploadReadStatus(modal.querySelector('.modal-content'), 'upload-history', `History refresh unavailable: ${reason || 'Read failed'}. ${uploadState.historyReady ? 'Showing last known history.' : ''}`, 'stale', true);
+      } });
     }
-    async function refreshUploadBlacklist() {
-      const entries = document.querySelector('[data-upload-blacklist-entries]');
-      try { const data = await fetch('/api/upload/blacklist/list', { headers: uploadAdminHeaders() }).then(r => r.json()); uploadState.blacklist = data.blacklist || []; } catch (_) { uploadState.blacklist = []; }
-      if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join('');
+    async function refreshUploadBlacklist(binding = uploadBinding()) {
+      const modal = binding?.root.querySelector('[data-upload-blacklist-modal]'), entries = modal?.querySelector('[data-upload-blacklist-entries]');
+      if (!binding || !uploadCurrent(binding) || !headerState.isAdmin || !modal) return false;
+      return scaffoldRegistry.run(binding, 'upload-blacklist', async context => {
+        const data = await context.fetchJson('/api/upload/blacklist/list', { headers: uploadAdminHeaders() });
+        if (!context.current() || !uploadCurrent(binding) || !headerState.isAdmin) return false;
+        if (!data || typeof data !== 'object' || Array.isArray(data) || data.ok === false || !Array.isArray(data.blacklist) || data.blacklist.some(entry => typeof entry !== 'string')) throw new Error('Upload blacklist response is incomplete');
+        uploadState.blacklist = data.blacklist.slice(); uploadState.blacklistReady = true; uploadState.blacklistStale = false;
+        if (!context.current() || !uploadCurrent(binding)) return false;
+        refreshUploadBlacklistDomOnly(binding);
+        uploadReadStatus(modal.querySelector('.modal-content'), 'upload-blacklist', '', 'ready');
+        return true;
+      }, { slots: [], timeoutMs: 8000, slowMs: 750, onFailure: ({ current, reason }) => {
+        if (!current() || !uploadCurrent(binding) || !headerState.isAdmin) return;
+        uploadState.blacklistStale = true;
+        refreshUploadBlacklistDomOnly(binding);
+        uploadReadStatus(modal.querySelector('.modal-content'), 'upload-blacklist', `Blacklist refresh unavailable: ${reason || 'Read failed'}. ${uploadState.blacklistReady ? 'Showing last known entries.' : ''}`, 'stale', true);
+      } });
     }
-    function refreshUploadBlacklistDomOnly() { const entries = document.querySelector('[data-upload-blacklist-entries]'); if (entries) entries.innerHTML = uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry"><span class="entry-path">${entry}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" aria-label="Remove entry">×</button></div>`).join(''); }
-    async function verifyUploadPin() { const modal = document.querySelector('[data-upload-pin-modal]'), input = modal?.querySelector('[data-upload-pin-input]'), message = modal?.querySelector('[data-upload-pin-message]'), pin = input?.value?.trim() || ''; if (!pin) { if (message) message.textContent = 'Admin PIN is required.'; input?.focus(); return; } let scopedAttendance = null; try { const response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) }); const result = await response.json().catch(() => ({})); scopedAttendance = response.ok && result.admin === true && typeof result.attendance === 'string' ? result.attendance : null; if (!scopedAttendance) { if (message) message.textContent = response.status === 401 ? 'Invalid PIN' : (result.firstMissingSignal || 'PIN check unavailable'); input?.focus(); return; } showCoronatioToast('PIN Verified.', 'success'); closeUploadModal(modal); await uploadSelectedFiles(scopedAttendance); } catch (_) { if (message) message.textContent = 'PIN check unavailable'; input?.focus(); } finally { if (scopedAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', headers: { 'X-Caduceus-Document': coronatioAttendanceRuntime.documentIncarnation, 'X-Caduceus-Attendance': scopedAttendance }, cache: 'no-store' }).catch(() => {}); } }
-    function refreshUploadTree(path = uploadCurrentPath()) { window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(path), { target: '[data-upload-tree]', swap: 'innerHTML' }); }
-    async function postUploadDirectoryAction(url, successMessage) { try { const response = await fetch(url, { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }); const data = await response.json().catch(() => ({})); if (!response.ok || !(data.success ?? data.ok)) throw new Error(data.message || data.error || data.firstMissingSignal || `Request failed with status ${response.status}`); showCoronatioToast(successMessage, 'success'); return data; } catch (error) { showCoronatioToast(error?.message || 'Request failed', 'error'); return null; } }
-    async function toggleUploadPin(toggle) { uploadState.pinRequired = !uploadState.pinRequired; toggle.classList.toggle('active', uploadState.pinRequired); toggle.setAttribute('aria-label', `Toggle PIN requirement (currently ${uploadState.pinRequired ? 'enabled' : 'disabled'})`); toggle.setAttribute('aria-busy', 'true'); toggle.querySelector('[data-upload-pin-spinner]')?.removeAttribute('hidden'); try { await fetch('/api/upload/pin-required-status', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ isPinRequired: uploadState.pinRequired }) }); } finally { toggle.removeAttribute('aria-busy'); toggle.querySelector('[data-upload-pin-spinner]')?.setAttribute('hidden', ''); } }
-    document.body.addEventListener('change', event => { if (event.target.matches('[data-upload-file]')) setUploadSelection(); });
-    document.body.addEventListener('submit', event => { if (event.target.matches('[data-upload-pin-form]')) { event.preventDefault(); verifyUploadPin(); } if (event.target.matches('[data-upload-blacklist-form]')) { event.preventDefault(); event.target.querySelector('[data-upload-blacklist-add]')?.click(); } });
+    function refreshUploadBlacklistDomOnly(binding = uploadState.binding) {
+      if (!uploadCurrent(binding) || !headerState.isAdmin) return;
+      const entries = binding.root.querySelector('[data-upload-blacklist-entries]');
+      if (entries) morphLivePane(entries, uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry" data-blacklist-entry="${escapeHtml(entry)}"><span class="entry-path">${escapeHtml(entry)}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" ${uploadState.blacklistStale ? 'disabled' : ''} aria-label="Remove entry">×</button></div>`).join('') || '<p class="blacklist-empty" data-blacklist-empty>No blocked paths.</p>');
+      const modal = binding.root.querySelector('[data-upload-blacklist-modal]');
+      modal?.querySelectorAll('[data-upload-blacklist-add], [data-upload-blacklist-submit]').forEach(node => { node.disabled = uploadState.blacklistStale; });
+    }
+    async function verifyUploadPin(binding = uploadBinding()) {
+      if (!binding || !uploadCurrent(binding) || !uploadState.policyReady) return;
+      const modal = binding.root.querySelector('[data-upload-pin-modal]'), input = modal?.querySelector('[data-upload-pin-input]'), message = modal?.querySelector('[data-upload-pin-message]'), pin = input?.value?.trim() || '';
+      if (!pin) { if (message) message.textContent = 'Admin PIN is required.'; input?.focus(); return; }
+      let scopedAttendance = null;
+      try {
+        const response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) });
+        const result = await response.json().catch(() => ({}));
+        scopedAttendance = response.ok && result.admin === true && typeof result.attendance === 'string' ? result.attendance : null;
+        if (!uploadCurrent(binding)) return;
+        if (!scopedAttendance) { if (message) message.textContent = response.status === 401 ? 'Invalid PIN' : (result.firstMissingSignal || 'PIN check unavailable'); input?.focus(); return; }
+        showCoronatioToast('PIN Verified.', 'success'); closeUploadModal(modal); await uploadSelectedFiles(scopedAttendance, binding);
+      } catch (_) { if (uploadCurrent(binding) && message) { message.textContent = 'PIN check unavailable'; input?.focus(); } }
+      finally { if (scopedAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', headers: { 'X-Caduceus-Document': coronatioAttendanceRuntime.documentIncarnation, 'X-Caduceus-Attendance': scopedAttendance }, cache: 'no-store' }).catch(() => {}); }
+    }
+    function refreshUploadTree(path = uploadCurrentPath()) { const binding = uploadBinding(); if (!binding || !uploadCurrent(binding) || !binding.root.querySelector('[data-upload-tree]')) return false; return window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(path), { target: '[data-upload-tree]', swap: 'innerHTML' }); }
+    async function postUploadDirectoryAction(url, successMessage) { const binding = uploadBinding(); if (!binding || !uploadCurrent(binding) || !headerState.isAdmin) return null; try { const response = await fetch(url, { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }); const data = await response.json().catch(() => ({})); if (!uploadCurrent(binding)) return null; if (!response.ok || !(data.success ?? data.ok)) throw new Error(data.message || data.error || data.firstMissingSignal || `Request failed with status ${response.status}`); showCoronatioToast(successMessage, 'success'); return data; } catch (error) { if (uploadCurrent(binding)) showCoronatioToast(error?.message || 'Request failed', 'error'); return null; } }
+    async function toggleUploadPin(toggle) { const binding = uploadBinding(); if (!binding || !uploadCurrent(binding) || !headerState.isAdmin || !uploadState.policyReady) return; const previous = uploadState.pinRequired, next = !previous; toggle.disabled = true; toggle.setAttribute('aria-busy', 'true'); toggle.querySelector('[data-upload-pin-spinner]')?.removeAttribute('hidden'); try { const response = await fetch('/api/upload/pin-required-status', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ isPinRequired: next }) }); if (!uploadCurrent(binding)) return; if (!response.ok) throw new Error(`Request failed (${response.status})`); uploadState.pinRequired = next; toggle.classList.toggle('active', next); toggle.setAttribute('aria-label', `Toggle PIN requirement (currently ${next ? 'enabled' : 'disabled'})`); } catch (_) { if (uploadCurrent(binding)) { uploadState.pinRequired = previous; toggle.classList.toggle('active', previous); } } finally { if (uploadCurrent(binding)) { toggle.disabled = false; toggle.removeAttribute('aria-busy'); toggle.querySelector('[data-upload-pin-spinner]')?.setAttribute('hidden', ''); } } }
+    document.body.addEventListener('change', event => { const target = event.target instanceof Element ? event.target : null; const binding = uploadBinding(); if (target?.matches('[data-upload-file]') && binding?.root.contains(target) && uploadCurrent(binding)) setUploadSelection(); });
+    document.body.addEventListener('submit', event => { const target = event.target instanceof Element ? event.target : null; const binding = uploadBinding(); if (!target || !binding || !binding.root.contains(target) || !uploadCurrent(binding)) return; if (target.matches('[data-upload-pin-form]')) { event.preventDefault(); verifyUploadPin(binding); } if (target.matches('[data-upload-blacklist-form]')) { event.preventDefault(); target.querySelector('[data-upload-blacklist-add]')?.click(); } });
     document.body.addEventListener('click', async event => { const target = event.target instanceof Element ? event.target : null; if (!target) return;
+      const retry = target.closest('[data-upload-read-retry]');
+      if (retry) { const binding = uploadBinding(); if (!binding || !uploadCurrent(binding) || !headerState.isAdmin) return; event.preventDefault(); retry.disabled = true; scaffoldRegistry.retry(binding, retry.dataset.uploadReadRetry).finally(() => { if (retry.isConnected) retry.disabled = false; }); return; }
       const modal = target.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]'); if (modal && target === modal) { closeUploadModal(modal); return; }
       const control = target.closest('[data-upload-remove], [data-blacklist-remove], [data-upload-breadcrumb-path], [data-upload-modal-close], [data-upload-pin-cancel], [data-upload-submit], [data-upload-pin-confirm], [data-upload-refresh], [data-upload-force-allow], [data-upload-set-default], [data-upload-history], [data-upload-blacklist], [data-upload-blacklist-add], [data-upload-blacklist-submit], [data-upload-clear-history], [data-upload-pin-toggle]'); if (!control) return;
+      const binding = uploadBinding(); if (!binding || !binding.root.contains(control) || !uploadCurrent(binding)) return;
       if (control.matches('[data-upload-remove]')) {
         const filename = control.dataset.uploadRemove; const upload = uploadState.activeUploads.get(filename);
         let cleanup = null;
@@ -205,21 +314,21 @@ fn shell_document_4() -> &'static str {
         }
         uploadState.activeUploads.delete(filename); renderUploadProgress(); if (cleanup) await cleanup; return;
       }
-      if (control.matches('[data-blacklist-remove]')) { uploadState.blacklist.splice(Number(control.dataset.blacklistRemove), 1); refreshUploadBlacklistDomOnly(); return; }
+      if (control.matches('[data-blacklist-remove]')) { if (!headerState.isAdmin || !uploadState.blacklistReady || uploadState.blacklistStale) return; uploadState.blacklist.splice(Number(control.dataset.blacklistRemove), 1); refreshUploadBlacklistDomOnly(binding); return; }
       if (control.matches('[data-upload-breadcrumb-path]')) { uploadState.currentPath = control.dataset.uploadBreadcrumbPath || '/mnt/nas'; const field = document.querySelector('[data-upload-current-path]'); if (field) field.value = uploadState.currentPath; renderUploadBreadcrumbs(uploadState.currentPath); refreshUploadTree(uploadState.currentPath); return; }
       if (control.matches('[data-upload-modal-close], [data-upload-pin-cancel]')) { closeUploadModal(control.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]')); return; }
-      if (control.matches('[data-upload-submit]')) { await uploadSelectedFiles(); return; }
-      if (control.matches('[data-upload-pin-confirm]')) { await verifyUploadPin(); return; }
+      if (control.matches('[data-upload-submit]')) { await uploadSelectedFiles(null, binding); return; }
+      if (control.matches('[data-upload-pin-confirm]')) { await verifyUploadPin(binding); return; }
       if (control.matches('[data-upload-refresh]')) { refreshUploadTree(); return; }
       if (control.matches('[data-upload-force-allow]')) { if (confirm(`WARNING: This will override security settings for ${uploadState.currentPath}. \nOnly continue if you understand the risks.`)) await postUploadDirectoryAction('/api/upload/force-permissions', 'Directory permissions updated successfully'); return; }
       if (control.matches('[data-upload-set-default]')) { await postUploadDirectoryAction('/api/upload/default-directory', 'Default directory updated successfully'); return; }
-      if (control.matches('[data-upload-history]')) { openUploadModal('[data-upload-history-modal]'); await refreshUploadHistory(); return; }
-      if (control.matches('[data-upload-blacklist]')) { openUploadModal('[data-upload-blacklist-modal]'); await refreshUploadBlacklist(); return; }
-      if (control.matches('[data-upload-blacklist-add]')) { const input = document.querySelector('[data-upload-blacklist-input]'); const next = input?.value?.trim(); if (next && !uploadState.blacklist.includes(next)) { uploadState.blacklist.push(next); input.value = ''; refreshUploadBlacklistDomOnly(); } return; }
-      if (control.matches('[data-upload-blacklist-submit]')) { await fetch('/api/upload/blacklist/update', { method: 'PUT', headers: uploadAdminHeaders(true), body: JSON.stringify({ blacklist: uploadState.blacklist }) }); refreshUploadTree(); return; }
-      if (control.matches('[data-upload-clear-history]')) { await fetch('/api/upload/history/clear', { method: 'POST', headers: uploadAdminHeaders() }); await refreshUploadHistory(); return; }
+      if (control.matches('[data-upload-history]')) { if (!headerState.isAdmin) return; openUploadModal('[data-upload-history-modal]'); await refreshUploadHistory(binding); return; }
+      if (control.matches('[data-upload-blacklist]')) { if (!headerState.isAdmin) return; openUploadModal('[data-upload-blacklist-modal]'); await refreshUploadBlacklist(binding); return; }
+      if (control.matches('[data-upload-blacklist-add]')) { if (!headerState.isAdmin || !uploadState.blacklistReady || uploadState.blacklistStale) return; const input = binding.root.querySelector('[data-upload-blacklist-input]'); const next = input?.value?.trim(); if (next && !uploadState.blacklist.includes(next)) { uploadState.blacklist.push(next); input.value = ''; refreshUploadBlacklistDomOnly(binding); } return; }
+      if (control.matches('[data-upload-blacklist-submit]')) { if (!headerState.isAdmin || !uploadState.blacklistReady || uploadState.blacklistStale) return; const response = await fetch('/api/upload/blacklist/update', { method: 'PUT', headers: uploadAdminHeaders(true), body: JSON.stringify({ blacklist: uploadState.blacklist }) }); if (uploadCurrent(binding) && response.ok) refreshUploadTree(); return; }
+      if (control.matches('[data-upload-clear-history]')) { if (!headerState.isAdmin || !uploadState.historyReady || uploadState.historyStale) return; const response = await fetch('/api/upload/history/clear', { method: 'POST', headers: uploadAdminHeaders() }); if (uploadCurrent(binding) && response.ok) await refreshUploadHistory(binding); return; }
       if (control.matches('[data-upload-pin-toggle]')) await toggleUploadPin(control); });
-    fetch('/api/upload/pin-required-status', { headers: uploadAdminHeaders() }).then(r => r.json()).then(data => { uploadState.pinRequired = !!data.isPinRequired; const b = document.querySelector('[data-upload-pin-toggle]'); b?.classList.toggle('active', uploadState.pinRequired); }).catch(() => {}); syncUploadTreeSelection();
+    syncUploadTreeSelection();
     let uptimeBaseSeconds = null; let uptimeBaseStamp = 0; function secondsFromUptimeText(text) {
       const raw = String(text || '');
       const days = Number((raw.match(/(\d+)d/) || [0, 0])[1]); const hours = Number((raw.match(/(\d+)h/) || [0, 0])[1]);
@@ -276,7 +385,7 @@ fn shell_document_4() -> &'static str {
       const cores = navigator.hardwareConcurrency || 4;
       return Math.max(0, Math.min(100, (Number(load) / cores) * 100));
     }
-    const statsChartState = { labels: [], cpu: [], temp: [], upload: [], download: [], lastRx: null, lastTx: null, lastIo: {}, lastStamp: null, ioSeries: {}, skipNextChartPoint: false };
+    const statsChartState = { points: [], labels: [], cpu: [], temp: [], upload: [], download: [], lastRx: null, lastTx: null, lastIo: {}, lastStamp: null, ioSeries: {} };
     function optionalNumber(value) { return value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value); }
     function statsNetworkTotals(data) {
       const network = data.network || {};
@@ -287,26 +396,55 @@ fn shell_document_4() -> &'static str {
         tx: directTx !== null ? directTx : interfaces.reduce((sum, iface) => { const value = optionalNumber(iface.txBytes); return value === null ? sum : (sum === null ? value : sum + value); }, null)
       };
     }
-    function pushChartPoint(label, data) {
-      const now = Date.now(), totals = statsNetworkTotals(data);
-      const seconds = statsChartState.lastStamp ? Math.max(1, (now - statsChartState.lastStamp) / 1000) : null;
-      const downloadRate = statsChartState.lastRx === null || totals.rx === null || seconds === null ? null : Math.max(0, (totals.rx - statsChartState.lastRx) / seconds);
-      const uploadRate = statsChartState.lastTx === null || totals.tx === null || seconds === null ? null : Math.max(0, (totals.tx - statsChartState.lastTx) / seconds);
-      statsChartState.lastRx = totals.rx; statsChartState.lastTx = totals.tx; statsChartState.lastStamp = now;
-      if (statsChartState.skipNextChartPoint) { statsChartState.skipNextChartPoint = false; return; }
-      statsChartState.labels.push(label); statsChartState.cpu.push(loadToPercent(data.resources?.load?.one)); statsChartState.temp.push(optionalNumber(data.resources?.load?.cpuTemperatureCelsius)); statsChartState.upload.push(uploadRate); statsChartState.download.push(downloadRate);
-      const devices = Array.isArray(data.io?.devices) ? data.io.devices : [], seen = new Set();
+    function rebuildStatsChartSeries() {
+      const points = statsChartState.points;
+      statsChartState.labels = points.map(point => formatChartTime(point.timestamp));
+      statsChartState.cpu = points.map(point => point.cpu);
+      statsChartState.temp = points.map(point => point.temp);
+      statsChartState.download = points.map(point => point.download);
+      statsChartState.upload = points.map(point => point.upload);
+      const keys = new Set(points.flatMap(point => Object.keys(point.io || {})));
+      statsChartState.ioSeries = Object.fromEntries([...keys].map(key => [key, {
+        read: points.map(point => point.io?.[key]?.read ?? null),
+        write: points.map(point => point.io?.[key]?.write ?? null), label: key
+      }]));
+    }
+    function statsTimestamp(value) {
+      const numeric = optionalNumber(value);
+      if (numeric !== null) return numeric > 100000000000 ? numeric : numeric * 1000;
+      const parsed = Date.parse(String(value || ''));
+      return Number.isFinite(parsed) ? parsed : Date.now();
+    }
+    function pushChartPoint(data, timestamp = Date.now()) {
+      const totals = statsNetworkTotals(data);
+      const previousStamp = statsChartState.lastStamp;
+      if (previousStamp !== null && timestamp < previousStamp) return false;
+      const seconds = previousStamp === null || timestamp <= previousStamp ? null : Math.max(0.001, (timestamp - previousStamp) / 1000);
+      const download = statsChartState.lastRx === null || totals.rx === null || seconds === null ? null : Math.max(0, (totals.rx - statsChartState.lastRx) / seconds);
+      const upload = statsChartState.lastTx === null || totals.tx === null || seconds === null ? null : Math.max(0, (totals.tx - statsChartState.lastTx) / seconds);
+      const io = {}, devices = Array.isArray(data.io?.devices) ? data.io.devices : [];
       devices.forEach(device => {
-        const key = device.device || device.mount; if (!key) return; seen.add(key);
+        const key = device.device || device.mount; if (!key) return;
         const previous = statsChartState.lastIo[key], readBytes = optionalNumber(device.readBytes), writeBytes = optionalNumber(device.writeBytes);
-        const read = previous && previous.readBytes !== null && readBytes !== null && seconds !== null ? Math.max(0, (readBytes - previous.readBytes) / seconds) : null;
-        const write = previous && previous.writeBytes !== null && writeBytes !== null && seconds !== null ? Math.max(0, (writeBytes - previous.writeBytes) / seconds) : null;
-        statsChartState.lastIo[key] = { readBytes, writeBytes };
-        if (!statsChartState.ioSeries[key]) statsChartState.ioSeries[key] = { read: Array(statsChartState.labels.length - 1).fill(null), write: Array(statsChartState.labels.length - 1).fill(null), label: key };
-        statsChartState.ioSeries[key].read.push(read); statsChartState.ioSeries[key].write.push(write);
+        io[key] = {
+          read: previous && previous.readBytes !== null && readBytes !== null && seconds !== null ? Math.max(0, (readBytes - previous.readBytes) / seconds) : null,
+          write: previous && previous.writeBytes !== null && writeBytes !== null && seconds !== null ? Math.max(0, (writeBytes - previous.writeBytes) / seconds) : null
+        };
+        if (readBytes !== null || writeBytes !== null) statsChartState.lastIo[key] = { readBytes: readBytes ?? previous?.readBytes ?? null, writeBytes: writeBytes ?? previous?.writeBytes ?? null };
       });
-      Object.entries(statsChartState.ioSeries).forEach(([key, series]) => { if (!seen.has(key)) { series.read.push(null); series.write.push(null); } });
-      if (statsChartState.labels.length > 60) { ['labels', 'cpu', 'temp', 'upload', 'download'].forEach(key => statsChartState[key].shift()); Object.values(statsChartState.ioSeries).forEach(series => { series.read.shift(); series.write.shift(); }); }
+      if (previousStamp === null || timestamp > previousStamp) {
+        if (totals.rx !== null) statsChartState.lastRx = totals.rx;
+        if (totals.tx !== null) statsChartState.lastTx = totals.tx;
+        statsChartState.lastStamp = timestamp;
+      }
+      const point = { timestamp, cpu: loadToPercent(data.resources?.load?.one), temp: optionalNumber(data.resources?.load?.cpuTemperatureCelsius), download, upload, io };
+      const existing = statsChartState.points.findIndex(candidate => candidate.timestamp === timestamp);
+      if (existing >= 0) statsChartState.points[existing] = point;
+      else statsChartState.points.push(point);
+      statsChartState.points.sort((left, right) => left.timestamp - right.timestamp);
+      if (statsChartState.points.length > 60) statsChartState.points.splice(0, statsChartState.points.length - 60);
+      rebuildStatsChartSeries();
+      return true;
     }
     const statsCharts = { cpu: null, network: null, io: null };
     function destroyStatsChart(key) { if (statsCharts[key]) { statsCharts[key].destroy(); statsCharts[key] = null; } }
@@ -432,7 +570,7 @@ fn shell_document_4() -> &'static str {
       if (!tbody) return;
       const interfaces = data.network?.interfaces;
       if (Array.isArray(interfaces)) {
-        const rows = interfaces.filter(meaningfulInterface).map(iface => `<tr id="network-interface-${statsDomKey(iface.name)}" data-stats-key="${escapeHtml(iface.name)}"><td><span class="interface-name">${interfaceLabel(iface.name)}</span><span class="interface-label"> (${iface.name})</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr id="network-interface-loading"><td colspan="3">Loading network data...</td></tr>';
+        const rows = interfaces.filter(meaningfulInterface).map(iface => `<tr id="network-interface-${statsDomKey(iface.name)}" data-stats-key="${escapeHtml(iface.name)}"><td><span class="interface-name">${interfaceLabel(iface.name)}</span><span class="interface-label"> (${iface.name})</span></td><td class="data-cell">${fmtBytes(iface.rxBytes)}</td><td class="data-cell">${fmtBytes(iface.txBytes)}</td></tr>`).join('') || '<tr id="network-interface-empty"><td colspan="3">No network interfaces reported.</td></tr>';
         morphLivePane(tbody, rows);
       } else {
         const totals = statsNetworkTotals(data);
@@ -445,7 +583,7 @@ fn shell_document_4() -> &'static str {
         const name = diskDisplayName(device), readName = `read-${name}`, writeName = `write-${name}`, readChecked = checked.has(readName) ? checked.get(readName) : true, writeChecked = checked.has(writeName) ? checked.get(writeName) : true;
         const key = statsDomKey(device.device || device.mount || name);
         return `<div id="io-device-${key}" class="device-control" data-io-device="${escapeHtml(name)}" data-stats-key="${escapeHtml(device.device || device.mount || name)}"><div class="device-name">${escapeHtml(name)}</div><div class="device-checkboxes"><label id="io-read-label-${key}" class="drive-checkbox"><input id="io-read-${key}" type="checkbox" name="${escapeHtml(readName)}" value="${escapeHtml(name)}" ${readChecked ? 'checked' : ''}>Read</label><label id="io-write-label-${key}" class="drive-checkbox"><input id="io-write-${key}" type="checkbox" name="${escapeHtml(writeName)}" value="${escapeHtml(name)}" ${writeChecked ? 'checked' : ''}>Write</label></div></div>`;
-      }).join('') || '<div id="io-device-loading" class="io-loading"><p>Loading disk I/O data...</p></div>');
+      }).join('') || '<div id="io-device-empty" class="io-loading"><p>No disk I/O devices reported.</p></div>');
       const colors = ['--secondary', '--accent', '--warning', '--success', '--error'];
       const datasets = devices.flatMap((device, index) => {
         const key = device.device || device.mount;
@@ -453,8 +591,8 @@ fn shell_document_4() -> &'static str {
         const series = statsChartState.ioSeries[key] || { read: [0], write: [0] };
         const color = themeCssColor(colors[index % colors.length], '#4A5568');
         return [
-          { label: `${name} Read`, data: series.read, borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4 },
-          { label: `${name} Write`, data: series.write, borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: [3, 3], fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4 }
+          { label: `${name} Read`, data: series.read, statsSeriesKey: key, statsIoKind: 'read', borderColor: color, backgroundColor: color, borderWidth: 2, fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4 },
+          { label: `${name} Write`, data: series.write, statsSeriesKey: key, statsIoKind: 'write', borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: [3, 3], fill: false, pointRadius: 0, pointHoverRadius: 0, tension: 0.4 }
         ].filter(dataset => checked.get(`${dataset.label.endsWith(' Read') ? 'read' : 'write'}-${name}`) !== false);
       });
       const ctx = document.getElementById('io-chart');
@@ -502,9 +640,28 @@ fn shell_document_4() -> &'static str {
         const mountLine = drive.mount ? `<div class="disk-mountpoint">Mount: ${drive.mount}</div>` : '';
         const key = statsDomKey(drive.mount || drive.name || `drive-${index}`);
         return `<div id="disk-usage-${key}" class="disk-usage-item" data-stats-key="${escapeHtml(drive.mount || drive.name || `drive-${index}`)}"><div class="disk-usage-header"><div class="disk-device">${label} (${Number(drive.usagePercent || 0).toFixed(1)}%)</div>${mountLine}</div><div class="disk-usage-bar"><div class="disk-usage-fill" style="width:${drive.usagePercent || 0}%"></div></div><div class="disk-usage-details"><div>Used: ${fmtBytes(drive.usedBytes)}</div><div>Free: ${fmtBytes(drive.freeBytes)}</div><div>Total: ${fmtBytes(drive.totalBytes)}</div></div></div>`;
-      }).join('') || '<div id="disk-usage-loading" class="disk-usage-loading"><p>Loading disk usage data...</p></div>');
+      }).join('') || '<div id="disk-usage-empty" class="disk-usage-loading"><p>No storage usage reported.</p></div>');
     }
-    function renderStatsRoster() { renderIdentityRoster('liveness'); }
+    function statsAuthorizedBinding(binding) { return Boolean(binding && binding.guest === 'stats' && headerState.isAdmin && scaffoldRegistry.current(binding)); }
+    function renderStatsRoster(data, projection) {
+      const binding = projection?.binding, run = projection?.run;
+      if (!binding || binding.guest !== 'stats' || !scaffoldRegistry.current(binding, run)) return;
+      if (!headerState.isAdmin) {
+        const target = binding.root.querySelector('[data-identity-roster-host="stats"] [data-identity-roster]');
+        if (target && scaffoldRegistry.current(binding, run)) target.textContent = 'Network activity requires Admin Mode.';
+        return;
+      }
+      const entries = data?.keaLeases?.entries;
+      if (!Array.isArray(entries)) throw new Error('Network activity entries are unavailable');
+      const roster = identityRows(entries);
+      if (!scaffoldRegistry.current(binding, run)) return;
+      identityState.roster = roster;
+      if (!scaffoldRegistry.current(binding, run)) return;
+      identityState.notes = Object.fromEntries(roster.map(row => [canonicalNetworkNoteMac(row.mac), row.note ?? '']).filter(([mac]) => mac));
+      if (!scaffoldRegistry.current(binding, run)) return;
+      identityState.ready.roster = true;
+      renderIdentityRoster('liveness', binding);
+    }
     function normalizeNetworkNotes(payload) { const notes = payload?.networkNotes || payload?.notes || payload?.data?.networkNotes || payload?.data?.notes || payload; return notes && typeof notes === 'object' && !Array.isArray(notes) ? notes : {}; }
     function canonicalNetworkNoteMac(value) { const raw = String(value ?? ''), match = raw.match(/^([0-9a-f]{2})([:-])(?:[0-9a-f]{2}\2){4}[0-9a-f]{2}$/i); return match ? raw.split(match[2]).map(octet => octet.toUpperCase()).join(':') : null; }
     function ensureNoteModal() {
@@ -515,15 +672,61 @@ fn shell_document_4() -> &'static str {
     function closeNoteModal() { const modal = document.querySelector('[data-note-modal]'); if (modal) { modal.hidden = true; modal.removeAttribute('data-mac'); } }
     function openNoteModal(mac, note) { const modal = ensureNoteModal(); modal.dataset.mac = mac; modal.querySelector('[data-note-modal-title]').textContent = `Edit Note for ${mac}`; const textarea = modal.querySelector('[data-note-textarea]'); textarea.value = note; modal.querySelector('[data-note-error]').hidden = true; modal.hidden = false; textarea.focus(); }
     async function saveDeviceNote() {
+      const binding = scaffoldRegistry.capture('stats');
       const modal = document.querySelector('[data-note-modal]'), mac = modal?.dataset.mac || '', textarea = modal?.querySelector('[data-note-textarea]'), errorNode = modal?.querySelector('[data-note-error]'), note = textarea?.value ?? '';
-      try { const response = await fetch('/api/network/notes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mac, note }) }); if (!response.ok) throw new Error(`Save failed (${response.status})`); const canonicalMac = canonicalNetworkNoteMac(mac); if (canonicalMac) identityState.notes[canonicalMac] = note; renderStatsRoster(); closeNoteModal(); showCoronatioToast('Device note saved', 'success'); }
-      catch (error) { if (errorNode) { errorNode.textContent = String(error); errorNode.hidden = false; } }
+      if (!statsAuthorizedBinding(binding) || !modal || !mac) return;
+      try {
+        const response = await fetch('/api/network/notes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mac, note }) });
+        if (!response.ok) throw new Error(`Save failed (${response.status})`);
+        if (!statsAuthorizedBinding(binding) || !modal.isConnected || modal.dataset.mac !== mac) return;
+        const canonicalMac = canonicalNetworkNoteMac(mac);
+        if (canonicalMac) identityState.notes[canonicalMac] = note;
+        renderIdentityRoster('liveness', binding); closeNoteModal(); showCoronatioToast('Device note saved', 'success');
+      }
+      catch (error) { if (statsAuthorizedBinding(binding) && errorNode) { errorNode.textContent = String(error); errorNode.hidden = false; } }
     }
     function renderProcesses(data) {
       const target = document.querySelector('[data-process-usage-list]');
       if (!target) return;
       const processes = data.processes || [];
       target.innerHTML = processes.length ? processes.map(process => `<div class="process-bar" title="Process: ${process.name}\nMemory: ${fmtBytes(process.memoryBytes)}\nCPU: ${Number(process.cpuPercent || 0).toFixed(1)}%\nInstances: ${process.processCount || 1}"><div class="process-bar-fill" style="width:${Math.max(Number(process.cpuPercent || 0), 1)}%"></div><div class="process-text-container"><span class="process-name">${process.name}</span><span class="process-usage">${Number(process.cpuPercent || 0).toFixed(1)}%</span></div></div>`).join('') : '<div class="process-usage-empty"><p>No process data available</p></div>';
+    }
+    function syncStatsChartsFromState(binding, context) {
+      if (!binding || !context?.current()) return false;
+      const cpuCanvas = binding.root.querySelector('#cpuChart'), cpu = statsCharts.cpu;
+      if (cpu && cpu.canvas === cpuCanvas) {
+        if (!context.current()) return false;
+        cpu.data.labels = statsChartState.labels;
+        cpu.data.datasets[0].data = statsChartState.cpu;
+        cpu.data.datasets[1].data = statsChartState.temp;
+        if (!context.current()) return false;
+        cpu.update();
+      }
+      const networkCanvas = binding.root.querySelector('#networkChart'), network = statsCharts.network;
+      if (network && network.canvas === networkCanvas) {
+        if (!context.current()) return false;
+        const networkMax = Math.max(1, ...statsChartState.download, ...statsChartState.upload) * 1.1;
+        network.data.labels = statsChartState.labels;
+        network.data.datasets[0].data = statsChartState.download;
+        network.data.datasets[1].data = statsChartState.upload;
+        network.options.scales.y.max = networkMax;
+        network.options.scales['y-right'].max = networkMax;
+        if (!context.current()) return false;
+        network.update();
+      }
+      const ioCanvas = binding.root.querySelector('#io-chart'), io = statsCharts.io;
+      if (io && io.canvas === ioCanvas) {
+        if (!context.current()) return false;
+        io.data.labels = statsChartState.labels;
+        io.data.datasets.forEach(dataset => {
+          const series = statsChartState.ioSeries[dataset.statsSeriesKey];
+          if (series && ['read', 'write'].includes(dataset.statsIoKind)) dataset.data = series[dataset.statsIoKind];
+        });
+        io.options.scales.y.suggestedMax = Math.max(1, ...io.data.datasets.flatMap(dataset => dataset.data)) * 1.1;
+        if (!context.current()) return false;
+        io.update();
+      }
+      return context.current();
     }
     function historyTimestamp(sample, bucket) {
       const raw = optionalNumber(sample?.ts);
@@ -533,120 +736,136 @@ fn shell_document_4() -> &'static str {
       return minute > 100000000000 ? minute : (minute > 1000000000 ? minute * 1000 : minute * 60000);
     }
     function historyPoint(sample, timestamp) {
-      const load = sample?.load || {}, throughput = sample?.network?.throughput || {}, diskThroughput = sample?.disk?.throughput || {};
-      return { timestamp, cpu: loadToPercent(load.one), temp: optionalNumber(sample?.temperature?.celsius), download: optionalNumber(throughput.rxBytesPerSecond), upload: optionalNumber(throughput.txBytesPerSecond), io: { read: optionalNumber(diskThroughput.readBytesPerSecond), write: optionalNumber(diskThroughput.writeBytesPerSecond), devices: Array.isArray(sample?.disk?.io) ? sample.disk.io : [] } };
-    }
-    function appendHistoryPoint(point) {
-      const length = statsChartState.labels.length;
-      statsChartState.labels.push(formatChartTime(point.timestamp));
-      statsChartState.cpu.push(point.cpu); statsChartState.temp.push(point.temp); statsChartState.download.push(point.download); statsChartState.upload.push(point.upload);
-      const seen = new Set();
-      point.io.devices.forEach(device => {
-        const key = device.device || device.mount;
-        if (!key) return;
-        seen.add(key);
-        if (!statsChartState.ioSeries[key]) statsChartState.ioSeries[key] = { read: Array(length).fill(null), write: Array(length).fill(null), label: key };
-        statsChartState.ioSeries[key].read.push(point.io.read); statsChartState.ioSeries[key].write.push(point.io.write);
+      const load = sample?.load || {}, throughput = sample?.network?.throughput || {}, diskThroughput = sample?.disk?.throughput || {}, io = {};
+      (Array.isArray(sample?.disk?.io) ? sample.disk.io : []).forEach(device => {
+        const key = device?.device || device?.mount;
+        if (key) io[key] = { read: optionalNumber(diskThroughput.readBytesPerSecond), write: optionalNumber(diskThroughput.writeBytesPerSecond) };
       });
-      Object.entries(statsChartState.ioSeries).forEach(([key, series]) => { if (!seen.has(key)) { series.read.push(null); series.write.push(null); } });
+      return { timestamp, cpu: loadToPercent(load.one), temp: optionalNumber(sample?.temperature?.celsius), download: optionalNumber(throughput.rxBytesPerSecond), upload: optionalNumber(throughput.txBytesPerSecond), io };
     }
-    const statsHistoryTimeoutMs = 2500;
-    const statsSnapshotTimeoutMs = 5500;
-    const statsPullTimeoutMs = statsHistoryTimeoutMs + statsSnapshotTimeoutMs;
-    async function boundedStatsHistory(signal) {
-      const historyAbort = new AbortController();
-      const relayAbort = () => historyAbort.abort();
-      if (signal) {
-        if (signal.aborted) historyAbort.abort();
-        else signal.addEventListener('abort', relayAbort, { once: true });
-      }
-      const timer = window.setTimeout(() => historyAbort.abort(), statsHistoryTimeoutMs);
-      try { await hydrateStatsHistory(historyAbort.signal); }
-      finally {
-        window.clearTimeout(timer);
-        if (signal) signal.removeEventListener('abort', relayAbort);
-      }
-    }
-    async function hydrateStatsHistory(signal) {
-      try {
-        const response = await fetch('/api/stats/history', { cache: 'no-store', signal });
-        if (!response.ok) return;
-        const history = await response.json();
-        const raw = (Array.isArray(history?.tiers?.raw) ? history.tiers.raw : []).map(sample => ({ sample, timestamp: historyTimestamp(sample) })).filter(point => point.timestamp !== null);
-        const firstRaw = raw.length ? Math.min(...raw.map(point => point.timestamp)) : Infinity;
-        const minuteRows = Array.isArray(history?.tiers?.minute) ? history.tiers.minute : [];
-        const minuteByTimestamp = new Map();
-        minuteRows.forEach(row => {
-          const sample = row?.last;
-          const timestamp = historyTimestamp(sample, row?.bucket);
-          if (sample && timestamp !== null && timestamp < firstRaw) minuteByTimestamp.set(timestamp, sample);
+    function mergeStatsHistory(points, latestSample, latestTimestamp, context) {
+      if (!context.current()) return false;
+      const merged = new Map(points.map(point => [point.timestamp, historyPoint(point.sample, point.timestamp)]));
+      statsChartState.points.forEach(point => merged.set(point.timestamp, point));
+      const next = [...merged.values()].sort((left, right) => left.timestamp - right.timestamp);
+      statsChartState.points = next.slice(-60);
+      if (!context.current()) return false;
+      if (latestSample && (statsChartState.lastStamp === null || latestTimestamp > statsChartState.lastStamp)) {
+        statsChartState.lastStamp = latestTimestamp;
+        const totals = statsNetworkTotals({ network: latestSample.network });
+        if (totals.rx !== null) statsChartState.lastRx = totals.rx;
+        if (totals.tx !== null) statsChartState.lastTx = totals.tx;
+        (Array.isArray(latestSample.disk?.io) ? latestSample.disk.io : []).forEach(device => {
+          const key = device?.device || device?.mount;
+          if (!key) return;
+          const readBytes = optionalNumber(device.readBytes), writeBytes = optionalNumber(device.writeBytes);
+          if (readBytes !== null || writeBytes !== null) {
+            const previous = statsChartState.lastIo[key] || {};
+            statsChartState.lastIo[key] = { readBytes: readBytes ?? previous.readBytes ?? null, writeBytes: writeBytes ?? previous.writeBytes ?? null };
+          }
         });
-        const points = [...Array.from(minuteByTimestamp, ([timestamp, sample]) => ({ sample, timestamp })), ...raw].sort((a, b) => a.timestamp - b.timestamp);
-        const selected = points.length <= 60 ? points : Array.from({ length: 60 }, (_, index) => points[Math.round(index * (points.length - 1) / 59)]);
-        selected.forEach(point => appendHistoryPoint(historyPoint(point.sample, point.timestamp)));
-        const newest = points[points.length - 1];
-        if (newest) { statsChartState.lastStamp = newest.timestamp; statsChartState.skipNextChartPoint = true; }
-        const latest = (raw.reduce((newest, point) => !newest || point.timestamp > newest.timestamp ? point : newest, null) || points[points.length - 1])?.sample;
-        if (latest) {
-          const totals = statsNetworkTotals({ network: latest.network });
-          statsChartState.lastRx = totals.rx; statsChartState.lastTx = totals.tx;
-          (latest.disk?.io || []).forEach(device => { const key = device.device || device.mount; if (key) statsChartState.lastIo[key] = { readBytes: optionalNumber(device.readBytes), writeBytes: optionalNumber(device.writeBytes) }; });
+      }
+      if (!context.current()) return false;
+      rebuildStatsChartSeries();
+      if (!context.current()) return false;
+      return syncStatsChartsFromState(context.binding, context);
+    }
+    const statsSnapshotTimeoutMs = 5500;
+    const statsHistoryAttemptedBindings = new WeakSet();
+    let statsHistoryLoaded = false;
+    function setStatsHistoryStatus(binding, message, state = 'stale', retry = false, hidden = false) {
+      if (!binding || !scaffoldRegistry.current(binding)) return;
+      const status = binding.root.querySelector('[data-stats-history-status]');
+      if (!status) return;
+      status.hidden = hidden;
+      status.dataset.state = state;
+      status.textContent = message;
+      if (retry) {
+        const button = document.createElement('button'); button.type = 'button'; button.dataset.statsHistoryRetry = ''; button.textContent = 'Retry history';
+        status.append(document.createTextNode(' '), button);
+      }
+    }
+    function startStatsHistory(binding) {
+      if (!binding || statsHistoryLoaded || statsHistoryAttemptedBindings.has(binding) || !scaffoldRegistry.current(binding)) return Promise.resolve(false);
+      statsHistoryAttemptedBindings.add(binding);
+      setStatsHistoryStatus(binding, 'Loading saved chart history…', 'pending', false, false);
+      return scaffoldRegistry.run(binding, 'stats-history', async context => {
+        const history = await context.fetchJson('/api/stats/history');
+        if (!context.current()) return false;
+        if (!history || typeof history !== 'object' || Array.isArray(history) || history.ok === false
+            || !history.tiers || !Array.isArray(history.tiers.raw) || !Array.isArray(history.tiers.minute)) {
+          throw new Error('Stats history response is incomplete');
         }
-      } catch (_) { /* sparse history is truthful when Caduceus has no samples */ }
+        const raw = history.tiers.raw.map(sample => ({ sample, timestamp: historyTimestamp(sample) })).filter(point => point.timestamp !== null && point.sample && typeof point.sample === 'object');
+        const firstRaw = raw.length ? Math.min(...raw.map(point => point.timestamp)) : Infinity;
+        const minuteByTimestamp = new Map();
+        history.tiers.minute.forEach(row => {
+          const sample = row?.last, timestamp = historyTimestamp(sample, row?.bucket);
+          if (sample && typeof sample === 'object' && timestamp !== null && timestamp < firstRaw) minuteByTimestamp.set(timestamp, sample);
+        });
+        const points = [...Array.from(minuteByTimestamp, ([timestamp, sample]) => ({ sample, timestamp })), ...raw].sort((left, right) => left.timestamp - right.timestamp);
+        const selected = points.length <= 60 ? points : Array.from({ length: 60 }, (_, index) => points[Math.round(index * (points.length - 1) / 59)]);
+        const latestPoint = points[points.length - 1];
+        if (!context.current() || !mergeStatsHistory(selected, latestPoint?.sample, latestPoint?.timestamp, context)) return false;
+        statsHistoryLoaded = true;
+        if (!context.current()) return false;
+        setStatsHistoryStatus(binding, points.length ? '' : 'No saved history yet.', 'ready', false, points.length > 0);
+        return true;
+      }, {
+        slots: [], timeoutMs: 8000, slowMs: 750,
+        onFailure: ({ current, reason }) => {
+          if (!current() || !scaffoldRegistry.current(binding)) return;
+          setStatsHistoryStatus(binding, `Saved chart history unavailable: ${reason || 'Read failed'}.`, 'stale', true, false);
+        }
+      });
     }
     const statsScaffoldFillers = Object.freeze({
-      'stats.cpu': { present: data => Boolean(data?.resources?.load), fill: data => renderCpuChart(data) },
-      'stats.network': { present: data => Boolean(data?.network), fill: data => renderNetwork(data) },
-      'stats.io': { present: data => Boolean(data?.io), fill: data => renderDiskIo(data) },
+      'stats.cpu': { present: data => Boolean(data?.resources?.load && ['one', 'five', 'fifteen'].every(key => Object.prototype.hasOwnProperty.call(data.resources.load, key))), fill: data => renderCpuChart(data) },
+      'stats.network': { present: data => Boolean(data?.network && typeof data.network === 'object' && (Array.isArray(data.network.interfaces) || (Object.prototype.hasOwnProperty.call(data.network, 'receivedBytes') && Object.prototype.hasOwnProperty.call(data.network, 'sentBytes')))), fill: data => renderNetwork(data) },
+      'stats.io': { present: data => Boolean(data?.io && Array.isArray(data.io.devices)), fill: data => renderDiskIo(data) },
       'stats.memory': { present: data => Boolean(data?.resources?.memory), fill: data => renderMemory(data) },
-      'stats.storage': { present: data => data?.storage !== undefined && data?.storage !== null, fill: data => renderDiskUsage(data) },
-      'stats.kea-leases': { present: data => Boolean(data?.keaLeases), fill: data => renderStatsRoster(data) },
-      'stats.processes': { present: data => Boolean(data?.processes), fill: data => renderProcesses(data) }
+      'stats.storage': { present: data => Array.isArray(data?.storage), fill: data => renderDiskUsage(data) },
+      'stats.kea-leases': { present: data => Array.isArray(data?.keaLeases?.entries), fill: (data, projection) => renderStatsRoster(data, projection) },
+      'stats.processes': { present: data => Array.isArray(data?.processes), fill: data => renderProcesses(data) }
     });
-    async function readBundledStats({ signal }) {
-      const pullAbort = new AbortController();
-      const relayAbort = () => pullAbort.abort();
-      if (signal) {
-        if (signal.aborted) pullAbort.abort();
-        else signal.addEventListener('abort', relayAbort, { once: true });
-      }
-      const pullTimer = window.setTimeout(() => pullAbort.abort(), statsPullTimeoutMs);
-      try {
-        if (!statsChartState.lastStamp) await boundedStatsHistory(pullAbort.signal);
-        const snapshotAbort = new AbortController();
-        const relaySnapshotAbort = () => snapshotAbort.abort();
-        if (pullAbort.signal.aborted) snapshotAbort.abort();
-        else pullAbort.signal.addEventListener('abort', relaySnapshotAbort, { once: true });
-        const snapshotTimer = window.setTimeout(() => snapshotAbort.abort(), statsSnapshotTimeoutMs);
-        let statsResponse;
-        try {
-          statsResponse = await fetch('/api/stats', { cache: 'no-store', signal: snapshotAbort.signal });
-        } finally {
-          window.clearTimeout(snapshotTimer);
-          pullAbort.signal.removeEventListener('abort', relaySnapshotAbort);
-        }
-        if (!statsResponse.ok) throw new Error(`Stats unavailable (${statsResponse.status})`);
-        const data = await statsResponse.json();
-        const label = data.sampledAt === undefined || data.sampledAt === null ? formatChartTime() : formatChartTime(data.sampledAt);
-        const roster = identityRows(data.keaLeases?.entries);
-        identityState.roster = roster;
-        identityState.notes = Object.fromEntries(roster.map(row => [canonicalNetworkNoteMac(row.mac), row.note ?? '']).filter(([mac]) => mac));
-        pushChartPoint(label, data);
-        return data;
-      } finally {
-        window.clearTimeout(pullTimer);
-        if (signal) signal.removeEventListener('abort', relayAbort);
-      }
+    async function readBundledStats(context) {
+      const data = await context.fetchJson('/api/stats');
+      if (!context.current()) return false;
+      if (!data || typeof data !== 'object' || Array.isArray(data) || data.ok === false) throw new Error('Stats snapshot is incomplete');
+      const chartPresent = statsScaffoldFillers['stats.cpu'].present(data)
+        || statsScaffoldFillers['stats.network'].present(data)
+        || statsScaffoldFillers['stats.io'].present(data);
+      if (chartPresent && context.current()) pushChartPoint(data, statsTimestamp(data.sampledAt));
+      return data;
     }
     scaffoldRegistry.registerGuest({
       guest: 'stats',
       root: '[data-scaffold-root][data-guest-id="stats"]',
       read: readBundledStats,
-      fillers: statsScaffoldFillers
+      fillers: statsScaffoldFillers,
+      timeoutMs: statsSnapshotTimeoutMs
     });
     async function hydrateStats() {
-      return scaffoldRegistry.read('stats');
+      const binding = scaffoldRegistry.capture('stats');
+      if (!binding) return Promise.resolve(false);
+      startStatsHistory(binding);
+      return scaffoldRegistry.read('stats', { readKey: 'stats-snapshot' });
     }
+    document.addEventListener('click', event => {
+      const button = event.target instanceof Element ? event.target.closest('[data-stats-history-retry]') : null;
+      if (!button) return;
+      const binding = scaffoldRegistry.capture('stats');
+      if (!binding) return;
+      event.preventDefault();
+      button.disabled = true;
+      scaffoldRegistry.retry(binding, 'stats-history').finally(() => { if (button.isConnected) button.disabled = false; });
+    });
+    window.addEventListener('coronatio:privileged-state-retired', () => {
+      identityState.roster = []; identityState.notes = {}; identityState.ready.roster = false;
+      retireTestLanIpCatalogForGuest();
+      closeNoteModal();
+      document.querySelectorAll('[data-pane-panel="stats"] [data-identity-roster]').forEach(target => { target.replaceChildren(); target.textContent = 'Network activity requires Admin Mode.'; });
+    });
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     }
@@ -762,37 +981,48 @@ fn shell_document_4() -> &'static str {
     }
     function bindPortalFragmentControls(grid) {
       grid.querySelectorAll('[data-portal-card]').forEach(card => {
+        if (card.dataset.portalFragmentControlsBound === 'true') return;
+        card.dataset.portalFragmentControlsBound = 'true';
         const open = () => { const url = card.dataset.portalUrl; if (url && url !== '#') window.open(url, '_blank', 'noopener,noreferrer'); };
         card.addEventListener('click', open);
         card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
       });
-      grid.querySelectorAll('[data-service-action]').forEach(button => button.addEventListener('click', handlePortalServiceAction));
-      grid.querySelectorAll('[data-portal-delete]').forEach(button => button.addEventListener('click', deletePortal));
+      grid.querySelectorAll('[data-service-action]').forEach(button => { if (button.dataset.portalFragmentControlBound === 'true') return; button.dataset.portalFragmentControlBound = 'true'; button.addEventListener('click', handlePortalServiceAction); });
+      grid.querySelectorAll('[data-portal-delete]').forEach(button => { if (button.dataset.portalFragmentControlBound === 'true') return; button.dataset.portalFragmentControlBound = 'true'; button.addEventListener('click', deletePortal); });
     }
-    async function refreshPortalCurrentness() {
-      const grid = document.querySelector('[data-portals-grid]');
-      if (!grid || grid.offsetParent === null) return;
-      try {
-        const data = await fetch('/api/portals/currentness', { cache: 'no-store' }).then(response => response.ok ? response.json() : null);
-        if (!data?.portals) return;
-        grid.querySelectorAll('[data-portal-card]').forEach(card => {
-          const next = data.portals[card.dataset.portalName] || 'unknown';
-          const statuses = ['up', 'down', 'partial', 'unknown'];
+    async function refreshPortalCurrentness(binding = scaffoldRegistry.capture('portals')) {
+      if (!binding || binding.guest !== 'portals' || !viewportFamilyAdmitted('portals') || !scaffoldRegistry.current(binding)) return false;
+      const grid = binding.root.querySelector('[data-portals-grid]');
+      if (!grid) return false;
+      return scaffoldRegistry.run(binding, 'portals-currentness', async context => {
+        const data = await context.fetchJson('/api/portals/currentness');
+        if (!context.current() || !viewportFamilyAdmitted('portals') || !binding.root.contains(grid)) return false;
+        if (!data || typeof data !== 'object' || Array.isArray(data) || !data.portals || typeof data.portals !== 'object' || Array.isArray(data.portals)) throw new Error('Portal currentness response is incomplete');
+        const statuses = ['up', 'down', 'partial', 'unknown'];
+        for (const [name, value] of Object.entries(data.portals)) if (value !== null && value !== undefined && !statuses.includes(value)) throw new Error('Portal currentness row is malformed');
+        for (const card of grid.querySelectorAll('[data-portal-card]')) {
+          if (!context.current() || !viewportFamilyAdmitted('portals') || !binding.root.contains(card)) return false;
+          const next = statuses.includes(data.portals[card.dataset.portalName]) ? data.portals[card.dataset.portalName] : 'unknown';
           const current = statuses.find(status => card.classList.contains(status)) || 'unknown';
-          if (current !== next) {
-            card.classList.remove(...statuses);
-            card.classList.add(next);
-          }
-        });
-      } catch (_) {}
+          if (current !== next) { card.classList.remove(...statuses); card.classList.add(next); }
+        }
+        if (context.current()) { delete grid.dataset.currentnessStale; delete grid.dataset.currentnessError; }
+        return true;
+      }, {
+        slots: [], timeoutMs: 8000, slowMs: 750, retry: false,
+        onFailure: ({ current, reason }) => {
+          if (!current() || !viewportFamilyAdmitted('portals') || !scaffoldRegistry.current(binding) || !binding.root.contains(grid)) return;
+          grid.dataset.currentnessStale = 'true'; grid.dataset.currentnessError = reason || 'Portal currentness unavailable';
+        }
+      });
     }
-    const portalElementsChanged = consumeElementsChanged({
+    const portalElementsChanged = window.consumeElementsChanged({
       paneId: 'portals',
       route: '/api/portals/elements',
       target: () => document.querySelector('[data-portals-grid]'),
       afterReplace: target => bindPortalFragmentControls(target)
     });
-    const statsElementsChanged = consumeElementsChanged({
+    const statsElementsChanged = window.consumeElementsChanged({
       paneId: 'stats',
       route: '/api/stats/elements',
       target: () => document.querySelector('[data-stats-viewport]'),
@@ -884,12 +1114,139 @@ fn shell_document_4() -> &'static str {
       if (target.matches('.motion-toggle')) target.setAttribute('aria-checked', String(running));
       button.textContent = running ? 'Stop demo' : (button.dataset.animationPlay === '' && (target.matches('.motion-progress, .motion-spinner')) ? 'Start demo' : 'Play');
     }
-    const testLanIpState = { start: 100, end: 163, taken: new Map([[103, 'Media server'], [120, 'Garden tablet']]), selected: 100, page: 0, live: false };
+    const testLanIpState = { start: 100, end: 163, taken: new Map([[103, 'Media server'], [120, 'Garden tablet']]), selected: 100, page: 0, live: false, hasCatalog: false, catalogStarted: false, catalogStale: false, binding: null, cycle: 0, startedCycle: 0, reads: { boundary: { state: 'unknown' }, leases: { state: 'unknown' }, reservations: { state: 'unknown' } } };
     const testUpstreamProviders = Object.freeze({ quad9: ['9.9.9.9', '149.112.112.112'], cloudflare: ['1.1.1.1', '1.0.0.1'], google: ['8.8.8.8', '8.8.4.4'] });
     const testDhcpRows = payload => Array.isArray(payload) ? payload : (payload?.leases || payload?.reservations || payload?.data || payload?.items || []);
+    const testLanIpPageSize = 32;
+    const testLanIpReadRoutes = Object.freeze({ boundary: '/api/network/dhcp/boundary', leases: '/api/network/dhcp/leases', reservations: '/api/network/dhcp/reservations' });
+    const testLanIpReadKeys = Object.freeze({ boundary: 'test-network-boundary', leases: 'test-network-leases', reservations: 'test-network-reservations' });
     function testLanOctet(value) { const match = String(value || '').match(/^192\.168\.123\.(\d{1,3})$/); return match ? Number(match[1]) : null; }
-    function renderTestLanIpCalendar() { const specimen = document.querySelector('[data-test-lan-ip-calendar]'); const grid = specimen?.querySelector('[data-lan-ip-grid]'); if (!grid) return; const pageSize = 32; const first = testLanIpState.start + testLanIpState.page * pageSize; const last = Math.min(testLanIpState.end, first + pageSize - 1); specimen.querySelector('[data-lan-ip-range]').textContent = `${first} - ${last}`; specimen.querySelector('[data-lan-ip-prev]').disabled = first <= testLanIpState.start; specimen.querySelector('[data-lan-ip-next]').disabled = last >= testLanIpState.end; grid.replaceChildren(...Array.from({ length: Math.max(0, last - first + 1) }, (_, offset) => { const octet = first + offset, holder = testLanIpState.taken.get(octet), button = document.createElement('button'); button.type = 'button'; button.className = 'ui-lan-ip-calendar__octet'; button.dataset.lanIpOctet = String(octet); button.textContent = String(octet); button.disabled = Boolean(holder); button.setAttribute('role', 'gridcell'); button.setAttribute('aria-pressed', String(testLanIpState.selected === octet)); button.setAttribute('aria-label', holder ? `192.168.123.${octet}, held by ${holder}` : `Select 192.168.123.${octet}`); if (holder) button.title = holder; return button; })); const selected = specimen.querySelector('[data-lan-ip-readout]'); if (selected) selected.textContent = `Selected address: 192.168.123.${testLanIpState.selected}${testLanIpState.live ? '' : ' (demonstration range)'}`; }
-    async function hydrateTestNetworkCatalog() { if (!viewportFamilyAdmitted('test')) return; try { const [boundary, leases, reservations] = await Promise.all(['/api/network/dhcp/boundary', '/api/network/dhcp/leases', '/api/network/dhcp/reservations'].map(route => fetch(route, { cache: 'no-store' }).then(response => response.ok ? response.json() : Promise.reject(new Error(route))))); if (!viewportFamilyAdmitted('test')) return; const rawBoundary = boundary?.boundary || boundary || {}; const start = testLanOctet(rawBoundary.start || rawBoundary.first || rawBoundary.pool_start || rawBoundary.reservation_start); const end = testLanOctet(rawBoundary.end || rawBoundary.last || rawBoundary.pool_end || rawBoundary.reservation_end); if (!Number.isInteger(start) || !Number.isInteger(end) || start > end) throw new Error('reservation range unavailable'); const taken = new Map(); [...testDhcpRows(leases), ...testDhcpRows(reservations)].forEach(row => { const octet = testLanOctet(row?.ip || row?.['ip-address'] || row?.ipAddress); if (octet !== null) taken.set(octet, String(row?.hostname || row?.device_name || row?.name || 'Reserved device')); }); testLanIpState.start = start; testLanIpState.end = end; testLanIpState.taken = taken; testLanIpState.live = true; } catch (_) { testLanIpState.start = 100; testLanIpState.end = 163; testLanIpState.taken = new Map([[103, 'Media server'], [120, 'Garden tablet']]); testLanIpState.live = false; } const firstFree = Array.from({ length: testLanIpState.end - testLanIpState.start + 1 }, (_, index) => testLanIpState.start + index).find(octet => !testLanIpState.taken.has(octet)); testLanIpState.selected = firstFree || testLanIpState.start; testLanIpState.page = Math.floor((testLanIpState.selected - testLanIpState.start) / 32); renderTestLanIpCalendar(); }
+    function testLanIpCatalogStatus() {
+      const specimen = document.querySelector('[data-test-lan-ip-calendar]'); if (!specimen) return;
+      let status = specimen.querySelector('[data-test-network-catalog-status]');
+      if (!status) { status = document.createElement('div'); status.dataset.testNetworkCatalogStatus = ''; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); const calendar = specimen.querySelector('.ui-lan-ip-calendar'); if (calendar) calendar.after(status); else specimen.appendChild(status); }
+      status.replaceChildren();
+      const summary = testLanIpState.live ? 'Current network catalog.' : testLanIpState.hasCatalog ? 'Network catalog is stale; showing the last known range with selection disabled.' : testLanIpState.catalogStarted ? 'Demonstration range only; current network catalog is unavailable or incomplete and selection is disabled.' : 'Demonstration range; waiting for current network data.';
+      status.append(document.createTextNode(summary));
+      for (const name of ['boundary', 'leases', 'reservations']) {
+        const read = testLanIpState.reads[name] || { state: 'unknown' };
+        status.append(document.createTextNode(` · ${name}: ${read.state}`));
+        if (read.state === 'error') {
+          if (read.reason) status.append(document.createTextNode(` (${read.reason})`));
+          if (testLanIpState.binding && scaffoldRegistry.current(testLanIpState.binding)) { const retry = document.createElement('button'); retry.type = 'button'; retry.dataset.scaffoldRetry = 'test'; retry.dataset.scaffoldReadKey = testLanIpReadKeys[name]; retry.textContent = `Retry ${name}`; status.append(document.createTextNode(' '), retry); }
+        }
+      }
+    }
+    function renderTestLanIpCalendar() {
+      const specimen = document.querySelector('[data-test-lan-ip-calendar]'); const grid = specimen?.querySelector('[data-lan-ip-grid]'); if (!grid) return;
+      const first = testLanIpState.start + testLanIpState.page * testLanIpPageSize; const last = Math.min(testLanIpState.end, first + testLanIpPageSize - 1);
+      specimen.querySelector('[data-lan-ip-range]').textContent = `${first} - ${last}`;
+      const blocked = testLanIpState.catalogStarted && !testLanIpState.live;
+      specimen.querySelector('[data-lan-ip-prev]').disabled = blocked || first <= testLanIpState.start;
+      specimen.querySelector('[data-lan-ip-next]').disabled = blocked || last >= testLanIpState.end;
+      const html = Array.from({ length: Math.max(0, last - first + 1) }, (_, offset) => {
+        const octet = first + offset, holder = testLanIpState.taken.get(octet), label = holder ? `192.168.123.${octet}, held by ${holder}` : `Select 192.168.123.${octet}`;
+        return `<button type="button" class="ui-lan-ip-calendar__octet" data-lan-ip-octet="${octet}" data-scaffold-key="lan-ip-octet-${octet}" ${holder || blocked ? 'disabled' : ''} role="gridcell" aria-pressed="${testLanIpState.selected === octet}" aria-label="${escapeHtml(label)}"${holder ? ` title="${escapeHtml(holder)}"` : ''}>${octet}</button>`;
+      }).join('');
+      morphLivePane(grid, html);
+      const selected = specimen.querySelector('[data-lan-ip-readout]');
+      if (selected) selected.textContent = testLanIpState.selected === null ? (testLanIpState.catalogStarted && !testLanIpState.live ? 'No address selected; demonstration range only.' : 'No available address.') : `Selected address: 192.168.123.${testLanIpState.selected}${testLanIpState.live ? '' : testLanIpState.hasCatalog ? ' (last known; stale)' : ' (demonstration range)'}`;
+      testLanIpCatalogStatus();
+    }
+    function retireTestLanIpCatalogForGuest() {
+      testLanIpState.cycle += 1;
+      testLanIpState.start = 100; testLanIpState.end = 163; testLanIpState.taken = new Map(); testLanIpState.selected = null; testLanIpState.page = 0;
+      testLanIpState.live = false; testLanIpState.hasCatalog = false; testLanIpState.catalogStale = false; testLanIpState.catalogStarted = true; testLanIpState.binding = null;
+      testLanIpState.reads = { boundary: { state: 'error', reason: 'Admin Mode required' }, leases: { state: 'error', reason: 'Admin Mode required' }, reservations: { state: 'error', reason: 'Admin Mode required' } };
+      scaffoldRegistry.retire('test');
+      renderTestLanIpCalendar();
+    }
+    function testLanIpCurrent(binding, context, cycle) { return Boolean(context.current() && scaffoldRegistry.current(binding) && viewportFamilyAdmitted('test') && headerState.isAdmin && testLanIpState.cycle === cycle); }
+    function testLanIpEnvelopeRows(payload) {
+      if (!payload || payload.ok !== true || !payload.payload || payload.payload.ok !== true || !Array.isArray(payload.payload.result)) throw new Error('Network catalog response is incomplete');
+      return payload.payload.result;
+    }
+    function testLanIpProjectRead(name, rows) {
+      if (name === 'boundary') {
+        if (rows.length !== 1 || !rows[0] || typeof rows[0] !== 'object' || Array.isArray(rows[0])) throw new Error('Network boundary is unavailable');
+        const start = testLanOctet(rows[0].start), end = testLanOctet(rows[0].end);
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start > end) throw new Error('Network boundary is invalid');
+        return { start, end };
+      }
+      for (const row of rows) {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`DHCP ${name} row is invalid`);
+        const octet = testLanOctet(row.ip || row['ip-address'] || row.ipAddress);
+        if (octet === null) throw new Error(`DHCP ${name} row has no valid address`);
+      }
+      return testDhcpRows(rows);
+    }
+    function applyTestLanIpCatalog(binding, context, cycle) {
+      if (!testLanIpCurrent(binding, context, cycle)) return false;
+      const reads = testLanIpState.reads;
+      if (!['boundary', 'leases', 'reservations'].every(name => reads[name]?.state === 'ready')) return true;
+      const boundary = reads.boundary.value, leaseRows = reads.leases.value, reservationRows = reads.reservations.value;
+      const taken = new Map();
+      [...leaseRows, ...reservationRows].forEach(row => { const octet = testLanOctet(row.ip || row['ip-address'] || row.ipAddress); const holder = String(row.hostname || row.device_name || row.name || 'Reserved device'); if (octet !== null) taken.set(octet, holder); });
+      if (!testLanIpCurrent(binding, context, cycle)) return false;
+      const previousSelected = testLanIpState.selected, previousPage = testLanIpState.page;
+      const selectedStillFree = Number.isInteger(previousSelected) && previousSelected >= boundary.start && previousSelected <= boundary.end && !taken.has(previousSelected);
+      const firstFree = Array.from({ length: boundary.end - boundary.start + 1 }, (_, index) => boundary.start + index).find(octet => !taken.has(octet));
+      testLanIpState.start = boundary.start; testLanIpState.end = boundary.end; testLanIpState.taken = taken;
+      testLanIpState.selected = selectedStillFree ? previousSelected : (firstFree ?? null);
+      const lastPage = Math.max(0, Math.ceil((boundary.end - boundary.start + 1) / testLanIpPageSize) - 1);
+      testLanIpState.page = selectedStillFree ? Math.min(lastPage, Math.max(0, previousPage)) : (testLanIpState.selected === null ? Math.min(lastPage, Math.max(0, previousPage)) : Math.floor((testLanIpState.selected - boundary.start) / testLanIpPageSize));
+      testLanIpState.hasCatalog = true; testLanIpState.catalogStale = false; testLanIpState.live = true;
+      renderTestLanIpCalendar();
+      return true;
+    }
+    function runTestLanIpRead(binding, name, cycle) {
+      const key = testLanIpReadKeys[name];
+      return scaffoldRegistry.run(binding, key, async context => {
+        if (!headerState.isAdmin) { if (testLanIpState.binding === binding) retireTestLanIpCatalogForGuest(); return false; }
+        if (!context.current() || !scaffoldRegistry.current(binding) || !viewportFamilyAdmitted('test') || testLanIpState.cycle !== cycle) return false;
+        if (testLanIpState.startedCycle !== cycle) {
+          testLanIpState.startedCycle = cycle; testLanIpState.catalogStarted = true; testLanIpState.catalogStale = true; testLanIpState.live = false;
+          testLanIpState.reads = { boundary: { state: 'waiting' }, leases: { state: 'waiting' }, reservations: { state: 'waiting' } };
+        }
+        testLanIpState.reads[name] = { state: 'pending' }; testLanIpState.catalogStale = true; testLanIpState.live = false;
+        renderTestLanIpCalendar();
+        const payload = await context.fetchJson(testLanIpReadRoutes[name]);
+        if (!testLanIpCurrent(binding, context, cycle)) return false;
+        const value = testLanIpProjectRead(name, testLanIpEnvelopeRows(payload));
+        if (!testLanIpCurrent(binding, context, cycle)) return false;
+        testLanIpState.reads[name] = { state: 'ready', value };
+        if (!applyTestLanIpCatalog(binding, context, cycle)) return false;
+        if (!testLanIpState.live) renderTestLanIpCalendar();
+        return true;
+      }, {
+        slots: [], timeoutMs: 8000, slowMs: 750, supersede: false,
+        onFailure: ({ current, reason }) => {
+          if (!current() || !scaffoldRegistry.current(binding) || !viewportFamilyAdmitted('test') || testLanIpState.cycle !== cycle) return;
+          testLanIpState.reads[name] = { state: 'error', reason: reason || 'Read failed' }; testLanIpState.catalogStale = true; testLanIpState.live = false;
+          renderTestLanIpCalendar();
+        }
+      });
+    }
+    async function hydrateTestNetworkCatalog() {
+      if (!viewportFamilyAdmitted('test')) return false;
+      if (!headerState.isAdmin) { retireTestLanIpCatalogForGuest(); return false; }
+      const binding = scaffoldRegistry.capture('test'); if (!binding) return false;
+      if (testLanIpState.binding !== binding) {
+        const previous = testLanIpState.binding;
+        if (previous) scaffoldRegistry.retire(previous, 'Test catalog binding replaced');
+        testLanIpState.binding = binding;
+        scaffoldRegistry.onRetire(binding, () => {
+          if (testLanIpState.binding !== binding) return;
+          testLanIpState.binding = null; testLanIpState.live = false; testLanIpState.catalogStale = true; testLanIpState.catalogStarted = true;
+          renderTestLanIpCalendar();
+        });
+      }
+      const keys = Object.values(testLanIpReadKeys);
+      if (!keys.some(key => binding.runs.has(key))) testLanIpState.cycle += 1;
+      const cycle = testLanIpState.cycle;
+      const results = await Promise.all(['boundary', 'leases', 'reservations'].map(name => runTestLanIpRead(binding, name, cycle)));
+      return results.every(result => result !== false);
+    }
     const now = new Date();
     const testMonthlyCalendarState = { displayedYear: now.getFullYear(), displayedMonth: now.getMonth(), selected: now };
     function renderTestMonthlyCalendar() { const specimen = document.querySelector('[data-ui-calendar-monthly]'); const grid = specimen?.querySelector('[data-ui-calendar-monthly-grid]'); if (!grid) return; const { displayedYear: year, displayedMonth: month, selected } = testMonthlyCalendarState, offset = (new Date(year, month, 1).getDay() + 6) % 7, days = new Date(year, month + 1, 0).getDate(), selectedInDisplayedMonth = selected.getFullYear() === year && selected.getMonth() === month; specimen.querySelector('[data-ui-calendar-monthly-month]').textContent = new Date(year, month, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); grid.replaceChildren(...Array.from({ length: offset + days + ((7 - ((offset + days) % 7)) % 7) }, (_, index) => { if (index < offset || index >= offset + days) { const blank = document.createElement('span'); blank.className = 'ui-calendar-monthly__blank'; return blank; } const day = index - offset + 1, button = document.createElement('button'); button.type = 'button'; button.className = 'ui-calendar-monthly__day'; button.dataset.uiCalendarMonthlyDay = String(day); button.textContent = String(day); const isSelected = selectedInDisplayedMonth && day === selected.getDate(); button.setAttribute('aria-pressed', String(isSelected)); button.classList.toggle('is-selected', isSelected); return button; })); const output = specimen.querySelector('[data-ui-calendar-monthly-output]'); if (output) output.textContent = `Selected date: ${selected.toLocaleDateString(undefined, { dateStyle: 'long' })}`; }
@@ -915,7 +1272,7 @@ fn shell_document_4() -> &'static str {
       const monthlyDay = event.target.closest('[data-ui-calendar-monthly-day]'); if (monthlyDay) { testMonthlyCalendarState.selected = new Date(testMonthlyCalendarState.displayedYear, testMonthlyCalendarState.displayedMonth, Number(monthlyDay.dataset.uiCalendarMonthlyDay)); renderTestMonthlyCalendar(); return; }
       const lanIpPrevious = event.target.closest('[data-lan-ip-prev]'); if (lanIpPrevious) { testLanIpState.page = Math.max(0, testLanIpState.page - 1); renderTestLanIpCalendar(); return; }
       const lanIpNext = event.target.closest('[data-lan-ip-next]'); if (lanIpNext) { testLanIpState.page = Math.min(Math.ceil((testLanIpState.end - testLanIpState.start + 1) / 32) - 1, testLanIpState.page + 1); renderTestLanIpCalendar(); return; }
-      const lanIpOctet = event.target.closest('[data-lan-ip-octet]'); if (lanIpOctet && !lanIpOctet.disabled) { testLanIpState.selected = Number(lanIpOctet.dataset.lanIpOctet); renderTestLanIpCalendar(); return; }
+      const lanIpOctet = event.target.closest('[data-lan-ip-octet]'); if (lanIpOctet && !lanIpOctet.disabled && (!testLanIpState.catalogStarted || testLanIpState.live)) { testLanIpState.selected = Number(lanIpOctet.dataset.lanIpOctet); renderTestLanIpCalendar(); return; }
       const scopedTab = event.target.closest('[data-tab-id]');
       if (scopedTab) return switchScopedTabs(scopedTab);
       const portalEye = event.target.closest('[data-portal-visibility-toggle]');

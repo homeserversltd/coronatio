@@ -140,7 +140,7 @@ fn shell_document_2() -> &'static str {
       __CARTRIDGE_PANES__
       <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" role="tabpanel" aria-label="DHCP">
         <div class="dhcp-tablet" data-dhcp-tablet data-admin-only="true" data-admin-viewport="dhcp">
-          <div class="dhcp-info-banner" data-dhcp-info-banner aria-live="polite">
+          <div class="dhcp-info-banner" data-dhcp-info-banner data-scaffold-slot="dhcp-statistics" data-scaffold-placeholder="DHCP statistics" aria-live="polite">
             <span class="dhcp-info-item">Homeserver: <span class="dhcp-info-value" data-dhcp-homeserver>192.168.123.1</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
             <span class="dhcp-info-item">Reservations: <span class="dhcp-info-value" data-dhcp-reservations-count>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
             <span class="dhcp-info-item">Hosts: <span class="dhcp-info-value" data-dhcp-hosts-count>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
@@ -149,7 +149,7 @@ fn shell_document_2() -> &'static str {
           <div class="dhcp-button-row">
             <button type="button" class="ui-button ui-button--secondary ui-button--small" data-dhcp-refresh>Refresh</button>
             <label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__switch"><input type="checkbox" class="ui-toggle__input" data-dhcp-anonymize><span class="ui-toggle__slider"></span></span><span class="ui-toggle__label">Anonymize</span></label>
-            <div class="reservation-slider" data-dhcp-boundary-control>
+            <div class="reservation-slider" data-dhcp-boundary-control data-scaffold-slot="dhcp-pool-boundary" data-scaffold-placeholder="DHCP pool boundary">
               <label for="dhcp-reservation-boundary">Reserved addresses: <strong class="dhcp-boundary-value" data-dhcp-boundary-value>—</strong> <span class="dhcp-boundary-value" data-dhcp-boundary-min>—</span>–<span class="dhcp-boundary-value" data-dhcp-boundary-max>—</span></label>
               <input id="dhcp-reservation-boundary" class="ui-slider" type="range" min="0" max="249" value="0" data-dhcp-boundary>
               <button type="button" class="ui-button ui-button--primary ui-button--small" data-dhcp-boundary-save>Apply</button>
@@ -157,8 +157,8 @@ fn shell_document_2() -> &'static str {
           </div>
           <div class="dhcp-tablet-content">
             <div class="dhcp-banner dhcp-banner--error" data-dhcp-error role="alert" hidden></div>
-            <div class="dhcp-banner dhcp-banner--loading" data-dhcp-loading aria-live="polite"><span class="loading-spinner medium" role="progressbar" aria-label="Loading devices"></span><span>Loading device identities…</span></div>
-            <section class="identity-roster-host dhcp-device-roster" data-identity-roster-host="dhcp" data-identity-perspective="address"><h3>Device addresses</h3><p class="dhcp-device-roster-hint">Pinned addresses are reserved. Lease-only devices can be pinned in one click.</p><div data-identity-roster></div></section>
+            <div class="dhcp-banner dhcp-banner--loading" data-dhcp-loading aria-live="polite"><span class="loading-spinner medium" role="progressbar" aria-label="Loading devices"></span><span>Loading device identities…</span></div><span hidden data-scaffold-slot="identity-boundary" data-scaffold-placeholder="network DHCP boundary"></span><span hidden data-scaffold-slot="identity-leases" data-scaffold-placeholder="DHCP leases"></span><span hidden data-scaffold-slot="identity-reservations" data-scaffold-placeholder="DHCP reservations"></span><span hidden data-scaffold-slot="identity-dns" data-scaffold-placeholder="DNS records"></span><span hidden data-scaffold-slot="identity-mutation" data-scaffold-placeholder="network change"></span>
+            <section class="identity-roster-host dhcp-device-roster" data-identity-roster-host="dhcp" data-identity-perspective="address"><h3>Device addresses</h3><p class="dhcp-device-roster-hint">Pinned addresses are reserved. Lease-only devices can be pinned in one click.</p><div data-scaffold-slot="identity-roster" data-scaffold-placeholder="network device roster"><div data-identity-roster></div></div></section>
           </div>
         </div>
         <div class="ui-modal-backdrop" data-identity-claim-modal aria-hidden="true">
@@ -178,11 +178,11 @@ fn shell_document_2() -> &'static str {
         <div class="firewall-tablet" data-firewall-tablet data-admin-only="true" data-admin-viewport="firewall">
           <header class="firewall-header"><div><h2>Firewall</h2><p>Child-device website access.</p></div><button class="ui-button ui-button--secondary ui-button--small" type="button" data-firewall-refresh>Refresh</button></header>
           <div class="firewall-banner firewall-banner--error" data-firewall-error role="alert" hidden></div>
-          <section class="firewall-section"><h3>Observed devices</h3><p>Hostname, IP address and MAC address seen on the network.</p><ul class="firewall-list" data-firewall-observed></ul></section>
-          <section class="firewall-section"><h3>Child devices</h3><p>Registered child devices can have a website whitelist.</p><ul class="firewall-list" data-firewall-children></ul></section>
+          <section class="firewall-section"><h3>Observed devices</h3><p>Hostname, IP address and MAC address seen on the network.</p><div data-scaffold-slot="firewall-observed" data-scaffold-placeholder="observed devices"><ul class="firewall-list" data-firewall-observed></ul></div></section>
+          <section class="firewall-section"><h3>Child devices</h3><p>Registered child devices can have a website whitelist.</p><div data-scaffold-slot="firewall-children" data-scaffold-placeholder="registered child devices"><ul class="firewall-list" data-firewall-children></ul></div></section>
           <pre class="firewall-receipt" data-firewall-receipt aria-live="polite"></pre>
         </div>
-        <div class="ui-modal-backdrop" data-firewall-modal-backdrop aria-hidden="true"><section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="firewall-modal-title"><h2 id="firewall-modal-title" data-firewall-modal-title>Website whitelist</h2><form data-firewall-host-form><label class="firewall-modal-field">Website hostname<input class="ui-input ui-input--medium" data-firewall-host-input maxlength="253" placeholder="example.com"></label><button class="ui-button ui-button--secondary ui-button--small" type="submit">Add website</button></form><ul class="firewall-list" data-firewall-hosts></ul><div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-modal-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-firewall-modal-save>Save whitelist</button></div></section></div>
+        <div class="ui-modal-backdrop" data-firewall-modal-backdrop aria-hidden="true"><section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="firewall-modal-title"><h2 id="firewall-modal-title" data-firewall-modal-title>Website whitelist</h2><form data-firewall-host-form><label class="firewall-modal-field">Website hostname<input class="ui-input ui-input--medium" data-firewall-host-input maxlength="253" placeholder="example.com"></label><button class="ui-button ui-button--secondary ui-button--small" type="submit">Add website</button></form><div data-scaffold-slot="firewall-whitelist" data-scaffold-placeholder="website whitelist"><p data-firewall-whitelist-error role="alert" hidden></p><ul class="firewall-list" data-firewall-hosts></ul></div><div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-modal-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-firewall-modal-save>Save whitelist</button></div></section></div>
       </section>
       __UNBOUND_PANE__
       </div>
@@ -299,16 +299,19 @@ fn shell_document_2() -> &'static str {
       return fault instanceof HTMLElement && fault.dataset.cartridgeFaultKind ? fault.dataset.cartridgeFaultKind : fallback;
     }
     function presentCartridgeFault(kind, event) {
-      if (presentServiceCardFault(kind, event)) return;
+      const xhr = event.detail?.xhr || null;
+      const floor = window.immortalFloor;
+      const admission = floor?.admissionOwner(xhr);
+      if (!admission) return;
       const panel = panelFromHtmxEvent(event);
-      const panelId = panel instanceof HTMLElement ? (panel.dataset.viewPanel || panel.dataset.panePanel || '') : '';
-      if (panel instanceof HTMLElement) {
-        panel.dataset.viewportFaulted = 'true';
-      }
+      if (!(panel instanceof HTMLElement) || panel !== admission.pane) return;
+      const panelId = admission.guest;
+      // A structure failure belongs to this admission request; the floor's
+      // admission owner decides whether an outgoing healthy view survives.
       document.documentElement.dataset.cartridgeFaultReceipt = 'typed';
       document.documentElement.dataset.cartridgeFaultLast = kind;
       showCoronatioToast(`Pane could not be loaded (${kind}).`, 'error');
-      const coldFault = window.immortalFloor?.faultForPanel(panelId, kind) === true;
+      const coldFault = floor.failAdmission(xhr, kind) === true;
       if (coldFault && panelId) {
         xeniaRetryIntent = panelId;
         scheduleXeniaColdRetry(panelId);
@@ -409,9 +412,8 @@ fn shell_document_2() -> &'static str {
       }
       const panel = panelFromHtmxEvent(event);
       if (!(panel instanceof HTMLElement)) return;
-      panel.dataset.viewportFaulted = 'false';
-      const id = panel.dataset.viewPanel || panel.dataset.panePanel || '';
-      if (id === currentActiveTabId() && window.getImmortalFloorState?.() === 'Seated' && id !== 'stats' && id !== 'portals') reconcileViewportStreamFamily();
+      const xhr = event.detail?.xhr || null;
+      if (window.immortalFloor?.isAdmissionRequest(xhr) && window.immortalFloor?.admissionOwner(xhr)?.pane === panel) panel.dataset.viewportFaulted = 'false';
     });
     const fallbackTab = 'admin';
     const storageKey = 'coronatio.flask-react-tabbar.v1';

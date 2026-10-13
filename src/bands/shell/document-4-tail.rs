@@ -237,7 +237,6 @@ fn shell_document_4_tail() -> &'static str {
     function escapeDiskHtml(value) { const node = document.createElement('span'); node.textContent = String(value); return node.innerHTML; }
     const adminNasSetupRequests = new Set();
     let adminNasSetupInFlight = false;
-    function diskCensusDevices(payload) { return Array.isArray(payload?.devices) ? payload.devices : []; }
     function diskCensusDeviceName(device) { return typeof device?.name === 'string' ? device.name : ''; }
     function diskDisplayValue(value) { if (value === null || value === undefined || value === '') return '—'; return typeof value === 'object' ? JSON.stringify(value) : String(value); }
     function diskSpaceDisplayValue(value) {
@@ -355,6 +354,7 @@ fn shell_document_4_tail() -> &'static str {
       const name = diskCensusDeviceName(device);
       const label = typeof device?.label === 'string' && device.label ? device.label : 'Unlabelled disk';
       const eligible = Boolean(name && diskNameCanNormalize(name) && !owner.protectedParents.has(diskIdentity(name)));
+      const enabled = Boolean(owner.dataReady && !owner.stale && !owner.nasSetupStateUnknown && !adminNasSetupRequests.has(diskIdentity(name)) && !adminNasSetupInFlight);
       const role = owner.primaryNasExists ? 'backup' : 'primary';
       const partition = diskDisplayValue(device?.partition);
       const foreignFilesystem = typeof device?.foreign === 'string' && device.foreign ? device.foreign : '';
@@ -362,11 +362,12 @@ fn shell_document_4_tail() -> &'static str {
       const encryption = device?.encryption && typeof device.encryption === 'object' ? device.encryption : {};
       const details = `<div class="disk-census-fields"><span><strong>Device:</strong> ${escapeDiskHtml(name || 'Unknown device')}</span><span><strong>Partition:</strong> ${escapeDiskHtml(partition)}</span><span><strong>Size:</strong> ${escapeDiskHtml(diskDisplayValue(device?.sizeBytes))} bytes</span><span><strong>Filesystem:</strong> ${escapeDiskHtml(filesystem)}</span><span><strong>Encryption:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.state))}</span><span><strong>Mapper:</strong> ${escapeDiskHtml(diskDisplayValue(encryption.mapper))}</span><span><strong>Mount:</strong> ${escapeDiskHtml(diskDisplayValue(device?.mountpoint))}</span><span><strong>Space:</strong> ${escapeDiskHtml(diskSpaceDisplayValue(device?.space))}</span></div>`;
       const action = eligible
-        ? `<div class="disk-census-action"><span>${owner.nasSetupStateUnknown ? 'Refresh disk status before setup' : `Set up as NAS ${role}`}</span><button type="button" class="action-button" data-nas-setup-open data-nas-device="${escapeDiskHtml(name)}" data-nas-role="${role}"${owner.nasSetupStateUnknown || adminNasSetupRequests.has(diskIdentity(name)) || adminNasSetupInFlight ? ' disabled' : ''}>Make this my NAS</button></div>`
+        ? `<div class="disk-census-action"><span>${owner.nasSetupStateUnknown ? 'Refresh disk status before setup' : owner.stale || !owner.dataReady ? 'Refresh disk status before setup' : `Set up as NAS ${role}`}</span><button type="button" class="action-button" data-nas-setup-open data-nas-device="${escapeDiskHtml(name)}" data-nas-role="${role}"${enabled ? '' : ' disabled'}>Make this my NAS</button></div>`
         : '';
       const classes = eligible ? 'disk-item disk-census-row' : 'disk-item disk-census-row unavailable';
-      return `<article class="${classes}" data-disk-parent="${escapeDiskHtml(name)}"><span class="disk-icon" aria-hidden="true">▣</span><div class="disk-info"><div class="disk-name">${escapeDiskHtml(label)}</div>${details}${action}</div></article>`;
+      return `<article class="${classes}" data-disk-parent="${escapeDiskHtml(name)}" data-scaffold-key="disk-census-${escapeDiskHtml(name || label)}"><span class="disk-icon" aria-hidden="true">▣</span><div class="disk-info"><div class="disk-name">${escapeDiskHtml(label)}</div>${details}${action}</div></article>`;
     }
+    let adminDiskSnapshotLastGood = null;
     function admittedAdminDiskHost() {
       const family = adminDiskSnapshotFamily;
       if (adminDiskPageHidden || family.authClass !== 'admin' || !headerState.isAdmin || !coronatioAttendanceRuntime.currentAttendance || !sessionLawfulTab(family.paneId) || !viewportFamilyAdmitted(family.paneId)) return null;
@@ -374,20 +375,65 @@ fn shell_document_4_tail() -> &'static str {
       if (!pane?.isConnected || !pane.classList.contains('active') || pane.hidden || pane.getAttribute('aria-hidden') === 'true' || pane.dataset.viewportFaulted === 'true') return null;
       return pane.querySelector('[data-disk-census-readback]');
     }
-    function adminDiskSnapshotCurrent(owner) {
-      return Boolean(owner && adminDiskSnapshotOwner === owner && owner.host.isConnected && admittedAdminDiskHost() === owner.host && owner.attendance === coronatioAttendanceRuntime.currentAttendance);
+    function adminDiskSnapshotCurrent(owner, context = null) {
+      return Boolean(owner && adminDiskSnapshotOwner === owner && owner.binding && (!context || context.current()) && scaffoldRegistry.current(owner.binding) && owner.binding.root?.contains(owner.host) && owner.host.isConnected && admittedAdminDiskHost() === owner.host && owner.attendance === coronatioAttendanceRuntime.currentAttendance);
     }
     function retireAdminDiskSnapshot() {
       const owner = adminDiskSnapshotOwner;
-      adminDiskSnapshotOwner = null; // Revoke write ownership before abort can settle an old promise.
+      adminDiskSnapshotOwner = null; // Revoke write ownership before any old response can settle.
+      if (!headerState.isAdmin || !coronatioAttendanceRuntime.currentAttendance || (adminDiskSnapshotLastGood && adminDiskSnapshotLastGood.attendance !== coronatioAttendanceRuntime.currentAttendance)) adminDiskSnapshotLastGood = null;
       if (!owner) return;
-      if (owner.timer !== null) window.clearTimeout(owner.timer);
-      owner.timer = null;
-      owner.controller.abort();
+      owner.dataReady = false; owner.stale = true;
+      owner.host?.querySelectorAll('[data-nas-setup-open]').forEach(button => { button.disabled = true; });
+      if (owner.binding) scaffoldRegistry.clearRetry(owner.binding, 'admin-disk-census');
     }
-    function paintAdminDiskMessage(owner, message) {
+    function adminDiskReadStatus(owner, message, state = 'pending', retry = false) {
       if (!adminDiskSnapshotCurrent(owner)) return;
-      owner.host.innerHTML = `<div class="disk-item empty"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">${escapeDiskHtml(message)}</div></div></div>`;
+      let node = owner.host.querySelector(':scope > [data-admin-disk-read-status]');
+      if (!message) { node?.remove(); return; }
+      if (!node) { node = document.createElement('p'); node.dataset.adminDiskReadStatus = ''; node.setAttribute('role', 'status'); node.setAttribute('aria-live', 'polite'); owner.host.appendChild(node); }
+      node.dataset.state = state; node.textContent = message;
+      node.querySelectorAll('[data-native-read-retry]').forEach(button => button.remove());
+      if (retry) { const button = document.createElement('button'); button.type = 'button'; button.dataset.nativeReadGuest = 'admin'; button.dataset.nativeReadRetry = 'admin-disk-census'; button.textContent = 'Retry'; node.append(document.createTextNode(' '), button); }
+    }
+    function diskCensusScalar(value) {
+      if (typeof value === 'string' || typeof value === 'boolean') return value;
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      return null;
+    }
+    const diskCensusProtectionFlags = ['protected', 'isProtected', 'is_protected', 'system', 'isSystem', 'is_system', 'isSystemDevice', 'isSystemDisk', 'isRoot', 'is_root', 'root', 'rootDevice', 'root_device', 'isVault', 'is_vault', 'vault', 'vaultDevice', 'vault_device', 'isBoot', 'is_boot', 'boot', 'bootDevice', 'boot_device'];
+    const diskCensusIdentityFields = ['name', 'label', 'path', 'device', 'role', 'id', 'identity'];
+    function diskCensusMetadata(value) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+      const normalized = {};
+      diskCensusProtectionFlags.forEach(key => { if (value[key] === true) normalized[key] = true; });
+      diskCensusIdentityFields.forEach(key => { if (typeof value[key] === 'string') normalized[key] = value[key]; });
+      return normalized;
+    }
+    function diskCensusDevices(payload) {
+      if (!Array.isArray(payload?.devices)) throw new Error('Available devices could not be read: device list missing.');
+      return payload.devices.map(device => {
+        if (!device || typeof device !== 'object' || Array.isArray(device)) throw new Error('Available devices could not be read: a device row is invalid.');
+        const encryption = device.encryption && typeof device.encryption === 'object' && !Array.isArray(device.encryption) ? device.encryption : {};
+        const space = device.space && typeof device.space === 'object' && !Array.isArray(device.space) ? device.space : null;
+        const normalized = {
+          name: typeof device.name === 'string' ? device.name : '', label: diskCensusScalar(device.label),
+          partition: typeof device.partition === 'string' ? device.partition : diskCensusMetadata(device.partition),
+          foreign: diskCensusScalar(device.foreign), fstype: diskCensusScalar(device.fstype), sizeBytes: diskCensusScalar(device.sizeBytes),
+          mountpoint: diskCensusScalar(device.mountpoint), mounted: device.mounted === true, isMounted: device.isMounted === true,
+          encryption: { state: diskCensusScalar(encryption.state), mapper: diskCensusScalar(encryption.mapper) },
+          space: space ? { availableBytes: diskCensusScalar(space.availableBytes), sizeBytes: diskCensusScalar(space.sizeBytes) } : diskCensusScalar(device.space),
+          device: typeof device.device === 'string' ? device.device : diskCensusMetadata(device.device),
+          metadata: diskCensusMetadata(device.metadata), partitionMetadata: diskCensusMetadata(device.partitionMetadata)
+        };
+        diskCensusProtectionFlags.forEach(key => { if (device[key] === true) normalized[key] = true; });
+        diskCensusIdentityFields.forEach(key => { if (typeof device[key] === 'string') normalized[key] = device[key]; });
+        return normalized;
+      });
+    }
+    function adminDiskCensusMarkup(owner) {
+      if (owner.devices.length) return owner.devices.map(device => renderDiskCensusDevice(device, owner)).join('');
+      return '<div class="disk-item empty" data-scaffold-key="disk-census-empty"><span class="disk-icon" aria-hidden="true">▣</span><div class="disk-info"><div class="disk-name">No disks found.</div></div></div>';
     }
     function reconcileAdminDiskSnapshot() {
       const host = admittedAdminDiskHost();
@@ -395,55 +441,71 @@ fn shell_document_4_tail() -> &'static str {
       if (host) return hydrateDiskCensus();
       return Promise.resolve([]);
     }
+    function runAdminDiskCensus(owner, supersede = false) {
+      const task = async context => {
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        owner.dataReady = false; owner.stale = true; owner.error = '';
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        refreshNasSetupButtons(owner);
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        if (owner.hasSnapshot) morphLivePane(owner.host, adminDiskCensusMarkup(owner));
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        adminDiskReadStatus(owner, owner.hasSnapshot ? 'Refreshing disk census; last-known devices are shown with actions disabled.' : 'Reading available devices…', 'pending');
+        const nasStatus = owner.host.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        if (nasStatus) { nasStatus.textContent = 'Reading current disk status…'; nasStatus.dataset.state = 'pending'; }
+        const payload = await context.fetchJson(adminDiskSnapshotFamily.snapshotRoutes[0]);
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        if (payload?.schema !== 'caduceus.disk.census.v1') throw new Error('Available devices could not be read: unexpected response schema.');
+        const devices = diskCensusDevices(payload);
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        owner.devices = devices; owner.protectedParents = protectedDiskParents(devices, owner);
+        owner.dataReady = true; owner.stale = false; owner.hasSnapshot = true; owner.error = ''; owner.nasSetupStateUnknown = false;
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        updateAdminNasStatus(owner);
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        morphLivePane(owner.host, adminDiskCensusMarkup(owner));
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        adminDiskReadStatus(owner, '', 'ready');
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        refreshNasSetupButtons(owner);
+        if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        adminDiskSnapshotLastGood = { attendance: owner.attendance, devices: owner.devices, protectedParents: new Set(owner.protectedParents), primaryNasExists: owner.primaryNasExists, hasSnapshot: true };
+        return devices;
+      };
+      const onFailure = ({ current, reason }) => {
+        if (!current() || !adminDiskSnapshotCurrent(owner)) return;
+        owner.dataReady = false; owner.stale = true; owner.error = reason || 'Read failed';
+        if (!adminDiskSnapshotCurrent(owner)) return;
+        adminDiskReadStatus(owner, `Available devices unavailable: ${owner.error}. ${owner.hasSnapshot ? 'Showing last known devices; setup is disabled.' : 'No current device list is available.'}`, 'stale', true);
+        const nasStatus = owner.host.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
+        if (!adminDiskSnapshotCurrent(owner)) return;
+        if (nasStatus) { nasStatus.textContent = 'NAS status unknown until the disk census refreshes.'; nasStatus.dataset.state = 'unknown'; }
+        if (!adminDiskSnapshotCurrent(owner)) return;
+        refreshNasSetupButtons(owner);
+      };
+      owner.task = task; owner.onFailure = onFailure;
+      owner.promise = scaffoldRegistry.run(owner.binding, 'admin-disk-census', task, { slots: [], timeoutMs: adminDiskSnapshotFamily.timeoutMs, slowMs: 750, supersede, onFailure });
+      return owner.promise;
+    }
     function hydrateDiskCensus() {
       const host = admittedAdminDiskHost();
       if (!host) { retireAdminDiskSnapshot(); return Promise.resolve([]); }
+      const binding = scaffoldRegistry.capture('admin');
+      if (!binding || !binding.root?.contains(host)) return Promise.resolve([]);
       if (adminDiskSnapshotCurrent(adminDiskSnapshotOwner)) return adminDiskSnapshotOwner.promise;
       retireAdminDiskSnapshot();
-      const owner = { host, attendance: coronatioAttendanceRuntime.currentAttendance, controller: new AbortController(), timer: null, timedOut: false, error: '', devices: [], protectedParents: new Set(), primaryNasExists: false, nasSetupStateUnknown: false, promise: null };
+      const attendance = coronatioAttendanceRuntime.currentAttendance;
+      if (adminDiskSnapshotLastGood && adminDiskSnapshotLastGood.attendance !== attendance) adminDiskSnapshotLastGood = null;
+      const retained = adminDiskSnapshotLastGood?.attendance === attendance ? adminDiskSnapshotLastGood : null;
+      const owner = { binding, host, attendance, devices: retained?.devices.slice() || [], protectedParents: new Set(retained?.protectedParents || []), primaryNasExists: retained?.primaryNasExists === true, hasSnapshot: retained?.hasSnapshot === true, dataReady: false, stale: true, error: '', promise: null, task: null, onFailure: null, nasSetupStateUnknown: false };
       adminDiskSnapshotOwner = owner;
-      paintAdminDiskMessage(owner, 'Reading available devices…');
-      // Coronatio's upstream has separate 4s write/read waits. Allow 15s for
-      // cold reads and transport, without borrowing the pane admission budget.
-      owner.timer = window.setTimeout(() => {
-        owner.timer = null;
-        owner.timedOut = true;
-        owner.controller.abort();
-      }, adminDiskSnapshotFamily.timeoutMs);
-      owner.promise = (async () => {
-        try {
-          const response = await fetch(adminDiskSnapshotFamily.snapshotRoutes[0], { cache: 'no-store', signal: owner.controller.signal });
-          if (!adminDiskSnapshotCurrent(owner)) return [];
-          if (!response.ok) throw new Error('Available devices could not be read (HTTP ' + response.status + ').');
-          let payload;
-          try { payload = await response.json(); }
-          catch (_) { throw new Error('Available devices could not be read: invalid response.'); }
-          if (!adminDiskSnapshotCurrent(owner)) return [];
-          if (owner.controller.signal.aborted) throw new Error('Available devices took too long to respond.');
-          if (payload?.schema !== 'caduceus.disk.census.v1') throw new Error('Available devices could not be read: unexpected response schema.');
-          if (!Array.isArray(payload?.devices)) throw new Error('Available devices could not be read: device list missing.');
-          const devices = diskCensusDevices(payload);
-          owner.devices = devices;
-          owner.protectedParents = protectedDiskParents(devices, owner);
-          updateAdminNasStatus(owner);
-          if (devices.length) owner.host.innerHTML = devices.map(device => renderDiskCensusDevice(device, owner)).join('');
-          else paintAdminDiskMessage(owner, 'No disks found.');
-          return devices;
-        } catch (error) {
-          if (!adminDiskSnapshotCurrent(owner)) return [];
-          owner.error = owner.timedOut ? 'Available devices took too long to respond.' : (error?.message || 'Available devices could not be read.');
-          paintAdminDiskMessage(owner, owner.error);
-          const nasStatus = owner.host.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
-          if (nasStatus) { nasStatus.textContent = 'NAS status unavailable.'; nasStatus.removeAttribute('data-state'); }
-          return [];
-        } finally {
-          if (owner.timer !== null) window.clearTimeout(owner.timer);
-          owner.timer = null;
-        }
-      })();
-      // Retain the settled promise too: repeat reconciliation/modal opens do
-      // not retry failures or fetch again until this activation is retired.
-      return owner.promise;
+      return runAdminDiskCensus(owner, Boolean(binding.runs.has('admin-disk-census')));
+    }
+    function refreshAdminDiskCensus() {
+      const owner = adminDiskSnapshotOwner;
+      if (adminDiskSnapshotCurrent(owner)) return runAdminDiskCensus(owner, false);
+      return hydrateDiskCensus();
     }
     const adminDiskHostObserver = new MutationObserver(records => {
       const owner = adminDiskSnapshotOwner;
@@ -555,15 +617,15 @@ fn shell_document_4_tail() -> &'static str {
         const name = button.dataset.nasDevice || '';
         const role = owner.primaryNasExists ? 'backup' : 'primary';
         button.dataset.nasRole = role;
-        button.disabled = adminNasSetupInFlight || owner.nasSetupStateUnknown || adminNasSetupRequests.has(diskIdentity(name)) || !name || owner.protectedParents.has(diskIdentity(name));
+        button.disabled = !owner.dataReady || owner.stale || adminNasSetupInFlight || owner.nasSetupStateUnknown || adminNasSetupRequests.has(diskIdentity(name)) || !name || owner.protectedParents.has(diskIdentity(name));
         const roleLabel = button.parentElement?.querySelector('span');
-        if (roleLabel) roleLabel.textContent = owner.nasSetupStateUnknown ? 'Read disk status before setup' : `Set up as NAS ${role}`;
+        if (roleLabel) roleLabel.textContent = owner.nasSetupStateUnknown || !owner.dataReady || owner.stale ? 'Read disk status before setup' : `Set up as NAS ${role}`;
       });
     }
     function openNasSetupConfirmation(owner, name) {
-      if (!adminDiskSnapshotCurrent(owner) || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name))) return;
+      if (!adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name))) return;
       const device = owner.devices.find(item => diskCensusDeviceName(item) === name);
-      if (!device || owner.nasSetupStateUnknown || owner.protectedParents.has(diskIdentity(name)) || !diskNameCanNormalize(name)) return;
+      if (!device || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || owner.protectedParents.has(diskIdentity(name)) || !diskNameCanNormalize(name)) return;
       const role = owner.primaryNasExists ? 'backup' : 'primary';
       const foreignFilesystem = typeof device.foreign === 'string' && device.foreign ? ` (${escapeDiskHtml(device.foreign)})` : '';
       const body = `<p>This will erase all data on <code>${escapeDiskHtml(name)}</code>${foreignFilesystem} and prepare it as the ${role} NAS.</p><p>Type the displayed device name exactly to confirm erasure.</p><label for="nas-setup-confirmation">Confirm device name<input id="nas-setup-confirmation" class="ui-input ui-input--medium" type="text" autocomplete="off" data-nas-setup-confirmation></label><p data-nas-setup-state aria-live="polite">Waiting for exact confirmation.</p>`;
@@ -571,10 +633,10 @@ fn shell_document_4_tail() -> &'static str {
       const input = modal.querySelector('[data-nas-setup-confirmation]');
       const confirm = modal.querySelector('[data-manager-confirm]');
       const state = modal.querySelector('[data-nas-setup-state]');
-      const validate = () => { confirm.disabled = input.value !== name || owner.nasSetupStateUnknown || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name)); };
+      const validate = () => { confirm.disabled = input.value !== name || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name)); };
       input.addEventListener('input', validate);
       confirm.addEventListener('click', async () => {
-        if (modal.dataset.setupStarted === 'true' || input.value !== name || !adminDiskSnapshotCurrent(owner) || owner.nasSetupStateUnknown || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name))) return;
+        if (modal.dataset.setupStarted === 'true' || input.value !== name || !adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name))) return;
         modal.dataset.setupStarted = 'true';
         input.disabled = true;
         confirm.disabled = true;
@@ -607,14 +669,44 @@ fn shell_document_4_tail() -> &'static str {
           refreshNasSetupButtons(owner);
           modal.querySelectorAll('[data-manager-close]').forEach(button => { button.disabled = false; });
           if (admittedAdminDiskHost() === owner.host && owner.attendance === coronatioAttendanceRuntime.currentAttendance) {
-            retireAdminDiskSnapshot();
-            hydrateDiskCensus();
+            refreshAdminDiskCensus();
           }
         }
       });
       input.focus();
     }
-    function hardDriveTestModal() { const modal = managerModal('hard-drive-test', 'Hard Drive Test', '<p>Choose a NAS drive and the test depth.</p><label>Device<select class="ui-input ui-input--medium" data-hard-drive-test-device><option value="">Reading available devices…</option></select></label><label>Test type<select class="ui-input ui-input--medium" data-hard-drive-test-type><option value="quick">Quick</option><option value="full">Full</option><option value="ultimate">Ultimate</option></select></label><p data-hard-drive-test-state aria-live="polite">Choose a device to begin.</p>', 'Start Test'); const device = modal.querySelector('[data-hard-drive-test-device]'); const type = modal.querySelector('[data-hard-drive-test-type]'); const state = modal.querySelector('[data-hard-drive-test-state]'); const confirm = modal.querySelector('[data-manager-confirm]'); const ready = () => { confirm.disabled = !device.value; }; const census = hydrateDiskCensus(); const censusOwner = adminDiskSnapshotOwner; census.then(devices => { if (!modal.isConnected || !adminDiskSnapshotCurrent(censusOwner)) return; const message = censusOwner.error || (devices.length ? 'Choose a NAS drive' : 'No NAS drives available'); device.innerHTML = `<option value="">${escapeDiskHtml(message)}</option>${devices.map(item => `<option value="${escapeDiskHtml(diskCensusDeviceName(item))}">${escapeDiskHtml(diskCensusDeviceName(item))}</option>`).join('')}`; if (censusOwner.error || !devices.length) state.textContent = message; ready(); }); device.addEventListener('change', ready); confirm.addEventListener('click', async () => { confirm.disabled = true; state.textContent = 'Starting drive test…'; try { const response = await fetch('/api/admin/hard-drive-test/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: device.value, testType: type.value }) }); if (!response.ok) throw new Error('start-refused'); state.textContent = 'Drive test started. Reading progress…'; const timer = window.setInterval(async () => { try { const progress = await fetch('/api/admin/hard-drive-test/progress', { cache: 'no-store' }).then(result => result.json()); const results = await fetch('/api/admin/hard-drive-test/results', { cache: 'no-store' }).then(result => result.json()); state.textContent = String(progress?.message || progress?.status || results?.message || results?.status || 'Running'); if (progress?.complete || progress?.done || results?.complete || results?.done) { window.clearInterval(timer); confirm.disabled = false; } } catch (_) {} }, 1000); } catch (_) { state.textContent = 'Hard Drive Test could not be started.'; confirm.disabled = false; } }); }
+    function hardDriveTestModal() {
+      const modal = managerModal('hard-drive-test', 'Hard Drive Test', '<p>Choose a NAS drive and the test depth.</p><label>Device<select class="ui-input ui-input--medium" data-hard-drive-test-device><option value="">Reading available devices…</option></select></label><label>Test type<select class="ui-input ui-input--medium" data-hard-drive-test-type><option value="quick">Quick</option><option value="full">Full</option><option value="ultimate">Ultimate</option></select></label><p data-hard-drive-test-state aria-live="polite">Choose a device to begin.</p>', 'Start Test');
+      const device = modal.querySelector('[data-hard-drive-test-device]'), type = modal.querySelector('[data-hard-drive-test-type]'), state = modal.querySelector('[data-hard-drive-test-state]'), confirm = modal.querySelector('[data-manager-confirm]');
+      const census = hydrateDiskCensus(), censusOwner = adminDiskSnapshotOwner;
+      const ready = () => { confirm.disabled = !device.value || !adminDiskSnapshotCurrent(censusOwner) || !censusOwner.dataReady || censusOwner.stale; };
+      census.then(() => {
+        if (!modal.isConnected || !adminDiskSnapshotCurrent(censusOwner)) return;
+        const devices = censusOwner.dataReady && !censusOwner.stale ? censusOwner.devices : [];
+        const message = censusOwner.error || (devices.length ? 'Choose a NAS drive' : censusOwner.dataReady ? 'No NAS drives available' : 'Current disk status is unavailable');
+        device.innerHTML = `<option value="">${escapeDiskHtml(message)}</option>${devices.map(item => `<option value="${escapeDiskHtml(diskCensusDeviceName(item))}">${escapeDiskHtml(diskCensusDeviceName(item))}</option>`).join('')}`;
+        if (censusOwner.error || !devices.length) state.textContent = message;
+        ready();
+      });
+      device.addEventListener('change', ready);
+      confirm.addEventListener('click', async () => {
+        if (!adminDiskSnapshotCurrent(censusOwner) || !censusOwner.dataReady || censusOwner.stale || !device.value) { ready(); return; }
+        confirm.disabled = true; state.textContent = 'Starting drive test…';
+        try {
+          const response = await fetch('/api/admin/hard-drive-test/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: device.value, testType: type.value }) });
+          if (!response.ok) throw new Error('start-refused');
+          state.textContent = 'Drive test started. Reading progress…';
+          const timer = window.setInterval(async () => {
+            try {
+              const progress = await fetch('/api/admin/hard-drive-test/progress', { cache: 'no-store' }).then(result => result.json());
+              const results = await fetch('/api/admin/hard-drive-test/results', { cache: 'no-store' }).then(result => result.json());
+              state.textContent = String(progress?.message || progress?.status || results?.message || results?.status || 'Running');
+              if (progress?.complete || progress?.done || results?.complete || results?.done) { window.clearInterval(timer); ready(); }
+            } catch (_) {}
+          }, 1000);
+        } catch (_) { state.textContent = 'Hard Drive Test could not be started.'; ready(); }
+      });
+    }
     document.body.addEventListener('submit', event => {
       const form = event.target instanceof Element ? event.target.closest('[data-vault-unlock-form]') : null;
       if (!form) return;
@@ -638,11 +730,7 @@ fn shell_document_4_tail() -> &'static str {
       }
       if (target?.closest('[data-nas-census-refresh]')) {
         event.preventDefault();
-        const owner = adminDiskSnapshotOwner;
-        if (adminDiskSnapshotCurrent(owner)) {
-          retireAdminDiskSnapshot();
-          hydrateDiskCensus();
-        }
+        refreshAdminDiskCensus();
         return;
       }
       const manager = target?.closest('[data-manager-open]');
