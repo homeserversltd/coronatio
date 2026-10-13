@@ -2421,7 +2421,14 @@ fn shell_document_3() -> &'static str {
         state = next;
         if (next !== 'Seated') retireAdminDiskSnapshot();
         document.documentElement.dataset.immortalFloorState = next;
-        if (immortalFloorShell) immortalFloorShell.dataset.immortalFloorState = next;
+        const activePanes = next === 'GuestRevolution' ? panes.filter(pane => pane.classList.contains('active')) : [];
+        const retainedPane = activeGuest && activePanes.length === 1 ? activePanes[0] : null;
+        const retainedHealthyGuest = retainedPane?.dataset.panePanel === activeGuest && retainedPane.parentElement === immortalFloorGuestSlot && healthyStructure(retainedPane, retainedPane.innerHTML) ? activeGuest : null;
+        if (immortalFloorShell) {
+          immortalFloorShell.dataset.immortalFloorState = next;
+          if (retainedHealthyGuest) immortalFloorShell.dataset.retainedHealthyGuest = retainedHealthyGuest;
+          else delete immortalFloorShell.dataset.retainedHealthyGuest;
+        }
         if (immortalFloorGuestSlot) immortalFloorGuestSlot.dataset.slotEmpty = String(!activeGuest && next !== 'Seated');
         const message = immortalFloorShell?.querySelector('[data-immortal-floor-message]');
         if (message) message.textContent = detail || ({ BootFloor: 'Preparing your controls…', GuestRevolution: 'Changing view…', BareFloor: 'Controls remain available. Choose a tab to try again.', Seated: '' }[next]);
@@ -2434,6 +2441,7 @@ fn shell_document_3() -> &'static str {
           pane.setAttribute('aria-hidden', 'true');
         });
         activeGuest = null;
+        if (immortalFloorShell) delete immortalFloorShell.dataset.retainedHealthyGuest;
         if (immortalFloorGuestSlot) immortalFloorGuestSlot.dataset.slotEmpty = 'true';
       }
       let admissionRequest = null;
