@@ -40,6 +40,18 @@ fn shell_wake_on_lan_client() -> &'static str {
       const rows = wakeOnLanRoot(binding)?.querySelector('[data-wake-on-lan-rows]');
       rows?.querySelectorAll('[data-wake-on-lan-wake]').forEach(button => { button.disabled = true; });
     }
+    function retireWakeOnLanPrivilegedState() {
+      const binding = wakeOnLanState.binding;
+      if (binding) scaffoldRegistry.retire(binding, 'Wake-on-LAN privileged state retired');
+      document.querySelectorAll('[data-wake-on-lan-wake]').forEach(button => { button.disabled = true; });
+      document.querySelectorAll('[data-wake-on-lan-rows]').forEach(rows => { rows.replaceChildren(); });
+      document.querySelectorAll('[data-wake-on-lan-error]').forEach(status => {
+        status.hidden = false;
+        status.textContent = 'Wake-on-LAN unavailable while Admin Mode is off.';
+      });
+      wakeOnLanState.devices = []; wakeOnLanState.hasSnapshot = false; wakeOnLanState.currentData = false; wakeOnLanState.stale = true; wakeOnLanState.binding = null;
+    }
+    window.addEventListener('coronatio:privileged-state-retired', retireWakeOnLanPrivilegedState);
     async function hydrateWakeOnLan() {
       const binding = viewportFamilyAdmitted('wake-on-lan') ? scaffoldRegistry.capture('wake-on-lan') : null;
       if (!binding) return false;
