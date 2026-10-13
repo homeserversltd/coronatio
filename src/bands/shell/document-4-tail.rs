@@ -383,9 +383,79 @@ fn shell_document_4_tail() -> &'static str {
       if (!headerState.isAdmin || !coronatioAttendanceRuntime.currentAttendance || (adminDiskSnapshotLastGood && adminDiskSnapshotLastGood.attendance !== coronatioAttendanceRuntime.currentAttendance)) adminDiskSnapshotLastGood = null;
       if (!owner) return;
       owner.dataReady = false; owner.stale = true;
+      const observedAt = owner.observedAt || adminDiskSnapshotLastGood?.observedAt;
+      const age = observedAt ? ` from ${new Date(observedAt).toLocaleTimeString()}` : '';
+      const status = owner.host?.querySelector(':scope > [data-admin-disk-read-status]');
+      if (status) {
+        status.dataset.state = owner.hasSnapshot ? 'stale' : 'unavailable';
+        status.textContent = owner.hasSnapshot
+          ? `Showing the last successful disk census${age}; setup is disabled until refresh.`
+          : 'Disk census ended before a current device list was available.';
+      }
+      const nasStatus = owner.host?.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
+      if (nasStatus) {
+        nasStatus.textContent = owner.hasSnapshot
+          ? 'NAS status may be stale; refresh the disk census before setup.'
+          : 'NAS status is unavailable until a disk census completes.';
+        nasStatus.dataset.state = owner.hasSnapshot ? 'stale' : 'unknown';
+      }
       owner.host?.querySelectorAll('[data-nas-setup-open]').forEach(button => { button.disabled = true; });
       if (owner.binding) scaffoldRegistry.clearRetry(owner.binding, 'admin-disk-census');
+      owner.devices = [];
+      owner.protectedParents?.clear();
+      owner.primaryNasExists = false;
+      owner.hasSnapshot = false;
+      owner.binding = null;
+      owner.host = null;
+      owner.attendance = null;
+      owner.promise = null;
+      owner.task = null;
+      owner.onFailure = null;
     }
+    function scrubAdminDiskSnapshot() {
+      const owner = adminDiskSnapshotOwner;
+      const retainedHost = owner?.host;
+      adminDiskSnapshotOwner = null;
+      adminDiskSnapshotLastGood = null;
+      scaffoldRegistry.retire('admin', 'Admin authority lost');
+      if (owner) {
+        owner.dataReady = false;
+        owner.stale = true;
+        owner.devices = [];
+        owner.protectedParents?.clear();
+        owner.primaryNasExists = false;
+        owner.hasSnapshot = false;
+        owner.error = '';
+        owner.binding = null;
+        owner.host = null;
+        owner.attendance = null;
+        owner.promise = null;
+        owner.task = null;
+        owner.onFailure = null;
+      }
+      const pane = document.querySelector('[data-pane-panel="admin"]');
+      const hosts = new Set([retainedHost, ...(pane?.querySelectorAll('[data-disk-census-readback]') || [])].filter(Boolean));
+      hosts.forEach(host => {
+        host.replaceChildren();
+        const status = document.createElement('p');
+        status.dataset.adminDiskReadStatus = '';
+        status.dataset.state = 'unavailable';
+        status.setAttribute('role', 'status');
+        status.textContent = 'Admin access ended; disk observations were cleared.';
+        host.appendChild(status);
+      });
+      pane?.querySelectorAll('[data-admin-mounts-readback]').forEach(node => {
+        node.replaceChildren();
+        node.dataset.state = 'unavailable';
+        node.textContent = 'Admin access ended; mount observations were cleared.';
+      });
+      pane?.querySelectorAll('[data-admin-nas-status]').forEach(node => {
+        node.textContent = 'Admin access ended; NAS status is unavailable.';
+        node.dataset.state = 'unknown';
+      });
+      pane?.querySelectorAll('[data-nas-setup-open]').forEach(button => { button.disabled = true; });
+    }
+    window.addEventListener('coronatio:privileged-state-retired', scrubAdminDiskSnapshot);
     function adminDiskReadStatus(owner, message, state = 'pending', retry = false) {
       if (!adminDiskSnapshotCurrent(owner)) return;
       let node = owner.host.querySelector(':scope > [data-admin-disk-read-status]');
@@ -430,6 +500,17 @@ fn shell_document_4_tail() -> &'static str {
         return normalized;
       });
     }
+    function copyDiskCensusDevices(devices) {
+      return devices.map(device => ({
+        ...device,
+        partition: device.partition && typeof device.partition === 'object' ? { ...device.partition } : device.partition,
+        encryption: { ...(device.encryption || {}) },
+        space: device.space && typeof device.space === 'object' ? { ...device.space } : device.space,
+        device: device.device && typeof device.device === 'object' ? { ...device.device } : device.device,
+        metadata: device.metadata ? { ...device.metadata } : device.metadata,
+        partitionMetadata: device.partitionMetadata ? { ...device.partitionMetadata } : device.partitionMetadata
+      }));
+    }
     function adminDiskCensusMarkup(owner) {
       if (owner.devices.length) return owner.devices.map(device => renderDiskCensusDevice(device, owner)).join('');
       return '<div class="disk-item empty" data-scaffold-key="disk-census-empty"><span class="disk-icon" aria-hidden="true">▣</span><div class="disk-info"><div class="disk-name">No disks found.</div></div></div>';
@@ -449,7 +530,8 @@ fn shell_document_4_tail() -> &'static str {
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         if (owner.hasSnapshot) morphLivePane(owner.host, adminDiskCensusMarkup(owner));
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
-        adminDiskReadStatus(owner, owner.hasSnapshot ? 'Refreshing disk census; last-known devices are shown with actions disabled.' : 'Reading available devices…', 'pending');
+        const lastRead = owner.observedAt ? ` Last successful read: ${new Date(owner.observedAt).toLocaleTimeString()}.` : '';
+        adminDiskReadStatus(owner, owner.hasSnapshot ? `Refreshing disk census; last-known devices remain visible with actions disabled.${lastRead}` : 'Reading available devices…', 'pending');
         const nasStatus = owner.host.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         if (nasStatus) { nasStatus.textContent = 'Reading current disk status…'; nasStatus.dataset.state = 'pending'; }
@@ -460,6 +542,7 @@ fn shell_document_4_tail() -> &'static str {
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         owner.devices = devices; owner.protectedParents = protectedDiskParents(devices, owner);
         owner.dataReady = true; owner.stale = false; owner.hasSnapshot = true; owner.error = ''; owner.nasSetupStateUnknown = false;
+        owner.observedAt = Date.now();
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         updateAdminNasStatus(owner);
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
@@ -469,14 +552,15 @@ fn shell_document_4_tail() -> &'static str {
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         refreshNasSetupButtons(owner);
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
-        adminDiskSnapshotLastGood = { attendance: owner.attendance, devices: owner.devices, protectedParents: new Set(owner.protectedParents), primaryNasExists: owner.primaryNasExists, hasSnapshot: true };
+        adminDiskSnapshotLastGood = { attendance: owner.attendance, devices: copyDiskCensusDevices(owner.devices), protectedParents: new Set(owner.protectedParents), primaryNasExists: owner.primaryNasExists, hasSnapshot: true, observedAt: owner.observedAt };
         return devices;
       };
       const onFailure = ({ current, reason }) => {
         if (!current() || !adminDiskSnapshotCurrent(owner)) return;
         owner.dataReady = false; owner.stale = true; owner.error = reason || 'Read failed';
         if (!adminDiskSnapshotCurrent(owner)) return;
-        adminDiskReadStatus(owner, `Available devices unavailable: ${owner.error}. ${owner.hasSnapshot ? 'Showing last known devices; setup is disabled.' : 'No current device list is available.'}`, 'stale', true);
+        const lastRead = owner.observedAt ? ` Last successful read: ${new Date(owner.observedAt).toLocaleTimeString()}.` : '';
+        adminDiskReadStatus(owner, `Available devices unavailable: ${owner.error}. ${owner.hasSnapshot ? `Showing last known devices; setup is disabled.${lastRead}` : 'No current device list is available.'}`, 'stale', true);
         const nasStatus = owner.host.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
         if (!adminDiskSnapshotCurrent(owner)) return;
         if (nasStatus) { nasStatus.textContent = 'NAS status unknown until the disk census refreshes.'; nasStatus.dataset.state = 'unknown'; }
@@ -497,7 +581,7 @@ fn shell_document_4_tail() -> &'static str {
       const attendance = coronatioAttendanceRuntime.currentAttendance;
       if (adminDiskSnapshotLastGood && adminDiskSnapshotLastGood.attendance !== attendance) adminDiskSnapshotLastGood = null;
       const retained = adminDiskSnapshotLastGood?.attendance === attendance ? adminDiskSnapshotLastGood : null;
-      const owner = { binding, host, attendance, devices: retained?.devices.slice() || [], protectedParents: new Set(retained?.protectedParents || []), primaryNasExists: retained?.primaryNasExists === true, hasSnapshot: retained?.hasSnapshot === true, dataReady: false, stale: true, error: '', promise: null, task: null, onFailure: null, nasSetupStateUnknown: false };
+      const owner = { binding, host, attendance, devices: retained ? copyDiskCensusDevices(retained.devices) : [], protectedParents: new Set(retained?.protectedParents || []), primaryNasExists: retained?.primaryNasExists === true, hasSnapshot: retained?.hasSnapshot === true, observedAt: retained?.observedAt || null, dataReady: false, stale: true, error: '', promise: null, task: null, onFailure: null, nasSetupStateUnknown: false };
       adminDiskSnapshotOwner = owner;
       return runAdminDiskCensus(owner, Boolean(binding.runs.has('admin-disk-census')));
     }

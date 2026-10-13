@@ -12,7 +12,8 @@ fn shell_backblaze_client() -> &'static str {
     const current = (binding = state.binding) => Boolean(binding && state.binding === binding && admitted() && scaffoldRegistry.current(binding));
     const canUse = (binding = state.binding) => Boolean(current(binding) && state.statusReady && !state.statusStale && state.data);
     const health = b => b?.status?.running ? 'RUNNING' : (b?.status?.last_run_ok === true ? 'GOOD' : (b?.status?.last_run_ok === false ? 'FAILED' : 'IDLE'));
-    const forgejo = b => b?.managers?.forgejo || {};
+    const isRecord = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+    const forgejo = b => isRecord(b?.managers?.forgejo) ? b.managers.forgejo : null;
     const actions = new Set();
     const secretDialogs = new Set();
     function clearStatusPoll() { if (statusPollTimer !== null) window.clearTimeout(statusPollTimer); statusPollTimer = null; }
@@ -30,24 +31,61 @@ fn shell_backblaze_client() -> &'static str {
       if (!data || typeof data !== 'object' || Array.isArray(data) || data.ok === false || data.success === false || typeof data.running !== 'boolean' || !Array.isArray(data.buckets)) throw new Error('Backblaze status response is incomplete');
       const buckets = data.buckets.map(bucket => {
         if (!bucket || typeof bucket !== 'object' || Array.isArray(bucket) || typeof bucket.bucket !== 'string' || !bucket.bucket) throw new Error('Backblaze bucket row is malformed');
-        const items = Array.isArray(bucket.items) ? bucket.items.map(item => {
-          if (!item || typeof item !== 'object' || Array.isArray(item) || typeof item.path !== 'string') throw new Error('Backblaze item row is malformed');
-          return { ...item, path: item.path };
-        }) : [];
-        return { bucket: bucket.bucket, prefix: typeof bucket.prefix === 'string' ? bucket.prefix : '', encrypted: bucket.encrypted === true,
-          items, connected: typeof bucket.connected === 'boolean' ? bucket.connected : null,
-          status: { running: bucket.status?.running === true, last_run_ok: typeof bucket.status?.last_run_ok === 'boolean' ? bucket.status.last_run_ok : null },
-          managers: { ...(bucket.managers && typeof bucket.managers === 'object' && !Array.isArray(bucket.managers) ? bucket.managers : {}),
-            forgejo: { ...(bucket.managers?.forgejo && typeof bucket.managers.forgejo === 'object' && !Array.isArray(bucket.managers.forgejo) ? bucket.managers.forgejo : {}),
-              localNas: bucket.managers?.forgejo?.localNas === true, backblazeBackup: bucket.managers?.forgejo?.backblazeBackup === true } } };
+        const managerFlags = forgejo(bucket);
+        const itemsKnown = Array.isArray(bucket.items) && bucket.items.every(item => isRecord(item)
+          && typeof item.path === 'string' && item.path === item.path.trim() && item.path.startsWith('/'));
+        const prefixKnown = typeof bucket.prefix === 'string';
+        const prefixWriteSafe = prefixKnown && bucket.prefix === bucket.prefix.trim() && bucket.prefix.replace(/^\/+|\/+$/g, '') === bucket.prefix;
+        const bucketNameWriteSafe = bucket.bucket === bucket.bucket.trim() && !bucket.bucket.includes('/');
+        const encryptedKnown = typeof bucket.encrypted === 'boolean';
+        const managersKnown = isRecord(bucket.managers) && isRecord(bucket.managers.forgejo);
+        const managerFieldsKnown = managersKnown && typeof managerFlags.localNas === 'boolean' && typeof managerFlags.backblazeBackup === 'boolean';
+        return {
+          ...bucket,
+          backblazeProjection: {
+            prefixKnown,
+            prefixWriteSafe,
+            bucketNameWriteSafe,
+            encryptedKnown,
+            itemsKnown,
+            managersKnown,
+            managerFieldsKnown,
+            complete: prefixWriteSafe && bucketNameWriteSafe && encryptedKnown && itemsKnown && managerFieldsKnown
+          }
+        };
       });
-      return { running: data.running, last_run_at: data.last_run_at ?? null, last_run_ok: typeof data.last_run_ok === 'boolean' ? data.last_run_ok : null, buckets };
+      return { ...data, last_run_at: data.last_run_at ?? null, last_run_ok: typeof data.last_run_ok === 'boolean' ? data.last_run_ok : null, buckets };
+    }
+    const bucketConfigComplete = bucket => bucket?.backblazeProjection?.complete === true;
+    function canRewriteConfig(binding = state.binding) {
+      return canUse(binding) && state.data.buckets.every(bucketConfigComplete);
+    }
+    function canOperateBucket(binding = state.binding, bucketName = state.bucket) {
+      return canUse(binding) && state.data.buckets.some(bucket => bucket.bucket === bucketName && bucketConfigComplete(bucket));
+    }
+    function canProbeBucket(binding = state.binding, bucketName = state.bucket) {
+      return canUse(binding) && state.data.buckets.some(bucket => bucket.bucket === bucketName);
+    }
+    function currentConfigWrite(binding, generation = state.selectionGeneration) {
+      return canRewriteConfig(binding) && state.selectionGeneration === generation;
+    }
+    function configBucketForWrite(bucket) {
+      if (!bucketConfigComplete(bucket)) return null;
+      const { connected, status, backblazeProjection, ...config } = bucket;
+      const draft = state.managerDrafts[bucket.bucket];
+      if (draft) {
+        config.managers = {
+          ...(isRecord(config.managers) ? config.managers : {}),
+          forgejo: { ...(isRecord(config.managers?.forgejo) ? config.managers.forgejo : {}), ...draft }
+        };
+      }
+      return config;
     }
     function renderBucketList(selector) {
       const host = el(selector); if (!host) return;
       if (!state.statusReady) return;
       const buckets = Array.isArray(state.data?.buckets) ? state.data.buckets : [];
-      const html = buckets.map(bucket => `<div class="backblaze-bucket-row" data-backblaze-bucket-row="${esc(bucket.bucket)}" data-scaffold-key="backblaze-bucket-${esc(bucket.bucket)}"><button type="button" class="backblaze-bucket-select" data-backblaze-select="${esc(bucket.bucket)}" aria-pressed="${state.bucket === bucket.bucket}" ${canUse() ? '' : 'disabled'}><span>${esc(bucket.bucket)}</span><span class="ui-badge">${health(bucket)}</span></button><button type="button" class="backblaze-bucket-remove" data-backblaze-remove="${esc(bucket.bucket)}" title="Remove ${esc(bucket.bucket)}" ${canUse() ? '' : 'disabled'}>×</button></div>`).join('') || '<p class="backblaze-empty" data-backblaze-empty-buckets>No buckets configured.</p>';
+      const html = buckets.map(bucket => `<div class="backblaze-bucket-row" data-backblaze-bucket-row="${esc(bucket.bucket)}" data-scaffold-key="backblaze-bucket-${esc(bucket.bucket)}"><button type="button" class="backblaze-bucket-select" data-backblaze-select="${esc(bucket.bucket)}" aria-pressed="${state.bucket === bucket.bucket}" ${canUse() ? '' : 'disabled'}><span>${esc(bucket.bucket)}</span><span class="ui-badge">${health(bucket)}</span></button><button type="button" class="backblaze-bucket-remove" data-backblaze-remove="${esc(bucket.bucket)}" title="Remove ${esc(bucket.bucket)}" ${canRewriteConfig() ? '' : 'disabled'}>×</button></div>`).join('') || '<p class="backblaze-empty" data-backblaze-empty-buckets>No buckets configured.</p>';
       morphLivePane(host, html);
     }
     function renderBuckets() { renderBucketList('[data-backblaze-buckets]'); renderBucketList('[data-backblaze-ledger-buckets]'); }
@@ -55,14 +93,26 @@ fn shell_backblaze_client() -> &'static str {
       const indicator = el('[data-backblaze-manager-indicator]'), open = el('[data-backblaze-manager-open]');
       const local = el('[data-backblaze-local-nas]'), backup = el('[data-backblaze-forgejo-backup]');
       if (!bucket) { if (indicator) indicator.classList.remove('is-lit'); if (open) open.disabled = true; [local, backup].forEach(control => { if (control) control.disabled = true; }); return; }
-      const model = state.managerDrafts[bucket.bucket] || forgejo(bucket), on = model.localNas === true || model.backblazeBackup === true;
-      if (indicator) indicator.classList.toggle('is-lit', on);
-      if (open) open.disabled = !canUse();
-      [local, backup].forEach(control => { if (control) control.disabled = !canUse(); });
+      const model = state.managerDrafts[bucket.bucket] || forgejo(bucket) || {};
+      const fields = bucket.backblazeProjection || {};
+      const editable = canRewriteConfig() && fields.managerFieldsKnown === true;
+      if (indicator) {
+        indicator.classList.toggle('is-lit', fields.managerFieldsKnown === true && (model.localNas === true || model.backblazeBackup === true));
+        indicator.classList.toggle('is-unknown', fields.managerFieldsKnown !== true);
+        indicator.setAttribute('aria-label', fields.managerFieldsKnown === true ? 'Manager configuration known' : 'Manager configuration unavailable');
+      }
+      if (open) open.disabled = !editable;
+      [[local, 'localNas'], [backup, 'backblazeBackup']].forEach(([control, field]) => {
+        if (!control) return;
+        const known = typeof model[field] === 'boolean';
+        control.checked = known ? model[field] : false;
+        control.indeterminate = !known;
+        control.disabled = !editable || !known;
+      });
     }
     function renderSelected() {
       const binding = state.binding, bucket = state.data?.buckets?.find(candidate => candidate.bucket === state.bucket);
-      const addBucket = el('[data-backblaze-add]'); if (addBucket) addBucket.disabled = !canUse(binding);
+      const addBucket = el('[data-backblaze-add]'); if (addBucket) addBucket.disabled = !canRewriteConfig(binding);
       const title = el('[data-backblaze-selected]'), save = el('[data-backblaze-save]'), verify = el('[data-backblaze-verify]'), update = el('[data-backblaze-update]'), run = el('[data-backblaze-run]'), encrypted = el('[data-backblaze-encrypted]'), path = el('[data-backblaze-path]'), add = el('[data-backblaze-item-add]');
       if (!state.statusReady || !bucket) {
         if (title) title.textContent = state.statusReady ? 'Select a bucket' : 'Loading buckets…';
@@ -72,17 +122,32 @@ fn shell_backblaze_client() -> &'static str {
         const name = el('[data-backblaze-bucket-name]'); if (name) name.value = '';
         renderManager(null); return;
       }
-      const enabled = canUse();
+      const rewriteEnabled = canRewriteConfig(binding);
+      const operateEnabled = canOperateBucket(binding, bucket.bucket);
+      const probeEnabled = canProbeBucket(binding, bucket.bucket);
       if (title) title.textContent = bucket.bucket;
-      const status = el('[data-backblaze-bucket-status]'); if (status) status.textContent = health(bucket);
+      const projection = bucket.backblazeProjection || {};
+      const unknown = [
+        !projection.prefixKnown && 'prefix',
+        projection.prefixKnown && !projection.prefixWriteSafe && 'prefix format',
+        !projection.bucketNameWriteSafe && 'bucket name',
+        !projection.encryptedKnown && 'encryption setting',
+        !projection.itemsKnown && 'item list',
+        !projection.managerFieldsKnown && 'manager flags'
+      ].filter(Boolean);
+      const status = el('[data-backblaze-bucket-status]');
+      if (status) status.textContent = `${health(bucket)}${unknown.length ? ` · Configuration unavailable: ${unknown.join(', ')}; changes are disabled.` : ''}`;
       const name = el('[data-backblaze-bucket-name]'); if (name) name.value = bucket.bucket;
       const connected = el('[data-backblaze-connected]'); if (connected) { connected.textContent = bucket.connected === true ? 'Connected' : bucket.connected === false ? 'Not connected' : 'Unknown'; connected.classList.toggle('is-connected', bucket.connected === true); connected.classList.toggle('is-disconnected', bucket.connected === false); }
-      if (encrypted) { encrypted.checked = bucket.encrypted === true; encrypted.disabled = !enabled; }
-      if (path) path.disabled = !enabled; if (add) add.disabled = !enabled;
-      if (save) save.disabled = !enabled; if (verify) verify.disabled = !enabled; if (update) update.disabled = !enabled; if (run) run.disabled = !enabled;
+      if (encrypted) { encrypted.checked = projection.encryptedKnown ? bucket.encrypted : false; encrypted.indeterminate = !projection.encryptedKnown; encrypted.disabled = !rewriteEnabled || !projection.encryptedKnown; }
+      if (path) path.disabled = !rewriteEnabled; if (add) add.disabled = !rewriteEnabled;
+      if (save) save.disabled = !rewriteEnabled; if (verify) verify.disabled = !probeEnabled; if (update) update.disabled = !rewriteEnabled; if (run) run.disabled = !operateEnabled;
       const host = el('[data-backblaze-items]'); if (host) {
-        const items = Array.isArray(bucket.items) ? bucket.items : [];
-        morphLivePane(host, items.map(item => `<div class="backblaze-path-row" data-backblaze-path-row="${esc(item.path)}" data-scaffold-key="backblaze-path-${esc(item.path)}"><span>${esc(item.path)}</span><button type="button" class="backblaze-path-remove" data-backblaze-path-remove="${esc(item.path)}" ${enabled ? '' : 'disabled'}>×</button></div>`).join('') || '<p class="backblaze-empty" data-backblaze-empty-items>No files configured.</p>');
+        if (!projection.itemsKnown) {
+          morphLivePane(host, '<p class="backblaze-empty" data-backblaze-items-unavailable>Configured paths are unavailable; configuration changes are disabled.</p>');
+        } else {
+          morphLivePane(host, bucket.items.map(item => `<div class="backblaze-path-row" data-backblaze-path-row="${esc(item.path)}" data-scaffold-key="backblaze-path-${esc(item.path)}"><span>${esc(item.path)}</span><button type="button" class="backblaze-path-remove" data-backblaze-path-remove="${esc(item.path)}" ${rewriteEnabled ? '' : 'disabled'}>×</button></div>`).join('') || '<p class="backblaze-empty" data-backblaze-empty-items>No files configured.</p>');
+        }
       }
       renderManager(bucket);
     }
@@ -216,7 +281,11 @@ fn shell_backblaze_client() -> &'static str {
         }
       });
     }
-    function currentAction(binding, bucket = state.bucket) { return canUse(binding) && state.bucket === bucket; }
+    function currentAction(binding, bucket = state.bucket) { return canOperateBucket(binding, bucket) && state.bucket === bucket; }
+    function currentProbeAction(binding, bucket = state.bucket) { return canProbeBucket(binding, bucket) && state.bucket === bucket; }
+    function currentConfigAction(binding, generation = state.selectionGeneration, bucket = state.bucket) {
+      return currentConfigWrite(binding, generation) && state.bucket === bucket;
+    }
     function actionController(binding) { const controller = new AbortController(); actions.add(controller); scaffoldRegistry.onRetire(binding, () => controller.abort()); return controller; }
     async function getJson(url, init, binding = state.binding) { const response = await fetch(url, { ...init, cache: 'no-store' }); const body = await response.json().catch(() => ({ ok: false, reason: 'Invalid response' })); if (!response.ok) return body; return body; }
     function setResult(binding, text) { if (current(binding)) { const result = el('[data-backblaze-result]', binding); if (result) result.textContent = text; } }
@@ -233,73 +302,88 @@ fn shell_backblaze_client() -> &'static str {
       });
     }
     async function addBucket(binding = state.binding) {
-      if (!canUse(binding)) return;
-      const bucket = prompt('B2 bucket name'); if (!bucket || !currentAction(binding)) return;
-      const keyId = prompt('B2 key ID'); if (!keyId || !currentAction(binding)) return;
-      let applicationKey = await secretInput('B2 application key', binding); if (!applicationKey || !currentAction(binding)) { applicationKey = ''; return; }
+      if (!canRewriteConfig(binding)) return;
+      const selectedBucket = state.bucket, generation = state.selectionGeneration;
+      const bucket = prompt('B2 bucket name'); if (!bucket || !currentConfigAction(binding, generation, selectedBucket)) return;
+      const keyId = prompt('B2 key ID'); if (!keyId || !currentConfigAction(binding, generation, selectedBucket)) return;
+      let applicationKey = await secretInput('B2 application key', binding); if (!applicationKey || !currentConfigAction(binding, generation, selectedBucket)) { applicationKey = ''; return; }
       const controller = actionController(binding);
       try {
         const body = await getJson('/api/backblaze/buckets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket, prefix: '', encrypted: true, items: [], managers: { forgejo: { localNas: false, backblazeBackup: false } }, keyId, applicationKey }), signal: controller.signal }, binding);
-        applicationKey = ''; if (!current(binding)) return;
+        applicationKey = ''; if (!currentConfigAction(binding, generation, selectedBucket)) return;
         setResult(binding, body.ok === false ? (body.reason || 'Bucket could not be added') : 'Bucket added and verified'); await hydrateBackblaze(binding);
       } catch (_) { applicationKey = ''; if (current(binding)) setResult(binding, 'Bucket could not be added'); }
       finally { actions.delete(controller); }
     }
     async function updateCredentials(binding = state.binding) {
-      if (!canUse(binding)) return; const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket); if (!bucket) return;
-      const selectedBucket = bucket.bucket, keyId = prompt('B2 key ID'); if (!keyId || !currentAction(binding, selectedBucket)) return;
-      let applicationKey = await secretInput('B2 application key', binding); if (!applicationKey || !currentAction(binding, selectedBucket)) { applicationKey = ''; return; }
+      if (!canRewriteConfig(binding)) return;
+      const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket);
+      if (!bucket || !bucketConfigComplete(bucket)) return;
+      const selectedBucket = bucket.bucket, generation = state.selectionGeneration;
+      const keyId = prompt('B2 key ID'); if (!keyId || !currentConfigAction(binding, generation, selectedBucket)) return;
+      let applicationKey = await secretInput('B2 application key', binding); if (!applicationKey || !currentConfigAction(binding, generation, selectedBucket)) { applicationKey = ''; return; }
+      const configBucket = configBucketForWrite(bucket);
+      if (!configBucket) { applicationKey = ''; return; }
       const controller = actionController(binding);
       try {
-        const body = await getJson('/api/backblaze/buckets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket: bucket.bucket, prefix: bucket.prefix || '', encrypted: bucket.encrypted === true, items: bucket.items || [], managers: bucket.managers || { forgejo: { localNas: false, backblazeBackup: false } }, keyId, applicationKey }), signal: controller.signal }, binding);
-        applicationKey = ''; if (!currentAction(binding, selectedBucket)) return;
+        const body = await getJson('/api/backblaze/buckets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...configBucket, keyId, applicationKey }), signal: controller.signal }, binding);
+        applicationKey = ''; if (!currentConfigAction(binding, generation, selectedBucket)) return;
         setResult(binding, body.ok === false ? (body.reason || 'Credentials could not be updated') : 'Credentials updated and verified'); await hydrateBackblaze(binding);
-      } catch (_) { applicationKey = ''; if (currentAction(binding, selectedBucket)) setResult(binding, 'Credentials could not be updated'); }
+      } catch (_) { applicationKey = ''; if (currentConfigAction(binding, generation, selectedBucket)) setResult(binding, 'Credentials could not be updated'); }
       finally { actions.delete(controller); }
     }
     async function verifyBucket(bucket = state.bucket, binding = state.binding) {
-      if (!canUse(binding) || !bucket) return;
+      if (!canProbeBucket(binding, bucket) || !bucket) return;
       const controller = actionController(binding);
       try {
         const body = await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket) + '/verify', { method: 'POST', signal: controller.signal }, binding);
-        if (!currentAction(binding, bucket)) return;
+        if (!currentProbeAction(binding, bucket)) return;
         const selected = state.data?.buckets?.find(row => row.bucket === bucket); if (selected && typeof body.connected === 'boolean') selected.connected = body.connected;
         renderBuckets(); renderSelected(); setResult(binding, body.ok === false ? (body.reason || 'Connection verification failed') : (body.connected === true ? 'Connected' : 'Not connected'));
-      } catch (_) { if (currentAction(binding, bucket)) setResult(binding, 'Connection verification failed'); }
+      } catch (_) { if (currentProbeAction(binding, bucket)) setResult(binding, 'Connection verification failed'); }
       finally { actions.delete(controller); }
     }
     async function removeBucket(bucket, binding = state.binding) {
-      if (!currentAction(binding, bucket) || !confirm(`Remove ${bucket}?`)) return;
+      if (!canRewriteConfig(binding) || !confirm(`Remove ${bucket}?`)) return;
+      const generation = state.selectionGeneration;
+      if (!currentConfigWrite(binding, generation)) return;
       const controller = actionController(binding);
       try {
         await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket), { method: 'DELETE', signal: controller.signal }, binding);
-        if (!current(binding)) return;
+        if (!currentConfigWrite(binding, generation)) return;
         if (state.bucket === bucket) { state.bucket = null; state.selectionGeneration += 1; }
         await hydrateBackblaze(binding);
-      } catch (_) { if (current(binding)) setResult(binding, 'Bucket could not be removed'); }
+      } catch (_) { if (currentConfigWrite(binding, generation)) setResult(binding, 'Bucket could not be removed'); }
       finally { actions.delete(controller); }
     }
     async function mutateItem(path, method, binding = state.binding) {
-      const bucket = state.bucket; if (!currentAction(binding, bucket)) return;
+      const bucket = state.bucket, generation = state.selectionGeneration;
+      if (!canRewriteConfig(binding) || !canOperateBucket(binding, bucket)) return;
       const controller = actionController(binding);
-      try { await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket) + '/items', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }), signal: controller.signal }, binding); if (currentAction(binding, bucket)) await hydrateBackblaze(binding); }
-      catch (_) { if (currentAction(binding, bucket)) setResult(binding, 'File path could not be updated'); }
+      try { await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket) + '/items', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }), signal: controller.signal }, binding); if (currentConfigAction(binding, generation, bucket)) await hydrateBackblaze(binding); }
+      catch (_) { if (currentConfigAction(binding, generation, bucket)) setResult(binding, 'File path could not be updated'); }
       finally { actions.delete(controller); }
     }
     async function saveConfig(binding = state.binding) {
-      const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket); if (!bucket || !canUse(binding)) return;
-      const selectedBucket = bucket.bucket, controller = actionController(binding);
-      const body = await getJson('/api/backblaze/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buckets: state.data.buckets.map(row => ({ bucket: row.bucket, prefix: row.prefix || '', encrypted: row.encrypted === true, items: Array.isArray(row.items) ? row.items : [], managers: state.managerDrafts[row.bucket] ? { ...(row.managers || {}), forgejo: state.managerDrafts[row.bucket] } : (row.managers || { forgejo: { localNas: false, backblazeBackup: false } }) })) }), signal: controller.signal }, binding).catch(() => ({ ok: false }));
+      const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket);
+      if (!bucket || !canRewriteConfig(binding)) return;
+      const selectedBucket = bucket.bucket, generation = state.selectionGeneration;
+      const buckets = state.data.buckets.map(configBucketForWrite);
+      if (buckets.some(config => !config) || !currentConfigAction(binding, generation, selectedBucket)) return;
+      const controller = actionController(binding);
+      const body = await getJson('/api/backblaze/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buckets }), signal: controller.signal }, binding).catch(() => ({ ok: false }));
       try {
-        if (!currentAction(binding, selectedBucket)) return;
+        if (!currentConfigAction(binding, generation, selectedBucket)) return;
         setResult(binding, body.ok ? 'Config saved without credentials' : (body.reason || 'Config could not be saved'));
         if (body.ok && await hydrateBackblaze(binding) && current(binding)) { state.managerDrafts = {}; renderSelected(); }
       } finally { actions.delete(controller); }
     }
     function openManager(binding = state.binding) {
-      const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket); if (!bucket || !canUse(binding)) return;
+      const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket);
+      if (!bucket || !canRewriteConfig(binding) || !bucket.backblazeProjection?.managerFieldsKnown) return;
       managerDraftBucket = bucket.bucket; managerDraftBeforeOpen = Object.prototype.hasOwnProperty.call(state.managerDrafts, bucket.bucket) ? { ...state.managerDrafts[bucket.bucket] } : null;
-      const model = state.managerDrafts[bucket.bucket] || forgejo(bucket); state.managerDrafts[bucket.bucket] = { localNas: model.localNas === true, backblazeBackup: model.backblazeBackup === true };
+      const model = state.managerDrafts[bucket.bucket] || forgejo(bucket);
+      state.managerDrafts[bucket.bucket] = { ...model };
       const local = el('[data-backblaze-local-nas]', binding), backup = el('[data-backblaze-forgejo-backup]', binding); if (local) local.checked = state.managerDrafts[bucket.bucket].localNas; if (backup) backup.checked = state.managerDrafts[bucket.bucket].backblazeBackup;
       renderManager(bucket); const modal = el('[data-backblaze-manager-modal]', binding); if (modal) modal.hidden = false;
     }
@@ -339,13 +423,15 @@ fn shell_backblaze_client() -> &'static str {
     });
     document.body.addEventListener('change', event => {
       const target = event.target instanceof Element ? event.target : null; const binding = state.binding;
-      if (!target || !binding || !root(binding)?.contains(target) || !canUse(binding)) return;
+      if (!target || !binding || !root(binding)?.contains(target) || !current(binding)) return;
       const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket); if (!bucket) return;
       if (target.matches('[data-backblaze-encrypted]')) {
-        const selectedBucket = bucket.bucket, controller = actionController(binding);
-        getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket.bucket) + '/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted: target.checked }), signal: controller.signal }, binding).then(() => { if (currentAction(binding, selectedBucket)) return hydrateBackblaze(binding); }).catch(() => { if (currentAction(binding, selectedBucket)) setResult(binding, 'Encryption setting could not be updated'); }).finally(() => actions.delete(controller));
+        if (!canRewriteConfig(binding) || !bucket.backblazeProjection?.encryptedKnown) { renderSelected(); return; }
+        const selectedBucket = bucket.bucket, generation = state.selectionGeneration, controller = actionController(binding);
+        getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket.bucket) + '/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted: target.checked }), signal: controller.signal }, binding).then(() => { if (currentConfigAction(binding, generation, selectedBucket)) return hydrateBackblaze(binding); }).catch(() => { if (currentConfigAction(binding, generation, selectedBucket)) setResult(binding, 'Encryption setting could not be updated'); }).finally(() => actions.delete(controller));
       }
       if (target.matches('[data-backblaze-local-nas]') || target.matches('[data-backblaze-forgejo-backup]')) {
+        if (!canRewriteConfig(binding) || !bucket.backblazeProjection?.managerFieldsKnown) { renderManager(bucket); return; }
         const currentDraft = state.managerDrafts[bucket.bucket] || forgejo(bucket);
         state.managerDrafts[bucket.bucket] = { ...currentDraft, localNas: el('[data-backblaze-local-nas]', binding)?.checked === true, backblazeBackup: el('[data-backblaze-forgejo-backup]', binding)?.checked === true };
         renderManager(bucket);

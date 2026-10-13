@@ -68,6 +68,10 @@ fn crown_chrome_js() -> String {
         shell_document_4_tail(),
     ]
     .concat()
+    .replace("__PANE_STRUCTURE_OWNER__", shell_pane_structure_owner_client())
+    .replace("__NATIVE_HTMX_OWNER__", shell_native_htmx_owner_client())
+    .replace("__IMMORTAL_FLOOR_OWNER__", shell_immortal_floor_owner_client())
+    .replace("__LINKER_CLIENT__", shell_linker_client())
     .replace(
         "__INDICATOR_MODAL_REGISTRY__",
         &render_indicator_modal_registry(Session::Guest),
@@ -154,6 +158,10 @@ fn render_crown_shell_for_session(session: Session) -> String {
     ]
     .concat();
     let shell = shell
+        .replace("__PANE_STRUCTURE_OWNER__", shell_pane_structure_owner_client())
+        .replace("__NATIVE_HTMX_OWNER__", shell_native_htmx_owner_client())
+        .replace("__IMMORTAL_FLOOR_OWNER__", shell_immortal_floor_owner_client())
+        .replace("__LINKER_CLIENT__", shell_linker_client())
         .replace("__NAV__", &nav)
         .replace("__INDICATOR_SPINE__", &render_indicator_strip(session))
         .replace("__INDICATOR_MODAL_REGISTRY__", &render_indicator_modal_registry(session))
