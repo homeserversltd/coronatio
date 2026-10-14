@@ -859,7 +859,7 @@ async fn backblaze_bucket_verify_route(
         Err(error) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "connected": false, "reason": error})),
+                Json(serde_json::json!({"ok": false, "reason": error})),
             )
                 .into_response()
         }

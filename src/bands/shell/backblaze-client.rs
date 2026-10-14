@@ -338,9 +338,15 @@ fn shell_backblaze_client() -> &'static str {
       try {
         const body = await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket) + '/verify', { method: 'POST', signal: controller.signal }, binding);
         if (!currentProbeAction(binding, bucket)) return;
-        const selected = state.data?.buckets?.find(row => row.bucket === bucket); if (selected && typeof body.connected === 'boolean') selected.connected = body.connected;
+        const selected = state.data?.buckets?.find(row => row.bucket === bucket); if (body.ok !== false && selected && typeof body.connected === 'boolean') selected.connected = body.connected;
         renderBuckets(); renderSelected(); setResult(binding, body.ok === false ? (body.reason || 'Connection verification failed') : (body.connected === true ? 'Connected' : 'Not connected'));
-      } catch (_) { if (currentProbeAction(binding, bucket)) setResult(binding, 'Connection verification failed'); }
+        await hydrateBackblaze(binding);
+      } catch (_) {
+        if (currentProbeAction(binding, bucket)) {
+          setResult(binding, 'Connection verification failed');
+          await hydrateBackblaze(binding);
+        }
+      }
       finally { actions.delete(controller); }
     }
     async function removeBucket(bucket, binding = state.binding) {
