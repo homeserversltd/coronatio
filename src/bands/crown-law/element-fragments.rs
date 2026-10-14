@@ -178,6 +178,11 @@ fn render_stat_element_from_grant(session: Session, facts: &IrisFacts, element_i
     let eye = if visible { "fa-eye" } else { "fa-eye-slash" };
     let verb = if visible { "Hide" } else { "Show" };
     let mut html = template.to_string();
+    html = html.replacen(
+        "<div class=\"stat-content\">",
+        "<div class=\"stat-content\"><div class=\"ui-skeleton\" data-native-slot-skeleton aria-hidden=\"true\"><span class=\"ui-skeleton__line ui-skeleton__line--medium\"></span><span class=\"ui-skeleton__line\"></span><span class=\"ui-skeleton__block\"></span></div>",
+        1,
+    );
     html = replace_data_visible(&html, visible);
     html = replace_visibility_toggle(&html, "data-stat-visibility-toggle", element_id, visible, eye, verb);
     Some(html)

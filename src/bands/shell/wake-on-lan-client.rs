@@ -52,6 +52,12 @@ fn shell_wake_on_lan_client() -> &'static str {
       wakeOnLanState.devices = []; wakeOnLanState.hasSnapshot = false; wakeOnLanState.currentData = false; wakeOnLanState.stale = true; wakeOnLanState.binding = null;
     }
     window.addEventListener('coronatio:privileged-state-retired', retireWakeOnLanPrivilegedState);
+    window.addEventListener('coronatio:native-pane-reset', event => {
+      const detail = event.detail || {}, pane = detail.pane, binding = wakeOnLanState.binding;
+      if (detail.id !== 'wake-on-lan' || !(pane instanceof Element) || !pane.isConnected || document.querySelector('[data-pane-panel="wake-on-lan"]') !== pane) return;
+      if (binding && (binding.guest !== detail.id || scaffoldRegistry.current(binding))) return;
+      wakeOnLanState.devices = []; wakeOnLanState.hasSnapshot = false; wakeOnLanState.currentData = false; wakeOnLanState.stale = false; wakeOnLanState.binding = null;
+    });
     async function hydrateWakeOnLan() {
       const binding = viewportFamilyAdmitted('wake-on-lan') ? scaffoldRegistry.capture('wake-on-lan') : null;
       if (!binding) return false;
@@ -61,6 +67,8 @@ fn shell_wake_on_lan_client() -> &'static str {
         wakeOnLanState.binding = binding; wakeOnLanState.currentData = false; wakeOnLanState.stale = true;
         scaffoldRegistry.onRetire(binding, () => retireWakeOnLan(binding));
       }
+      const rowsSlot = binding.root.querySelector('[data-scaffold-slot="wakeonlan-devices"]');
+      if (!rowsSlot) return Promise.resolve(false);
       return scaffoldRegistry.run(binding, 'wakeonlan-devices', async context => {
         if (!context.current() || !viewportFamilyAdmitted('wake-on-lan') || wakeOnLanState.binding !== binding) return false;
         wakeOnLanState.currentData = false; wakeOnLanState.stale = true;
@@ -75,9 +83,10 @@ fn shell_wake_on_lan_client() -> &'static str {
         if (!context.current() || !viewportFamilyAdmitted('wake-on-lan') || wakeOnLanState.binding !== binding) return false;
         wakeOnLanState.devices = [...devices.values()]; wakeOnLanState.hasSnapshot = true; wakeOnLanState.currentData = true; wakeOnLanState.stale = false;
         renderWakeOnLan(binding); wakeOnLanSetError(binding, '', false, true);
+        context.ready(rowsSlot);
         return true;
       }, {
-        slots: [], timeoutMs: 8000, slowMs: 750,
+        slots: [rowsSlot], timeoutMs: 8000, slowMs: 750,
         onFailure: ({ current, reason }) => {
           if (!current() || !scaffoldRegistry.current(binding)) return;
           wakeOnLanState.currentData = false; wakeOnLanState.stale = true;

@@ -31,6 +31,16 @@ fn shell_document_4() -> &'static str {
       }
       return binding;
     }
+    window.addEventListener('coronatio:native-pane-reset', event => {
+      const detail = event.detail || {}, pane = detail.pane, binding = uploadState.binding;
+      if (detail.id !== 'upload' || !(pane instanceof Element) || !pane.isConnected || document.querySelector('[data-pane-panel="upload"]') !== pane) return;
+      if (binding && (binding.guest !== detail.id || scaffoldRegistry.current(binding))) return;
+      uploadState.activeUploads.forEach(upload => { upload.removed = true; upload.xhr?.abort(); });
+      uploadState.activeUploads.clear(); uploadState.currentPath = '/mnt/nas'; uploadState.selectedFiles = []; uploadState.uploading = false;
+      uploadState.pinRequired = false; uploadState.policyReady = false; uploadState.policyStale = false; uploadState.binding = null;
+      uploadState.blacklist = []; uploadState.blacklistReady = false; uploadState.blacklistStale = false;
+      uploadState.history = []; uploadState.historyReady = false; uploadState.historyStale = false;
+    });
     function uploadReadStatus(container, key, message, state = 'stale', retry = false) {
       if (!container) return;
       let node = container.querySelector(':scope > [data-upload-read-status]');
@@ -190,7 +200,7 @@ fn shell_document_4() -> &'static str {
         try { const outcome = await uploadOneFile(file, scopedAttendance, binding); if (!outcome?.removed) success += 1; }
         catch (error) { if (!uploadCurrent(binding)) break; if (error?.uploadRemoved) continue; if (error?.uploadPinRequired && !headerState.isAdmin) { pinRequired = true; setUpload(file.name, { status: 'pending', error: '' }, binding); break; } failed += 1; setUpload(file.name, { status: 'error', error: error?.message || String(error) }, binding); showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error'); }
       }
-      uploadState.uploading = false;
+      if (uploadState.binding === binding) uploadState.uploading = false;
       if (!uploadCurrent(binding)) return;
       const submitAfterUpload = uploadSubmit();
       if (submitAfterUpload) { submitAfterUpload.textContent = 'Upload Selected Files'; submitAfterUpload.disabled = uploadState.selectedFiles.length === 0 || !uploadState.policyReady || uploadState.policyStale; } if (pinRequired) { openUploadModal('[data-upload-pin-modal]'); binding.root.querySelector('[data-upload-pin-input]')?.focus(); return; }
@@ -448,6 +458,11 @@ fn shell_document_4() -> &'static str {
     }
     const statsCharts = { cpu: null, network: null, io: null };
     function destroyStatsChart(key) { if (statsCharts[key]) { statsCharts[key].destroy(); statsCharts[key] = null; } }
+    function resetStatsChartState() {
+      statsChartState.points = []; statsChartState.labels = []; statsChartState.cpu = []; statsChartState.temp = [];
+      statsChartState.upload = []; statsChartState.download = []; statsChartState.lastRx = null; statsChartState.lastTx = null;
+      statsChartState.lastIo = {}; statsChartState.lastStamp = null; statsChartState.ioSeries = {};
+    }
     function themeCssColor(token, fallback) { const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim(); return value || fallback; }
     function chartTicks(tokenOrColor, callback) { const color = tokenOrColor.startsWith('--') ? themeCssColor(tokenOrColor, '#4A5568') : tokenOrColor; return { color, maxTicksLimit: 10, autoSkip: true, callback }; }
     function chartGrid() { return { color: themeCssColor('--border', '#1E293B'), borderDash: [3, 3] }; }
@@ -772,6 +787,15 @@ fn shell_document_4() -> &'static str {
     }
     const statsSnapshotTimeoutMs = 5500;
     const statsHistoryAttemptedBindings = new WeakSet();
+    let statsPaneBinding = null;
+    const statsBindingsWatched = new WeakSet();
+    function watchStatsPaneBinding(binding) {
+      if (!binding) return;
+      statsPaneBinding = binding;
+      if (statsBindingsWatched.has(binding)) return;
+      statsBindingsWatched.add(binding);
+      scaffoldRegistry.onRetire(binding, () => { if (statsPaneBinding === binding) statsPaneBinding = null; });
+    }
     let statsHistoryLoaded = false;
     function setStatsHistoryStatus(binding, message, state = 'stale', retry = false, hidden = false) {
       if (!binding || !scaffoldRegistry.current(binding)) return;
@@ -829,6 +853,7 @@ fn shell_document_4() -> &'static str {
       'stats.processes': { present: data => Array.isArray(data?.processes), fill: data => renderProcesses(data) }
     });
     async function readBundledStats(context) {
+      watchStatsPaneBinding(context.binding);
       const data = await context.fetchJson('/api/stats');
       if (!context.current()) return false;
       if (!data || typeof data !== 'object' || Array.isArray(data) || data.ok === false) throw new Error('Stats snapshot is incomplete');
@@ -848,6 +873,7 @@ fn shell_document_4() -> &'static str {
     async function hydrateStats() {
       const binding = scaffoldRegistry.capture('stats');
       if (!binding) return Promise.resolve(false);
+      watchStatsPaneBinding(binding);
       startStatsHistory(binding);
       return scaffoldRegistry.read('stats', { readKey: 'stats-snapshot' });
     }
@@ -865,6 +891,14 @@ fn shell_document_4() -> &'static str {
       retireTestLanIpCatalogForGuest();
       closeNoteModal();
       document.querySelectorAll('[data-pane-panel="stats"] [data-identity-roster]').forEach(target => { target.replaceChildren(); target.textContent = 'Network activity requires Admin Mode.'; });
+    });
+    window.addEventListener('coronatio:native-pane-reset', event => {
+      const detail = event.detail || {}, pane = detail.pane;
+      if (detail.id !== 'stats' || !(pane instanceof Element) || !pane.isConnected || document.querySelector('[data-pane-panel="stats"]') !== pane) return;
+      if (statsPaneBinding && scaffoldRegistry.current(statsPaneBinding)) return;
+      statsPaneBinding = null;
+      ['cpu', 'network', 'io'].forEach(destroyStatsChart);
+      resetStatsChartState(); lastGoodMemory.memory = null; lastGoodMemory.swap = null; statsHistoryLoaded = false;
     });
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));

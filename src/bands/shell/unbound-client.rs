@@ -461,6 +461,12 @@ fn shell_unbound_client() -> &'static str {
         document.querySelectorAll('[data-pane-panel="unbound"] [data-dns-state]').forEach(node=>{node.textContent='Admin access ended.';
           });
         });
+    window.addEventListener('coronatio:native-pane-reset',event=>{const detail=event.detail||{},pane=detail.pane,binding=dnsUiState.binding;
+        if(detail.id!=='unbound'||!(pane instanceof Element)||!pane.isConnected||document.querySelector('[data-pane-panel="unbound"]')!==pane)return;
+        if(!binding||binding.guest!=='unbound'||window.scaffoldRegistry?.current(binding))return;
+        dnsUiState.resolver=null;dnsUiState.resolverReady=false;dnsUiState.identityReady=false;dnsUiState.pickedMac=null;dnsUiState.selectedOctet=null;
+        dnsUiState.calendarStart=null;dnsUiState.calendarEnd=null;dnsUiState.calendarPage=0;dnsUiState.nameDefault='';dnsUiState.mutationBusy=false;dnsUiState.binding=null;dnsUiState.resolverDirty.clear();
+        });
 
 "####
 }

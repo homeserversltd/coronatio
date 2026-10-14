@@ -80,7 +80,7 @@ fn shell_pane_structure_owner_client() -> &'static str {
           if (current.nodeValue !== next.nodeValue) { current.nodeValue = next.nodeValue; mutated = true; }
           return current;
         }
-        if (current.hasAttribute('data-scaffold-slot') && next.hasAttribute('data-scaffold-slot') && current.dataset.scaffoldSlot === next.dataset.scaffoldSlot) {
+        if (!options.reset && !options.roleProjection && current.hasAttribute('data-scaffold-slot') && next.hasAttribute('data-scaffold-slot') && current.dataset.scaffoldSlot === next.dataset.scaffoldSlot) {
           const incomingShape = scaffoldStructureSignature(next);
           const liveShape = scaffoldSlotStructures.get(current) || scaffoldStructureSignature(current);
           if (liveShape === incomingShape) {
@@ -91,10 +91,11 @@ fn shell_pane_structure_owner_client() -> &'static str {
         morphAttributes(current, next);
         // Stats owns chart canvases and live readouts between element-fact pulls. Its
         // element wrapper carries the fact attributes; preserve its live descendants.
-        if (current.hasAttribute('data-stat-element-id')) {
+        if (!options.reset && !options.roleProjection && current.hasAttribute('data-stat-element-id')) {
           const currentHeader = Array.from(current.children).find(child => child.classList.contains('stat-header'));
           const nextHeader = Array.from(next.children).find(child => child.classList.contains('stat-header'));
           if (currentHeader && nextHeader) morphNode(currentHeader, nextHeader);
+          if (current.hasAttribute('data-scaffold-slot')) scaffoldSlotStructures.set(current, scaffoldStructureSignature(next));
           return current;
         }
         morphChildren(current, next);
@@ -117,6 +118,77 @@ fn shell_pane_structure_owner_client() -> &'static str {
       }
       return mutated;
     }
+    const nativeHeldPaneIds = new Set(['admin', 'upload', 'stats', 'backblaze', 'wake-on-lan', 'dhcp', 'firewall', 'unbound']);
+    const nativePaneSkeletons = new Map();
+    function nativePaneSkeletonMap(id) {
+      let roles = nativePaneSkeletons.get(String(id));
+      if (!roles) { roles = new Map(); nativePaneSkeletons.set(String(id), roles); }
+      return roles;
+    }
+    function registerNativePaneSkeleton(id, role = 'guest', pane = null) {
+      id = String(id || ''); role = String(role || 'guest');
+      if (!nativeHeldPaneIds.has(id)) return false;
+      pane ||= document.querySelector(`[data-pane-panel="${CSS.escape(id)}"]`);
+      if (!(pane instanceof Element) || !pane.isConnected) return false;
+      nativePaneSkeletonMap(id).set(role, pane.innerHTML);
+      pane.dataset.scaffoldRole = role;
+      return true;
+    }
+    function registerNativePaneRoleProjection(id, role, html) {
+      id = String(id || ''); role = String(role || '');
+      if (!nativeHeldPaneIds.has(id) || !['guest', 'admin'].includes(role) || typeof html !== 'string') return false;
+      nativePaneSkeletonMap(id).set(role, html);
+      return true;
+    }
+    function clearNativePaneControlState(root) {
+      root?.querySelectorAll('input, textarea, select').forEach(control => {
+        if (control instanceof HTMLInputElement) {
+          if (control.type === 'file' || control.type === 'password') control.value = '';
+          else control.value = control.defaultValue;
+          if (control.type === 'checkbox' || control.type === 'radio') control.checked = control.defaultChecked;
+          control.indeterminate = false;
+        } else if (control instanceof HTMLTextAreaElement) control.value = control.defaultValue;
+        else if (control instanceof HTMLSelectElement) control.selectedIndex = Array.from(control.options).findIndex(option => option.defaultSelected);
+      });
+    }
+    function projectNativePaneRole(id, role) {
+      id = String(id || ''); role = String(role || 'guest');
+      const pane = document.querySelector(`[data-pane-panel="${CSS.escape(id)}"]`);
+      const html = nativePaneSkeletons.get(id)?.get(role);
+      if (!(pane instanceof Element) || typeof html !== 'string') return false;
+      if (pane.dataset.scaffoldRole === role) return true;
+      window.dispatchEvent(new CustomEvent('coronatio:native-pane-reset', { detail: { id, role, pane } }));
+      morphLivePane(pane, html, { reset: true });
+      clearNativePaneControlState(pane);
+      pane.dataset.scaffoldRole = role;
+      return true;
+    }
+    function resetNativePaneSkeleton(id, role = 'guest') {
+      id = String(id || ''); role = String(role || 'guest');
+      const pane = document.querySelector(`[data-pane-panel="${CSS.escape(id)}"]`);
+      const html = nativePaneSkeletons.get(id)?.get(role);
+      if (!(pane instanceof Element) || typeof html !== 'string') return false;
+      window.dispatchEvent(new CustomEvent('coronatio:native-pane-reset', { detail: { id, role, pane } }));
+      morphLivePane(pane, html, { reset: true });
+      clearNativePaneControlState(pane);
+      pane.dataset.scaffoldRole = role;
+      return true;
+    }
+    function retireNativePaneSkeleton(id, role = null) {
+      const roles = nativePaneSkeletons.get(String(id || ''));
+      if (!roles) return false;
+      if (role == null) nativePaneSkeletons.delete(String(id));
+      else roles.delete(String(role));
+      return true;
+    }
+    window.nativePaneSkeletonFloor = Object.freeze({
+      ids: nativeHeldPaneIds,
+      register: registerNativePaneSkeleton,
+      registerRole: registerNativePaneRoleProjection,
+      project: projectNativePaneRole,
+      reset: resetNativePaneSkeleton,
+      retire: retireNativePaneSkeleton
+    });
     const scaffoldRegistry = (() => {
       const guests = new Map();
       const bindings = new Map();
@@ -173,6 +245,7 @@ fn shell_pane_structure_owner_client() -> &'static str {
       }
       function setReady(slot) {
         removeStatus(slot);
+        slot.querySelectorAll('[data-native-slot-skeleton]').forEach(node => node.remove());
         slot.dataset.scaffoldState = 'ready';
         slot.dataset.scaffoldUpdatedAt = String(Date.now());
         delete slot.dataset.scaffoldPending;
@@ -564,12 +637,12 @@ fn shell_pane_structure_owner_client() -> &'static str {
     }
     window.consumeElementsChanged = consumeElementsChanged;
     const nativePaneContracts = Object.freeze({
-      admin: { root: '[data-admin-viewport="admin"]', required: ['[data-admin-action-strip]', '[data-admin-service-controls]'] },
+      admin: { root: '[data-admin-viewport="admin"]', required: ['[data-admin-action-strip]', '[data-admin-service-controls]'], held: true },
       portals: { root: '[data-portals-viewport]', required: ['[data-portals-grid]'] },
-      upload: { root: '[data-upload-viewport]', required: ['[data-upload-tree]'] },
-      stats: { root: '[data-stats-viewport]', required: ['[data-stat-element-id]'] },
-      backblaze: { root: '[data-backblaze-tablet]', required: ['[data-backblaze-ribbon]', '[data-backblaze-panel]'] },
-      'wake-on-lan': { root: '[data-wake-on-lan-tablet]', required: ['[data-wake-on-lan-rows]'] },
+      upload: { root: '[data-upload-viewport]', required: ['[data-upload-tree]'], held: true },
+      stats: { root: '[data-stats-viewport]', required: ['[data-stat-element-id]'], held: true },
+      backblaze: { root: '[data-backblaze-tablet]', required: ['[data-backblaze-ribbon]', '[data-backblaze-panel]'], held: true },
+      'wake-on-lan': { root: '[data-wake-on-lan-tablet]', required: ['[data-wake-on-lan-rows]'], held: true },
       test: { root: '[data-native-stock-test="true"]', required: ['.ui-tab-group', '.test-tablet-content'], slots: [] },
       linker: {
         root: '#linker-fragment[data-linker-state][data-linker-path]',
@@ -577,9 +650,9 @@ fn shell_pane_structure_owner_client() -> &'static str {
         preserveOuterRootAttributes: ['data-linker-readback', 'hx-get', 'hx-trigger', 'hx-target', 'hx-swap', 'hx-request'],
         required: ['[data-linker-tree]', '.linker-list', '[data-linker-read-status]']
       },
-      dhcp: { root: '[data-dhcp-tablet]', required: ['[data-dhcp-refresh]', '[data-identity-roster-host="dhcp"]'] },
-      firewall: { root: '[data-firewall-tablet]', required: ['[data-firewall-refresh]', '[data-firewall-observed]', '[data-firewall-children]'] },
-      unbound: { root: '[data-dns-tablet]', required: ['[data-dns-state]', '[data-dns-names]', '[data-dns-resolver-status]'] }
+      dhcp: { root: '[data-dhcp-tablet]', required: ['[data-identity-roster-host="dhcp"]'], held: true },
+      firewall: { root: '[data-firewall-tablet]', required: ['[data-firewall-refresh]', '[data-firewall-observed]', '[data-firewall-children]'], held: true },
+      unbound: { root: '[data-dns-tablet]', required: ['[data-dns-state]', '[data-dns-names]', '[data-dns-resolver-status]'], held: true }
     });
     function nativePanePayload(id, fragment) {
       const contract = nativePaneContracts[id];

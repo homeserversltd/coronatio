@@ -59,8 +59,8 @@ fn shell_document_2() -> &'static str {
           <small>Product of HOMESERVER LLC</small>
         </article>
       </section>
-      <section class="pane active" id="pane-stats" data-pane-panel="stats" data-view-panel="stats" role="tabpanel" aria-label="Stats">
-        <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one" data-scaffold-root data-guest-id="stats" data-scaffold-version="1">
+      <section class="pane active" id="pane-stats" data-pane-panel="stats" data-view-panel="stats" data-scaffold-root data-guest-id="stats" data-scaffold-version="1" role="tabpanel" aria-label="Stats">
+        <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
           __STATS_ELEMENTS_FRAGMENT__
         </div>
       </section>
@@ -71,7 +71,7 @@ fn shell_document_2() -> &'static str {
           </div>
         </div>
       </section>
-      <section class="pane" id="pane-upload" data-pane-panel="upload" data-view-panel="upload" role="tabpanel" aria-label="Upload">
+      <section class="pane" id="pane-upload" data-pane-panel="upload" data-view-panel="upload" data-scaffold-root data-guest-id="upload" data-scaffold-version="1" role="tabpanel" aria-label="Upload">
         <div class="upload-tablet" data-upload-viewport data-react-quarry="UploadTablet" data-identity-standard="one-to-one">
           <div class="upload-progress-list" data-upload-progress-list hidden></div>
           <div class="upload-controls">
@@ -88,20 +88,20 @@ fn shell_document_2() -> &'static str {
                 <div class="breadcrumb-navigation" data-upload-breadcrumbs><button type="button" class="breadcrumb-item current" data-upload-breadcrumb-path="/mnt/nas" aria-current="page">nas</button></div>
               </div>
               <div class="directory-loading-initial" data-upload-directory-loading hidden><span class="loading-spinner large" role="progressbar" aria-label="Loading directory tree"></span></div>
-              <div class="directory-tree-container" data-upload-tree role="tree">__UPLOAD_TREE_FRAGMENT__</div>
+              <div class="directory-tree-container" data-upload-tree data-scaffold-slot="upload-tree" data-scaffold-placeholder="directory entries" role="tree">__UPLOAD_TREE_FRAGMENT__</div>
             </div>
             <div class="file-upload-section" data-upload-regular="file-ingress" data-upload-file-section>
               <input type="file" multiple data-upload-file aria-label="Upload files">
               <button type="button" data-upload-submit disabled>Upload Selected Files</button>
             </div>
           </div>
-          <div class="modal-overlay" data-upload-history-backdrop data-upload-history-modal aria-hidden="true" hidden>
+          <div class="modal-overlay" data-admin-only="true" data-upload-history-backdrop data-upload-history-modal aria-hidden="true" hidden>
             <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-history-title">
               <button type="button" class="modal-close" data-upload-modal-close aria-label="Close modal">×</button><h2 class="modal-title" id="upload-history-title">Upload History</h2>
               <div class="modal-content upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="clear-history-button" data-upload-clear-history disabled>Clear History</button></div>
             </section>
           </div>
-          <div class="modal-overlay" data-upload-blacklist-backdrop data-upload-blacklist-modal aria-hidden="true" hidden>
+          <div class="modal-overlay" data-admin-only="true" data-upload-blacklist-backdrop data-upload-blacklist-modal aria-hidden="true" hidden>
             <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-blacklist-title">
               <button type="button" class="modal-close" data-upload-modal-close aria-label="Close modal">×</button><h2 class="modal-title" id="upload-blacklist-title">Manage Blacklist</h2>
               <div class="modal-content"><div class="blacklist-manager"><div class="blacklist-entries" data-upload-blacklist-entries></div><div class="blacklist-controls"><form class="add-entry" data-upload-blacklist-form><input type="text" class="entry-input" placeholder="Enter path to blacklist" data-upload-blacklist-input><button type="button" class="add-button" data-upload-blacklist-add>New</button></form><button type="button" class="submit-button" data-upload-blacklist-submit>Submit</button></div></div></div>
@@ -117,36 +117,36 @@ fn shell_document_2() -> &'static str {
           <pre class="readout admin-quarry-note" id="upload-readout" data-upload-receipt-readout>Upload Caduceus receipts are diagnostic evidence, not the visible progress UI.</pre>
         </div>
       </section>
-      <section class="pane" id="pane-backblaze" data-pane-panel="backblaze" data-view-panel="backblaze" role="tabpanel" aria-label="Backblaze">
+      <section class="pane" id="pane-backblaze" data-pane-panel="backblaze" data-view-panel="backblaze" data-admin-only-pane="true" data-scaffold-root data-guest-id="backblaze" data-scaffold-version="1" role="tabpanel" aria-label="Backblaze">
         <article class="backblaze-tablet" data-backblaze-tablet>
           <div class="backblaze-ribbon" data-backblaze-ribbon><span class="backblaze-state-pill" data-backblaze-state>Loading</span><span>Last: <strong data-backblaze-last>—</strong> <strong data-backblaze-duration>duration unavailable</strong></span><span>Next: <strong data-backblaze-next>Not scheduled</strong></span></div>
           <nav class="backblaze-subtabs" aria-label="Backblaze sections" role="tablist"><button type="button" class="backblaze-subtab is-active" data-backblaze-view="buckets" role="tab" aria-selected="true">Buckets</button><button type="button" class="backblaze-subtab" data-backblaze-view="ledger" role="tab" aria-selected="false">Ledger</button></nav>
           <section class="backblaze-view" data-backblaze-panel="buckets" role="tabpanel">
-            <div class="backblaze-two-pane"><aside class="backblaze-bucket-pane"><header><h2>Buckets</h2><button type="button" class="ui-button ui-button--primary" data-backblaze-add aria-label="Add bucket">+</button></header><div data-backblaze-buckets aria-live="polite">Loading buckets…</div></aside>
+            <div class="backblaze-two-pane"><aside class="backblaze-bucket-pane"><header><h2>Buckets</h2><button type="button" class="ui-button ui-button--primary" data-backblaze-add aria-label="Add bucket">+</button></header><div data-backblaze-buckets data-scaffold-slot="backblaze-buckets" data-scaffold-placeholder="backup buckets" aria-live="polite"><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span></div></div></aside>
               <section class="backblaze-items-pane"><header><div><h2 data-backblaze-selected>Select a bucket</h2><p data-backblaze-bucket-status>Select a bucket.</p></div><button type="button" class="ui-button ui-button--primary" data-backblaze-run disabled>Run backup</button></header>
-                <div class="backblaze-config"><section class="backblaze-section"><h3>Bucket</h3><label class="backblaze-bucket-value">Name <input class="ui-input" data-backblaze-bucket-name readonly></label><label class="ui-checkbox"><input type="checkbox" data-backblaze-encrypted> Encrypted</label></section><section class="backblaze-section"><h3>Account</h3><div class="backblaze-account-row"><span class="backblaze-account-status" data-backblaze-connected>Not connected</span><button type="button" class="ui-button ui-button--secondary" data-backblaze-verify disabled>Verify</button><button type="button" class="ui-button ui-button--secondary" data-backblaze-update disabled>Update credentials</button></div></section><section class="backblaze-section"><h3>Files</h3><div class="backblaze-path-input"><input class="ui-input" data-backblaze-path placeholder="/absolute/path" disabled><button type="button" class="ui-button ui-button--secondary" data-backblaze-item-add disabled>Add</button></div><div data-backblaze-items>Select a bucket to manage paths.</div></section><section class="backblaze-section"><h3>Schedule</h3><div class="backblaze-form-grid"><label>Frequency <select class="ui-input" disabled><option>Manual</option></select></label><label>Time <input class="ui-input" type="time" disabled></label></div><p class="backblaze-note">Schedule persistence is unavailable; backups run manually.</p></section><section class="backblaze-section"><h3>Managers</h3><div class="backblaze-manager-row" data-backblaze-manager="forgejo"><span class="backblaze-manager-indicator" data-backblaze-manager-indicator aria-hidden="true"></span><strong>Forgejo</strong><button type="button" class="ui-button ui-button--secondary" data-backblaze-manager-open disabled>Open</button></div></section><button type="button" class="ui-button ui-button--primary" data-backblaze-save disabled>Save Config</button></div><p data-backblaze-result role="status"></p></section>
+                <div class="backblaze-config"><section class="backblaze-section"><h3>Bucket</h3><label class="backblaze-bucket-value">Name <input class="ui-input" data-backblaze-bucket-name readonly></label><label class="ui-checkbox"><input type="checkbox" data-backblaze-encrypted> Encrypted</label></section><section class="backblaze-section"><h3>Account</h3><div class="backblaze-account-row"><span class="backblaze-account-status" data-backblaze-connected>—</span><button type="button" class="ui-button ui-button--secondary" data-backblaze-verify disabled>Verify</button><button type="button" class="ui-button ui-button--secondary" data-backblaze-update disabled>Update credentials</button></div></section><section class="backblaze-section"><h3>Files</h3><div class="backblaze-path-input"><input class="ui-input" data-backblaze-path placeholder="/absolute/path" disabled><button type="button" class="ui-button ui-button--secondary" data-backblaze-item-add disabled>Add</button></div><div data-backblaze-items data-scaffold-slot="backblaze-items" data-scaffold-placeholder="backup paths"><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span></div></div></section><section class="backblaze-section"><h3>Schedule</h3><div class="backblaze-form-grid"><label>Frequency <select class="ui-input" disabled><option>Manual</option></select></label><label>Time <input class="ui-input" type="time" disabled></label></div><p class="backblaze-note">Schedule persistence is unavailable; backups run manually.</p></section><section class="backblaze-section"><h3>Managers</h3><div class="backblaze-manager-row" data-backblaze-manager="forgejo"><span class="backblaze-manager-indicator" data-backblaze-manager-indicator aria-hidden="true"></span><strong>Forgejo</strong><button type="button" class="ui-button ui-button--secondary" data-backblaze-manager-open disabled>Open</button></div></section><button type="button" class="ui-button ui-button--primary" data-backblaze-save disabled>Save Config</button></div><p data-backblaze-result role="status"></p></section>
               <div class="backblaze-manager-modal" data-backblaze-manager-modal hidden><div class="backblaze-manager-card" role="dialog" aria-modal="true" aria-label="Forgejo managers"><h3>Forgejo</h3><label class="ui-checkbox"><input type="checkbox" data-backblaze-local-nas> Local NAS backup</label><label class="ui-checkbox"><input type="checkbox" data-backblaze-forgejo-backup> Backblaze backup to this bucket.</label><div><button type="button" class="ui-button ui-button--secondary" data-backblaze-manager-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary" data-backblaze-manager-close>Done</button></div></div></div>
             </div>
-          </section><section class="backblaze-view" data-backblaze-panel="ledger" role="tabpanel" hidden><div class="backblaze-two-pane"><aside class="backblaze-bucket-pane"><header><h2>Buckets</h2></header><div data-backblaze-ledger-buckets aria-live="polite">Loading buckets…</div></aside><section class="backblaze-items-pane" data-backblaze-ledger aria-live="polite"><p class="backblaze-empty">Select a bucket</p></section></div></section>
+          </section><section class="backblaze-view" data-backblaze-panel="ledger" role="tabpanel" hidden><div class="backblaze-two-pane"><aside class="backblaze-bucket-pane"><header><h2>Buckets</h2></header><div data-backblaze-ledger-buckets data-scaffold-slot="backblaze-ledger-buckets" data-scaffold-placeholder="backup buckets" aria-live="polite"><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span></div></div></aside><section class="backblaze-items-pane" data-backblaze-ledger data-scaffold-slot="backblaze-ledger" data-scaffold-placeholder="backup ledger" aria-live="polite"><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__block"></span></div></section></div></section>
         </article>
       </section>
-      <section class="pane" id="pane-wake-on-lan" data-pane-panel="wake-on-lan" data-view-panel="wake-on-lan" role="tabpanel" aria-label="Wake on LAN">
-        <div class="wake-on-lan-tablet" data-wake-on-lan-tablet><header class="wake-on-lan-header"><div><h2>Wake on LAN</h2><p>Devices known to DHCP.</p></div></header><div class="wake-on-lan-error" data-wake-on-lan-error role="alert" hidden></div><ul class="wake-on-lan-rows" data-wake-on-lan-rows aria-live="polite"></ul></div>
+      <section class="pane" id="pane-wake-on-lan" data-pane-panel="wake-on-lan" data-view-panel="wake-on-lan" data-admin-only-pane="true" data-scaffold-root data-guest-id="wake-on-lan" data-scaffold-version="1" role="tabpanel" aria-label="Wake on LAN">
+        <div class="wake-on-lan-tablet" data-wake-on-lan-tablet><header class="wake-on-lan-header"><div><h2>Wake on LAN</h2><p>Devices known to DHCP.</p></div></header><div class="wake-on-lan-error" data-wake-on-lan-error role="alert" hidden></div><ul class="wake-on-lan-rows" data-wake-on-lan-rows data-scaffold-slot="wakeonlan-devices" data-scaffold-placeholder="known devices" aria-live="polite"><li class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span></li></ul></div>
       </section>
-      <section class="pane" id="pane-linker" data-pane-panel="linker" data-view-panel="linker" role="tabpanel" aria-label="Linker" data-admin-only="true" data-admin-viewport="linker">
+      <section class="pane" id="pane-linker" data-pane-panel="linker" data-view-panel="linker" data-admin-only-pane="true" role="tabpanel" aria-label="Linker" data-admin-only="true" data-admin-viewport="linker">
         <article class="linker-tablet" data-linker-tablet><p>Linker admission is loaded when this pane is admitted.</p></article>
       </section>
       __TEST__
       __CARTRIDGE_PANES__
-      <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" role="tabpanel" aria-label="DHCP">
-        <div class="dhcp-tablet" data-dhcp-tablet data-admin-only="true" data-admin-viewport="dhcp">
+      <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" data-scaffold-root data-guest-id="dhcp" data-scaffold-version="1" role="tabpanel" aria-label="DHCP">
+        <div class="dhcp-tablet" data-dhcp-tablet data-admin-viewport="dhcp">
           <div class="dhcp-info-banner" data-dhcp-info-banner data-scaffold-slot="dhcp-statistics" data-scaffold-placeholder="DHCP statistics" aria-live="polite">
-            <span class="dhcp-info-item">Homeserver: <span class="dhcp-info-value" data-dhcp-homeserver>192.168.123.1</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
+            <span class="dhcp-info-item">Homeserver: <span class="dhcp-info-value" data-dhcp-homeserver>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
             <span class="dhcp-info-item">Reservations: <span class="dhcp-info-value" data-dhcp-reservations-count>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
             <span class="dhcp-info-item">Hosts: <span class="dhcp-info-value" data-dhcp-hosts-count>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
             <span class="dhcp-info-item">Leases: <span class="dhcp-info-value" data-dhcp-leases-count>—</span></span>
           </div>
-          <div class="dhcp-button-row">
+          <div class="dhcp-button-row" data-admin-only="true">
             <button type="button" class="ui-button ui-button--secondary ui-button--small" data-dhcp-refresh>Refresh</button>
             <label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__switch"><input type="checkbox" class="ui-toggle__input" data-dhcp-anonymize><span class="ui-toggle__slider"></span></span><span class="ui-toggle__label">Anonymize</span></label>
             <div class="reservation-slider" data-dhcp-boundary-control data-scaffold-slot="dhcp-pool-boundary" data-scaffold-placeholder="DHCP pool boundary">
@@ -158,28 +158,28 @@ fn shell_document_2() -> &'static str {
           <div class="dhcp-tablet-content">
             <div class="dhcp-banner dhcp-banner--error" data-dhcp-error role="alert" hidden></div>
             <div class="dhcp-banner dhcp-banner--loading" data-dhcp-loading aria-live="polite"><span class="loading-spinner medium" role="progressbar" aria-label="Loading devices"></span><span>Loading device identities…</span></div><span hidden data-scaffold-slot="identity-boundary" data-scaffold-placeholder="network DHCP boundary"></span><span hidden data-scaffold-slot="identity-leases" data-scaffold-placeholder="DHCP leases"></span><span hidden data-scaffold-slot="identity-reservations" data-scaffold-placeholder="DHCP reservations"></span><span hidden data-scaffold-slot="identity-dns" data-scaffold-placeholder="DNS records"></span><span hidden data-scaffold-slot="identity-mutation" data-scaffold-placeholder="network change"></span>
-            <section class="identity-roster-host dhcp-device-roster" data-identity-roster-host="dhcp" data-identity-perspective="address"><h3>Device addresses</h3><p class="dhcp-device-roster-hint">Pinned addresses are reserved. Lease-only devices can be pinned in one click.</p><div data-scaffold-slot="identity-roster" data-scaffold-placeholder="network device roster"><div data-identity-roster></div></div></section>
+            <section class="identity-roster-host dhcp-device-roster" data-identity-roster-host="dhcp" data-identity-perspective="address"><h3>Device addresses</h3><p class="dhcp-device-roster-hint">Pinned addresses are reserved. Lease-only devices can be pinned in one click.</p><div data-scaffold-slot="identity-roster" data-scaffold-placeholder="network device roster"><div data-identity-roster><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__block"></span></div></div></div></section>
           </div>
         </div>
-        <div class="ui-modal-backdrop" data-identity-claim-modal aria-hidden="true">
+        <div class="ui-modal-backdrop" data-admin-only="true" data-identity-claim-modal aria-hidden="true">
           <section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="identity-claim-title">
             <h2 id="identity-claim-title">Claim device</h2><div data-identity-claim-body></div>
             <div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-identity-claim-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-identity-claim-save>Save</button></div>
           </section>
         </div>
-        <div class="ui-modal-backdrop" data-identity-reservation-modal aria-hidden="true">
+        <div class="ui-modal-backdrop" data-admin-only="true" data-identity-reservation-modal aria-hidden="true">
           <section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="identity-reservation-title">
             <h2 id="identity-reservation-title" data-identity-reservation-title>Reservation</h2><div data-identity-reservation-body></div>
             <div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-identity-reservation-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-identity-reservation-save>Save</button></div>
           </section>
         </div>
       </section>
-      <section class="pane" id="pane-firewall" data-pane-panel="firewall" data-view-panel="firewall" role="tabpanel" aria-label="Firewall">
+      <section class="pane" id="pane-firewall" data-pane-panel="firewall" data-view-panel="firewall" data-admin-only-pane="true" data-scaffold-root data-guest-id="firewall" data-scaffold-version="1" role="tabpanel" aria-label="Firewall">
         <div class="firewall-tablet" data-firewall-tablet data-admin-only="true" data-admin-viewport="firewall">
           <header class="firewall-header"><div><h2>Firewall</h2><p>Child-device website access.</p></div><button class="ui-button ui-button--secondary ui-button--small" type="button" data-firewall-refresh>Refresh</button></header>
           <div class="firewall-banner firewall-banner--error" data-firewall-error role="alert" hidden></div>
-          <section class="firewall-section"><h3>Observed devices</h3><p>Hostname, IP address and MAC address seen on the network.</p><div data-scaffold-slot="firewall-observed" data-scaffold-placeholder="observed devices"><ul class="firewall-list" data-firewall-observed></ul></div></section>
-          <section class="firewall-section"><h3>Child devices</h3><p>Registered child devices can have a website whitelist.</p><div data-scaffold-slot="firewall-children" data-scaffold-placeholder="registered child devices"><ul class="firewall-list" data-firewall-children></ul></div></section>
+          <section class="firewall-section"><h3>Observed devices</h3><p>Hostname, IP address and MAC address seen on the network.</p><div data-scaffold-slot="firewall-observed" data-scaffold-placeholder="observed devices"><ul class="firewall-list" data-firewall-observed><li class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span></li></ul></div></section>
+          <section class="firewall-section"><h3>Child devices</h3><p>Registered child devices can have a website whitelist.</p><div data-scaffold-slot="firewall-children" data-scaffold-placeholder="registered child devices"><ul class="firewall-list" data-firewall-children><li class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span></li></ul></div></section>
           <pre class="firewall-receipt" data-firewall-receipt aria-live="polite"></pre>
         </div>
         <div class="ui-modal-backdrop" data-firewall-modal-backdrop aria-hidden="true"><section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="firewall-modal-title"><h2 id="firewall-modal-title" data-firewall-modal-title>Website whitelist</h2><form data-firewall-host-form><label class="firewall-modal-field">Website hostname<input class="ui-input ui-input--medium" data-firewall-host-input maxlength="253" placeholder="example.com"></label><button class="ui-button ui-button--secondary ui-button--small" type="submit">Add website</button></form><div data-scaffold-slot="firewall-whitelist" data-scaffold-placeholder="website whitelist"><p data-firewall-whitelist-error role="alert" hidden></p><ul class="firewall-list" data-firewall-hosts></ul></div><div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-modal-cancel>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-firewall-modal-save>Save whitelist</button></div></section></div>

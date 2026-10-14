@@ -456,6 +456,14 @@ fn shell_document_4_tail() -> &'static str {
       pane?.querySelectorAll('[data-nas-setup-open]').forEach(button => { button.disabled = true; });
     }
     window.addEventListener('coronatio:privileged-state-retired', scrubAdminDiskSnapshot);
+    window.addEventListener('coronatio:native-pane-reset', event => {
+      const detail = event.detail || {}, pane = detail.pane, owner = adminDiskSnapshotOwner;
+      if (detail.id !== 'admin' || !(pane instanceof Element) || !pane.isConnected || document.querySelector('[data-pane-panel="admin"]') !== pane) return;
+      if (owner && adminDiskSnapshotCurrent(owner)) return;
+      if (owner?.host?.isConnected && owner.host.closest('[data-pane-panel="admin"]') !== pane) return;
+      adminDiskSnapshotLastGood = null;
+      retireAdminDiskSnapshot();
+    });
     function adminDiskReadStatus(owner, message, state = 'pending', retry = false) {
       if (!adminDiskSnapshotCurrent(owner)) return;
       let node = owner.host.querySelector(':scope > [data-admin-disk-read-status]');

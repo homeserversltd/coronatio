@@ -1,7 +1,7 @@
 // Attendance is the sole content-admission event for this document. This fragment
 // is never part of a fresh crown shell.
 fn shell_admin_document_patch() -> &'static str {
-    r####"      <section class="pane" id="pane-admin" data-pane-panel="admin" data-view-panel="admin" data-admin-document-patch="true" role="tabpanel" aria-label="Admin">
+    r####"      <section class="pane" id="pane-admin" data-pane-panel="admin" data-view-panel="admin" data-admin-only-pane="true" data-scaffold-root data-guest-id="admin" data-scaffold-version="1" role="tabpanel" aria-label="Admin">
 
         <div class="admin-tablet" data-admin-only="true" data-admin-viewport="admin">
           <section class="mb-6" style="margin-bottom: 0.5rem">
@@ -59,8 +59,8 @@ fn shell_admin_document_patch() -> &'static str {
           <section class="mb-6" style="margin-bottom: 0.5rem">
             <div class="disk-manager">
               <div class="disk-manager-container">
-                <div class="disk-column"><h4>Available Devices</h4><p class="admin-nas-status" data-admin-nas-status aria-live="polite">Checking NAS status…</p><div class="disk-list" data-disk-census-readback="/api/v1/storage/disk/census"><div class="disk-item empty"><span class="disk-icon">▣</span><div class="disk-info"><div class="disk-name">Reading available devices…</div></div></div></div></div>
-                <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list" data-admin-mounts-readback="/api/services/data">__ADMIN_MOUNT_DESTINATIONS__</div></div>
+                <div class="disk-column"><h4>Available Devices</h4><p class="admin-nas-status" data-admin-nas-status aria-live="polite"><span class="ui-skeleton__line ui-skeleton__line--medium" aria-hidden="true"></span></p><div class="disk-list" data-disk-census-readback="/api/v1/storage/disk/census" data-scaffold-slot="admin-disk-census" data-scaffold-placeholder="available devices"><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span><span class="ui-skeleton__block"></span></div></div></div>
+                <div class="disk-column"><h4>Mount Destinations</h4><div class="disk-list" data-admin-mounts-readback="/api/services/data" data-scaffold-slot="admin-mount-destinations" data-scaffold-placeholder="mount destinations"><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__block"></span></div></div></div>
               </div>
               <div class="nas-setup-result" data-admin-nas-setup-result aria-live="polite"></div>
             </div>

@@ -43,6 +43,16 @@ fn shell_dhcp_client() -> &'static str {
       window.scaffoldRegistry.onRetire(binding, () => identityMarkRetired(binding));
       return identityCurrent(binding);
     }
+    window.addEventListener('coronatio:native-pane-reset', event => {
+      const detail = event.detail || {}, pane = detail.pane, binding = identityState.binding;
+      if (!['dhcp', 'unbound'].includes(detail.id) || !(pane instanceof Element) || !pane.isConnected || document.querySelector(`[data-pane-panel="${detail.id}"]`) !== pane) return;
+      if (!binding || binding.guest !== detail.id || window.scaffoldRegistry?.current(binding)) return;
+      identityState.roster = []; identityState.boundary = {}; identityState.dhcpBoundary = {}; identityState.dhcpBoundaryCommitted = null;
+      identityState.leases = []; identityState.reservations = []; identityState.dns = {}; identityState.notes = {};
+      identityState.modalMac = null; identityState.anonymized = false; identityState.reservation = null; identityState.writeBusy = false;
+      Object.keys(identityState.ready).forEach(key => { identityState.ready[key] = false; });
+      identityState.dhcpReady.statistics = false; identityState.dhcpReady.pool = false; identityState.statistics = null; identityState.binding = null;
+    });
     function identityRead(binding, key, route, slotName, validate, apply, options = {}) {
       const slot = binding.root.querySelector(`[data-scaffold-slot="${slotName}"]`); if (!slot) return Promise.resolve(false);
       return scaffoldRegistry.run(binding, `identity-${key}`, async ctx => {

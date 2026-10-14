@@ -30,6 +30,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         if (message) message.textContent = detail || ({ BootFloor: 'Preparing your controls…', GuestRevolution: 'Changing view…', BareFloor: 'Controls remain available. Choose a tab to try again.', Seated: '' }[next]);
       }
       function emptySlot() {
+        const resetIds = new Set([activeGuest, crossingGuest].filter(Boolean));
         closeViewportStreamFamily();
         if (crossingGuest) window.retireGuestScaffoldSlots?.(crossingGuest, 'Guest crossing left the floor');
         if (activeGuest) {
@@ -39,6 +40,9 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         panes.forEach(pane => {
           pane.classList.remove('active', 'immortal-floor-enter');
           pane.setAttribute('aria-hidden', 'true');
+        });
+        resetIds.forEach(id => {
+          if (nativePaneContracts[id]?.held) window.nativePaneSkeletonFloor?.reset(id, headerState.isAdmin ? 'admin' : 'guest');
         });
         activeGuest = null;
         if (immortalFloorShell) delete immortalFloorShell.dataset.retainedHealthyGuest;
@@ -356,6 +360,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         if (!ownsVisibleActivation(crossing, id, epoch)) return false;
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         if (!ownsVisibleActivation(crossing, id, epoch)) return false;
+        const contract = nativePaneContracts[id];
+        if (contract?.held && !window.nativePaneSkeletonFloor?.project(id, headerState.isAdmin ? 'admin' : 'guest')) return false;
         if (!healthyStructure(pane, id, pane.innerHTML)) {
           const error = new Error('admission-structure-invalid');
           error.structuralFault = true;
@@ -363,28 +369,17 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         }
         tabs.forEach(tab => { const active = tab.dataset.pane === id; tab.setAttribute('aria-selected', String(active)); tab.classList.toggle('active', active); });
         panes.forEach(candidate => { const active = candidate === pane; candidate.classList.toggle('active', active); candidate.classList.toggle('immortal-floor-enter', active); candidate.setAttribute('aria-hidden', String(!active)); });
-        if (activeGuest && activeGuest !== id) scaffoldRegistry.retire(activeGuest);
+        const departedGuest = activeGuest && activeGuest !== id ? activeGuest : null;
+        if (departedGuest) {
+          scaffoldRegistry.retire(departedGuest);
+          if (nativePaneContracts[departedGuest]?.held) window.nativePaneSkeletonFloor?.reset(departedGuest, headerState.isAdmin ? 'admin' : 'guest');
+        }
         activeGuest = id; crossingGuest = null; expose('Seated', detail); applyAdminDomState(); applyTabBarVisibility();
         scaffoldRegistry.bind(id);
         if (id === 'linker') window.linkerCursorClient?.refresh(pane);
-        if (id === 'admin' && window.htmx) {
-          if (adminDocumentPatchPendingHydration) {
-            adminDocumentPatchPendingHydration = false;
-            window.htmx.process(pane);
-          }
-          pane.querySelectorAll('[data-service-card]').forEach(card => window.htmx.trigger(card, 'admin-ready'));
-        }
-        if (id === 'linker' && window.htmx) {
-          const readback = pane.querySelector('[data-linker-readback]');
-          if (readback) { window.htmx.process(readback); window.htmx.trigger(readback, 'linker-readback'); }
-        }
-        if (id === 'portals' && window.htmx) {
-          const grid = pane.querySelector('[data-portals-grid]');
-          if (grid) { window.htmx.process(grid); window.htmx.trigger(grid, 'portals-admitted'); }
-        }
-        if (id === 'upload' && window.htmx) {
-          const treeRead = pane.querySelector('[data-upload-tree-read-status]');
-          if (treeRead) { window.htmx.process(treeRead); window.htmx.trigger(treeRead, 'upload-tree-admitted'); }
+        if (id === 'admin' && window.htmx && adminDocumentPatchPendingHydration) {
+          adminDocumentPatchPendingHydration = false;
+          window.htmx.process(pane);
         }
         reconcileViewportStreamFamily();
         return true;
@@ -430,7 +425,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         try {
           const sameGuestRefresh = hadHealthyFloor && outgoing === selected;
           if (!ownsVisibleActivation(crossing, selected, epoch)) return false;
-          await admitFreshGuest(selected, crossing, sameGuestRefresh, epoch);
+          if (!nativePaneContracts[selected]?.held) await admitFreshGuest(selected, crossing, sameGuestRefresh, epoch);
           if (!ownsVisibleActivation(crossing, selected, epoch)) return false;
           if (!await seatGuest(selected, crossing, epoch, options.detail)) {
             if (!ownsVisibleActivation(crossing, selected, epoch)) return false;
@@ -529,38 +524,53 @@ fn shell_immortal_floor_owner_client() -> &'static str {
       }
       function adminLost() {
         window.retireGuestScaffoldSlots?.(null, 'Admin role retired');
-        if (interruptedIntent?.id === 'admin') interruptedIntent = null;
-        if (activeIntent?.id === 'admin') activeIntent = null;
-        scaffoldRegistry.retire('admin', 'Admin role retired');
-        if (crossingGuest === 'admin') {
+        Object.keys(nativePaneContracts).forEach(id => scaffoldRegistry.retire(id, 'Admin role retired'));
+        ['stats', 'upload', 'dhcp'].forEach(id => window.nativePaneSkeletonFloor?.reset(id, 'guest'));
+        const adminOnlyPaneIds = new Set([
+          'admin', 'backblaze', 'wake-on-lan', 'linker', 'firewall', 'unbound',
+          ...tabs.filter(tab => tab.dataset.adminOnly === 'true').map(tab => tab.dataset.pane)
+        ]);
+        const adminOnly = id => Boolean(id && adminOnlyPaneIds.has(id));
+        if (adminOnly(interruptedIntent?.id)) interruptedIntent = null;
+        if (adminOnly(activeIntent?.id)) activeIntent = null;
+        const activeWasAdminOnly = adminOnly(activeGuest);
+        if (adminOnly(crossingGuest)) {
           generation += 1;
           retireAdmissionRequest(admissionRequest, 'Admin role retired');
           crossingGuest = null;
-          if (activeGuest === 'admin') {
-            emptySlot();
-            expose('BareFloor', 'Admin access ended. Choose a permitted tab.');
-          } else if (activeGuest) {
-            expose('Seated', 'Admin access ended.');
-            applyAdminDomState(); applyTabBarVisibility();
-          } else {
-            emptySlot();
-            expose('BareFloor', 'Admin access ended. Choose a permitted tab.');
+          if (!activeWasAdminOnly && activeGuest) {
+            const retainedPane = panes.find(pane => pane.dataset.panePanel === activeGuest);
+            if (healthyStructure(retainedPane, activeGuest, retainedPane?.innerHTML)) {
+              expose('Seated', 'Admin access ended.');
+              applyAdminDomState();
+              applyTabBarVisibility();
+              if (!headerState.isAdmin) reconcileViewportStreamFamily();
+              return true;
+            }
           }
-          return true;
-        }
-        if (activeGuest === 'admin') {
           emptySlot();
-          if (crossingGuest && admissionRequest) expose('GuestRevolution', 'Admin access ended. Opening the selected view…');
-          else {
-            generation += 1;
-            retireAdmissionRequest(admissionRequest, 'Admin role retired');
-            crossingGuest = null;
-            expose('BareFloor', 'Admin access ended. Choose a permitted tab.');
-          }
+          expose('BareFloor', 'Admin access ended. Choose a permitted tab.');
           return true;
         }
+        if (activeWasAdminOnly) {
+          generation += 1;
+          retireAdmissionRequest(admissionRequest, 'Admin role retired');
+          emptySlot();
+          crossingGuest = null;
+          expose('BareFloor', 'Admin access ended. Choose a permitted tab.');
+          return true;
+        }
+        if (!headerState.isAdmin && state === 'Seated' && activeGuest) reconcileViewportStreamFamily();
         return false;
       }
+      document.querySelectorAll('template[data-native-role-skeleton][data-role="admin"]').forEach(template => {
+        window.nativePaneSkeletonFloor?.registerRole(template.dataset.nativeRoleSkeleton, 'admin', template.innerHTML);
+        template.remove();
+      });
+      window.nativePaneSkeletonFloor?.ids.forEach(id => {
+        const pane = document.querySelector(`[data-pane-panel="${CSS.escape(id)}"]`);
+        if (pane) window.nativePaneSkeletonFloor?.register(id, headerState.isAdmin ? 'admin' : 'guest', pane);
+      });
       expose('BootFloor');
       return Object.freeze({ activate, fault, admissionOwner, isAdmissionRequest, failAdmission, adminLost, visibilityChanged, get visibilityEpoch() { return visibilityEpoch; }, get state() { return state; }, get activeGuest() { return activeGuest; } });
     })();

@@ -216,5 +216,12 @@ fn shell_firewall_client() -> &'static str {
       const modal = document.querySelector('[data-pane-panel="firewall"] [data-firewall-modal-backdrop]'); if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); }
       document.querySelectorAll('[data-pane-panel="firewall"] [data-firewall-register], [data-pane-panel="firewall"] [data-firewall-unregister], [data-pane-panel="firewall"] [data-firewall-whitelist], [data-pane-panel="firewall"] [data-firewall-modal-save]').forEach(node => { node.disabled = true; });
     });
+    window.addEventListener('coronatio:native-pane-reset', event => {
+      const detail = event.detail || {}, pane = detail.pane, binding = firewallState.binding;
+      if (detail.id !== 'firewall' || !(pane instanceof Element) || !pane.isConnected || document.querySelector('[data-pane-panel="firewall"]') !== pane) return;
+      if (binding && (binding.guest !== detail.id || window.scaffoldRegistry?.current(binding))) return;
+      firewallState.observed = []; firewallState.children = []; firewallState.hosts = []; firewallState.revision = undefined;
+      firewallState.selectedMac = ''; firewallState.observedReady = false; firewallState.childrenReady = false; firewallState.whitelistReady = false; firewallState.binding = null;
+    });
 "####
 }

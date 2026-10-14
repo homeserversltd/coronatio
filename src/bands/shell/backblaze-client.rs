@@ -211,6 +211,15 @@ fn shell_backblaze_client() -> &'static str {
       if (state.binding) { retireBackblaze(state.binding, true); return; }
       scrubBackblazeProtectedState(document.querySelector('[data-pane-panel="backblaze"]'));
     });
+    window.addEventListener('coronatio:native-pane-reset', event => {
+      const detail = event.detail || {}, pane = detail.pane, binding = state.binding;
+      if (detail.id !== 'backblaze' || !(pane instanceof Element) || !pane.isConnected || document.querySelector('[data-pane-panel="backblaze"]') !== pane) return;
+      if (binding && (binding.root !== pane || scaffoldRegistry.current(binding))) return;
+      clearStatusPoll(); cancelSecretDialogs(); actions.forEach(controller => controller.abort()); actions.clear();
+      state.binding = null; state.data = null; state.bucket = null; state.ledger = []; state.ledgerBucket = null;
+      state.statusReady = false; state.statusStale = false; state.snapshotsReady = false; state.snapshotsStale = false;
+      state.selectionGeneration += 1; state.managerDrafts = {}; managerDraftBucket = null; managerDraftBeforeOpen = null;
+    });
     function scheduleStatusPoll(binding) {
       clearStatusPoll();
       if (!current(binding) || state.data?.running !== true) return;
@@ -225,6 +234,8 @@ fn shell_backblaze_client() -> &'static str {
       const bucket = state.bucket, generation = state.selectionGeneration;
       if (!bucket) { state.ledger = []; state.ledgerBucket = null; state.snapshotsReady = true; renderLedger(binding); return true; }
       if (state.ledgerBucket !== bucket) { state.ledger = []; state.ledgerBucket = bucket; state.snapshotsReady = false; state.snapshotsStale = false; renderLedger(binding); }
+      const ledgerSlot = el('[data-scaffold-slot="backblaze-ledger"]', binding);
+      if (!ledgerSlot) return Promise.resolve(false);
       renderReadStatus('[data-backblaze-ledger]', state.snapshotsReady ? '' : 'Loading snapshots…', state.snapshotsStale ? 'stale' : 'pending');
       return scaffoldRegistry.run(binding, 'backblaze-snapshots', async context => {
         const body = await context.fetchJson('/api/backblaze/snapshots?bucket=' + encodeURIComponent(bucket));
@@ -235,9 +246,10 @@ fn shell_backblaze_client() -> &'static str {
         if (state.bucket !== bucket || state.selectionGeneration !== generation) return true;
         state.ledger = ledger; state.ledgerBucket = bucket; state.snapshotsReady = true; state.snapshotsStale = false;
         renderLedger(binding); renderReadStatus('[data-backblaze-ledger]', '', 'ready');
+        context.ready(ledgerSlot);
         return true;
       }, {
-        slots: [], supersede: options.supersede === true, timeoutMs: 8000, slowMs: 750,
+        slots: [ledgerSlot], supersede: options.supersede === true, timeoutMs: 8000, slowMs: 750,
         onFailure: ({ current: runCurrent, reason }) => {
           if (!runCurrent() || !current(binding) || state.bucket !== bucket || state.selectionGeneration !== generation) return;
           state.snapshotsStale = true;
@@ -248,6 +260,8 @@ fn shell_backblaze_client() -> &'static str {
     }
     async function hydrateBackblaze(binding = adoptBackblazeBinding()) {
       if (!binding || !current(binding)) return false;
+      const statusSlots = ['backblaze-buckets', 'backblaze-items', 'backblaze-ledger-buckets']
+        .map(name => binding.root.querySelector(`[data-scaffold-slot="${name}"]`)).filter(Boolean);
       return scaffoldRegistry.run(binding, 'backblaze-status', async context => {
         if (!context.current() || !current(binding)) return false;
         state.statusStale = true;
@@ -266,11 +280,12 @@ fn shell_backblaze_client() -> &'static str {
         const duration = el('[data-backblaze-duration]', binding); if (duration) duration.textContent = 'duration unavailable';
         const next = el('[data-backblaze-next]', binding); if (next) next.textContent = 'Not scheduled';
         renderReadStatus('[data-backblaze-ribbon]', '', 'ready'); renderBuckets(); renderSelected();
+        statusSlots.forEach(slot => context.ready(slot));
         if (!el('[data-backblaze-panel="ledger"]', binding)?.hidden) void loadSnapshots(binding);
         scheduleStatusPoll(binding);
         return true;
       }, {
-        slots: [], timeoutMs: 8000, slowMs: 750,
+        slots: statusSlots, timeoutMs: 8000, slowMs: 750,
         onFailure: ({ current: runCurrent, reason }) => {
           if (!runCurrent() || !current(binding)) return;
           state.statusStale = true;

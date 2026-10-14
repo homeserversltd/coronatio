@@ -1,5 +1,5 @@
 const CROWN_HTMX_SCRIPT_PATH: &str = "/static/vendor/htmx.min.js";
-const DNS_PANE: &str = r#"<section class="pane" id="pane-unbound" data-pane-panel="unbound" data-view-panel="unbound" role="tabpanel" aria-label="DNS"><article class="dns-tablet" data-dns-tablet data-admin-only="true" data-admin-viewport="unbound"><header class="dns-tablet-header"><div><h2>Local DNS</h2><p>Names registered on your LAN.</p></div><div class="dns-header-actions"><button type="button" class="ui-button ui-button--primary" data-dns-add-name disabled>Add name</button><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-refresh>Refresh</button></div></header><p data-dns-state aria-live="polite">Ready to read local names.</p><span hidden data-scaffold-slot="identity-roster" data-scaffold-placeholder="network device roster"></span><span hidden data-scaffold-slot="identity-boundary" data-scaffold-placeholder="network DHCP boundary"></span><span hidden data-scaffold-slot="identity-leases" data-scaffold-placeholder="DHCP leases"></span><span hidden data-scaffold-slot="identity-reservations" data-scaffold-placeholder="DHCP reservations"></span><span hidden data-scaffold-slot="identity-mutation" data-scaffold-placeholder="network change"></span><span hidden data-scaffold-slot="dns-mutation" data-scaffold-placeholder="DNS change"></span><section class="dns-names-section"><h3>Registered names</h3><div data-scaffold-slot="identity-dns" data-scaffold-placeholder="local DNS names"><div data-dns-names></div></div></section><section class="dns-resolver-section"><h3>Resolver controls</h3><div data-scaffold-slot="dns-resolver" data-scaffold-placeholder="resolver settings"><div class="dns-resolver-controls"><label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__switch"><input class="ui-toggle__input" type="checkbox" data-dns-adblock data-dns-resolver-control disabled><span class="ui-toggle__slider"></span></span><span>Block advertising domains</span></label><button type="button" class="ui-button ui-button--secondary" data-dns-blocklist-update data-dns-resolver-control disabled>Update blocklist now</button><div class="ui-upstream-resolver" data-dns-upstream-control><div class="ui-upstream-resolver__list"><label class="ui-upstream-resolver__row"><input type="checkbox" data-dns-upstream-provider value="quad9" data-dns-resolver-control disabled> Quad9 <small>9.9.9.9, 149.112.112.112</small></label><label class="ui-upstream-resolver__row"><input type="checkbox" data-dns-upstream-provider value="cloudflare" data-dns-resolver-control disabled> Cloudflare <small>1.1.1.1, 1.0.0.1</small></label><label class="ui-upstream-resolver__row"><input type="checkbox" data-dns-upstream-provider value="google" data-dns-resolver-control disabled> Google <small>8.8.8.8, 8.8.4.4</small></label><label class="ui-upstream-resolver__row"><input type="checkbox" data-dns-upstream-custom-toggle data-dns-resolver-control disabled> Add your own</label></div><label class="ui-upstream-resolver__custom" data-dns-upstream-custom hidden>External addresses (comma-separated)<input class="ui-input ui-input--medium" data-dns-upstream-custom-addresses placeholder="208.67.222.222, 208.67.220.220" data-dns-resolver-control disabled></label><label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__switch"><input class="ui-toggle__input" type="checkbox" data-dns-dot data-dns-resolver-control disabled><span class="ui-toggle__slider"></span></span><span class="ui-toggle__label">Use encrypted DNS (DoT)</span></label><button type="button" class="ui-button ui-button--primary" data-dns-upstream-save data-dns-resolver-control disabled>Save resolver</button><p class="ui-upstream-resolver__readout" data-dns-upstream-readout aria-live="polite">Resolver status unavailable.</p></div></div><div class="dns-resolver-status" data-dns-resolver-status><p>Resolver status not loaded.</p></div></div></section><div data-floating-ui-portal hidden data-dns-add-modal><div class="modal-overlay" role="presentation"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="dns-add-name-title"><button type="button" class="modal-close" data-dns-add-close aria-label="Close">×</button><h2 class="modal-title" id="dns-add-name-title">Add LAN name</h2><div class="modal-content"><div class="input-group"><label for="dns-new-name">Name</label><input id="dns-new-name" class="ui-input ui-input--medium" data-dns-new-name placeholder="printer"></div><p data-dns-picked-device>Choose a device for this name.</p><section class="identity-roster-host" data-dns-modal-roster><h3>Devices</h3><div data-dns-device-roster></div></section><div class="ui-lan-ip-calendar" data-dns-ip-calendar hidden><div class="ui-lan-ip-calendar__chrome"><span class="ui-lan-ip-calendar__prefix">192.168.123.</span><div class="ui-lan-ip-calendar__pager"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-ip-prev aria-label="Previous address range">Previous</button><strong data-dns-ip-range>—</strong><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-ip-next aria-label="Next address range">Next</button></div></div><div class="ui-lan-ip-calendar__grid" role="grid" aria-label="LAN reservation addresses" data-dns-ip-grid></div><p class="ui-lan-ip-calendar__readout" data-dns-ip-readout aria-live="polite">Pick a device to load available addresses.</p></div><section class="dns-records" data-dns-modal-records><h3>Records</h3></section><p data-dns-add-result aria-live="polite"></p></div><div class="modal-buttons"><button type="button" class="ui-button ui-button--secondary" data-dns-add-close>Cancel</button><button type="button" class="ui-button ui-button--primary" data-dns-add-save disabled>Add name</button></div></section></div></div></article></section>"#;
+const DNS_PANE: &str = r#"<section class="pane" id="pane-unbound" data-pane-panel="unbound" data-view-panel="unbound" data-admin-only-pane="true" data-scaffold-root data-guest-id="unbound" data-scaffold-version="1" role="tabpanel" aria-label="DNS"><article class="dns-tablet" data-dns-tablet data-admin-only="true" data-admin-viewport="unbound"><header class="dns-tablet-header"><div><h2>Local DNS</h2><p>Names registered on your LAN.</p></div><div class="dns-header-actions"><button type="button" class="ui-button ui-button--primary" data-dns-add-name disabled>Add name</button><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-refresh>Refresh</button></div></header><p data-dns-state aria-live="polite">Ready to read local names.</p><span hidden data-scaffold-slot="identity-roster" data-scaffold-placeholder="network device roster"></span><span hidden data-scaffold-slot="identity-boundary" data-scaffold-placeholder="network DHCP boundary"></span><span hidden data-scaffold-slot="identity-leases" data-scaffold-placeholder="DHCP leases"></span><span hidden data-scaffold-slot="identity-reservations" data-scaffold-placeholder="DHCP reservations"></span><span hidden data-scaffold-slot="identity-mutation" data-scaffold-placeholder="network change"></span><span hidden data-scaffold-slot="dns-mutation" data-scaffold-placeholder="DNS change"></span><section class="dns-names-section"><h3>Registered names</h3><div data-scaffold-slot="identity-dns" data-scaffold-placeholder="local DNS names"><div data-dns-names><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span></div></div></div></section><section class="dns-resolver-section"><h3>Resolver controls</h3><div data-scaffold-slot="dns-resolver" data-scaffold-placeholder="resolver settings"><div class="dns-resolver-controls"><label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__switch"><input class="ui-toggle__input" type="checkbox" data-dns-adblock data-dns-resolver-control disabled><span class="ui-toggle__slider"></span></span><span>Block advertising domains</span></label><button type="button" class="ui-button ui-button--secondary" data-dns-blocklist-update data-dns-resolver-control disabled>Update blocklist now</button><div class="ui-upstream-resolver" data-dns-upstream-control><div class="ui-upstream-resolver__list"><label class="ui-upstream-resolver__row"><input type="checkbox" data-dns-upstream-provider value="quad9" data-dns-resolver-control disabled> Quad9 <small>9.9.9.9, 149.112.112.112</small></label><label class="ui-upstream-resolver__row"><input type="checkbox" data-dns-upstream-provider value="cloudflare" data-dns-resolver-control disabled> Cloudflare <small>1.1.1.1, 1.0.0.1</small></label><label class="ui-upstream-resolver__row"><input type="checkbox" data-dns-upstream-provider value="google" data-dns-resolver-control disabled> Google <small>8.8.8.8, 8.8.4.4</small></label><label class="ui-upstream-resolver__row"><input type="checkbox" data-dns-upstream-custom-toggle data-dns-resolver-control disabled> Add your own</label></div><label class="ui-upstream-resolver__custom" data-dns-upstream-custom hidden>External addresses (comma-separated)<input class="ui-input ui-input--medium" data-dns-upstream-custom-addresses placeholder="208.67.222.222, 208.67.220.220" data-dns-resolver-control disabled></label><label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__switch"><input class="ui-toggle__input" type="checkbox" data-dns-dot data-dns-resolver-control disabled><span class="ui-toggle__slider"></span></span><span class="ui-toggle__label">Use encrypted DNS (DoT)</span></label><button type="button" class="ui-button ui-button--primary" data-dns-upstream-save data-dns-resolver-control disabled>Save resolver</button><p class="ui-upstream-resolver__readout" data-dns-upstream-readout aria-live="polite">Resolver status unavailable.</p></div></div><div class="dns-resolver-status" data-dns-resolver-status><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span></div></div></div></section><div data-floating-ui-portal hidden data-dns-add-modal><div class="modal-overlay" role="presentation"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="dns-add-name-title"><button type="button" class="modal-close" data-dns-add-close aria-label="Close">×</button><h2 class="modal-title" id="dns-add-name-title">Add LAN name</h2><div class="modal-content"><div class="input-group"><label for="dns-new-name">Name</label><input id="dns-new-name" class="ui-input ui-input--medium" data-dns-new-name placeholder="printer"></div><p data-dns-picked-device>Choose a device for this name.</p><section class="identity-roster-host" data-dns-modal-roster><h3>Devices</h3><div data-dns-device-roster></div></section><div class="ui-lan-ip-calendar" data-dns-ip-calendar hidden><div class="ui-lan-ip-calendar__chrome"><span class="ui-lan-ip-calendar__prefix">192.168.123.</span><div class="ui-lan-ip-calendar__pager"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-ip-prev aria-label="Previous address range">Previous</button><strong data-dns-ip-range>—</strong><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-ip-next aria-label="Next address range">Next</button></div></div><div class="ui-lan-ip-calendar__grid" role="grid" aria-label="LAN reservation addresses" data-dns-ip-grid></div><p class="ui-lan-ip-calendar__readout" data-dns-ip-readout aria-live="polite">Pick a device to load available addresses.</p></div><section class="dns-records" data-dns-modal-records><h3>Records</h3></section><p data-dns-add-result aria-live="polite"></p></div><div class="modal-buttons"><button type="button" class="ui-button ui-button--secondary" data-dns-add-close>Cancel</button><button type="button" class="ui-button ui-button--primary" data-dns-add-save disabled>Add name</button></div></section></div></div></article></section>"#;
 const CROWN_CHROME_SCRIPT_PATH: &str = "/static/crown/chrome.js";
 const CROWN_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'self'; frame-ancestors 'self'; frame-src http: https:";
 const CROWN_HTMX_JS: &str = include_str!("../../../static/vendor/htmx.min.js");
@@ -113,42 +113,27 @@ fn render_crown_shell() -> String {
 }
 
 fn render_admin_document_patch() -> String {
-    shell_admin_document_patch().replace(
+    let shell = build_crown_shell_source(Session::Guest);
+    let role_templates = render_admin_role_skeleton_templates(&shell, Session::Guest);
+    let mut shell = shell;
+    let privileged_panes = take_admin_panes(&mut shell);
+    assemble_admin_document_patch(privileged_panes, role_templates)
+}
+
+fn assemble_admin_document_patch(privileged_panes: Vec<String>, role_templates: String) -> String {
+    let mut admin = shell_admin_document_patch().replace(
         "__ADMIN_MOUNT_DESTINATIONS__",
-        &render_admin_mount_destinations_html(),
+        r#"<div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__block"></span></div>"#,
+    );
+    let _ = mark_patch_owned_pane(&mut admin, "admin");
+    format!(
+        "<div data-admin-document-patch=\"true\"></div>{}{}",
+        [admin, privileged_panes.join("\n")].concat(),
+        role_templates
     )
 }
 
-fn remove_admin_only_pane_from_guest_shell(shell: String, pane: &str) -> String {
-    let marker = format!("<section class=\"pane\" id=\"pane-{pane}\"");
-    let Some(start) = shell.find(&marker) else { return shell; };
-    let mut cursor = start;
-    let mut depth = 0usize;
-    loop {
-        let next_open = shell[cursor..].find("<section").map(|offset| cursor + offset);
-        let next_close = shell[cursor..].find("</section>").map(|offset| cursor + offset);
-        match (next_open, next_close) {
-            (Some(open), Some(close)) if open < close => {
-                depth += 1;
-                cursor = open + "<section".len();
-            }
-            (_, Some(close)) if depth > 0 => {
-                depth -= 1;
-                cursor = close + "</section>".len();
-                if depth == 0 {
-                    return format!("{}{}", &shell[..start], &shell[cursor..]);
-                }
-            }
-            _ => return shell,
-        }
-    }
-}
-
-fn render_upload_tree_placeholder() -> &'static str {
-    r#"<div class="directory-tree-loading" data-upload-tree-read-status role="status" hx-get="/admit/upload/tree" hx-trigger="upload-tree-admitted" hx-target="closest [data-upload-tree]" hx-swap="innerHTML" hx-request='{"timeout":8000}'>Directory contents load after this view is admitted.</div>"#
-}
-
-fn render_crown_shell_for_session(session: Session) -> String {
+fn build_crown_shell_source(session: Session) -> String {
     let nav = render_plan_tabbar(session);
     let shell = [
         shell_document_1().to_string(),
@@ -159,7 +144,7 @@ fn render_crown_shell_for_session(session: Session) -> String {
         shell_document_4_tail().to_string(),
     ]
     .concat();
-    let shell = shell
+    shell
         .replace("__PANE_STRUCTURE_OWNER__", shell_pane_structure_owner_client())
         .replace("__NATIVE_HTMX_OWNER__", shell_native_htmx_owner_client())
         .replace("__IMMORTAL_FLOOR_OWNER__", shell_immortal_floor_owner_client())
@@ -177,17 +162,214 @@ fn render_crown_shell_for_session(session: Session) -> String {
             &format!("{}{}{}", shell_backblaze_client(), shell_firewall_client(), shell_wake_on_lan_client()),
         )
         .replace("__UNBOUND_PANE__", DNS_PANE)
-        .replace("__CARTRIDGE_PANES__", &render_cartridge_pane_hosts());
-    let shell = if session == Session::Guest {
-        ["unbound", "firewall"]
-            .into_iter()
-            .fold(shell, remove_admin_only_pane_from_guest_shell)
-    } else {
-        shell.replacen(
-            "<div class=\"immortal-floor-guest-slot\" data-immortal-floor-layer=\"2\" data-slot-empty=\"true\">",
-            &format!("<div class=\"immortal-floor-guest-slot\" data-immortal-floor-layer=\"2\" data-slot-empty=\"true\">{}", render_admin_document_patch()),
-            1,
-        )
+        .replace("__CARTRIDGE_PANES__", &render_cartridge_pane_hosts())
+}
+
+fn pane_fragment_range(shell: &str, pane: &str) -> Option<(usize, usize, usize)> {
+    let id_attribute = format!("id=\"pane-{pane}\"");
+    let mut search_from = 0usize;
+    let (start, open_end) = loop {
+        let relative = shell[search_from..].find("<section")?;
+        let candidate = search_from + relative;
+        let after_name = candidate + "<section".len();
+        if !shell.as_bytes().get(after_name).is_some_and(|byte| byte.is_ascii_whitespace() || *byte == b'>') {
+            search_from = after_name;
+            continue;
+        }
+        let end = shell[candidate..].find('>')? + candidate + 1;
+        let opening = &shell[candidate..end];
+        let exact_id = opening.match_indices(&id_attribute).any(|(offset, _)| {
+            let before = offset.checked_sub(1).and_then(|at| opening.as_bytes().get(at));
+            let after = opening.as_bytes().get(offset + id_attribute.len());
+            before.is_some_and(|byte| byte.is_ascii_whitespace())
+                && after.is_some_and(|byte| byte.is_ascii_whitespace() || *byte == b'>')
+        });
+        if exact_id { break (candidate, end); }
+        search_from = end;
     };
+    let mut cursor = start;
+    let mut depth = 0usize;
+    loop {
+        let next_open = shell[cursor..].find("<section").map(|offset| cursor + offset);
+        let next_close = shell[cursor..].find("</section>").map(|offset| cursor + offset);
+        match (next_open, next_close) {
+            (Some(open), Some(close)) if open < close => {
+                depth += 1;
+                cursor = open + "<section".len();
+            }
+            (_, Some(close)) if depth > 0 => {
+                depth -= 1;
+                cursor = close + "</section>".len();
+                if depth == 0 { return Some((start, cursor, open_end)); }
+            }
+            _ => return None,
+        }
+    }
+}
+
+fn mark_patch_owned_pane(fragment: &mut String, id: &str) -> bool {
+    let Some((_, _, open_end)) = pane_fragment_range(fragment, id) else { return false; };
+    fragment.insert_str(open_end - 1, " data-admin-document-patch-owned=\"true\"");
+    true
+}
+
+fn take_admin_panes(shell: &mut String) -> Vec<String> {
+    ["backblaze", "wake-on-lan", "linker", "firewall", "unbound"]
+        .into_iter()
+        .filter_map(|id| {
+            let (start, end, _) = pane_fragment_range(shell, id)?;
+            let mut fragment = shell[start..end].to_string();
+            if !mark_patch_owned_pane(&mut fragment, id) { return None; }
+            shell.replace_range(start..end, "");
+            Some(fragment)
+        })
+        .collect()
+}
+
+fn render_admin_role_skeleton_templates(shell: &str, session: Session) -> String {
+    let guest_stats = render_stats_elements_fragment(session);
+    let admin_stats = render_stats_elements_fragment(Session::Admin);
+    let admin_role_shell = shell.replacen(&guest_stats, &admin_stats, 1);
+    ["upload", "stats", "dhcp"]
+        .into_iter()
+        .filter_map(|id| {
+            let (_, _, open_end) = pane_fragment_range(&admin_role_shell, id)?;
+            let (_, end, _) = pane_fragment_range(&admin_role_shell, id)?;
+            let fragment_start = pane_fragment_range(&admin_role_shell, id)?.0;
+            let inner = &admin_role_shell[open_end..end - "</section>".len()];
+            Some(format!("<template data-admin-document-patch-owned=\"true\" data-native-role-skeleton=\"{id}\" data-role=\"admin\">{inner}</template>"))
+                .filter(|_| end > fragment_start)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn remove_admin_only_pane_from_guest_shell(shell: String, pane: &str) -> String {
+    let Some((start, end, _)) = pane_fragment_range(&shell, pane) else { return shell; };
+    format!("{}{}", &shell[..start], &shell[end..])
+}
+
+fn opening_tag_name(tag: &str) -> &str {
+    tag.strip_prefix('<')
+        .unwrap_or(tag)
+        .trim_start_matches('/')
+        .split(|ch: char| ch.is_ascii_whitespace() || ch == '>' || ch == '/')
+        .next()
+        .unwrap_or("")
+}
+
+fn has_html_attribute(opening_tag: &str, name: &str) -> bool {
+    opening_tag.match_indices(name).any(|(offset, _)| {
+        let before = offset.checked_sub(1).and_then(|at| opening_tag.as_bytes().get(at));
+        let after = opening_tag.as_bytes().get(offset + name.len());
+        before.is_some_and(|byte| byte.is_ascii_whitespace())
+            && after.is_some_and(|byte| byte.is_ascii_whitespace() || *byte == b'=' || *byte == b'/' || *byte == b'>')
+    })
+}
+
+fn element_markup_end(source: &str, start: usize, opening_end: usize, name: &str) -> usize {
+    if name.is_empty()
+        || source[start..opening_end].trim_end().ends_with("/>")
+        || ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"].contains(&name)
+    {
+        return opening_end;
+    }
+    let open = format!("<{name}");
+    let close = format!("</{name}");
+    let mut cursor = opening_end;
+    let mut depth = 1usize;
+    while cursor < source.len() {
+        let next_open = source[cursor..].find(&open).map(|offset| cursor + offset);
+        let next_close = source[cursor..].find(&close).map(|offset| cursor + offset);
+        match (next_open, next_close) {
+            (Some(open_at), Some(close_at)) if open_at < close_at => {
+                let after_name = open_at + open.len();
+                if source.as_bytes().get(after_name).is_some_and(|byte| byte.is_ascii_whitespace() || *byte == b'>') {
+                    let end = source[after_name..].find('>').map(|offset| after_name + offset + 1).unwrap_or(source.len());
+                    if !source[open_at..end].trim_end().ends_with("/>") { depth += 1; }
+                    cursor = end;
+                } else {
+                    cursor = after_name;
+                }
+            }
+            (_, Some(close_at)) => {
+                let after_name = close_at + close.len();
+                if source.as_bytes().get(after_name).is_some_and(|byte| byte.is_ascii_whitespace() || *byte == b'>') {
+                    let end = source[after_name..].find('>').map(|offset| after_name + offset + 1).unwrap_or(source.len());
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 { return end; }
+                    cursor = end;
+                } else {
+                    cursor = after_name;
+                }
+            }
+            _ => return source.len(),
+        }
+    }
+    source.len()
+}
+
+fn remove_admin_only_markup_from_fragment(mut shell: String) -> String {
+    let mut cursor = 0usize;
+    while cursor < shell.len() {
+        let Some(relative) = shell[cursor..].find('<') else { break; };
+        let start = cursor + relative;
+        if shell[start..].starts_with("<!--") {
+            cursor = shell[start + 4..].find("-->").map(|offset| start + 4 + offset + 3).unwrap_or(shell.len());
+            continue;
+        }
+        let Some(opening_end) = shell[start..].find('>').map(|offset| start + offset + 1) else { break; };
+        let tag = &shell[start..opening_end];
+        if tag.starts_with("</") || tag.starts_with("<!") || tag.starts_with("<?") {
+            cursor = opening_end;
+            continue;
+        }
+        let name = opening_tag_name(tag);
+        if name == "script" || name == "style" {
+            let close = format!("</{name}>");
+            cursor = shell[opening_end..].find(&close).map(|offset| opening_end + offset + close.len()).unwrap_or(shell.len());
+            continue;
+        }
+        if has_html_attribute(tag, "data-admin-only") {
+            let end = element_markup_end(&shell, start, opening_end, name);
+            shell.replace_range(start..end, "");
+            cursor = start;
+        } else {
+            cursor = opening_end;
+        }
+    }
+    shell
+}
+
+fn remove_admin_only_markup(mut shell: String) -> String {
+    for pane in ["stats", "upload", "dhcp"] {
+        let Some((start, end, _)) = pane_fragment_range(&shell, pane) else { continue; };
+        let guest_projection = remove_admin_only_markup_from_fragment(shell[start..end].to_string());
+        shell.replace_range(start..end, &guest_projection);
+    }
+    shell
+}
+
+fn render_upload_tree_placeholder() -> &'static str {
+    r#"<div class="directory-tree-loading" data-upload-tree-read-status role="status" hx-get="/admit/upload/tree" hx-trigger="upload-tree-admitted" hx-target="closest [data-upload-tree]" hx-swap="innerHTML" hx-request='{"timeout":8000}'>Directory contents load after this view is admitted.<div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span><span class="ui-skeleton__block"></span></div></div>"#
+}
+
+fn render_crown_shell_for_session(session: Session) -> String {
+    let mut shell = build_crown_shell_source(session);
+    if session == Session::Guest {
+        for id in ["admin", "backblaze", "wake-on-lan", "linker", "firewall", "unbound"] {
+            shell = remove_admin_only_pane_from_guest_shell(shell, id);
+        }
+        shell = remove_admin_only_markup(shell);
+    } else {
+        let role_templates = render_admin_role_skeleton_templates(&shell, session);
+        let privileged_panes = take_admin_panes(&mut shell);
+        let patch = assemble_admin_document_patch(privileged_panes, role_templates);
+        shell = shell.replacen(
+            "<div class=\"immortal-floor-guest-slot\" data-immortal-floor-layer=\"2\" data-slot-empty=\"true\">",
+            &format!("<div class=\"immortal-floor-guest-slot\" data-immortal-floor-layer=\"2\" data-slot-empty=\"true\">{patch}"),
+            1,
+        );
+    }
     remove_inline_chrome_script(shell)
 }
