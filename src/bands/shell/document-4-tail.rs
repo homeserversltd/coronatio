@@ -556,6 +556,7 @@ fn shell_document_4_tail() -> &'static str {
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         morphLivePane(owner.host, adminDiskCensusMarkup(owner));
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
+        context.ready(owner.host);
         adminDiskReadStatus(owner, '', 'ready');
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         refreshNasSetupButtons(owner);
@@ -568,7 +569,7 @@ fn shell_document_4_tail() -> &'static str {
         owner.dataReady = false; owner.stale = true; owner.error = reason || 'Read failed';
         if (!adminDiskSnapshotCurrent(owner)) return;
         const lastRead = owner.observedAt ? ` Last successful read: ${new Date(owner.observedAt).toLocaleTimeString()}.` : '';
-        adminDiskReadStatus(owner, `Available devices unavailable: ${owner.error}. ${owner.hasSnapshot ? `Showing last known devices; setup is disabled.${lastRead}` : 'No current device list is available.'}`, 'stale', true);
+        adminDiskReadStatus(owner, `Available devices unavailable: ${owner.error}. ${owner.hasSnapshot ? `Showing last known devices; setup is disabled.${lastRead}` : 'No current device list is available.'}`, 'stale');
         const nasStatus = owner.host.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
         if (!adminDiskSnapshotCurrent(owner)) return;
         if (nasStatus) { nasStatus.textContent = 'NAS status unknown until the disk census refreshes.'; nasStatus.dataset.state = 'unknown'; }
@@ -576,7 +577,7 @@ fn shell_document_4_tail() -> &'static str {
         refreshNasSetupButtons(owner);
       };
       owner.task = task; owner.onFailure = onFailure;
-      owner.promise = scaffoldRegistry.run(owner.binding, 'admin-disk-census', task, { slots: [], timeoutMs: adminDiskSnapshotFamily.timeoutMs, slowMs: 750, supersede, onFailure });
+      owner.promise = scaffoldRegistry.run(owner.binding, 'admin-disk-census', task, { slots: [owner.host], timeoutMs: adminDiskSnapshotFamily.timeoutMs, slowMs: 750, supersede, onFailure });
       return owner.promise;
     }
     function hydrateDiskCensus() {
