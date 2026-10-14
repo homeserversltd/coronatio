@@ -13,6 +13,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
     const nativeMorphSwapStyle = 'crown-native-morph';
     const nativeHtmxOobMarker = 'crown-htmx-oob-owner:';
     const nativeHtmxOobSelector = '[hx-swap-oob], [data-hx-swap-oob]';
+    const nativeUploadTreeGeneratedLabels = new WeakMap();
     let nextNativeHtmxTargetId = 0;
     let nextNativeHtmxSwapId = 0;
 
@@ -191,6 +192,70 @@ fn shell_native_htmx_owner_client() -> &'static str {
       return !requireSource || (owner.source?.isConnected && owner.pane.contains(owner.source));
     }
 
+    function nativeUploadTreeSlot(pane) {
+      if (!(pane instanceof Element) || pane.dataset.panePanel !== 'upload') return null;
+      const slots = pane.querySelectorAll('[data-upload-tree][data-scaffold-slot="upload-tree"]');
+      return slots.length === 1 ? slots[0] : null;
+    }
+
+    function nativeUploadTreePathAllowed(path) {
+      return path === '/admit/upload/tree'
+        || (path.startsWith('/admit/upload/tree?') && !path.includes('#'));
+    }
+
+    function nativeUploadTreeSourceAllowed(request, source, pane, path) {
+      const tree = nativeUploadTreeSlot(pane);
+      if (!tree || !nativeUploadTreePathAllowed(path)) return false;
+      if (request?.matches('[data-upload-tree-read-status]')) {
+        return path === '/admit/upload/tree' && tree.contains(request)
+          && source instanceof Element && request.contains(source);
+      }
+      if (source === tree) return true;
+      return path.startsWith('/admit/upload/tree?')
+        && request instanceof Element && tree.contains(request)
+        && source instanceof Element && tree.contains(source);
+    }
+
+    function nativeUploadTreeOwnerSlot(owner) {
+      const tree = nativeUploadTreeSlot(owner?.pane);
+      return owner?.guest === 'upload' && owner.target === tree && owner.binding?.root === owner.pane ? tree : null;
+    }
+
+    function setNativeUploadTreePending(binding, target) {
+      const key = target.dataset.scaffoldPlaceholder || target.dataset.scaffoldKey || target.dataset.scaffoldSlot || 'content';
+      const generated = `Loading ${key}`;
+      if (target.dataset.scaffoldState !== 'ready'
+          && (!target.hasAttribute('aria-label')
+            || (target.dataset.scaffoldState === 'pending'
+              && target.dataset.scaffoldPending === 'true'
+              && target.getAttribute('aria-label') === generated))) {
+        nativeUploadTreeGeneratedLabels.set(target, generated);
+      }
+      return scaffoldRegistry.setSlot(binding, target, 'pending');
+    }
+
+    function clearNativeUploadTreeGeneratedLabel(target) {
+      const generated = nativeUploadTreeGeneratedLabels.get(target);
+      if (generated && target.getAttribute('aria-label') === generated) target.removeAttribute('aria-label');
+      nativeUploadTreeGeneratedLabels.delete(target);
+    }
+
+    function addNativeUploadTreeRetry(owner) {
+      const status = Array.from(owner.target.children).find(child => child.hasAttribute('data-scaffold-status'));
+      if (!status) return false;
+      let retry = status.querySelector('[data-native-read-retry]');
+      if (!retry) {
+        retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'scaffold-slot-retry';
+        retry.textContent = 'Retry';
+        status.appendChild(retry);
+      }
+      retry.dataset.nativeReadRetry = owner.readKey;
+      retry.dataset.nativeReadGuest = owner.guest;
+      return true;
+    }
+
     function retireNativeHtmxOwner(owner, reason = 'Read completed', { abort = false, keepRetry = false } = {}) {
       if (!owner || owner.retired) return false;
       owner.retired = true;
@@ -217,7 +282,6 @@ fn shell_native_htmx_owner_client() -> &'static str {
     function failNativeHtmxOwner(owner, reason = 'Read unavailable') {
       if (!nativeHtmxOwnerCurrent(owner, false)) return false;
       owner.responseHandled = true;
-      displayNativeReadState(owner, reason, false);
       const binding = owner.binding;
       const pane = owner.pane;
       const request = owner.request;
@@ -225,16 +289,29 @@ fn shell_native_htmx_owner_client() -> &'static str {
       const path = owner.path;
       const target = owner.target;
       const swap = owner.swap;
+      const uploadTree = nativeUploadTreeOwnerSlot(owner) === target;
+      if (guest === 'upload' && !uploadTree) {
+        retireNativeHtmxOwner(owner, 'Upload tree slot retired', { abort: true });
+        return false;
+      }
+      if (!uploadTree) displayNativeReadState(owner, reason, false);
       scaffoldRegistry.registerRetry(binding, owner.readKey, () => {
         if (!scaffoldRegistry.current(binding) || binding.root !== pane
             || !target?.isConnected || !pane.contains(target)) return false;
-        const retrySource = guest === 'linker' ? target
+        const retrySource = guest === 'upload' ? (nativeUploadTreeSlot(pane) === target ? target : null)
+          : guest === 'linker' ? target
           : request?.isConnected && pane.contains(request) ? request
           : null;
         if (!(retrySource instanceof Element)) return false;
+        if (guest === 'upload' && !nativeUploadTreeSourceAllowed(target, retrySource, pane, path)) return false;
         return window.htmx?.ajax('GET', path, { source: retrySource, target, swap });
       }, { slots: [], timeoutMs: owner.timeoutMs, slowMs: DEFAULT_NATIVE_SLOW_READ_MS });
-      displayNativeReadState(owner, reason, true);
+      if (uploadTree) {
+        clearNativeReadState(owner);
+        scaffoldRegistry.setSlot(binding, target, 'fault', reason);
+        clearNativeUploadTreeGeneratedLabel(target);
+        addNativeUploadTreeRetry(owner);
+      } else displayNativeReadState(owner, reason, true);
       retireNativeHtmxOwner(owner, reason, { abort: reason === 'Read timed out', keepRetry: true });
       return true;
     }
@@ -276,7 +353,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
       return true;
     }
 
-    function nativeHtmxReadSourceAllowed(guest, request, source, path) {
+    function nativeHtmxReadSourceAllowed(guest, request, source, path, pane) {
       if (!(request instanceof Element) && !(source instanceof Element)) return false;
       if (guest === 'admin') {
         return (request?.matches('[data-service-card]') && /^\/admit\/admin\/service\/[a-z0-9-]+$/.test(path))
@@ -287,7 +364,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
         return Boolean(linkerSource && (path === '/admit/linker' || path.startsWith('/admit/linker?')));
       }
       if (guest === 'upload') {
-        return request?.matches('[data-upload-tree-read-status]') && path === '/admit/upload/tree';
+        return nativeUploadTreeSourceAllowed(request, source, pane, path);
       }
       if (guest === 'portals') {
         return request?.matches('[data-portals-grid]') && path === '/api/portals/elements';
@@ -302,15 +379,18 @@ fn shell_native_htmx_owner_client() -> &'static str {
           && ((request instanceof Element && pane.contains(request) && request.closest('#linker-fragment') === target)
             || (source === target && pane.contains(source)));
       }
+      if (guest === 'upload') {
+        const tree = nativeUploadTreeSlot(pane);
+        return target === tree && (source === tree
+          || (request instanceof Element && tree.contains(request)
+            && source instanceof Element && tree.contains(source)));
+      }
       if (!(request instanceof Element) || !pane.contains(request)) return false;
       if (guest === 'portals') return request.matches('[data-portals-grid]') && target === request;
       if (guest === 'admin') {
         if (request.matches('[data-service-card]')) return target === request;
         return request.matches('[data-admin-action-id="view-logs"]')
           && target === pane.querySelector('[data-admin-action-result]');
-      }
-      if (guest === 'upload') {
-        return request.matches('[data-upload-tree-read-status]') && target.matches('[data-upload-tree]');
       }
       return false;
     }
@@ -766,13 +846,17 @@ fn shell_native_htmx_owner_client() -> &'static str {
       const guest = pane?.dataset.panePanel;
       if (!pane || !guest || !Object.prototype.hasOwnProperty.call(nativePaneContracts, guest)) return;
       const path = String(detail.requestConfig?.path || request?.getAttribute('hx-get') || '');
-      if (!nativeHtmxReadSourceAllowed(guest, request, source, path)) return;
+      if (!nativeHtmxReadSourceAllowed(guest, request, source, path, pane)) return;
       if (!nativeHtmxReadTargetAllowed(guest, request, source, target, pane)) {
         event.preventDefault();
         return;
       }
       const binding = scaffoldRegistry.capture(guest);
       if (!binding || !scaffoldRegistry.current(binding) || binding.root !== pane || !target || !binding.root.contains(target)) {
+        event.preventDefault();
+        return;
+      }
+      if (guest === 'upload' && scaffoldRegistry.slot(binding, 'upload-tree') !== target) {
         event.preventDefault();
         return;
       }
@@ -809,6 +893,11 @@ fn shell_native_htmx_owner_client() -> &'static str {
       nativeHtmxTargetOwners.set(target, owner);
       scaffoldRegistry.clearRetry(binding, readKey);
       clearNativeReadState(owner);
+      if (guest === 'upload' && !setNativeUploadTreePending(binding, target)) {
+        event.preventDefault();
+        retireNativeHtmxOwner(owner, 'Upload tree slot retired', { abort: true });
+        return;
+      }
 
       nativeMorphExtensionEnabled(pane);
       try { owner.xhr.timeout = timeoutMs; }
@@ -924,6 +1013,13 @@ fn shell_native_htmx_owner_client() -> &'static str {
       }
       if (owner.guest === 'portals') bindPortalFragmentControls(owner.target);
       if (owner.guest === 'upload') syncUploadTreeSelection();
+      if (owner.guest === 'upload') {
+        if (!nativeUploadTreeOwnerSlot(owner) || !scaffoldRegistry.setSlot(owner.binding, owner.target, 'ready')) {
+          failNativeHtmxOwner(owner, 'Read did not produce an upload tree slot');
+          return;
+        }
+        clearNativeUploadTreeGeneratedLabel(owner.target);
+      }
       applyAdminDomState();
       clearNativeReadState(owner, { restoreStatus: false });
       retireNativeHtmxOwner(owner, 'Read completed');
