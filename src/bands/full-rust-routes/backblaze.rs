@@ -76,13 +76,24 @@ fn backblaze_bucket_identifier(row: &serde_json::Value) -> Result<&str, String> 
 
 fn backblaze_config_value() -> Result<serde_json::Value, String> {
     let (_, root) = load_homeserver_json_sync()?;
-    let config = root
-        .get("tabs")
-        .and_then(serde_json::Value::as_object)
-        .and_then(|tabs| tabs.get("backblaze"))
-        .and_then(serde_json::Value::as_object)
-        .and_then(|backblaze| backblaze.get("config"))
+    let root = root
+        .as_object()
         .ok_or_else(|| "backblaze config is unavailable".to_string())?;
+    let Some(tabs) = root.get("tabs") else {
+        return Ok(serde_json::json!({"buckets": []}));
+    };
+    let tabs = tabs
+        .as_object()
+        .ok_or_else(|| "backblaze config is unavailable".to_string())?;
+    let Some(backblaze) = tabs.get("backblaze") else {
+        return Ok(serde_json::json!({"buckets": []}));
+    };
+    let backblaze = backblaze
+        .as_object()
+        .ok_or_else(|| "backblaze config is unavailable".to_string())?;
+    let Some(config) = backblaze.get("config") else {
+        return Ok(serde_json::json!({"buckets": []}));
+    };
     let mut config = config.clone();
     if !config.is_object() {
         return Err("backblaze config must be an object".into());
@@ -94,6 +105,13 @@ fn backblaze_config_value() -> Result<serde_json::Value, String> {
         for bucket in buckets {
             backblaze_bucket_identifier(bucket)?;
         }
+        return Ok(config);
+    }
+    if !config
+        .as_object()
+        .is_some_and(|config| config.contains_key("bucket"))
+    {
+        config["buckets"] = serde_json::Value::Array(Vec::new());
         return Ok(config);
     }
 
