@@ -31,6 +31,8 @@ const SHELL_UX_CONTENTS: &[&str] = &[
     include_str!("ux/library/_progress-bar.css"),
     include_str!("ux/library/_row-info-tile.css"),
     include_str!("ux/library/_select.css"),
+    include_str!("ux/library/_skeleton.css"),
+    include_str!("ux/library/_slot.css"),
     include_str!("ux/library/_slider.css"),
     include_str!("ux/library/_table.css"),
     include_str!("ux/library/_tabs.css"),

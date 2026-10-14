@@ -36,6 +36,8 @@ SELECTORS = {
     "progress-bar": ("progress-bar", {"ui-progress-bar"}),
     "row-info-tile": ("row-info-tile", {"row-info-tile"}),
     "select": ("dropdowns", {"ui-select-label"}),
+    "skeleton": ("skeleton-slot", {"ui-skeleton"}),
+    "slot": ("skeleton-slot", {"ui-slot"}),
     "slider": ("slider", {"ui-slider__container"}),
     "table": ("table", {"ui-table-container"}),
     "tabs": ("tabs", {"ui-tab-group"}),

@@ -1573,7 +1573,10 @@ __NATIVE_HTMX_OWNER__
       if (window.getImmortalFloorState?.() !== 'Seated') return;
       const active = currentActiveTabId();
       if (!viewportFamilyAdmitted(active)) return;
-      if (!scaffoldRegistry.capture(active)) scaffoldRegistry.bind(active);
+      let binding = scaffoldRegistry.capture(active);
+      if (!binding) binding = scaffoldRegistry.bind(active);
+      const activePane = panes.find(pane => pane.dataset.panePanel === active);
+      if (binding && activePane) window.startGuestScaffoldSlots?.(active, activePane, binding);
       resumeIncompleteNativeReads(active);
       if (active === 'stats') { hydrateStats(); connectPulseStream(); }
       if (active === 'upload') hydrateUploadPolicy();

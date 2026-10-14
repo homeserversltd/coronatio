@@ -20,6 +20,8 @@
     "library/_progress-bar.css",
     "library/_row-info-tile.css",
     "library/_select.css",
+    "library/_skeleton.css",
+    "library/_slot.css",
     "library/_slider.css",
     "library/_table.css",
     "library/_tabs.css",

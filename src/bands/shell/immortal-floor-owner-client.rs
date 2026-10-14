@@ -31,7 +31,11 @@ fn shell_immortal_floor_owner_client() -> &'static str {
       }
       function emptySlot() {
         closeViewportStreamFamily();
-        if (activeGuest) scaffoldRegistry.retire(activeGuest);
+        if (crossingGuest) window.retireGuestScaffoldSlots?.(crossingGuest, 'Guest crossing left the floor');
+        if (activeGuest) {
+          window.retireGuestScaffoldSlots?.(activeGuest, 'Guest left the floor');
+          scaffoldRegistry.retire(activeGuest);
+        }
         panes.forEach(pane => {
           pane.classList.remove('active', 'immortal-floor-enter');
           pane.setAttribute('aria-hidden', 'true');
@@ -400,6 +404,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         }
         const outgoing = activeGuest;
         const hadHealthyFloor = state === 'Seated' && Boolean(outgoing);
+        if (crossingGuest) window.retireGuestScaffoldSlots?.(crossingGuest, 'Guest crossing replaced');
+        if (outgoing) window.retireGuestScaffoldSlots?.(outgoing, 'Guest replaced');
         const crossing = ++generation;
         const epoch = visibilityEpoch;
         const intent = { id: selected, options: intentOptions(options), crossing, epoch };
@@ -457,6 +463,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         if (visible === pageVisible) return false;
         pageVisible = visible;
         if (!visible) {
+          if (crossingGuest) window.retireGuestScaffoldSlots?.(crossingGuest, 'Document hidden');
+          if (activeGuest) window.retireGuestScaffoldSlots?.(activeGuest, 'Document hidden');
           if (activeIntent && activeIntent.crossing === generation && activeIntent.epoch === visibilityEpoch
               && crossingGuest === activeIntent.id) {
             interruptedIntent = { id: activeIntent.id, options: intentOptions(activeIntent.options) };
@@ -520,6 +528,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         return coldFault;
       }
       function adminLost() {
+        window.retireGuestScaffoldSlots?.(null, 'Admin role retired');
         if (interruptedIntent?.id === 'admin') interruptedIntent = null;
         if (activeIntent?.id === 'admin') activeIntent = null;
         scaffoldRegistry.retire('admin', 'Admin role retired');

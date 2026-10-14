@@ -315,6 +315,336 @@ fn shell_native_htmx_owner_client() -> &'static str {
       return false;
     }
 
+    const guestSlotDeferred = new Map();
+    const guestSlotOwnersByXhr = new WeakMap();
+    const guestSlotTargetOwners = new WeakMap();
+    const guestSlotIdentity = new WeakMap();
+    const guestSlotActiveOwners = new Set();
+    const GUEST_SLOT_MAX_DEFERRED = 128;
+    const GUEST_SLOT_DEFAULT_TIMEOUT_MS = 8000;
+    const GUEST_SLOT_MAX_TIMEOUT_MS = 30000;
+    let nextGuestSlotIdentity = 0;
+
+    function guestSlotReadKey(slot, guest) {
+      let identity = guestSlotIdentity.get(slot);
+      if (!identity) { identity = ++nextGuestSlotIdentity; guestSlotIdentity.set(slot, identity); }
+      return `guest-slot:${guest}:${identity}`;
+    }
+
+    function validGuestPartPath(path, guest) {
+      const prefix = `/api/tabs/${guest}/`;
+      if (typeof path !== 'string' || !path.startsWith(prefix) || path.includes('#') || path.includes('\\')) return false;
+      const pathname = path.split('?', 1)[0];
+      const suffix = pathname.slice(prefix.length);
+      if (!suffix || suffix.endsWith('/') || suffix.includes('//')) return false;
+      try {
+        return suffix.split('/').every(segment => {
+          const decoded = decodeURIComponent(segment);
+          return decoded && decoded !== '.' && decoded !== '..' && !decoded.includes('/') && !decoded.includes('\\');
+        });
+      } catch (_) { return false; }
+    }
+
+    function inspectGuestSlot(slot, path, target = slot) {
+      if (!(slot instanceof Element) || !slot.hasAttribute('data-scaffold-slot')) return null;
+      const pane = slot.closest('[data-pane-panel]');
+      const guest = pane?.dataset.panePanel || '';
+      if (!pane || !guest || Object.prototype.hasOwnProperty.call(nativePaneContracts, guest)) return null;
+      const root = slot.closest('[data-scaffold-root]');
+      let reason = '';
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(guest) || !slot.dataset.scaffoldSlot) reason = 'Guest slot identity is invalid';
+      else if (!root || root.dataset.guestId !== guest || !root.dataset.scaffoldVersion) reason = 'Guest slot is outside its declared scaffold root';
+      else if (!validGuestPartPath(path, guest)) reason = 'Guest slot part must stay under its own /api/tabs/<guest>/ prefix';
+      else if (target !== slot || (slot.hasAttribute('hx-target') && slot.getAttribute('hx-target') !== 'this')) reason = 'Guest slot must target its own stable wrapper';
+      else if (slot.hasAttribute('hx-swap') && slot.getAttribute('hx-swap') !== 'innerHTML') reason = 'Guest slot must fill its wrapper with innerHTML';
+      else if ((slot.getAttribute('hx-trigger') || '').trim() !== 'load') reason = 'Guest slot must load on admission';
+      return { slot, pane, guest, root, path, reason };
+    }
+
+    function guestSlotRequestInfo(detail) {
+      const source = detail.elt instanceof Element ? detail.elt : null;
+      const request = source?.closest('[hx-get], [hx-post], [hx-put], [hx-patch], [hx-delete]');
+      if (!(request instanceof Element) || !request.hasAttribute('data-scaffold-slot')) return null;
+      const pane = request.closest('[data-pane-panel]');
+      const guest = pane?.dataset.panePanel || '';
+      if (!pane || !guest || Object.prototype.hasOwnProperty.call(nativePaneContracts, guest)) return null;
+      const path = String(detail.requestConfig?.path || request.getAttribute('hx-get') || '');
+      const inspected = inspectGuestSlot(request, path, detail.target);
+      if (!inspected) return null;
+      const verb = String(detail.requestConfig?.verb || detail.requestConfig?.method || (request.hasAttribute('hx-get') ? 'get' : '')).toLowerCase();
+      if (!inspected.reason && verb !== 'get') inspected.reason = 'Guest slots accept bodyless GET only';
+      if (!detail.xhr && !inspected.reason) inspected.reason = 'Guest slot request owner is missing';
+      return inspected;
+    }
+
+    function guestSlotStatus(slot, state, guest, readKey, message, retry = false) {
+      let status = Array.from(slot.children).find(child => child.hasAttribute('data-scaffold-status')) || null;
+      if (!status) {
+        status = document.createElement('div');
+        slot.appendChild(status);
+      }
+      status.dataset.scaffoldStatus = state;
+      status.className = `scaffold-slot-${state}`;
+      status.setAttribute('role', state === 'fault' ? 'alert' : 'status');
+      status.textContent = '';
+      const text = document.createElement('span');
+      text.textContent = message;
+      status.appendChild(text);
+      if (retry && readKey) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'scaffold-slot-retry';
+        button.dataset.scaffoldRetry = guest;
+        button.dataset.scaffoldReadKey = readKey;
+        button.textContent = 'Retry';
+        status.appendChild(button);
+      }
+    }
+
+    function guestSlotSetPending(slot, guest, readKey, slow = false) {
+      if (!(slot instanceof Element) || !slot.isConnected) return;
+      slot.setAttribute('aria-busy', 'true');
+      if (slot.dataset.scaffoldState === 'ready') {
+        slot.dataset.scaffoldStale = 'true';
+        guestSlotStatus(slot, 'stale', guest, readKey,
+          `Refreshing ${slot.dataset.scaffoldPlaceholder || 'content'}; showing the last successful read${slot.dataset.scaffoldUpdatedAt ? ` from ${new Date(Number(slot.dataset.scaffoldUpdatedAt)).toLocaleTimeString()}` : ''}.`, true);
+        return;
+      }
+      if (slot.dataset.scaffoldState === 'fault' && !slow) {
+        Array.from(slot.children).filter(child => child.hasAttribute('data-scaffold-status')).forEach(child => child.remove());
+      }
+      slot.dataset.scaffoldState = 'pending';
+      slot.dataset.scaffoldPending = 'true';
+      delete slot.dataset.scaffoldError;
+      delete slot.dataset.scaffoldStale;
+      slot.removeAttribute('aria-invalid');
+      if (slow) guestSlotStatus(slot, 'pending', guest, readKey,
+        `Still waiting for ${slot.dataset.scaffoldPlaceholder || 'this region'}.`, true);
+    }
+
+    function guestSlotSetReady(slot) {
+      if (!(slot instanceof Element) || !slot.isConnected) return;
+      Array.from(slot.children).filter(child => child.hasAttribute('data-scaffold-status')).forEach(child => child.remove());
+      slot.dataset.scaffoldState = 'ready';
+      slot.dataset.scaffoldUpdatedAt = String(Date.now());
+      delete slot.dataset.scaffoldPending;
+      delete slot.dataset.scaffoldError;
+      delete slot.dataset.scaffoldStale;
+      slot.removeAttribute('aria-invalid');
+      slot.setAttribute('aria-busy', 'false');
+    }
+
+    function guestSlotSetFailure(slot, guest, readKey, message, retry = true) {
+      if (!(slot instanceof Element) || !slot.isConnected) return;
+      const hadGoodContent = slot.dataset.scaffoldState === 'ready';
+      slot.setAttribute('aria-busy', 'false');
+      delete slot.dataset.scaffoldPending;
+      slot.dataset.scaffoldError = message;
+      if (hadGoodContent) {
+        slot.dataset.scaffoldStale = 'true';
+        slot.removeAttribute('aria-invalid');
+        const age = slot.dataset.scaffoldUpdatedAt
+          ? ` Last successful read: ${new Date(Number(slot.dataset.scaffoldUpdatedAt)).toLocaleTimeString()}.` : '';
+        guestSlotStatus(slot, 'stale', guest, readKey, `${message}.${age}`, retry);
+      } else {
+        slot.dataset.scaffoldState = 'fault';
+        delete slot.dataset.scaffoldStale;
+        slot.setAttribute('aria-invalid', 'true');
+        guestSlotStatus(slot, 'fault', guest, readKey, `${message}. `, retry);
+      }
+    }
+
+    function guestSlotOwnerCurrent(owner) {
+      return Boolean(owner && !owner.retired
+        && guestSlotOwnersByXhr.get(owner.xhr) === owner
+        && guestSlotTargetOwners.get(owner.slot) === owner
+        && owner.binding.readOwners.get(owner.readKey) === owner
+        && scaffoldRegistry.current(owner.binding)
+        && window.immortalFloor?.state === 'Seated'
+        && window.immortalFloor?.activeGuest === owner.guest
+        && owner.binding.root === owner.pane
+        && owner.pane.isConnected && owner.slot.isConnected && owner.pane.contains(owner.slot)
+        && owner.slot.closest('[data-scaffold-root]') === owner.root
+        && owner.root.dataset.guestId === owner.guest);
+    }
+
+    function retireGuestSlotOwner(owner, reason = 'Guest slot retired', { abort = true } = {}) {
+      if (!owner || owner.retired) return false;
+      owner.retired = true;
+      clearNativeHtmxSwapToken(owner);
+      window.clearTimeout(owner.timer);
+      window.clearTimeout(owner.slowTimer);
+      owner.timer = null;
+      owner.slowTimer = null;
+      if (owner.release) { const release = owner.release; owner.release = null; release(); }
+      if (owner.binding.readOwners.get(owner.readKey) === owner) owner.binding.readOwners.delete(owner.readKey);
+      if (guestSlotTargetOwners.get(owner.slot) === owner) guestSlotTargetOwners.delete(owner.slot);
+      guestSlotActiveOwners.delete(owner);
+      if (abort) {
+        try { if (owner.xhr.readyState !== XMLHttpRequest.DONE) owner.xhr.abort(); } catch (_) {}
+      }
+      return true;
+    }
+
+    function retireGuestScaffoldSlots(guest = null, reason = 'Guest slot lifetime retired') {
+      const selected = guest == null ? null : String(guest);
+      [...guestSlotActiveOwners].forEach(owner => {
+        if (selected === null || owner.guest === selected) retireGuestSlotOwner(owner, reason, { abort: true });
+      });
+      [...guestSlotDeferred.entries()].forEach(([slot, intent]) => {
+        if (selected === null || intent.guest === selected) guestSlotDeferred.delete(slot);
+      });
+      return true;
+    }
+    window.retireGuestScaffoldSlots = retireGuestScaffoldSlots;
+
+    function guestSlotFailureReason(owner, error = null) {
+      if (error === 'Read timed out' || error?.message === 'Read timed out') return 'Read timed out';
+      const status = Number(owner?.xhr?.status || 0);
+      if (status >= 400) return `Read failed (HTTP ${status})`;
+      if (error === 'Guest slot response contained forbidden script markup') return error;
+      if (error === 'Guest slot response attempted an out-of-band swap') return error;
+      if (error === 'Guest slot response was not renderable') return error;
+      return 'Guest slot content unavailable';
+    }
+
+    function failGuestSlotOwner(owner, error = 'Guest slot content unavailable') {
+      if (!owner || owner.responseHandled) return false;
+      if (!guestSlotOwnerCurrent(owner)) {
+        retireGuestSlotOwner(owner, 'Guest slot owner retired', { abort: true });
+        return false;
+      }
+      owner.responseHandled = true;
+      guestSlotSetFailure(owner.slot, owner.guest, owner.readKey, guestSlotFailureReason(owner, error), true);
+      retireGuestSlotOwner(owner, 'Guest slot failed', { abort: error === 'Read timed out' || error?.message === 'Read timed out' });
+      return true;
+    }
+
+    function guestSlotTimeoutMs(detail, slot) {
+      let value = Number(detail.requestConfig?.timeout || 0);
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        try { value = Number(JSON.parse(slot.getAttribute('hx-request') || '{}').timeout || 0); } catch (_) { value = 0; }
+      }
+      return Number.isSafeInteger(value) && value > 0
+        ? Math.min(value, GUEST_SLOT_MAX_TIMEOUT_MS) : GUEST_SLOT_DEFAULT_TIMEOUT_MS;
+    }
+
+    function beginGuestSlotOwner(info, detail) {
+      const { slot, pane, guest, root, path } = info;
+      const binding = scaffoldRegistry.capture(guest);
+      if (!binding || !scaffoldRegistry.current(binding) || window.immortalFloor?.state !== 'Seated'
+          || window.immortalFloor?.activeGuest !== guest || binding.root !== pane) return false;
+      const xhr = detail.xhr;
+      if (!xhr) return false;
+      const readKey = guestSlotReadKey(slot, guest);
+      const prior = binding.readOwners.get(readKey);
+      if (prior && !prior.retired) {
+        if (guestSlotOwnerCurrent(prior) && prior.path === path) return false;
+        retireGuestSlotOwner(prior, 'Guest slot read superseded', { abort: true });
+      }
+      const timeoutMs = guestSlotTimeoutMs(detail, slot);
+      const owner = { guest, pane, root, slot, request: slot, binding, xhr, path, readKey, timeoutMs,
+        retired: false, responseHandled: false, swapAuthorized: false, morphed: false,
+        timer: null, slowTimer: null, release: null, swapToken: null };
+      owner.retire = reason => retireGuestSlotOwner(owner, reason || 'Guest retired', { abort: true });
+      binding.readOwners.set(readKey, owner);
+      guestSlotOwnersByXhr.set(xhr, owner);
+      guestSlotTargetOwners.set(slot, owner);
+      guestSlotActiveOwners.add(owner);
+      guestSlotSetPending(slot, guest, readKey);
+      try { xhr.timeout = timeoutMs; } catch (_) {}
+      owner.release = scaffoldRegistry.onRetire(binding, retirement => {
+        retireGuestSlotOwner(owner, retirement?.reason || 'Guest retired', { abort: true });
+      });
+      owner.timer = window.setTimeout(() => failGuestSlotOwner(owner, 'Read timed out'), timeoutMs + 25);
+      owner.slowTimer = window.setTimeout(() => {
+        if (guestSlotOwnerCurrent(owner)) guestSlotSetPending(slot, guest, readKey, true);
+      }, Math.min(750, Math.max(1, timeoutMs - 1)));
+      return owner;
+    }
+
+    function deferGuestSlot(info) {
+      if (!guestSlotDeferred.has(info.slot) && guestSlotDeferred.size >= GUEST_SLOT_MAX_DEFERRED) {
+        guestSlotSetFailure(info.slot, info.guest, null, 'Too many guest slots are waiting for admission', false);
+        return false;
+      }
+      guestSlotDeferred.set(info.slot, info);
+      if (info.slot.dataset.scaffoldState !== 'ready') {
+        info.slot.dataset.scaffoldState = 'pending';
+        info.slot.setAttribute('aria-busy', 'true');
+      }
+      return true;
+    }
+
+    function startGuestScaffoldSlots(guest, pane, binding) {
+      guest = String(guest || '');
+      if (!guest || Object.prototype.hasOwnProperty.call(nativePaneContracts, guest)
+          || !(pane instanceof Element) || !binding || binding.guest !== guest || binding.root !== pane
+          || !scaffoldRegistry.current(binding) || window.immortalFloor?.state !== 'Seated'
+          || window.immortalFloor?.activeGuest !== guest) return false;
+      [...guestSlotDeferred.entries()].forEach(([slot, intent]) => {
+        if (intent.guest === guest && !pane.contains(slot)) guestSlotDeferred.delete(slot);
+      });
+      const slots = [...pane.querySelectorAll('[data-scaffold-slot][hx-get]')];
+      if (pane.matches('[data-scaffold-slot][hx-get]')) slots.unshift(pane);
+      slots.forEach(slot => {
+        const path = slot.getAttribute('hx-get') || '';
+        const info = inspectGuestSlot(slot, path, slot);
+        if (!info) return;
+        const readKey = guestSlotReadKey(slot, guest);
+        if (info.reason) {
+          guestSlotDeferred.delete(slot);
+          guestSlotSetFailure(slot, guest, null, info.reason, false);
+          return;
+        }
+        if (binding.readOwners.has(readKey)) return;
+        const queued = guestSlotDeferred.get(slot);
+        if (queued?.reason) {
+          guestSlotDeferred.delete(slot);
+          guestSlotSetFailure(slot, guest, null, queued.reason, false);
+          return;
+        }
+        const state = slot.dataset.scaffoldState;
+        if (!queued && state !== 'pending' && slot.dataset.scaffoldStale !== 'true') return;
+        guestSlotDeferred.delete(slot);
+        if (!window.htmx?.ajax) {
+          guestSlotSetFailure(slot, guest, null, 'Guest slot transport is unavailable', false);
+          return;
+        }
+        guestSlotSetPending(slot, guest, readKey);
+        try { window.htmx.ajax('GET', path, { source: slot, target: slot, swap: 'innerHTML' }); }
+        catch (_) { guestSlotSetFailure(slot, guest, readKey, 'Guest slot transport is unavailable', true); }
+      });
+      return true;
+    }
+    window.startGuestScaffoldSlots = startGuestScaffoldSlots;
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') retireGuestScaffoldSlots(null, 'Document hidden');
+    });
+
+    document.body.addEventListener('click', event => {
+      const target = event.target instanceof Element ? event.target : null;
+      const retry = target?.closest('[data-scaffold-retry][data-scaffold-read-key^="guest-slot:"]');
+      if (!retry) return;
+      const slot = retry.closest('[data-scaffold-slot]');
+      const guest = retry.dataset.scaffoldRetry || '';
+      const path = slot?.getAttribute('hx-get') || '';
+      const info = inspectGuestSlot(slot, path, slot);
+      const seated = window.immortalFloor?.state === 'Seated' && window.immortalFloor?.activeGuest === guest;
+      const binding = info && !info.reason && seated ? scaffoldRegistry.capture(guest) : null;
+      if (!info || info.reason || info.guest !== guest || !seated || !binding || !scaffoldRegistry.current(binding)
+          || binding.root !== info.pane) {
+        event.preventDefault(); event.stopPropagation();
+        return;
+      }
+      event.preventDefault(); event.stopPropagation();
+      const key = guestSlotReadKey(slot, guest);
+      guestSlotSetPending(slot, guest, key);
+      try { window.htmx?.ajax('GET', path, { source: slot, target: slot, swap: 'innerHTML' }); }
+      catch (_) { guestSlotSetFailure(slot, guest, key, 'Guest slot transport is unavailable', true); }
+    });
+
     if (window.htmx?.defineExtension) {
       window.htmx.defineExtension(nativeMorphSwapStyle, {
         isInlineSwap(style) { return style === nativeMorphSwapStyle || style.startsWith(`${nativeMorphSwapStyle}-`); },
@@ -323,7 +653,28 @@ fn shell_native_htmx_owner_client() -> &'static str {
           const reference = nativeHtmxSwapOwners.get(style);
           nativeHtmxSwapOwners.delete(style);
           const xhr = reference?.deref();
-          const owner = xhr ? nativeHtmxOwners.get(xhr) : null;
+          const nativeOwner = xhr ? nativeHtmxOwners.get(xhr) : null;
+          if (!nativeOwner) {
+            const owner = xhr ? guestSlotOwnersByXhr.get(xhr) : null;
+            const tokenAuthorized = owner?.swapToken === style;
+            if (tokenAuthorized) owner.swapToken = null;
+            if (!tokenAuthorized || !guestSlotOwnerCurrent(owner) || owner.xhr !== xhr
+                || !owner.swapAuthorized || target !== owner.slot) return [];
+            const insertedNodes = [];
+            const changed = morphLivePane(target, fragment, {
+              outerRoot: false,
+              insertedNodes
+            });
+            if (!guestSlotOwnerCurrent(owner) || target !== owner.slot) return [];
+            owner.morphed = true;
+            owner.changed = changed;
+            insertedNodes.forEach(node => {
+              if (!guestSlotOwnerCurrent(owner) || !node.isConnected || !owner.slot.contains(node)) return;
+              try { window.htmx?.process(node); } catch (_) {}
+            });
+            return [];
+          }
+          const owner = nativeOwner;
           if (owner?.swapToken === style) owner.swapToken = null;
           if (!nativeHtmxOwnerCurrent(owner) || owner.xhr !== xhr) return [];
           const insertedNodes = [];
@@ -350,8 +701,56 @@ fn shell_native_htmx_owner_client() -> &'static str {
     const DEFAULT_NATIVE_READ_TIMEOUT_MS = 8000;
     const DEFAULT_NATIVE_SLOW_READ_MS = 750;
 
+    function guestSlotResponseFailure(owner, html) {
+      const status = Number(owner.xhr?.status || 0);
+      if (status < 200 || status >= 300) return `Read failed (HTTP ${status || 'unavailable'})`;
+      const template = document.createElement('template');
+      template.innerHTML = String(html || '');
+      let hasScript = false;
+      nativeHtmxVisitNodes(template.content, node => {
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'SCRIPT') hasScript = true;
+      });
+      if (hasScript) return 'Guest slot response contained forbidden script markup';
+      if (template.content.querySelector('[data-cartridge-fault], [data-cartridge-fault-kind], [data-service-card-fault-kind], [data-admin-membrane-refusal]')) return 'Guest slot content unavailable';
+      const primary = template.content.cloneNode(true);
+      if (nativeHtmxRemoveOutOfBand(primary)) return 'Guest slot response attempted an out-of-band swap';
+      if (primary.childElementCount === 0 && !String(primary.textContent || '').trim()) return 'Guest slot response was not renderable';
+      return '';
+    }
+
     document.body.addEventListener('htmx:beforeRequest', event => {
       const detail = event.detail || {};
+      const guestSlot = guestSlotRequestInfo(detail);
+      if (guestSlot) {
+        const seated = window.immortalFloor?.state === 'Seated'
+          && window.immortalFloor?.activeGuest === guestSlot.guest;
+        const binding = seated ? scaffoldRegistry.capture(guestSlot.guest) : null;
+        if (guestSlot.reason) {
+          event.preventDefault();
+          if (seated && binding && scaffoldRegistry.current(binding)) {
+            guestSlotSetFailure(guestSlot.slot, guestSlot.guest, null, guestSlot.reason, false);
+          } else deferGuestSlot(guestSlot);
+          return;
+        }
+        if (!seated || !binding || !scaffoldRegistry.current(binding) || binding.root !== guestSlot.pane) {
+          event.preventDefault();
+          deferGuestSlot(guestSlot);
+          return;
+        }
+        const readKey = guestSlotReadKey(guestSlot.slot, guestSlot.guest);
+        const prior = binding.readOwners.get(readKey);
+        if (prior && !prior.retired && guestSlotOwnerCurrent(prior) && prior.path === guestSlot.path) {
+          event.preventDefault();
+          return;
+        }
+        if (!beginGuestSlotOwner(guestSlot, detail)) {
+          event.preventDefault();
+          guestSlotSetFailure(guestSlot.slot, guestSlot.guest, readKey, 'Guest slot request could not be admitted', true);
+          return;
+        }
+        guestSlotDeferred.delete(guestSlot.slot);
+        return;
+      }
       const source = detail.elt instanceof Element ? detail.elt : null;
       const target = detail.target instanceof Element ? detail.target : null;
       if (source?.closest('[data-pane]')) return;
@@ -460,7 +859,37 @@ fn shell_native_htmx_owner_client() -> &'static str {
       event.detail.swapOverride = [owner.swapToken, ...declaredParts.slice(1)].join(' ');
     });
 
+    document.body.addEventListener('htmx:beforeSwap', event => {
+      const xhr = event.detail?.xhr;
+      const owner = xhr && guestSlotOwnersByXhr.get(xhr);
+      if (!owner) return;
+      if (!guestSlotOwnerCurrent(owner) || event.detail?.target !== owner.slot) {
+        event.detail.shouldSwap = false;
+        retireGuestSlotOwner(owner, 'Guest slot owner retired', { abort: true });
+        return;
+      }
+      const response = String(event.detail?.serverResponse || owner.xhr?.responseText || '');
+      const failure = guestSlotResponseFailure(owner, response);
+      if (failure) {
+        event.detail.shouldSwap = false;
+        failGuestSlotOwner(owner, failure);
+        return;
+      }
+      nativeMorphExtensionEnabled(owner.pane);
+      owner.swapToken = nativeHtmxSwapToken(owner);
+      owner.swapAuthorized = true;
+      event.detail.swapOverride = owner.swapToken;
+    });
+
     document.body.addEventListener('htmx:afterSwap', event => {
+      const guestOwner = event.detail?.xhr && guestSlotOwnersByXhr.get(event.detail.xhr);
+      if (guestOwner) {
+        if (!guestSlotOwnerCurrent(guestOwner) || event.detail?.target !== guestOwner.slot || !guestOwner.swapAuthorized) {
+          retireGuestSlotOwner(guestOwner, 'Guest slot swap retired', { abort: true });
+          return;
+        }
+        return;
+      }
       const owner = nativeHtmxOwner(event);
       if (!owner || owner.retired || event.detail?.target !== owner.target) return;
       if (!nativeHtmxOwnerCurrent(owner, false)) {
@@ -469,6 +898,20 @@ fn shell_native_htmx_owner_client() -> &'static str {
     });
 
     document.body.addEventListener('htmx:afterSettle', event => {
+      const guestOwner = event.detail?.xhr && guestSlotOwnersByXhr.get(event.detail.xhr);
+      if (guestOwner) {
+        if (!guestSlotOwnerCurrent(guestOwner) || event.detail?.target !== guestOwner.slot) {
+          retireGuestSlotOwner(guestOwner, 'Guest slot owner retired', { abort: true });
+          return;
+        }
+        if (!guestOwner.swapAuthorized || !guestOwner.morphed) {
+          failGuestSlotOwner(guestOwner, 'Guest slot response was not renderable');
+          return;
+        }
+        guestSlotSetReady(guestOwner.slot);
+        retireGuestSlotOwner(guestOwner, 'Guest slot read completed', { abort: false });
+        return;
+      }
       const owner = nativeHtmxOwner(event);
       if (!owner || owner.retired || event.detail?.target !== owner.target) return;
       if (!nativeHtmxOwnerCurrent(owner, false)) {
@@ -487,6 +930,19 @@ fn shell_native_htmx_owner_client() -> &'static str {
     });
 
     document.body.addEventListener('htmx:afterRequest', event => {
+      const guestOwner = event.detail?.xhr && guestSlotOwnersByXhr.get(event.detail.xhr);
+      if (guestOwner && !guestOwner.retired) {
+        if (event.detail?.target && event.detail.target !== guestOwner.slot) {
+          failGuestSlotOwner(guestOwner, 'Guest slot response was not renderable');
+          return;
+        }
+        if (event.detail?.successful !== true) {
+          failGuestSlotOwner(guestOwner, 'Guest slot content unavailable');
+          return;
+        }
+        if (!guestOwner.swapAuthorized) failGuestSlotOwner(guestOwner, 'Guest slot response was not renderable');
+        return;
+      }
       const owner = nativeHtmxOwner(event);
       if (!owner || owner.retired || (event.detail?.target && event.detail.target !== owner.target)) return;
       if (event.detail?.successful === true) {
@@ -505,8 +961,18 @@ fn shell_native_htmx_owner_client() -> &'static str {
       failNativeHtmxOwner(owner, reason);
     }
 
+    function reportGuestSlotFailure(event) {
+      const owner = event.detail?.xhr && guestSlotOwnersByXhr.get(event.detail.xhr);
+      if (!owner || owner.retired) return;
+      const reason = event.type === 'htmx:timeout' ? 'Read timed out'
+        : event.type === 'htmx:sendError' ? 'Guest slot content unavailable'
+        : 'Guest slot content unavailable';
+      failGuestSlotOwner(owner, reason);
+    }
+
     ['htmx:timeout', 'htmx:responseError', 'htmx:sendError'].forEach(name => {
       document.body.addEventListener(name, reportNativeHtmxFailure);
+      document.body.addEventListener(name, reportGuestSlotFailure);
     });
 "####
 }

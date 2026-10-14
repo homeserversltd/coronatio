@@ -1,0 +1,73 @@
+/* Slot owns one stable region; fills and retry status stay inside its wrapper. */
+.ui-slot[data-scaffold-slot] {
+  box-sizing: border-box;
+  position: relative;
+  isolation: isolate;
+  block-size: var(--ui-slot-block-size, 16rem);
+  padding: 0.8rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius, 8px);
+  background-color: var(--background);
+  color: var(--text);
+}
+
+.ui-slot[data-scaffold-state="pending"] {
+  border-style: dashed;
+  background-image: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--surface-soft) 70%, var(--primary)) 45%, transparent 70%);
+  background-size: 220% 100%;
+  animation: ui-slot-shimmer 1.45s ease-in-out infinite;
+}
+
+.ui-slot[data-scaffold-state="ready"] { border-color: var(--border); }
+
+.ui-slot[data-scaffold-state="ready"][data-scaffold-stale="true"] {
+  border-color: var(--warning);
+  background-color: color-mix(in srgb, var(--warning) 6%, var(--background));
+}
+
+.ui-slot[data-scaffold-state="fault"] {
+  border-color: var(--error);
+  background-color: color-mix(in srgb, var(--error) 6%, var(--background));
+}
+
+.ui-slot [data-scaffold-status],
+.ui-slot .scaffold-slot-pending,
+.ui-slot .scaffold-slot-ready,
+.ui-slot .scaffold-slot-fault,
+.ui-slot .scaffold-slot-stale {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-block-start: 0.55rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.ui-slot .scaffold-slot-fault { color: var(--error); }
+.ui-slot .scaffold-slot-stale { color: var(--warning); }
+
+.ui-slot .scaffold-slot-retry {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--primary);
+  border-radius: var(--border-radius, 6px);
+  background: var(--background);
+  color: var(--primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ui-slot .scaffold-slot-retry:hover { background: var(--surface-soft); }
+.ui-slot .scaffold-slot-retry:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+@keyframes ui-slot-shimmer {
+  to { background-position: -220% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-slot[data-scaffold-state="pending"] {
+    animation: none;
+    background-position: 0 0;
+  }
+}
