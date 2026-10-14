@@ -3,6 +3,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
     const immortalFloor = (() => {
       let state = 'BootFloor'; let generation = 0; let activeGuest = null;
       let crossingGuest = null;
+      let visibilityEpoch = 0; let pageVisible = document.visibilityState === 'visible';
+      let activeIntent = null; let interruptedIntent = null;
 
       const ready = new Promise(resolve => requestAnimationFrame(() => {
         if (immortalFloorShell && tabBar && panes.length) {
@@ -43,6 +45,20 @@ fn shell_immortal_floor_owner_client() -> &'static str {
       const admissionOobMarker = 'crown-htmx-oob-owner:';
       const admissionOobSelector = '[hx-swap-oob], [data-hx-swap-oob]';
       let nextAdmissionOobId = 0;
+      function ownsVisibleActivation(crossing, id, epoch) {
+        return crossing === generation && crossingGuest === id && epoch === visibilityEpoch && document.visibilityState === 'visible';
+      }
+      function intentOptions(options) {
+        const projection = {};
+        if (typeof options?.refresh === 'boolean') projection.refresh = options.refresh;
+        if (typeof options?.detail === 'string') projection.detail = options.detail;
+        return projection;
+      }
+      function ownsVisibleAdmission(record) {
+        return Boolean(record && record === admissionRequest && !record.retired && !record.settled
+          && record.crossing === generation && record.visibilityEpoch === visibilityEpoch
+          && crossingGuest === record.id && document.visibilityState === 'visible');
+      }
       function admissionVisitNodes(root, visit) {
         visit(root);
         if (root.nodeType === Node.ELEMENT_NODE && root.tagName === 'TEMPLATE') {
@@ -120,7 +136,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
       document.body.addEventListener('htmx:beforeRequest', event => {
         const record = admissionRequest;
         const detail = event.detail || {};
-        if (!record || record.tab !== detail.elt || detail.target !== record.pane || detail.xhr == null || record.crossing !== generation) return;
+        if (!ownsVisibleAdmission(record) || record.tab !== detail.elt || detail.target !== record.pane || detail.xhr == null) return;
         record.xhr = detail.xhr;
         record.target = detail.target;
         try { record.xhr.timeout = record.timeoutMs; } catch (_) {}
@@ -132,7 +148,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         if (!tokens.size) return;
         const token = tokens.size === 1 ? tokens.values().next().value : '';
         const owner = admissionRequest;
-        if (tokens.size !== 1 || !owner || owner.oobToken !== token || !isAdmissionRequest(owner.xhr)) {
+        if (tokens.size !== 1 || !owner || owner.oobToken !== token || !ownsVisibleAdmission(owner) || !isAdmissionRequest(owner.xhr)) {
           event.detail.shouldSwap = false;
         }
       });
@@ -140,7 +156,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         const xhr = event.detail?.xhr;
         const owner = xhr && admissionOwners.get(xhr);
         if (!owner) return;
-        if (owner !== admissionRequest || owner.retired || owner.crossing !== generation || crossingGuest !== owner.id) {
+        if (!ownsVisibleAdmission(owner)) {
           event.detail.shouldSwap = false;
           return;
         }
@@ -199,7 +215,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
       function healthyStructure(pane, id, html = pane?.innerHTML) {
         return Boolean(pane?.isConnected && pane.childElementCount > 0 && inspectAdmissionPayload(pane, id, html).ok);
       }
-      async function admitFreshGuest(id, crossing, sameGuestRefresh = false) {
+      async function admitFreshGuest(id, crossing, sameGuestRefresh = false, activationEpoch) {
+        if (!ownsVisibleActivation(crossing, id, activationEpoch)) throw new DOMException('Document hidden', 'AbortError');
         const pane = panes.find(candidate => candidate.dataset.panePanel === id);
         const tab = tabs.find(candidate => candidate.dataset.pane === id);
         if (!pane) {
@@ -215,7 +232,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         const timeoutCandidate = Number(tab.dataset.admissionTimeoutMs);
         const admissionTimeoutMs = Number.isSafeInteger(timeoutCandidate) && timeoutCandidate > 0 ? Math.min(timeoutCandidate, 30000) : 1500;
         if (admissionRequest) retireAdmissionRequest(admissionRequest, 'Admission superseded');
-        const record = { id, tab, pane, crossing, sameGuestRefresh, xhr: null, target: null, sent: false, timer: null, timeoutMs: admissionTimeoutMs, accepted: false, failed: false, structuralFault: false, retired: false, settled: false, pendingHtml: null, oobToken: null, cleanup: null, cancel: null, resolve: null, reject: null };
+        const record = { id, tab, pane, crossing, visibilityEpoch: activationEpoch, sameGuestRefresh, xhr: null, target: null, sent: false, timer: null, timeoutMs: admissionTimeoutMs, accepted: false, failed: false, structuralFault: false, retired: false, settled: false, pendingHtml: null, oobToken: null, cleanup: null, cancel: null, resolve: null, reject: null };
         admissionRequest = record;
         await new Promise((resolve, reject) => {
           record.resolve = resolve; record.reject = reject;
@@ -245,7 +262,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
           };
           record.cleanup = cleanup;
           record.cancel = error => settle(error || new DOMException('Admission retired', 'AbortError'));
-          const isOwnRequest = event => event.detail?.xhr && event.detail.xhr === record.xhr && event.detail.target === pane && admissionRequest === record && !record.retired && record.crossing === generation && crossingGuest === id;
+          const isOwnRequest = event => event.detail?.xhr && event.detail.xhr === record.xhr && event.detail.target === pane && ownsVisibleAdmission(record);
           const afterSwap = event => {
             if (!isOwnRequest(event)) return;
             if (!healthyStructure(pane, id, pane.innerHTML)) {
@@ -270,7 +287,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
             if (!sameGuestRefresh) return;
             if (!record.accepted || !record.pendingHtml) { settle(new Error('admission-fault')); return; }
             await new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)));
-            if (record.retired || admissionRequest !== record || record.crossing !== generation || crossingGuest !== id) { settle(new Error('admission-superseded')); return; }
+            if (!ownsVisibleAdmission(record)) { settle(new Error('admission-superseded')); return; }
             const pendingHtml = record.pendingHtml;
             record.pendingHtml = null;
             const morphTarget = nativePaneMorphTarget(pane, id);
@@ -293,8 +310,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
               return;
             }
             insertedNodes.forEach(node => {
-              if (record.retired || admissionRequest !== record || record.crossing !== generation
-                  || crossingGuest !== id || !node.isConnected || !pane.contains(node)) return;
+              if (!ownsVisibleAdmission(record) || !node.isConnected || !pane.contains(node)) return;
               try { window.htmx.process(node); } catch (_) {}
             });
             pane.dataset.nativeStructureReady = 'true';
@@ -330,11 +346,12 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         });
         return pane;
       }
-      async function seatGuest(id, crossing, detail = '') {
+      async function seatGuest(id, crossing, epoch, detail = '') {
         const pane = panes.find(candidate => candidate.dataset.panePanel === id);
         if (!pane) return false;
+        if (!ownsVisibleActivation(crossing, id, epoch)) return false;
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        if (crossing !== generation || crossingGuest !== id) return false;
+        if (!ownsVisibleActivation(crossing, id, epoch)) return false;
         if (!healthyStructure(pane, id, pane.innerHTML)) {
           const error = new Error('admission-structure-invalid');
           error.structuralFault = true;
@@ -370,14 +387,24 @@ fn shell_immortal_floor_owner_client() -> &'static str {
       }
       async function activate(requested, options = {}) {
         const selected = lawfulPaneCandidate(requested);
+        if (document.visibilityState !== 'visible') {
+          if (state === 'Seated' && activeGuest === selected && !options.refresh) return true;
+          interruptedIntent = { id: selected, options: intentOptions(options) };
+          return false;
+        }
         if (state === 'Seated' && activeGuest === selected && !options.refresh) {
           crossingGuest = null;
+          interruptedIntent = null;
           applyAdminDomState();
           return true;
         }
         const outgoing = activeGuest;
         const hadHealthyFloor = state === 'Seated' && Boolean(outgoing);
         const crossing = ++generation;
+        const epoch = visibilityEpoch;
+        const intent = { id: selected, options: intentOptions(options), crossing, epoch };
+        interruptedIntent = null;
+        activeIntent = intent;
         if (admissionRequest) retireAdmissionRequest(admissionRequest);
         if (outgoing) scaffoldRegistry.retire(outgoing);
         closeViewportStreamFamily();
@@ -386,18 +413,26 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         const readyNow = await ready;
         if (!readyNow) {
           if (crossing === generation) { emptySlot(); expose('BareFloor'); }
+          if (activeIntent === intent && document.visibilityState === 'visible') activeIntent = null;
           return false;
         }
-        if (crossing !== generation) return false;
+        if (!ownsVisibleActivation(crossing, selected, epoch)) {
+          if (activeIntent === intent && document.visibilityState === 'visible') activeIntent = null;
+          return false;
+        }
         expose('GuestRevolution');
         try {
           const sameGuestRefresh = hadHealthyFloor && outgoing === selected;
-          await admitFreshGuest(selected, crossing, sameGuestRefresh);
-          if (crossing !== generation || crossingGuest !== selected) return false;
-          if (!await seatGuest(selected, crossing, options.detail)) throw new Error('guest-structure-unhealthy');
+          if (!ownsVisibleActivation(crossing, selected, epoch)) return false;
+          await admitFreshGuest(selected, crossing, sameGuestRefresh, epoch);
+          if (!ownsVisibleActivation(crossing, selected, epoch)) return false;
+          if (!await seatGuest(selected, crossing, epoch, options.detail)) {
+            if (!ownsVisibleActivation(crossing, selected, epoch)) return false;
+            throw new Error('guest-structure-unhealthy');
+          }
           return true;
         } catch (error) {
-          if (crossing !== generation) return false;
+          if (!ownsVisibleActivation(crossing, selected, epoch)) return false;
           retireAdmissionRequest();
           if (error?.structuralFault) {
             fault(error?.message || 'admission-structure-invalid');
@@ -413,7 +448,52 @@ fn shell_immortal_floor_owner_client() -> &'static str {
             fault(error?.message || 'admission-fault');
           }
           return false;
+        } finally {
+          if (activeIntent === intent && document.visibilityState === 'visible') activeIntent = null;
         }
+      }
+      function visibilityChanged() {
+        const visible = document.visibilityState === 'visible';
+        if (visible === pageVisible) return false;
+        pageVisible = visible;
+        if (!visible) {
+          if (activeIntent && activeIntent.crossing === generation && activeIntent.epoch === visibilityEpoch
+              && crossingGuest === activeIntent.id) {
+            interruptedIntent = { id: activeIntent.id, options: intentOptions(activeIntent.options) };
+          }
+          visibilityEpoch += 1;
+          generation += 1;
+          if (admissionRequest) retireAdmissionRequest(admissionRequest, 'Document hidden');
+          activeIntent = null;
+          crossingGuest = null;
+          if (activeGuest) {
+            const pane = panes.find(candidate => candidate.dataset.panePanel === activeGuest);
+            if (state === 'Seated' || healthyStructure(pane, activeGuest, pane?.innerHTML)) {
+              if (state !== 'Seated') {
+                expose('Seated');
+                applyAdminDomState();
+                applyTabBarVisibility();
+              }
+            } else {
+              emptySlot();
+              expose('BareFloor');
+            }
+          } else {
+            emptySlot();
+            expose('BareFloor');
+          }
+          return true;
+        }
+        visibilityEpoch += 1;
+        const intent = interruptedIntent;
+        interruptedIntent = null;
+        if (intent) {
+          const selected = lawfulPaneCandidate(intent.id);
+          const alreadySeated = state === 'Seated' && activeGuest === selected && !intent.options.refresh;
+          void activate(selected, intent.options);
+          return alreadySeated;
+        }
+        return true;
       }
       function fault(kind = 'guest-fault') {
         if (admissionRequest) retireAdmissionRequest(admissionRequest, 'Admission fault');
@@ -426,7 +506,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
       }
       function admissionOwner(xhr) {
         const record = xhr && admissionOwners.get(xhr);
-        if (!record || record !== admissionRequest || record.xhr !== xhr || record.retired || record.settled || record.crossing !== generation || crossingGuest !== record.id || record.target !== record.pane || !record.pane?.isConnected) return null;
+        if (!ownsVisibleAdmission(record) || record.xhr !== xhr || record.target !== record.pane || !record.pane?.isConnected) return null;
         return { guest: record.id, pane: record.pane };
       }
       function isAdmissionRequest(xhr) { return admissionOwner(xhr) !== null; }
@@ -440,6 +520,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         return coldFault;
       }
       function adminLost() {
+        if (interruptedIntent?.id === 'admin') interruptedIntent = null;
+        if (activeIntent?.id === 'admin') activeIntent = null;
         scaffoldRegistry.retire('admin', 'Admin role retired');
         if (crossingGuest === 'admin') {
           generation += 1;
@@ -471,7 +553,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         return false;
       }
       expose('BootFloor');
-      return Object.freeze({ activate, fault, admissionOwner, isAdmissionRequest, failAdmission, adminLost, get state() { return state; }, get activeGuest() { return activeGuest; } });
+      return Object.freeze({ activate, fault, admissionOwner, isAdmissionRequest, failAdmission, adminLost, visibilityChanged, get visibilityEpoch() { return visibilityEpoch; }, get state() { return state; }, get activeGuest() { return activeGuest; } });
     })();
     window.immortalFloor = immortalFloor;
     window.getImmortalFloorState = () => immortalFloor.state;

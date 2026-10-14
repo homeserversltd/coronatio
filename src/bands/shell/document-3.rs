@@ -1500,10 +1500,9 @@ fn shell_document_3() -> &'static str {
 __PANE_STRUCTURE_OWNER__
 __NATIVE_HTMX_OWNER__
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible') {
-        const guest = window.immortalFloor?.activeGuest;
-        if (guest) scaffoldRegistry.retire(guest, 'Document hidden');
-      }
+      const changed = window.immortalFloor?.visibilityChanged?.();
+      if (changed && document.visibilityState !== 'visible') cancelXeniaColdRetries(null);
+      if (changed) reconcileViewportStreamFamily();
     });
     function pullHeldElementFragments() {
       const activePane = lawfulPaneCandidate(currentActiveTabId());
@@ -1697,7 +1696,9 @@ __IMMORTAL_FLOOR_OWNER__
       selected = selected || (canStarTab(applianceFavorite) ? applianceFavorite : regular[0]);
       paintEffectiveFavoriteTab(applianceFavorite);
       for (const candidate of [selected, ...regular.filter(id => id !== selected)]) {
+        const visibilityEpoch = window.immortalFloor?.visibilityEpoch;
         if (await showPane(candidate)) return true;
+        if (document.visibilityState !== 'visible' || (visibilityEpoch !== undefined && window.immortalFloor?.visibilityEpoch !== visibilityEpoch)) return false;
         if (window.getImmortalFloorState?.() === 'BareFloor') return false;
       }
       return showPane(fallbackTab);
@@ -1732,6 +1733,6 @@ __IMMORTAL_FLOOR_OWNER__
     reconcileAdmittedPaneHosts();
     bindTabControls();
     document.querySelector('[data-crown-headless-reload]')?.addEventListener('click', () => window.location.reload());
-    document.addEventListener('visibilitychange', reconcileViewportStreamFamily); async function fetchInto(route, target, method = 'GET') {
+    async function fetchInto(route, target, method = 'GET') {
       const el = document.getElementById(target);"####
 }
