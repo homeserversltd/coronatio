@@ -1,7 +1,7 @@
 {
   "schema": "coronatio.face-surface.v1",
   "face": "Coronatio",
-  "source_sha": "1f00de632cc48b8bec1c875564baf10f136bec0d",
+  "source_sha": "5db9901f0d424dc0862ea39c2dfd3b890516c3cb",
   "primitives": [
     "badge",
     "breadcrumbs",
@@ -21,7 +21,9 @@
     "progress-bar",
     "row-info-tile",
     "select",
+    "skeleton",
     "slider",
+    "slot",
     "table",
     "tabs",
     "text-box",
@@ -144,9 +146,17 @@
       "path": "src/bands/shell/ux/showcase/select.html",
       "sha256": "c6f30243d7e9f06a5d690d42ef3ccf1ecc08bdac73da224b4f4ffc834e0cb2c9"
     },
+    "skeleton": {
+      "path": "src/bands/shell/ux/showcase/skeleton.html",
+      "sha256": "23b1e6d5ccd2c940e1204a6e8b1ebddf08ed4856e44bd46b9e77761acb9007c0"
+    },
     "slider": {
       "path": "src/bands/shell/ux/showcase/slider.html",
       "sha256": "ce18f7cf04c9f464e658eae479b67108e7e42ef92c355b466302867eefde0758"
+    },
+    "slot": {
+      "path": "src/bands/shell/ux/showcase/slot.html",
+      "sha256": "85b4f463cca939be53806af707c0810092a63b9467460004e5cfe88fc673a528"
     },
     "table": {
       "path": "src/bands/shell/ux/showcase/table.html",
@@ -167,7 +177,7 @@
     "toast": {
       "path": "src/bands/shell/ux/showcase/toast.html",
       "origin": "browser-constructed",
-      "constructor": "src/bands/shell/document-4-tail.rs:14-26",
+      "constructor": "src/bands/shell/document-4-tail.rs:16-29",
       "sha256": "2030dde518456cb2d2a4d17a13acae27fe28a032cae6cb15751240f2a31ff407"
     },
     "toggle": {

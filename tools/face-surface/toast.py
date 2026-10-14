@@ -11,30 +11,31 @@ import re
 
 def lower(source, specimens):
     match = re.search(
-        r"    function showCoronatioToast\(message, variant = ('[^']*')\) \{\n(.*?)\n    \}",
+        r"    function showCoronatioToast\(message, variant = ('[^']*')(?:(, timeout = 3000))?\) \{\n(.*?)\n    \}",
         source, re.S,
     )
     if not match:
         raise ValueError("showCoronatioToast constructor not located")
     default = ast.literal_eval(match[1])
-    body = match[2]
+    body = match[3]
     preamble = re.fullmatch(
         r"\s*const stack = document.querySelector\('\[data-coronatio-toast-stack\]'\);"
         r"\s*if \(!stack \|\| !message\) return;"
         r"\s*const allowed = (\[[^;]+\]);"
         r"\s*const resolvedVariant = allowed.includes\(variant\) \? variant : ('[^']*');"
+        r"\s*(const duration = Number\.isInteger\(timeout\) && timeout >= 1 && timeout <= 2147483647 \? timeout : 3000;)?"
         r"\s*const icons = (\{[^;]+\});\s*(const toast = .*?)\s*",
         body, re.S,
     )
-    if not preamble:
+    if not preamble or bool(match[2]) != bool(preamble[3]):
         raise ValueError("Toast preamble changed: extend the static lowering explicitly")
     allowed = ast.literal_eval(preamble[1])
     fallback = ast.literal_eval(preamble[2])
-    icons = ast.literal_eval(re.sub(r"\b(\w+)\s*:", r"'\1':", preamble[3]))
+    icons = ast.literal_eval(re.sub(r"\b(\w+)\s*:", r"'\1':", preamble[4]))
     # Split statements only outside string/template literals (including escapes).
     statements = []
     start, quote, escaped = 0, None, False
-    for position, char in enumerate(preamble[4]):
+    for position, char in enumerate(preamble[5]):
         if quote:
             if escaped:
                 escaped = False
@@ -45,9 +46,9 @@ def lower(source, specimens):
         elif char in "'\"`":
             quote = char
         elif char == ";":
-            statements.append(preamble[4][start:position].strip())
+            statements.append(preamble[5][start:position].strip())
             start = position + 1
-    if quote or preamble[4][start:].strip():
+    if quote or preamble[5][start:].strip():
         raise ValueError("Unterminated toast construction statement")
 
     results = []
@@ -76,7 +77,8 @@ def lower(source, specimens):
             assignment = re.fullmatch(r"(\w+)\.(className|textContent|dataset\.\w+) = (.*)", statement)
             attribute = re.fullmatch(r"(\w+)\.setAttribute\(('.*?'), (.*)\)", statement)
             append = re.fullmatch(r"(\w+)\.(append|appendChild)\(([^()]+)\)", statement)
-            timer = re.fullmatch(r"startCoronatioToastTimer\(toast, 3000\)", statement)
+            timer_argument = "duration" if match[2] else "3000"
+            timer = re.fullmatch(rf"startCoronatioToastTimer\(toast, {timer_argument}\)", statement)
             if created:
                 nodes[created[1]] = {"tag": value(created[2]), "attrs": {}, "children": []}
             elif assignment:
