@@ -124,7 +124,16 @@ fn shell_pane_structure_owner_client() -> &'static str {
       const DEFAULT_READ_TIMEOUT_MS = 8000;
       const DEFAULT_SLOW_READ_MS = 750;
       const DEFAULT_BODY_MAX_BYTES = 4 * 1024 * 1024;
-      function slotsFor(binding) { return binding.root ? [...binding.root.querySelectorAll('[data-scaffold-slot]')] : []; }
+      function slotsFor(binding) {
+        if (!binding.root) return [];
+        const candidates = [...binding.root.querySelectorAll('[data-scaffold-slot]')];
+        const declared = nativePaneContracts[binding.guest]?.slots;
+        return Array.isArray(declared) ? candidates.filter(node => declared.includes(node.dataset.scaffoldKey || node.dataset.scaffoldSlot)) : candidates;
+      }
+      function slotAllowed(binding, target) {
+        const declared = nativePaneContracts[binding.guest]?.slots;
+        return !Array.isArray(declared) || slotsFor(binding).includes(target);
+      }
       function rootFor(registration) {
         try { return typeof registration.root === 'function' ? registration.root() : document.querySelector(registration.root); }
         catch (_) { return null; }
@@ -201,7 +210,7 @@ fn shell_pane_structure_owner_client() -> &'static str {
       function resolveSlots(binding, selected) {
         binding.slots = slotsFor(binding);
         const values = Array.isArray(selected) ? selected : binding.slots;
-        const resolved = values.map(value => value instanceof Element ? value : slot(binding, value)).filter(node => node instanceof Element && binding.root.contains(node));
+        const resolved = values.map(value => value instanceof Element ? value : slot(binding, value)).filter(node => node instanceof Element && binding.root.contains(node) && slotAllowed(binding, node));
         return [...new Set(resolved)];
       }
       function stopRun(binding, run, reason = 'Read retired') {
@@ -275,7 +284,7 @@ fn shell_pane_structure_owner_client() -> &'static str {
         if (!current(binding, run) || !(binding.root instanceof Element)) return null;
         const value = key instanceof Element ? null : String(key);
         let target = key instanceof Element ? key : binding.root.querySelector(`[data-scaffold-slot="${CSS.escape(value)}"], [data-scaffold-key="${CSS.escape(value)}"]`);
-        if (target && run && !run.slots.includes(target)) return null;
+        if (target && (!slotAllowed(binding, target) || (run && !run.slots.includes(target)))) return null;
         return target;
       }
       function markRunFailure(run, target) { if (run && target) run.failedSlots.add(target); }
@@ -561,7 +570,7 @@ fn shell_pane_structure_owner_client() -> &'static str {
       stats: { root: '[data-stats-viewport]', required: ['[data-stat-element-id]'] },
       backblaze: { root: '[data-backblaze-tablet]', required: ['[data-backblaze-ribbon]', '[data-backblaze-panel]'] },
       'wake-on-lan': { root: '[data-wake-on-lan-tablet]', required: ['[data-wake-on-lan-rows]'] },
-      test: { root: '[data-native-stock-test="true"]', required: ['.ui-tab-group', '.test-tablet-content'] },
+      test: { root: '[data-native-stock-test="true"]', required: ['.ui-tab-group', '.test-tablet-content'], slots: [] },
       linker: {
         root: '#linker-fragment[data-linker-state][data-linker-path]',
         swap: 'outerHTML',
