@@ -398,7 +398,10 @@ fn shell_immortal_floor_owner_client() -> &'static str {
           return true;
         }
         const outgoing = activeGuest;
-        const hadHealthyFloor = state === 'Seated' && Boolean(outgoing);
+        const activePanes = panes.filter(pane => pane.classList.contains('active'));
+        const outgoingPane = outgoing && activePanes.length === 1 && activePanes[0].dataset.panePanel === outgoing
+          && activePanes[0].parentElement === immortalFloorGuestSlot && activePanes[0].isConnected ? activePanes[0] : null;
+        const hadHealthyFloor = Boolean(outgoingPane && healthyStructure(outgoingPane, outgoing, outgoingPane.innerHTML));
         if (crossingGuest) window.retireGuestScaffoldSlots?.(crossingGuest, 'Guest crossing replaced');
         if (outgoing) window.retireGuestScaffoldSlots?.(outgoing, 'Guest replaced');
         const crossing = ++generation;

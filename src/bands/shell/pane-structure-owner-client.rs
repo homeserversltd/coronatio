@@ -1,6 +1,7 @@
 fn shell_pane_structure_owner_client() -> &'static str {
     r####"    const scaffoldSlotStructures = new WeakMap();
     const scaffoldDynamicAttributes = new Set(['data-scaffold-state', 'data-scaffold-pending', 'data-scaffold-error', 'data-scaffold-stale', 'data-scaffold-updated-at', 'aria-busy', 'aria-invalid', 'aria-selected', 'aria-checked', 'aria-pressed', 'checked', 'selected', 'value', 'open']);
+    const scaffoldLiveAttributes = new Set([...scaffoldDynamicAttributes, 'data-scaffold-status']);
     function scaffoldStructureSignature(node) {
       if (node.nodeType === Node.TEXT_NODE) return '#text';
       if (node.nodeType === Node.COMMENT_NODE) return '#comment';
@@ -28,19 +29,27 @@ fn shell_pane_structure_owner_client() -> &'static str {
       const sameKind = (left, right) => left.nodeType === right.nodeType && (left.nodeType !== Node.ELEMENT_NODE || left.tagName === right.tagName);
       const nodeKey = node => {
         if (node.nodeType !== Node.ELEMENT_NODE) return null;
-        if (node.id) return `id:${node.id}`;
         if (node.hasAttribute('data-scaffold-slot')) return `slot:${node.dataset.scaffoldSlot}`;
+        if (node.id) return `id:${node.id}`;
         if (node.hasAttribute('data-scaffold-key')) return `scaffold:${node.dataset.scaffoldKey}`;
         if (node.hasAttribute('data-linker-path')) return `linker:${node.dataset.linkerPath}`;
         if (node.hasAttribute('data-stat-element-id')) return `stat:${node.dataset.statElementId}`;
         return null;
       };
-      const morphAttributes = (current, next) => {
+      const sameScaffoldSlot = (current, next) => current.nodeType === Node.ELEMENT_NODE && next.nodeType === Node.ELEMENT_NODE
+        && current.hasAttribute('data-scaffold-slot') && next.hasAttribute('data-scaffold-slot')
+        && current.dataset.scaffoldSlot === next.dataset.scaffoldSlot;
+      const readyScaffoldSlot = node => !options.reset && !options.roleProjection && node.nodeType === Node.ELEMENT_NODE
+        && node.hasAttribute('data-scaffold-slot') && node.dataset.scaffoldState === 'ready';
+      const hasReadyScaffoldDescendant = node => node.nodeType === Node.ELEMENT_NODE
+        && Array.from(node.querySelectorAll('[data-scaffold-slot]')).some(readyScaffoldSlot);
+      const containsReadyScaffoldSlot = node => readyScaffoldSlot(node) || hasReadyScaffoldDescendant(node);
+      const morphAttributes = (current, next, preserved = null) => {
         Array.from(current.attributes).forEach(attribute => {
-          if (!next.hasAttribute(attribute.name)) { current.removeAttribute(attribute.name); mutated = true; }
+          if (!preserved?.has(attribute.name) && !next.hasAttribute(attribute.name)) { current.removeAttribute(attribute.name); mutated = true; }
         });
         Array.from(next.attributes).forEach(attribute => {
-          if (current.getAttribute(attribute.name) !== attribute.value) { current.setAttribute(attribute.name, attribute.value); mutated = true; }
+          if (!preserved?.has(attribute.name) && current.getAttribute(attribute.name) !== attribute.value) { current.setAttribute(attribute.name, attribute.value); mutated = true; }
         });
       };
       const morphChildren = (current, next) => {
@@ -50,6 +59,7 @@ fn shell_pane_structure_owner_client() -> &'static str {
         Array.from(next.childNodes).forEach((nextChild, index) => {
           const key = nodeKey(nextChild);
           let currentChild = key ? keyed.get(key) : previous[index];
+          if (currentChild && readyScaffoldSlot(currentChild) && !sameScaffoldSlot(currentChild, nextChild)) currentChild = null;
           if (currentChild && used.has(currentChild)) currentChild = null;
           if (!currentChild) {
             currentChild = nextChild.cloneNode(true);
@@ -65,11 +75,24 @@ fn shell_pane_structure_owner_client() -> &'static str {
           used.add(result);
         });
         Array.from(current.childNodes).forEach(child => {
+          if (!used.has(child) && containsReadyScaffoldSlot(child)) {
+            if (child.nodeType === Node.ELEMENT_NODE && !child.hidden) { child.hidden = true; mutated = true; }
+            return;
+          }
           if (!used.has(child)) { child.remove(); mutated = true; }
         });
       };
       const morphNode = (current, next) => {
-        if (!sameKind(current, next)) {
+        const sameSlot = sameScaffoldSlot(current, next);
+        const retainReadySlot = sameSlot && readyScaffoldSlot(current);
+        if (!sameKind(current, next) && !retainReadySlot) {
+          if (hasReadyScaffoldDescendant(current)) {
+            if (current.nodeType === Node.ELEMENT_NODE && next.nodeType === Node.ELEMENT_NODE) {
+              morphAttributes(current, next);
+              morphChildren(current, next);
+            }
+            return current;
+          }
           const replacement = next.cloneNode(true);
           current.replaceWith(replacement); mutated = true;
           if (replacement.nodeType === Node.ELEMENT_NODE && Array.isArray(options.insertedNodes)) options.insertedNodes.push(replacement);
@@ -80,7 +103,18 @@ fn shell_pane_structure_owner_client() -> &'static str {
           if (current.nodeValue !== next.nodeValue) { current.nodeValue = next.nodeValue; mutated = true; }
           return current;
         }
-        if (!options.reset && !options.roleProjection && current.hasAttribute('data-scaffold-slot') && next.hasAttribute('data-scaffold-slot') && current.dataset.scaffoldSlot === next.dataset.scaffoldSlot) {
+        if (retainReadySlot) {
+          const incomingShape = scaffoldStructureSignature(next);
+          morphAttributes(current, next, scaffoldLiveAttributes);
+          if (current.hasAttribute('data-stat-element-id')) {
+            const currentHeader = Array.from(current.children).find(child => child.classList.contains('stat-header'));
+            const nextHeader = Array.from(next.children).find(child => child.classList.contains('stat-header'));
+            if (currentHeader && nextHeader) morphNode(currentHeader, nextHeader);
+          }
+          scaffoldSlotStructures.set(current, incomingShape);
+          return current;
+        }
+        if (!options.reset && !options.roleProjection && sameSlot) {
           const incomingShape = scaffoldStructureSignature(next);
           const liveShape = scaffoldSlotStructures.get(current) || scaffoldStructureSignature(current);
           if (liveShape === incomingShape) {
@@ -108,11 +142,13 @@ fn shell_pane_structure_owner_client() -> &'static str {
         const preservedRootAttributes = (options.preserveOuterRootAttributes || [])
           .map(name => [name, target.getAttribute(name)])
           .filter(([, value]) => value !== null);
-        morphAttributes(target, roots[0]);
+        const readyOuterRoot = sameScaffoldSlot(target, roots[0]) && readyScaffoldSlot(target);
+        if (readyOuterRoot) morphNode(target, roots[0]);
+        else morphAttributes(target, roots[0]);
         preservedRootAttributes.forEach(([name, value]) => {
           if (!roots[0].hasAttribute(name)) target.setAttribute(name, value);
         });
-        morphChildren(target, roots[0]);
+        if (!readyOuterRoot) morphChildren(target, roots[0]);
       } else {
         morphChildren(target, template.content);
       }
