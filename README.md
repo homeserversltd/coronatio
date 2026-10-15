@@ -2,7 +2,7 @@
 
 Coronatio is a Rust web interface for a self-hosted appliance. It puts system status, service links, file upload, network controls, and other local tools behind one consistent tabbed interface.
 
-The binary ships with native tabs for Admin, Portals, Upload, Stats, backBlaze, Wake on LAN, Test, Linker, DHCP, Firewall, and DNS. Some tabs are available only in admin mode, and DHCP is hidden by default.
+The binary ships with native tabs for Admin, Portals, Upload, Stats, backBlaze, Test, Linker, DHCP, Firewall, and DNS. Some tabs are available only in admin mode, and DHCP is hidden by default. Stats also offers an admin-only Wake on LAN chooser.
 
 ## Loadable cartridges
 

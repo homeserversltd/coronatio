@@ -49,6 +49,7 @@ fn shell_document_3() -> &'static str {
         el.hidden = !headerState.isAdmin;
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
+      if (!headerState.isAdmin) closeWakeOnLanModal();
     }
     function retirePrivilegedClientState() {
       window.scaffoldRegistry?.retire('admin', 'Admin role retired');
@@ -97,7 +98,7 @@ fn shell_document_3() -> &'static str {
     }
     let adminDocumentPatchPendingHydration = false;
     function captureAdminDocumentSkeletons(root) {
-      ['admin', 'backblaze', 'wake-on-lan', 'firewall', 'unbound'].forEach(id => {
+      ['admin', 'backblaze', 'firewall', 'unbound'].forEach(id => {
         const pane = [...root.children].find(node => node instanceof HTMLElement
           && node.dataset.panePanel === id
           && node.hasAttribute('data-admin-document-patch-owned'));
@@ -109,7 +110,7 @@ fn shell_document_3() -> &'static str {
       });
     }
     function retireAdminDocumentSkeletons() {
-      ['admin', 'backblaze', 'wake-on-lan', 'firewall', 'unbound'].forEach(id => window.nativePaneSkeletonFloor?.retire(id));
+      ['admin', 'backblaze', 'firewall', 'unbound'].forEach(id => window.nativePaneSkeletonFloor?.retire(id));
       ['upload', 'stats', 'dhcp'].forEach(id => window.nativePaneSkeletonFloor?.retire(id, 'admin'));
     }
     function installAdminDocumentPatch(patch, tabsHtml) {
@@ -118,7 +119,7 @@ fn shell_document_3() -> &'static str {
       template.innerHTML = patch;
       const children = [...template.content.children];
       const marker = children.find(node => node.matches('[data-admin-document-patch="true"]'));
-      const paneIds = ['admin', 'backblaze', 'wake-on-lan', 'linker', 'firewall', 'unbound'];
+      const paneIds = ['admin', 'backblaze', 'linker', 'firewall', 'unbound'];
       const panesToInstall = children.filter(node => node.matches('[data-admin-document-patch-owned][data-pane-panel]'));
       const roleTemplates = children.filter(node => node.matches('template[data-admin-document-patch-owned][data-native-role-skeleton][data-role="admin"]'));
       const installedIds = new Set(panesToInstall.map(node => node.dataset.panePanel));
@@ -191,6 +192,7 @@ fn shell_document_3() -> &'static str {
     function modalTemplate(kind) {
       const indicator = indicatorModalTemplate(kind);
       if (indicator) return indicator;
+      if (kind === 'wake-on-lan') return wakeOnLanModalTemplate();
       if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p><p>Theme selection comes from homeserver.json global.theme.name through /api/themes.</p></div>`;
       return '';
     }
@@ -1224,6 +1226,7 @@ fn shell_document_3() -> &'static str {
       if (infoBody.querySelector('[data-modal-kind-body="power-meter"]')) cancelPowerCalibrationEditing();
       sourceCurrencyModalGeneration += 1;
       infoModalGeneration += 1;
+      invalidateWakeOnLanModal();
       clearTransmissionSecrets();
       const modalGeneration = sourceCurrencyModalGeneration;
       infoTitle.textContent = title;
@@ -1257,6 +1260,7 @@ fn shell_document_3() -> &'static str {
       if (infoBody.querySelector('[data-modal-kind-body="power-meter"]')) cancelPowerCalibrationEditing();
       sourceCurrencyModalGeneration += 1;
       infoModalGeneration += 1;
+      invalidateWakeOnLanModal();
       clearTransmissionSecrets();
       infoBackdrop.classList.remove('open');
       infoBackdrop.setAttribute('aria-hidden', 'true');
@@ -1661,6 +1665,7 @@ __NATIVE_HTMX_OWNER__
       }
       if (window.getImmortalFloorState?.() !== 'Seated') return;
       const active = currentActiveTabId();
+      if (active !== 'stats') closeWakeOnLanModal();
       if (!viewportFamilyAdmitted(active)) return;
       let binding = scaffoldRegistry.capture(active);
       if (!binding) binding = scaffoldRegistry.bind(active);
@@ -1680,7 +1685,6 @@ __NATIVE_HTMX_OWNER__
         if (binding) void readAdminMountDestinations(binding);
         reconcileAdminDiskSnapshot();
       }
-      if (active === 'wake-on-lan') hydrateWakeOnLan();
     }
     function schedulePulseRenewal(renewRoute) {
       clearPulseRenewal();

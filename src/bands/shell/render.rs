@@ -214,7 +214,7 @@ fn mark_patch_owned_pane(fragment: &mut String, id: &str) -> bool {
 }
 
 fn take_admin_panes(shell: &mut String) -> Vec<String> {
-    ["backblaze", "wake-on-lan", "linker", "firewall", "unbound"]
+    ["backblaze", "linker", "firewall", "unbound"]
         .into_iter()
         .filter_map(|id| {
             let (start, end, _) = pane_fragment_range(shell, id)?;
@@ -357,7 +357,7 @@ fn render_upload_tree_placeholder() -> &'static str {
 fn render_crown_shell_for_session(session: Session) -> String {
     let mut shell = build_crown_shell_source(session);
     if session == Session::Guest {
-        for id in ["admin", "backblaze", "wake-on-lan", "linker", "firewall", "unbound"] {
+        for id in ["admin", "backblaze", "linker", "firewall", "unbound"] {
             shell = remove_admin_only_pane_from_guest_shell(shell, id);
         }
         shell = remove_admin_only_markup(shell);

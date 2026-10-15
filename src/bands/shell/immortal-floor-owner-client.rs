@@ -527,7 +527,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         Object.keys(nativePaneContracts).forEach(id => scaffoldRegistry.retire(id, 'Admin role retired'));
         ['stats', 'upload', 'dhcp'].forEach(id => window.nativePaneSkeletonFloor?.reset(id, 'guest'));
         const adminOnlyPaneIds = new Set([
-          'admin', 'backblaze', 'wake-on-lan', 'linker', 'firewall', 'unbound',
+          'admin', 'backblaze', 'linker', 'firewall', 'unbound',
           ...tabs.filter(tab => tab.dataset.adminOnly === 'true').map(tab => tab.dataset.pane)
         ]);
         const adminOnly = id => Boolean(id && adminOnlyPaneIds.has(id));

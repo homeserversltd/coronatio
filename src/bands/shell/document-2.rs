@@ -60,6 +60,7 @@ fn shell_document_2() -> &'static str {
         </article>
       </section>
       <section class="pane active" id="pane-stats" data-pane-panel="stats" data-view-panel="stats" data-scaffold-root data-guest-id="stats" data-scaffold-version="1" role="tabpanel" aria-label="Stats">
+        <div class="stats-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-admin-only="true" data-wake-on-lan-open hidden aria-hidden="true">Wake on LAN</button></div>
         <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
           __STATS_ELEMENTS_FRAGMENT__
         </div>
@@ -129,9 +130,6 @@ fn shell_document_2() -> &'static str {
             </div>
           </section><section class="backblaze-view" data-backblaze-panel="ledger" role="tabpanel" hidden><div class="backblaze-two-pane"><aside class="backblaze-bucket-pane"><header><h2>Buckets</h2></header><div data-backblaze-ledger-buckets data-scaffold-slot="backblaze-ledger-buckets" data-scaffold-placeholder="backup buckets" aria-live="polite"><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span></div></div></aside><section class="backblaze-items-pane" data-backblaze-ledger data-scaffold-slot="backblaze-ledger" data-scaffold-placeholder="backup ledger" aria-live="polite"><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__block"></span></div></section></div></section>
         </article>
-      </section>
-      <section class="pane" id="pane-wake-on-lan" data-pane-panel="wake-on-lan" data-view-panel="wake-on-lan" data-admin-only-pane="true" data-scaffold-root data-guest-id="wake-on-lan" data-scaffold-version="1" role="tabpanel" aria-label="Wake on LAN">
-        <div class="wake-on-lan-tablet" data-wake-on-lan-tablet><header class="wake-on-lan-header"><div><h2>Wake on LAN</h2><p>Devices known to DHCP.</p></div></header><div class="wake-on-lan-error" data-wake-on-lan-error role="alert" hidden></div><ul class="wake-on-lan-rows" data-wake-on-lan-rows data-scaffold-slot="wakeonlan-devices" data-scaffold-placeholder="known devices" aria-live="polite"><li class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span></li></ul></div>
       </section>
       <section class="pane" id="pane-linker" data-pane-panel="linker" data-view-panel="linker" data-admin-only-pane="true" role="tabpanel" aria-label="Linker" data-admin-only="true" data-admin-viewport="linker">
         <article class="linker-tablet" data-linker-tablet><p>Linker admission is loaded when this pane is admitted.</p></article>

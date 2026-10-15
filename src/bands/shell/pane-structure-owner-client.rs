@@ -118,7 +118,7 @@ fn shell_pane_structure_owner_client() -> &'static str {
       }
       return mutated;
     }
-    const nativeHeldPaneIds = new Set(['admin', 'upload', 'stats', 'backblaze', 'wake-on-lan', 'dhcp', 'firewall', 'unbound']);
+    const nativeHeldPaneIds = new Set(['admin', 'upload', 'stats', 'backblaze', 'dhcp', 'firewall', 'unbound']);
     const nativePaneSkeletons = new Map();
     function nativePaneSkeletonMap(id) {
       let roles = nativePaneSkeletons.get(String(id));
@@ -642,7 +642,6 @@ fn shell_pane_structure_owner_client() -> &'static str {
       upload: { root: '[data-upload-viewport]', required: ['[data-upload-tree]'], held: true },
       stats: { root: '[data-stats-viewport]', required: ['[data-stat-element-id]'], held: true },
       backblaze: { root: '[data-backblaze-tablet]', required: ['[data-backblaze-ribbon]', '[data-backblaze-panel]'], held: true },
-      'wake-on-lan': { root: '[data-wake-on-lan-tablet]', required: ['[data-wake-on-lan-rows]'], held: true },
       test: { root: '[data-native-stock-test="true"]', required: ['.ui-tab-group', '.test-tablet-content'], slots: [] },
       linker: {
         root: '#linker-fragment[data-linker-state][data-linker-path]',
