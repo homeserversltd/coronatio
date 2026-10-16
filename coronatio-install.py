@@ -180,9 +180,87 @@ def durable_copy(source: Path, destination: Path) -> None:
     fsync_dir(destination.parent)
 
 
-def acquire_install_lock(runtime_root: Path, *, expected_uid: int) -> int:
+def acquire_install_lock(
+    runtime_root: Path,
+    *,
+    expected_uid: int,
+    normalize_root_ownership: bool = False,
+) -> int:
     """Acquire the fixed, nofollow process lock; caller owns the descriptor lifetime."""
     lock = runtime_root / LOCK_NAME
+    normalize = normalize_root_ownership and expected_uid == 0 and os.geteuid() == 0
+    if normalize_root_ownership and not normalize:
+        raise RuntimeError("root ownership normalization requires the non-scratch root installer")
+
+    if normalize:
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        root_fd: int | None = None
+        fd: int | None = None
+        try:
+            root_before = runtime_root.lstat()
+            if stat.S_ISLNK(root_before.st_mode) or not stat.S_ISDIR(root_before.st_mode) or root_before.st_uid != 0 or root_before.st_mode & 0o022:
+                raise RuntimeError(f"unsafe runtime root: {runtime_root}")
+            root_fd = os.open(runtime_root, directory_flags)
+
+            def runtime_binding_is_safe() -> bool:
+                opened = os.fstat(root_fd)
+                named = runtime_root.lstat()
+                return (
+                    stat.S_ISDIR(opened.st_mode)
+                    and not stat.S_ISLNK(named.st_mode)
+                    and stat.S_ISDIR(named.st_mode)
+                    and opened.st_uid == 0
+                    and not opened.st_mode & 0o022
+                    and (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino)
+                )
+
+            if not runtime_binding_is_safe():
+                raise RuntimeError(f"unsafe runtime root: {runtime_root}")
+            fd = os.open(
+                LOCK_NAME,
+                os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+                dir_fd=root_fd,
+            )
+
+            def lock_binding_is_safe() -> bool:
+                opened = os.fstat(fd)
+                named = os.stat(LOCK_NAME, dir_fd=root_fd, follow_symlinks=False)
+                return (
+                    stat.S_ISREG(opened.st_mode)
+                    and opened.st_nlink == 1
+                    and stat.S_ISREG(named.st_mode)
+                    and (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino)
+                )
+
+            if not lock_binding_is_safe():
+                raise RuntimeError("unsafe installer lock file")
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise RuntimeError("another Coronatio installer is active") from exc
+            if not runtime_binding_is_safe() or not lock_binding_is_safe():
+                raise RuntimeError("unsafe installer lock file")
+            if os.fstat(fd).st_uid != expected_uid:
+                os.fchown(fd, expected_uid, -1)
+            if (
+                not runtime_binding_is_safe()
+                or not lock_binding_is_safe()
+                or os.fstat(fd).st_uid != expected_uid
+            ):
+                raise RuntimeError("unsafe installer lock file")
+            return fd
+        except BaseException:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            raise
+        finally:
+            if root_fd is not None:
+                os.close(root_fd)
+
     try:
         fd = os.open(lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
         info = os.fstat(fd)
@@ -540,14 +618,169 @@ def ensure_owned_directory(path: Path, expected_uid: int, label: str) -> None:
         raise RuntimeError(f"unsafe {label}: {path}")
 
 
-def ensure_runtime_parents(runtime_root: Path, binary_dest: Path, *, expected_uid: int) -> None:
+def ensure_runtime_parents(
+    runtime_root: Path,
+    binary_dest: Path,
+    *,
+    expected_uid: int,
+    normalize_root_ownership: bool = False,
+) -> None:
     """Refuse symlink/non-directory parents before creating transaction stages."""
+    normalize = normalize_root_ownership and expected_uid == 0 and os.geteuid() == 0
+    if normalize_root_ownership and not normalize:
+        raise RuntimeError("root ownership normalization requires the non-scratch root installer")
     for parent in (runtime_root.parent, binary_dest.parent):
-        if parent.exists() or parent.is_symlink():
+        if normalize:
+            directory_flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            if not parent.is_absolute() or ".." in parent.parts:
+                raise RuntimeError(f"unsafe fixed product parent: {parent}")
+
+            opened_dirs: list[int] = []
+            component_names: list[str] = []
+            try:
+                try:
+                    root_fd = os.open("/", directory_flags)
+                except OSError as exc:
+                    raise RuntimeError("unsafe fixed product parent: /") from exc
+                opened_dirs.append(root_fd)
+
+                def verify_opened_chain() -> None:
+                    for index, directory_fd in enumerate(opened_dirs):
+                        try:
+                            opened = os.fstat(directory_fd)
+                            named = (
+                                Path("/").lstat()
+                                if index == 0
+                                else os.stat(
+                                    component_names[index - 1],
+                                    dir_fd=opened_dirs[index - 1],
+                                    follow_symlinks=False,
+                                )
+                            )
+                        except OSError as exc:
+                            binding = "/" if index == 0 else component_names[index - 1]
+                            raise RuntimeError(f"unsafe fixed product parent: {binding}") from exc
+                        if (
+                            stat.S_ISLNK(named.st_mode)
+                            or not stat.S_ISDIR(named.st_mode)
+                            or not stat.S_ISDIR(opened.st_mode)
+                            or opened.st_uid != expected_uid
+                            or opened.st_mode & 0o022
+                            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+                        ):
+                            binding = "/" if index == 0 else component_names[index - 1]
+                            raise RuntimeError(f"unsafe fixed product parent: {binding}")
+
+                verify_opened_chain()
+                for component in parent.parts[1:]:
+                    verify_opened_chain()
+                    parent_fd = opened_dirs[-1]
+                    try:
+                        os.stat(component, dir_fd=parent_fd, follow_symlinks=False)
+                    except FileNotFoundError:
+                        try:
+                            os.mkdir(component, 0o755, dir_fd=parent_fd)
+                        except FileExistsError:
+                            pass
+                        except OSError as exc:
+                            raise RuntimeError(f"unsafe fixed product parent: {parent}") from exc
+                    except OSError as exc:
+                        raise RuntimeError(f"unsafe fixed product parent: {parent}") from exc
+                    try:
+                        child_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                    except OSError as exc:
+                        raise RuntimeError(f"unsafe fixed product parent: {parent}") from exc
+                    opened_dirs.append(child_fd)
+                    component_names.append(component)
+                    verify_opened_chain()
+            finally:
+                for directory_fd in reversed(opened_dirs):
+                    os.close(directory_fd)
+        elif parent.exists() or parent.is_symlink():
             ensure_owned_directory(parent, expected_uid, "fixed product parent")
         else:
             parent.mkdir(parents=True, mode=0o755)
             ensure_owned_directory(parent, expected_uid, "created product parent")
+
+
+def ensure_runtime_root(
+    runtime_root: Path,
+    *,
+    expected_uid: int,
+    normalize_root_ownership: bool = False,
+) -> None:
+    """Create or validate the runtime directory; root mode changes only its inode owner."""
+    normalize = normalize_root_ownership and expected_uid == 0 and os.geteuid() == 0
+    if normalize_root_ownership and not normalize:
+        raise RuntimeError("root ownership normalization requires the non-scratch root installer")
+    if not normalize:
+        runtime_root.mkdir(parents=False, exist_ok=True)
+        ensure_owned_directory(runtime_root, expected_uid, "runtime root")
+        return
+
+    if not runtime_root.is_absolute() or runtime_root.name in {"", ".", ".."}:
+        raise RuntimeError(f"unsafe runtime root: {runtime_root}")
+    parent = runtime_root.parent
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        parent_before = parent.lstat()
+        parent_fd = os.open(parent, directory_flags)
+    except OSError as exc:
+        raise RuntimeError(f"unsafe fixed product parent: {parent}") from exc
+    try:
+        parent_opened = os.fstat(parent_fd)
+        if (
+            stat.S_ISLNK(parent_before.st_mode)
+            or not stat.S_ISDIR(parent_before.st_mode)
+            or parent_opened.st_uid != 0
+            or parent_opened.st_mode & 0o022
+            or (parent_opened.st_dev, parent_opened.st_ino) != (parent_before.st_dev, parent_before.st_ino)
+        ):
+            raise RuntimeError(f"unsafe fixed product parent: {parent}")
+        try:
+            os.mkdir(runtime_root.name, 0o755, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+        try:
+            runtime_fd = os.open(runtime_root.name, directory_flags, dir_fd=parent_fd)
+        except OSError as exc:
+            raise RuntimeError(f"unsafe runtime root: {runtime_root}") from exc
+        try:
+            def runtime_binding_is_safe() -> tuple[os.stat_result, os.stat_result]:
+                opened = os.fstat(runtime_fd)
+                named = os.stat(runtime_root.name, dir_fd=parent_fd, follow_symlinks=False)
+                if (
+                    not stat.S_ISDIR(opened.st_mode)
+                    or not stat.S_ISDIR(named.st_mode)
+                    or opened.st_mode & 0o022
+                    or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+                ):
+                    raise RuntimeError(f"unsafe runtime root: {runtime_root}")
+                return opened, named
+
+            opened, _ = runtime_binding_is_safe()
+            if opened.st_uid != expected_uid:
+                os.fchown(runtime_fd, expected_uid, -1)
+            opened, _ = runtime_binding_is_safe()
+            if opened.st_uid != expected_uid:
+                raise RuntimeError(f"unsafe runtime root: {runtime_root}")
+            parent_after = os.fstat(parent_fd)
+            parent_named_after = parent.lstat()
+            if (
+                parent_after.st_uid != 0
+                or parent_after.st_mode & 0o022
+                or (parent_after.st_dev, parent_after.st_ino)
+                != (parent_named_after.st_dev, parent_named_after.st_ino)
+            ):
+                raise RuntimeError(f"unsafe fixed product parent: {parent}")
+        finally:
+            os.close(runtime_fd)
+    finally:
+        os.close(parent_fd)
 
 
 def result_from_manifest(status: str, manifest: dict[str, str]) -> ConvergeResult:
@@ -557,10 +790,18 @@ def result_from_manifest(status: str, manifest: dict[str, str]) -> ConvergeResul
     return ConvergeResult(status, values[0], values[1], values[2], values[3])
 
 
-def converge(*, runtime_root: Path, binary_dest: Path, health_url: str, retries: int, delay_seconds: float, timeout_seconds: float, cargo: str | None = None, expected_uid: int = 0) -> ConvergeResult:
-    ensure_runtime_parents(runtime_root, binary_dest, expected_uid=expected_uid)
-    runtime_root.mkdir(parents=False, exist_ok=True)
-    ensure_owned_directory(runtime_root, expected_uid, "runtime root")
+def converge(*, runtime_root: Path, binary_dest: Path, health_url: str, retries: int, delay_seconds: float, timeout_seconds: float, cargo: str | None = None, expected_uid: int = 0, normalize_root_ownership: bool = False) -> ConvergeResult:
+    ensure_runtime_parents(
+        runtime_root,
+        binary_dest,
+        expected_uid=expected_uid,
+        normalize_root_ownership=normalize_root_ownership,
+    )
+    ensure_runtime_root(
+        runtime_root,
+        expected_uid=expected_uid,
+        normalize_root_ownership=normalize_root_ownership,
+    )
     recover_transaction(runtime_root, binary_dest)
     head = source_head(); assert_clean_snapshot(head)
     installed = read_manifest(runtime_root / MANIFEST_NAME)
@@ -747,13 +988,26 @@ def main(argv: list[str] | None = None) -> int:
         else:
             scratch = args.scratch_root is not None
             expected_uid = os.geteuid() if scratch else 0
+            normalize_root_ownership = not scratch and expected_uid == 0 and os.geteuid() == 0
             runtime_root, binary_dest = (
                 scratch_destinations(args.scratch_root) if scratch else (RUNTIME_ROOT, BINARY_DEST)
             )
-            ensure_runtime_parents(runtime_root, binary_dest, expected_uid=expected_uid)
-            runtime_root.mkdir(parents=False, exist_ok=True)
-            ensure_owned_directory(runtime_root, expected_uid, "runtime root")
-            lock_fd = acquire_install_lock(runtime_root, expected_uid=expected_uid)
+            ensure_runtime_parents(
+                runtime_root,
+                binary_dest,
+                expected_uid=expected_uid,
+                normalize_root_ownership=normalize_root_ownership,
+            )
+            ensure_runtime_root(
+                runtime_root,
+                expected_uid=expected_uid,
+                normalize_root_ownership=normalize_root_ownership,
+            )
+            lock_fd = acquire_install_lock(
+                runtime_root,
+                expected_uid=expected_uid,
+                normalize_root_ownership=normalize_root_ownership,
+            )
             converged = converge(
                 runtime_root=runtime_root,
                 binary_dest=binary_dest,
@@ -762,6 +1016,7 @@ def main(argv: list[str] | None = None) -> int:
                 delay_seconds=args.health_delay,
                 timeout_seconds=args.health_timeout,
                 expected_uid=expected_uid,
+                normalize_root_ownership=normalize_root_ownership,
             )
             observed = health_gate(args.health_url, source_sha, args.health_retries, args.health_delay, args.health_timeout)
             health = health_receipt(
