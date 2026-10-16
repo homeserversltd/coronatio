@@ -1,6 +1,108 @@
 const TRANSMISSION_KEYS_READ_TARGET: &str = "/api/v1/transmission/keys";
 const TRANSMISSION_KEYS_REPLACE_TARGET: &str = "/api/v1/transmission/keys/replace";
 const TRANSMISSION_KEYS_ROTATE_TARGET: &str = "/api/v1/transmission/keys/rotate";
+const TRANSMISSION_VPN_SETTINGS_TARGET: &str = "/api/v1/transmission/vpn/settings";
+
+async fn transmission_vpn_settings_get_route(headers: axum::http::HeaderMap) -> Response {
+    if session_projection_from_headers(&headers).await != Session::Admin {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "ok": false,
+                "firstMissingSignal": "admin-session-required"
+            })),
+        ).into_response();
+    }
+    let readback = match tokio::task::spawn_blocking(|| caduceus_http("GET", TRANSMISSION_VPN_SETTINGS_TARGET)).await {
+        Ok(readback) => readback,
+        Err(_) => return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "ok": false,
+                "firstMissingSignal": "transmission-vpn-settings-read-task-failed"
+            })),
+        ).into_response(),
+    };
+    let status = if readback.ok {
+        StatusCode::OK
+    } else if (400..=599).contains(&readback.status) {
+        StatusCode::from_u16(readback.status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE)
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, Json(readback.body)).into_response()
+}
+
+async fn transmission_vpn_settings_post_route(headers: axum::http::HeaderMap, body: Bytes) -> Response {
+    let payload: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(value) => value,
+        Err(_) => return transmission_vpn_settings_invalid_request_response(),
+    };
+    if !payload.is_object() || !payload.get("transmission").is_some_and(serde_json::Value::is_object) {
+        return transmission_vpn_settings_invalid_request_response();
+    }
+    let request_headers = headers.clone();
+    let readback = tokio::task::spawn_blocking(move || {
+        caduceus_actuate_json_with_timeout(
+            &mutation_authority(),
+            &request_headers,
+            MutationActionTarget::attended_parent("coronatio.transmission.vpn.settings", TRANSMISSION_VPN_SETTINGS_TARGET),
+            TRANSMISSION_VPN_SETTINGS_TARGET,
+            payload,
+            std::time::Duration::from_secs(30),
+        )
+    })
+    .await
+    .unwrap_or_else(|_| mutation_task_failure_readback(TRANSMISSION_VPN_SETTINGS_TARGET));
+    let local_refusal = readback.body == serde_json::json!({"error": "caduceus-mutation-refused"});
+    let status = if readback.ok {
+        StatusCode::OK
+    } else if !local_refusal && (400..=599).contains(&readback.status) {
+        StatusCode::from_u16(readback.status).unwrap_or_else(|_| mutation_response_status(&readback))
+    } else {
+        mutation_response_status(&readback)
+    };
+    let failure_signal = (!readback.ok).then(|| transmission_vpn_settings_refusal_signal(&readback));
+    let mut body = readback.body;
+    if let Some(signal) = failure_signal {
+        if let Some(object) = body.as_object_mut() {
+            object.insert("firstMissingSignal".to_string(), serde_json::Value::String(signal));
+        } else {
+            body = serde_json::json!({"readback": body, "firstMissingSignal": signal});
+        }
+    }
+    (status, Json(body)).into_response()
+}
+
+fn transmission_vpn_settings_refusal_signal(readback: &CaduceusHttpReadback) -> String {
+    let is_safe_named_signal = |candidate: &str| {
+        ["caduceus-", "transmission-", "agathodaimon-"]
+            .iter()
+            .any(|prefix| candidate.starts_with(prefix) && candidate.len() > prefix.len())
+            && candidate != "none"
+            && candidate.len() <= 160
+            && candidate.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+    };
+    let body_signal = readback.body.get("firstMissingSignal")
+        .or_else(|| readback.body.get("first_missing_signal"))
+        .and_then(serde_json::Value::as_str);
+    body_signal
+        .filter(|candidate| is_safe_named_signal(candidate))
+        .or_else(|| is_safe_named_signal(&readback.first_missing_signal).then_some(readback.first_missing_signal.as_str()))
+        .unwrap_or("transmission-vpn-settings-refused")
+        .to_string()
+}
+
+fn transmission_vpn_settings_invalid_request_response() -> Response {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "ok": false,
+            "accepted": false,
+            "firstMissingSignal": "transmission-vpn-settings-request-invalid"
+        })),
+    ).into_response()
+}
 
 async fn transmission_keys_route() -> Response {
     transmission_keys_read_response(caduceus_http("GET", TRANSMISSION_KEYS_READ_TARGET))

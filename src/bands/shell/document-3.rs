@@ -241,7 +241,9 @@ fn shell_document_3() -> &'static str {
       root.querySelectorAll('[data-transmission-password], [data-transmission-username], [data-authkey-input]').forEach(input => { input.value = ''; });
     }
     function clearTransmissionAdminDetails(root = infoBody) {
-      root.querySelectorAll('[data-transmission-detail], [data-transmission-condition], [data-transmission-key-presence], [data-transmission-service-active], [data-transmission-service-enabled], [data-vpn-projection-enabled], [data-vpn-projection-unit]').forEach(node => { node.textContent = 'Unavailable'; });
+      root.querySelectorAll('[data-transmission-detail], [data-transmission-condition], [data-transmission-key-presence], [data-transmission-service-active], [data-transmission-service-enabled], [data-vpn-projection-enabled], [data-vpn-projection-unit], [data-transmission-vpn-settings-status]').forEach(node => { node.textContent = 'Unavailable'; });
+      root.querySelectorAll('[data-transmission-vpn-control]').forEach(control => { control.disabled = true; if ('value' in control) control.value = ''; });
+      root.querySelectorAll('[data-transmission-vpn-settings-save]').forEach(control => { control.disabled = true; });
     }
     function invalidateAdminIndicatorModal() {
       infoModalGeneration += 1;
@@ -459,6 +461,134 @@ fn shell_document_3() -> &'static str {
         renderTransmissionKeyPresence(modal, null);
         renderTransmissionServiceStatus(modal, null);
       }
+    }
+    function transmissionVpnSettingsBlock(data) {
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+      const transmission = data.transmission;
+      if (!transmission || typeof transmission !== 'object' || Array.isArray(transmission)) return null;
+      const vpn = transmission.vpn;
+      if (vpn != null && (typeof vpn !== 'object' || Array.isArray(vpn))) return null;
+      return transmission;
+    }
+    function transmissionVpnSettingsSafeRefusalSignal(data) {
+      const candidate = readSignal(data, 'firstMissingSignal', 'first_missing_signal');
+      return candidate.length <= 160 && candidate.trim() === candidate &&
+        /^(?:caduceus-|transmission-|agathodaimon-)[A-Za-z0-9_.:-]+$/.test(candidate)
+        ? candidate
+        : '';
+    }
+    function transmissionVpnSettingsFormValues(transmission) {
+      const vpn = transmission?.vpn;
+      if (vpn != null && (typeof vpn !== 'object' || Array.isArray(vpn))) return null;
+      const protocol = vpn?.protocol == null || vpn.protocol === 'openvpn' ? 'openvpn' : (vpn.protocol === 'wireguard' ? 'wireguard' : null);
+      const region = vpn?.region == null ? '' : (typeof vpn.region === 'string' ? vpn.region : null);
+      const dip = vpn?.dip == null || vpn.dip === false ? 'off' : (vpn.dip === true ? 'on' : null);
+      const dns = vpn?.dns == null || vpn.dns === '1.1.1.1' ? '1.1.1.1' : (vpn.dns === 'provider' ? 'provider' : null);
+      const rescan = transmission?.rescan == null || transmission.rescan === false ? 'off' : (transmission.rescan === true ? 'on' : null);
+      if (!protocol || region === null || !dip || !dns || !rescan) return null;
+      return { protocol, region, dip, dns, rescan };
+    }
+    function cloneTransmissionVpnBlock(transmission) {
+      return JSON.parse(JSON.stringify(transmission));
+    }
+    function hydrateTransmissionVpnSettings(generation, modal) {
+      if (!headerState.isAdmin || !modal) return;
+      const statusNode = modal.querySelector('[data-transmission-vpn-settings-status]');
+      const save = modal.querySelector('[data-transmission-vpn-settings-save]');
+      const controls = [...modal.querySelectorAll('[data-transmission-vpn-control]')];
+      const protocol = modal.querySelector('[data-transmission-vpn-protocol]');
+      const region = modal.querySelector('[data-transmission-vpn-region]');
+      const dip = modal.querySelector('[data-transmission-vpn-dip]');
+      const dns = modal.querySelector('[data-transmission-vpn-dns]');
+      const rescan = modal.querySelector('[data-transmission-vpn-rescan]');
+      if (!statusNode || !save || controls.length !== 5 || !protocol || !region || !dip || !dns || !rescan) return;
+      const isCurrent = () => modalResponseIsCurrent(generation, modal, true);
+      let transmission = null;
+      let authoritative = false;
+      let saving = false;
+      const setLocked = locked => {
+        controls.forEach(control => { control.disabled = locked; });
+        save.disabled = locked || !authoritative || saving;
+      };
+      const setValues = values => {
+        protocol.value = values.protocol;
+        region.value = values.region;
+        region.placeholder = 'Automatic (leave blank)';
+        dip.value = values.dip;
+        dns.value = values.dns;
+        rescan.value = values.rescan;
+      };
+      setLocked(true);
+      statusNode.textContent = 'Loading VPN settings from Caduceus…';
+      save.addEventListener('click', async () => {
+        if (!isCurrent() || !authoritative || saving || !transmission) return;
+        const nextTransmission = cloneTransmissionVpnBlock(transmission);
+        if (nextTransmission.vpn == null) nextTransmission.vpn = {};
+        nextTransmission.vpn.protocol = protocol.value === 'wireguard' ? 'wireguard' : null;
+        nextTransmission.vpn.region = region.value.trim() ? region.value : null;
+        nextTransmission.vpn.dip = dip.value === 'on' ? true : null;
+        nextTransmission.vpn.dns = dns.value === 'provider' ? 'provider' : null;
+        nextTransmission.rescan = rescan.value === 'on' ? true : null;
+        saving = true;
+        setLocked(true);
+        statusNode.textContent = 'Saving VPN settings…';
+        try {
+          const response = await fetch('/api/v1/transmission/vpn/settings', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+            body: JSON.stringify({ transmission: nextTransmission })
+          });
+          const receipt = await response.json().catch(() => null);
+          if (!isCurrent()) return;
+          const written = transmissionVpnSettingsBlock(receipt);
+          const writtenValues = written && transmissionVpnSettingsFormValues(written);
+          const reportedSignal = readSignal(receipt, 'firstMissingSignal', 'first_missing_signal');
+          const refusalSignal = transmissionVpnSettingsSafeRefusalSignal(receipt);
+          const refused = receipt?.ok === false || receipt?.converged === false || receipt?.refused === true ||
+            receipt?.accepted === false || receipt?.success === false || receipt?.failed === true ||
+            Boolean(reportedSignal) || Boolean(receipt?.failure) || Boolean(receipt?.refusal) || Boolean(receipt?.error);
+          const confirmed = response.ok && !refused && receipt?.appliesOnNextStart === true && Boolean(writtenValues);
+          if (!confirmed) {
+            statusNode.textContent = refusalSignal === 'caduceus-attendance-required'
+              ? 'Caduceus attendance is required. Enter Admin Mode and provide your PIN, then try again.'
+              : refusalSignal
+                ? `VPN settings save not confirmed: ${refusalSignal}.`
+                : 'VPN settings save not confirmed.';
+            return;
+          }
+          transmission = cloneTransmissionVpnBlock(written);
+          setValues(writtenValues);
+          statusNode.textContent = 'applies on next start';
+        } catch (_) {
+          if (isCurrent()) statusNode.textContent = 'VPN settings save not confirmed.';
+        } finally {
+          if (isCurrent()) {
+            saving = false;
+            setLocked(!authoritative);
+          }
+        }
+      });
+      void (async () => {
+        try {
+          const response = await fetch('/api/v1/transmission/vpn/settings', { cache: 'no-store' });
+          const data = await response.json().catch(() => null);
+          if (!isCurrent()) return;
+          const signal = readSignal(data, 'firstMissingSignal', 'first_missing_signal');
+          const currentTransmission = transmissionVpnSettingsBlock(data);
+          const values = currentTransmission && transmissionVpnSettingsFormValues(currentTransmission);
+          const readRefused = data?.ok === false || data?.success === false || data?.accepted === false || data?.refused === true || Boolean(data?.refusal) || Boolean(data?.error);
+          if (!response.ok || readRefused || signal || !currentTransmission || !values) {
+            statusNode.textContent = 'VPN settings unavailable.';
+            return;
+          }
+          transmission = cloneTransmissionVpnBlock(currentTransmission);
+          setValues(values);
+          authoritative = true;
+          setLocked(false);
+          statusNode.textContent = 'VPN settings loaded from Caduceus.';
+        } catch (_) {
+          if (isCurrent()) statusNode.textContent = 'VPN settings unavailable.';
+        }
+      })();
     }
     function readSignal(data, ...keys) {
       for (const key of keys) {
@@ -1241,7 +1371,9 @@ fn shell_document_3() -> &'static str {
         tailnetInput?.addEventListener('input', () => { tailnetInput.dataset.userEdited = 'true'; });
       }
       if (kind === 'openvpn' && headerState.isAdmin) {
-        void hydrateTransmissionAdminReads(infoModalGeneration, infoBody.querySelector('[data-modal-kind-body="openvpn"]'));
+        const transmissionModal = infoBody.querySelector('[data-modal-kind-body="openvpn"]');
+        void hydrateTransmissionAdminReads(infoModalGeneration, transmissionModal);
+        void hydrateTransmissionVpnSettings(infoModalGeneration, transmissionModal);
       }
       if (kind === 'source-currency') {
         setSourceCurrencyIndicatorState(sourceCurrencyUpdateState.latestEnvelope);

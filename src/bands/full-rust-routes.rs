@@ -61,6 +61,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/transmission/keys", get(transmission_keys_route))
         .route("/api/transmission/keys/replace", post(transmission_keys_replace_route))
         .route("/api/transmission/keys/rotate", post(transmission_keys_rotate_route))
+        .route("/api/v1/transmission/vpn/settings", get(transmission_vpn_settings_get_route).post(transmission_vpn_settings_post_route))
         .route("/api/files/browse", get(upload_browse_hierarchical_route))
         .route("/api/files/browse-hierarchical", get(upload_browse_hierarchical_route))
         .route("/api/files/upload", post(upload_file_route).layer(axum::extract::DefaultBodyLimit::disable()))
@@ -891,6 +892,7 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/transmission/keys", &["get"]),
         ("/api/transmission/keys/replace", &["post"]),
         ("/api/transmission/keys/rotate", &["post"]),
+        ("/api/v1/transmission/vpn/settings", &["get", "post"]),
         ("/api/files/browse", &["get"]),
         ("/api/files/browse-hierarchical", &["get"]),
         ("/api/files/upload", &["post"]),
