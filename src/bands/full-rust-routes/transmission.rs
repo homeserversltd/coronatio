@@ -38,7 +38,7 @@ async fn transmission_vpn_settings_post_route(headers: axum::http::HeaderMap, bo
         Ok(value) => value,
         Err(_) => return transmission_vpn_settings_invalid_request_response(),
     };
-    if !payload.is_object() || !payload.get("transmission").is_some_and(serde_json::Value::is_object) {
+    if !payload.is_object() {
         return transmission_vpn_settings_invalid_request_response();
     }
     let request_headers = headers.clone();

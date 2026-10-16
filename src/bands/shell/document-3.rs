@@ -464,11 +464,9 @@ fn shell_document_3() -> &'static str {
     }
     function transmissionVpnSettingsBlock(data) {
       if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
-      const transmission = data.transmission;
-      if (!transmission || typeof transmission !== 'object' || Array.isArray(transmission)) return null;
-      const vpn = transmission.vpn;
+      const vpn = data.vpn;
       if (vpn != null && (typeof vpn !== 'object' || Array.isArray(vpn))) return null;
-      return transmission;
+      return data;
     }
     function transmissionVpnSettingsSafeRefusalSignal(data) {
       const candidate = readSignal(data, 'firstMissingSignal', 'first_missing_signal');
@@ -477,19 +475,16 @@ fn shell_document_3() -> &'static str {
         ? candidate
         : '';
     }
-    function transmissionVpnSettingsFormValues(transmission) {
-      const vpn = transmission?.vpn;
+    function transmissionVpnSettingsFormValues(settings) {
+      const vpn = settings?.vpn;
       if (vpn != null && (typeof vpn !== 'object' || Array.isArray(vpn))) return null;
       const protocol = vpn?.protocol == null || vpn.protocol === 'openvpn' ? 'openvpn' : (vpn.protocol === 'wireguard' ? 'wireguard' : null);
       const region = vpn?.region == null ? '' : (typeof vpn.region === 'string' ? vpn.region : null);
       const dip = vpn?.dip == null || vpn.dip === false ? 'off' : (vpn.dip === true ? 'on' : null);
       const dns = vpn?.dns == null || vpn.dns === '1.1.1.1' ? '1.1.1.1' : (vpn.dns === 'provider' ? 'provider' : null);
-      const rescan = transmission?.rescan == null || transmission.rescan === false ? 'off' : (transmission.rescan === true ? 'on' : null);
+      const rescan = settings?.rescan == null || settings.rescan === false ? 'off' : (settings.rescan === true ? 'on' : null);
       if (!protocol || region === null || !dip || !dns || !rescan) return null;
       return { protocol, region, dip, dns, rescan };
-    }
-    function cloneTransmissionVpnBlock(transmission) {
-      return JSON.parse(JSON.stringify(transmission));
     }
     function hydrateTransmissionVpnSettings(generation, modal) {
       if (!headerState.isAdmin || !modal) return;
@@ -522,20 +517,22 @@ fn shell_document_3() -> &'static str {
       statusNode.textContent = 'Loading VPN settings from Caduceus…';
       save.addEventListener('click', async () => {
         if (!isCurrent() || !authoritative || saving || !transmission) return;
-        const nextTransmission = cloneTransmissionVpnBlock(transmission);
-        if (nextTransmission.vpn == null) nextTransmission.vpn = {};
-        nextTransmission.vpn.protocol = protocol.value === 'wireguard' ? 'wireguard' : null;
-        nextTransmission.vpn.region = region.value.trim() ? region.value : null;
-        nextTransmission.vpn.dip = dip.value === 'on' ? true : null;
-        nextTransmission.vpn.dns = dns.value === 'provider' ? 'provider' : null;
-        nextTransmission.rescan = rescan.value === 'on' ? true : null;
+        const nextSettings = {
+          vpn: {
+            protocol: protocol.value === 'wireguard' ? 'wireguard' : null,
+            region: region.value.trim() ? region.value : null,
+            dip: dip.value === 'on' ? true : null,
+            dns: dns.value === 'provider' ? 'provider' : null
+          },
+          rescan: rescan.value === 'on' ? true : null
+        };
         saving = true;
         setLocked(true);
         statusNode.textContent = 'Saving VPN settings…';
         try {
           const response = await fetch('/api/v1/transmission/vpn/settings', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
-            body: JSON.stringify({ transmission: nextTransmission })
+            body: JSON.stringify(nextSettings)
           });
           const receipt = await response.json().catch(() => null);
           if (!isCurrent()) return;
@@ -546,7 +543,7 @@ fn shell_document_3() -> &'static str {
           const refused = receipt?.ok === false || receipt?.converged === false || receipt?.refused === true ||
             receipt?.accepted === false || receipt?.success === false || receipt?.failed === true ||
             Boolean(reportedSignal) || Boolean(receipt?.failure) || Boolean(receipt?.refusal) || Boolean(receipt?.error);
-          const confirmed = response.ok && !refused && receipt?.appliesOnNextStart === true && Boolean(writtenValues);
+          const confirmed = response.ok && receipt?.ok === true && !refused && receipt?.appliesOnNextStart === true && Boolean(writtenValues);
           if (!confirmed) {
             statusNode.textContent = refusalSignal === 'caduceus-attendance-required'
               ? 'Caduceus attendance is required. Enter Admin Mode and provide your PIN, then try again.'
@@ -555,7 +552,7 @@ fn shell_document_3() -> &'static str {
                 : 'VPN settings save not confirmed.';
             return;
           }
-          transmission = cloneTransmissionVpnBlock(written);
+          transmission = written;
           setValues(writtenValues);
           statusNode.textContent = 'applies on next start';
         } catch (_) {
@@ -575,12 +572,12 @@ fn shell_document_3() -> &'static str {
           const signal = readSignal(data, 'firstMissingSignal', 'first_missing_signal');
           const currentTransmission = transmissionVpnSettingsBlock(data);
           const values = currentTransmission && transmissionVpnSettingsFormValues(currentTransmission);
-          const readRefused = data?.ok === false || data?.success === false || data?.accepted === false || data?.refused === true || Boolean(data?.refusal) || Boolean(data?.error);
+          const readRefused = data?.ok !== true || data?.success === false || data?.accepted === false || data?.refused === true || Boolean(data?.refusal) || Boolean(data?.error);
           if (!response.ok || readRefused || signal || !currentTransmission || !values) {
             statusNode.textContent = 'VPN settings unavailable.';
             return;
           }
-          transmission = cloneTransmissionVpnBlock(currentTransmission);
+          transmission = currentTransmission;
           setValues(values);
           authoritative = true;
           setLocked(false);
