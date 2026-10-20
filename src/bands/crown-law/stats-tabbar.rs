@@ -546,43 +546,39 @@ fn stats_kea_leases_failure(signal: &'static str) -> (bool, Vec<StatsKeaLease>) 
 
 const STATS_IDENTITY_ROSTER_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 const STATS_IDENTITY_ROSTER_FAILED_TTL: std::time::Duration = std::time::Duration::from_secs(5);
-static STATS_IDENTITY_ROSTER_CACHE: OnceLock<Mutex<Option<(std::time::Instant, StatsKeaLeases)>>> =
+static STATS_IDENTITY_ROSTER_CACHE: OnceLock<Mutex<Option<(std::time::Instant, StatsKeaLeases, String)>>> =
     OnceLock::new();
 
-pub(crate) fn stats_identity_roster_cached() -> (std::time::Instant, StatsKeaLeases) {
+fn stats_identity_roster_failure(signal: &str) -> (StatsKeaLeases, String) {
+    let signal = signal.trim();
+    let signal = if signal.is_empty() || signal.eq_ignore_ascii_case("none") { "caduceus-lease-door-unavailable" } else { signal };
+    (StatsKeaLeases { status: "unavailable".to_string(), entries: Vec::new() }, signal.to_string())
+}
+
+pub(crate) fn stats_identity_roster_cached() -> (std::time::Instant, StatsKeaLeases, String) {
     let mut cache = STATS_IDENTITY_ROSTER_CACHE
         .get_or_init(Default::default)
         .lock()
         .unwrap();
-    if let Some((cached_at, cached_roster)) = cache.as_ref() {
+    if let Some((cached_at, cached_roster, cached_signal)) = cache.as_ref() {
         let ttl = if cached_roster.status == "available" {
             STATS_IDENTITY_ROSTER_TTL
         } else {
             STATS_IDENTITY_ROSTER_FAILED_TTL
         };
         if cached_at.elapsed() < ttl {
-            return (*cached_at, cached_roster.clone());
+            return (*cached_at, cached_roster.clone(), cached_signal.clone());
         }
     }
 
     let roster = caduceus_http("GET", "/api/v1/network/device");
-    let result = if !roster.ok {
-        StatsKeaLeases {
-            status: "unavailable".to_string(),
-            entries: Vec::new(),
-        }
+    let (result, signal) = if !roster.ok || roster.status == 0 {
+        stats_identity_roster_failure(&roster.first_missing_signal)
     } else {
         let notes = caduceus_http("GET", "/api/v1/network/notes");
-        if !notes.ok {
-            StatsKeaLeases {
-                status: "unavailable".to_string(),
-                entries: Vec::new(),
-            }
-        } else {
-            let notes = notes
-                .body
-                .get("notes")
-                .and_then(serde_json::Value::as_object);
+        if !notes.ok || notes.status == 0 {
+            stats_identity_roster_failure(&notes.first_missing_signal)
+        } else if let Some(notes) = notes.body.get("notes").and_then(serde_json::Value::as_object) {
             let payload = device_identity_payload(roster.body);
             let rows = payload
                 .as_array()
@@ -594,33 +590,37 @@ pub(crate) fn stats_identity_roster_cached() -> (std::time::Instant, StatsKeaLea
                         .or_else(|| payload.get("data").and_then(|data| data.get("devices")))
                         .and_then(serde_json::Value::as_array)
                         .cloned()
-                })
-                .unwrap_or_default();
-            let entries = rows
-                .into_iter()
-                .map(|mut row| {
-                    let note = row
-                        .get("mac")
-                        .and_then(serde_json::Value::as_str)
-                        .and_then(canonical_network_note_mac)
-                        .and_then(|mac| notes.and_then(|notes| notes.get(&mac)))
-                        .cloned()
-                        .unwrap_or(serde_json::Value::String(String::new()));
-                    if let Some(object) = row.as_object_mut() {
-                        object.insert("note".to_string(), note);
-                    }
-                    row
-                })
-                .collect();
-            StatsKeaLeases {
-                status: "available".to_string(),
-                entries,
+                });
+            match rows {
+                None => stats_identity_roster_failure("caduceus-device-roster-malformed"),
+                Some(rows) if rows.iter().any(|row| !row.is_object()) => stats_identity_roster_failure("caduceus-device-roster-malformed"),
+                Some(rows) => {
+                    let entries = rows
+                        .into_iter()
+                        .map(|mut row| {
+                            let note = row
+                                .get("mac")
+                                .and_then(serde_json::Value::as_str)
+                                .and_then(canonical_network_note_mac)
+                                .and_then(|mac| notes.get(&mac))
+                                .cloned()
+                                .unwrap_or(serde_json::Value::String(String::new()));
+                            if let Some(object) = row.as_object_mut() {
+                                object.insert("note".to_string(), note);
+                            }
+                            row
+                        })
+                        .collect();
+                    (StatsKeaLeases { status: "available".to_string(), entries }, String::new())
+                }
             }
+        } else {
+            stats_identity_roster_failure("caduceus-network-notes-malformed")
         }
     };
     let taken_at = std::time::Instant::now();
-    *cache = Some((taken_at, result.clone()));
-    (taken_at, result)
+    *cache = Some((taken_at, result.clone(), signal.clone()));
+    (taken_at, result, signal)
 }
 
 

@@ -429,7 +429,27 @@ fn shell_document_4() -> &'static str {
       const parsed = Date.parse(String(value || ''));
       return Number.isFinite(parsed) ? parsed : Date.now();
     }
+    function statsSourceStale(data) {
+      const stale = data?.telemetry?.sectionStale;
+      return ['cpu', 'memory', 'network', 'storage', 'io', 'processes'].some(section => stale?.[section] === true);
+    }
+    function statsSectionStale(data, section) { return data?.telemetry?.sectionStale?.[section] === true; }
+    function setStatsRendererLoading(elementId, loading, root = document) {
+      const header = root.querySelector(`[data-stat-element-id="${elementId}"] .stat-header`);
+      if (header) header.classList.toggle('stats-renderer-loading', Boolean(loading));
+    }
+    function statsRendererPresent(data, section, elementId, contentPresent) {
+      const stale = statsSectionStale(data, section);
+      const element = document.querySelector(`[data-stat-element-id="${elementId}"]`);
+      setStatsRendererLoading(elementId, stale);
+      if (stale) {
+        const age = section === 'keaLeases' ? data?.telemetry?.rosterSampleAgeMs : data?.telemetry?.sampleAgeMs;
+        if (age === null || age === undefined || element?.dataset.scaffoldState !== 'ready') return false;
+      }
+      return Boolean(contentPresent);
+    }
     function pushChartPoint(data, timestamp = Date.now()) {
+      if (statsSourceStale(data)) return false;
       const totals = statsNetworkTotals(data);
       const previousStamp = statsChartState.lastStamp;
       if (previousStamp !== null && timestamp < previousStamp) return false;
@@ -536,6 +556,7 @@ fn shell_document_4() -> &'static str {
       return statsCharts.io;
     }
     function renderCpuChart(data) {
+      const stale=statsSectionStale(data,'cpu'); setStatsRendererLoading('cpu-chart',stale); if(stale)return;
       const ctx = document.getElementById('cpuChart');
       if (ctx && window.Chart) {
         if (statsCharts.cpu && statsCharts.cpu.canvas !== ctx) destroyStatsChart('cpu');
@@ -570,6 +591,7 @@ fn shell_document_4() -> &'static str {
       return encodeURIComponent(raw).replace(/[^A-Za-z0-9_-]/g, '_') || fallback;
     }
     function renderNetwork(data) {
+      const stale=statsSectionStale(data,'network'); setStatsRendererLoading('network-chart',stale); if(stale)return;
       const ctx = document.getElementById('networkChart');
       if (ctx && window.Chart) {
         if (statsCharts.network && statsCharts.network.canvas !== ctx) destroyStatsChart('network');
@@ -597,6 +619,7 @@ fn shell_document_4() -> &'static str {
       }
     }
     function renderDiskIo(data) {
+      const stale=statsSectionStale(data,'io'); setStatsRendererLoading('io-section',stale); if(stale)return;
       const controls = document.querySelector('[data-device-controls]'), checked = new Map(Array.from(controls?.querySelectorAll('input[type="checkbox"]') || []).map(input => [input.name, input.checked])), devices = data.io?.devices || [];
       if (controls) morphLivePane(controls, devices.map(device => {
         const name = diskDisplayName(device), readName = `read-${name}`, writeName = `write-${name}`, readChecked = checked.has(readName) ? checked.get(readName) : true, writeChecked = checked.has(writeName) ? checked.get(writeName) : true;
@@ -631,11 +654,16 @@ fn shell_document_4() -> &'static str {
     }
     const lastGoodMemory = { memory: null, swap: null };
     function renderMemory(data) {
+      if (statsSectionStale(data,'memory')) { setStatsRendererLoading('memory-usage',true); return; }
       // A zero read is a dropped sample, never a real reading: hold the last known good.
       const freshMemory = data.resources?.memory || {};
       const freshSwap = data.resources?.swap || {};
-      if (Number(freshMemory.totalBytes) > 0 && Number(freshMemory.usedBytes) > 0) lastGoodMemory.memory = freshMemory;
-      if (Number(freshSwap.totalBytes) > 0) lastGoodMemory.swap = freshSwap;
+      const memoryValid = Number(freshMemory.totalBytes) > 0 && Number(freshMemory.usedBytes) > 0;
+      const swapValid = Number(freshSwap.totalBytes) > 0;
+      const holdingInvalidRead = (!memoryValid && Boolean(lastGoodMemory.memory)) || (!swapValid && Boolean(lastGoodMemory.swap));
+      setStatsRendererLoading('memory-usage',holdingInvalidRead);
+      if (memoryValid) lastGoodMemory.memory = freshMemory;
+      if (swapValid) lastGoodMemory.swap = freshSwap;
       const memory = lastGoodMemory.memory || freshMemory;
       const swap = lastGoodMemory.swap || freshSwap;
       const memoryPercent = Number(memory.percent || 0);
@@ -652,6 +680,7 @@ fn shell_document_4() -> &'static str {
       document.getElementById('swap-total').textContent = 'Total: ' + fmtBytes(swap.totalBytes);
     }
     function renderDiskUsage(data) {
+      const stale=statsSectionStale(data,'storage'); setStatsRendererLoading('disk-usage',stale); if(stale)return;
       const target = document.querySelector('[data-disk-usage-stats]');
       if (!target) return;
       morphLivePane(target, (data.storage || []).map((drive, index) => {
@@ -665,6 +694,7 @@ fn shell_document_4() -> &'static str {
     function renderStatsRoster(data, projection) {
       const binding = projection?.binding, run = projection?.run;
       if (!binding || binding.guest !== 'stats' || !scaffoldRegistry.current(binding, run)) return;
+      const stale=statsSectionStale(data,'keaLeases'); setStatsRendererLoading('kea-leases',stale,binding.root); if(stale)return;
       if (!headerState.isAdmin) {
         const target = binding.root.querySelector('[data-identity-roster-host="stats"] [data-identity-roster]');
         if (target && scaffoldRegistry.current(binding, run)) target.textContent = 'Network activity requires Admin Mode.';
@@ -705,6 +735,7 @@ fn shell_document_4() -> &'static str {
       catch (error) { if (statsAuthorizedBinding(binding) && errorNode) { errorNode.textContent = String(error); errorNode.hidden = false; } }
     }
     function renderProcesses(data) {
+      const stale=statsSectionStale(data,'processes'); setStatsRendererLoading('process-usage',stale); if(stale)return;
       const target = document.querySelector('[data-process-usage-list]');
       if (!target) return;
       const processes = data.processes || [];
@@ -848,13 +879,13 @@ fn shell_document_4() -> &'static str {
       });
     }
     const statsScaffoldFillers = Object.freeze({
-      'stats.cpu': { present: data => Boolean(data?.resources?.load && ['one', 'five', 'fifteen'].every(key => Object.prototype.hasOwnProperty.call(data.resources.load, key))), fill: data => renderCpuChart(data) },
-      'stats.network': { present: data => Boolean(data?.network && typeof data.network === 'object' && (Array.isArray(data.network.interfaces) || (Object.prototype.hasOwnProperty.call(data.network, 'receivedBytes') && Object.prototype.hasOwnProperty.call(data.network, 'sentBytes')))), fill: data => renderNetwork(data) },
-      'stats.io': { present: data => Boolean(data?.io && Array.isArray(data.io.devices)), fill: data => renderDiskIo(data) },
-      'stats.memory': { present: data => Boolean(data?.resources?.memory), fill: data => renderMemory(data) },
-      'stats.storage': { present: data => Array.isArray(data?.storage), fill: data => renderDiskUsage(data) },
-      'stats.kea-leases': { present: data => Array.isArray(data?.keaLeases?.entries), fill: (data, projection) => renderStatsRoster(data, projection) },
-      'stats.processes': { present: data => Array.isArray(data?.processes), fill: data => renderProcesses(data) }
+      'stats.cpu': { present: data => statsRendererPresent(data, 'cpu', 'cpu-chart', Boolean(data?.resources?.load && ['one', 'five', 'fifteen'].every(key => Object.prototype.hasOwnProperty.call(data.resources.load, key)))), fill: data => renderCpuChart(data) },
+      'stats.network': { present: data => statsRendererPresent(data, 'network', 'network-chart', Boolean(data?.network && typeof data.network === 'object' && (Array.isArray(data.network.interfaces) || (Object.prototype.hasOwnProperty.call(data.network, 'receivedBytes') && Object.prototype.hasOwnProperty.call(data.network, 'sentBytes'))))), fill: data => renderNetwork(data) },
+      'stats.io': { present: data => statsRendererPresent(data, 'io', 'io-section', Boolean(data?.io && Array.isArray(data.io.devices))), fill: data => renderDiskIo(data) },
+      'stats.memory': { present: data => statsRendererPresent(data, 'memory', 'memory-usage', Boolean(data?.resources?.memory)), fill: data => renderMemory(data) },
+      'stats.storage': { present: data => statsRendererPresent(data, 'storage', 'disk-usage', Array.isArray(data?.storage)), fill: data => renderDiskUsage(data) },
+      'stats.kea-leases': { present: data => statsRendererPresent(data, 'keaLeases', 'kea-leases', Array.isArray(data?.keaLeases?.entries)), fill: (data, projection) => renderStatsRoster(data, projection) },
+      'stats.processes': { present: data => statsRendererPresent(data, 'processes', 'process-usage', Array.isArray(data?.processes)), fill: data => renderProcesses(data) }
     });
     async function readBundledStats(context) {
       watchStatsPaneBinding(context.binding);

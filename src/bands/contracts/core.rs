@@ -163,7 +163,16 @@ fn project_system_stats_guest(raw: &StatsSnapshot, facts: &IrisFacts) -> SystemS
         network: network_visible.then(|| raw.network.clone()),
         io: io_visible.then(|| raw.io.clone()),
         processes: processes_visible.then(|| raw.processes.clone()),
-        telemetry: (cpu_visible || storage_visible).then(|| raw.telemetry.clone()),
+        telemetry: (cpu_visible || network_visible || io_visible || memory_visible || storage_visible || roster_visible || processes_visible).then(|| {
+            let mut telemetry = raw.telemetry.clone();
+            if !(cpu_visible || storage_visible) {
+                telemetry.load1 = None;
+                telemetry.cpu_temperature_celsius = None;
+                telemetry.service_health = None;
+                telemetry.storage_posture = None;
+            }
+            telemetry
+        }),
         kea_leases: roster_visible.then(|| raw.kea_leases.clone()),
         next_routes: raw.next_routes.clone(),
     }
@@ -343,6 +352,30 @@ struct StatsTelemetry {
     service_health: Option<String>,
     storage_posture: Option<String>,
     first_missing_signal: String,
+    #[serde(default)]
+    sample_age_ms: Option<u64>,
+    #[serde(default)]
+    last_missed_at: Option<u64>,
+    #[serde(default)]
+    roster_sample_age_ms: Option<u64>,
+    #[serde(default)]
+    roster_last_missed_at: Option<u64>,
+    #[serde(default)]
+    roster_first_missing_signal: String,
+    #[serde(default)]
+    section_stale: StatsSectionStale,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct StatsSectionStale {
+    cpu: bool,
+    memory: bool,
+    network: bool,
+    storage: bool,
+    io: bool,
+    processes: bool,
+    kea_leases: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

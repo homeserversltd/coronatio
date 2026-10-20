@@ -68,6 +68,25 @@
   margin-bottom: 16px;
 }
 
+.stat-header.stats-renderer-loading .visibility-toggle {
+  order: 0;
+}
+
+.stat-header.stats-renderer-loading::before {
+  content: "";
+  order: 1;
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: var(--warning);
+  opacity: 0.8;
+}
+
+.stat-header.stats-renderer-loading .stat-title {
+  order: 2;
+}
+
 .stat-title {
   margin: 0;
   color: var(--text);
