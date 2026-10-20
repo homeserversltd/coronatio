@@ -1,7 +1,15 @@
-async fn caduceus_status_route() -> impl IntoResponse {
-    let health = caduceus_http("GET", "/health");
-    let update = caduceus_http("GET", "/api/v1/update/status");
-    let staff = caduceus_http("GET", "/api/v1/doors");
+use std::time::Instant;
+
+async fn caduceus_status_route(_headers: axum::http::HeaderMap) -> impl IntoResponse {
+    let (health, update, staff) = load_trace::spawn_blocking_with_trace(|| (
+        caduceus_http("GET", "/health"),
+        caduceus_http("GET", "/api/v1/update/status"),
+        caduceus_http("GET", "/api/v1/doors"),
+    )).await.unwrap_or_else(|_| (
+        caduceus_failure_readback("/health", "caduceus-status-task-failed"),
+        caduceus_failure_readback("/api/v1/update/status", "caduceus-status-task-failed"),
+        caduceus_failure_readback("/api/v1/doors", "caduceus-status-task-failed"),
+    ));
     let ok = health.ok && update.ok && staff.ok;
     let first_missing_signal = if ok {
         "none".to_string()
@@ -272,10 +280,130 @@ fn caduceus_socket_path() -> std::path::PathBuf {
     crate::caduceus_access::staff_socket_path()
 }
 
+#[repr(C)]
+struct CoronatioSockAddrUn {
+    family: u16,
+    path: [i8; 108],
+}
+
+#[repr(C)]
+struct CoronatioPollFd {
+    fd: i32,
+    events: i16,
+    revents: i16,
+}
+
+#[link(name = "c")]
+extern "C" {
+    fn socket(domain: i32, socket_type: i32, protocol: i32) -> i32;
+    fn connect(fd: i32, address: *const CoronatioSockAddrUn, length: u32) -> i32;
+    fn poll(fds: *mut CoronatioPollFd, count: usize, timeout_ms: i32) -> i32;
+    fn getsockopt(fd: i32, level: i32, option: i32, value: *mut i32, length: *mut u32) -> i32;
+    fn close(fd: i32) -> i32;
+}
+
+fn bounded_unix_connect(path: &std::path::Path, timeout: Duration) -> std::io::Result<UnixStream> {
+    use std::{ffi::CString, os::unix::{ffi::OsStrExt, io::FromRawFd}};
+    let path = CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "socket path contains NUL"))?;
+    let bytes = path.as_bytes_with_nul();
+    if bytes.len() > 108 { return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "socket path too long")); }
+    let fd = unsafe { socket(1, 1 | 0o4000 | 0o2000000, 0) };
+    if fd < 0 { return Err(std::io::Error::last_os_error()); }
+    let mut address = CoronatioSockAddrUn { family: 1, path: [0; 108] };
+    for (slot, byte) in address.path.iter_mut().zip(bytes.iter().copied()) { *slot = byte as i8; }
+    let started = Instant::now();
+    let connected = unsafe { connect(fd, &address, std::mem::size_of::<CoronatioSockAddrUn>() as u32) };
+    if connected < 0 {
+        let error = std::io::Error::last_os_error();
+        if !matches!(error.raw_os_error(), Some(11 | 115)) {
+            unsafe { close(fd); }
+            return Err(error);
+        }
+        loop {
+            let Some(remaining) = timeout.checked_sub(started.elapsed()) else {
+                unsafe { close(fd); }
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Caduceus socket connect timed out"));
+            };
+            let millis = remaining.as_millis().max(1).min(i32::MAX as u128) as i32;
+            let mut poll_fd = CoronatioPollFd { fd, events: 0x0004, revents: 0 };
+            let result = unsafe { poll(&mut poll_fd, 1, millis) };
+            if result == 0 {
+                unsafe { close(fd); }
+                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Caduceus socket connect timed out"));
+            }
+            if result < 0 {
+                let error = std::io::Error::last_os_error();
+                if error.raw_os_error() == Some(4) { continue; }
+                unsafe { close(fd); }
+                return Err(error);
+            }
+            let mut socket_error = 0_i32;
+            let mut length = std::mem::size_of::<i32>() as u32;
+            if unsafe { getsockopt(fd, 1, 4, &mut socket_error, &mut length) } < 0 {
+                let error = std::io::Error::last_os_error();
+                unsafe { close(fd); }
+                return Err(error);
+            }
+            if socket_error != 0 {
+                unsafe { close(fd); }
+                return Err(std::io::Error::from_raw_os_error(socket_error));
+            }
+            break;
+        }
+    }
+    let stream = unsafe { UnixStream::from_raw_fd(fd) };
+    stream.set_nonblocking(false)?;
+    Ok(stream)
+}
+
+fn remaining_io_timeout(started: Instant, timeout: Duration) -> std::io::Result<Duration> {
+    timeout.checked_sub(started.elapsed()).filter(|remaining| !remaining.is_zero())
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::TimedOut, "Caduceus request deadline elapsed"))
+}
+
+fn write_request_until(stream: &mut UnixStream, request: &[u8], started: Instant, timeout: Duration) -> std::io::Result<()> {
+    let mut written = 0;
+    while written < request.len() {
+        stream.set_write_timeout(Some(remaining_io_timeout(started, timeout)?))?;
+        match std::io::Write::write(stream, &request[written..]) {
+            Ok(0) => return Err(std::io::Error::new(std::io::ErrorKind::WriteZero, "Caduceus request write returned zero")),
+            Ok(count) => written += count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+fn read_response_until(stream: &mut UnixStream, started: Instant, timeout: Duration) -> std::io::Result<String> {
+    let mut response = Vec::new();
+    let mut chunk = [0_u8; 8192];
+    loop {
+        stream.set_read_timeout(Some(remaining_io_timeout(started, timeout)?))?;
+        match std::io::Read::read(stream, &mut chunk) {
+            Ok(0) => break,
+            Ok(count) => response.extend_from_slice(&chunk[..count]),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    String::from_utf8(response).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+}
+
+fn deadline_error(error: &std::io::Error, started: Instant, timeout: Duration) -> bool {
+    error.kind() == std::io::ErrorKind::TimedOut
+        || (error.kind() == std::io::ErrorKind::WouldBlock && remaining_io_timeout(started, timeout).is_err())
+}
+
 fn caduceus_transport_readback() -> &'static str { "caduceus-uds" }
 
 fn caduceus_http(method: &str, path: &str) -> CaduceusHttpReadback {
-    caduceus_http_with_attendance(method, path, None)
+    caduceus_http_timeout(method, path, Duration::from_secs(4))
+}
+
+fn caduceus_http_timeout(method: &str, path: &str, timeout: Duration) -> CaduceusHttpReadback {
+    caduceus_http_with_attendance_and_document_timeout(method, path, None, None, timeout)
 }
 
 fn caduceus_http_with_attendance(method: &str, path: &str, attendance: Option<&crate::caduceus_access::AttendanceProof>) -> CaduceusHttpReadback {
@@ -304,88 +432,40 @@ fn caduceus_http_with_attendance_and_document_timeout(
     document: Option<&str>,
     timeout: Duration,
 ) -> CaduceusHttpReadback {
-    let mut stream = match UnixStream::connect(caduceus_socket_path()) {
+    let started = Instant::now();
+    let mut stream = match bounded_unix_connect(&caduceus_socket_path(), timeout) {
         Ok(stream) => stream,
-        Err(_err) => {
-            return CaduceusHttpReadback {
-                ok: false,
-                status: 0,
-                path: path.to_string(),
-                body: serde_json::json!({"error": "caduceus-upstream-failed"}),
-                first_missing_signal: "caduceus-unreachable".to_string(),
-            };
-        }
+        Err(error) => return failed_caduceus_call(path, if error.kind() == std::io::ErrorKind::TimedOut { "caduceus-connect-timeout" } else { "caduceus-unreachable" }, started, None),
     };
-    let _ = stream.set_read_timeout(Some(timeout));
-    let _ = stream.set_write_timeout(Some(timeout));
+    let io_timeout = match remaining_io_timeout(started, timeout) {
+        Ok(remaining) => remaining,
+        Err(_) => return failed_caduceus_call(path, "caduceus-connect-timeout", started, None),
+    };
+    let _ = stream.set_read_timeout(Some(io_timeout));
+    let _ = stream.set_write_timeout(Some(io_timeout));
     let attendance_header = attendance
             .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
         .unwrap_or_default();
     let document_header = document
         .map(|value| format!("x-caduceus-document: {value}\r\n"))
         .unwrap_or_default();
+    let trace_dispatch = load_trace::begin_dispatch();
+    let trace_headers = trace_dispatch.header_lines();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\n{document_header}{attendance_header}Content-Length: 0\r\n\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\n{document_header}{attendance_header}{trace_headers}Content-Length: 0\r\n\r\n"
     );
-    if let Err(_err) = stream.write_all(request.as_bytes()) {
-        return CaduceusHttpReadback {
-            ok: false,
-            status: 0,
-            path: path.to_string(),
-            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
-            first_missing_signal: "caduceus-write-failed".to_string(),
-        };
+    if let Err(error) = write_request_until(&mut stream, request.as_bytes(), started, timeout) {
+        let signal = if deadline_error(&error, started, timeout) { "caduceus-write-timeout" } else { "caduceus-write-failed" };
+        return failed_caduceus_call(path, signal, started, Some(&trace_dispatch));
     }
-    let mut response = String::new();
-    if let Err(_err) = stream.read_to_string(&mut response) {
-        return CaduceusHttpReadback {
-            ok: false,
-            status: 0,
-            path: path.to_string(),
-            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
-            first_missing_signal: "caduceus-read-failed".to_string(),
-        };
-    }
-    let (head, body_text) = response
-        .split_once("\r\n\r\n")
-        .unwrap_or(("", response.as_str()));
-    let status = head
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|raw| raw.parse::<u16>().ok());
-    let Some(status) = status else {
-        return CaduceusHttpReadback {
-            ok: false,
-            status: 0,
-            path: path.to_string(),
-            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
-            first_missing_signal: "caduceus-empty-response".to_string(),
-        };
+    let response = match read_response_until(&mut stream, started, timeout) {
+        Ok(response) => response,
+        Err(error) => {
+            let signal = if deadline_error(&error, started, timeout) { "caduceus-read-timeout" } else { "caduceus-read-failed" };
+            return failed_caduceus_call(path, signal, started, Some(&trace_dispatch));
+        }
     };
-    let body =
-        serde_json::from_str(body_text).unwrap_or_else(|_| serde_json::json!({"raw": body_text}));
-    let body_ok = body
-        .get("ok")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(status < 400);
-    let first_missing_signal = body
-        .get("firstMissingSignal")
-        .or_else(|| body.get("first_missing_signal"))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or(if status < 400 && body_ok {
-            "none"
-        } else {
-            "caduceus-http-not-ok"
-        })
-        .to_string();
-    CaduceusHttpReadback {
-        ok: status < 400 && body_ok,
-        status,
-        path: path.to_string(),
-        body,
-        first_missing_signal,
-    }
+    parse_caduceus_response(path, &response, started.elapsed(), trace_dispatch)
 }
 
 fn caduceus_http_json(
@@ -476,20 +556,17 @@ fn caduceus_http_json_with_attendance_and_document_timeout(
     document: Option<&str>,
     timeout: Duration,
 ) -> CaduceusHttpReadback {
-    let mut stream = match UnixStream::connect(caduceus_socket_path()) {
+    let started = Instant::now();
+    let mut stream = match bounded_unix_connect(&caduceus_socket_path(), timeout) {
         Ok(stream) => stream,
-        Err(_err) => {
-            return CaduceusHttpReadback {
-                ok: false,
-                status: 0,
-                path: path.to_string(),
-                body: serde_json::json!({"error": "caduceus-upstream-failed"}),
-                first_missing_signal: "caduceus-unreachable".to_string(),
-            };
-        }
+        Err(error) => return failed_caduceus_call(path, if error.kind() == std::io::ErrorKind::TimedOut { "caduceus-connect-timeout" } else { "caduceus-unreachable" }, started, None),
     };
-    let _ = stream.set_read_timeout(Some(timeout));
-    let _ = stream.set_write_timeout(Some(timeout));
+    let io_timeout = match remaining_io_timeout(started, timeout) {
+        Ok(remaining) => remaining,
+        Err(_) => return failed_caduceus_call(path, "caduceus-connect-timeout", started, None),
+    };
+    let _ = stream.set_read_timeout(Some(io_timeout));
+    let _ = stream.set_write_timeout(Some(io_timeout));
     let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
     let attendance_header = attendance
             .map(|proof| format!("x-caduceus-attendance: {}\r\n", proof.expose()))
@@ -497,71 +574,104 @@ fn caduceus_http_json_with_attendance_and_document_timeout(
     let document_header = document
         .map(|value| format!("x-caduceus-document: {value}\r\n"))
         .unwrap_or_default();
+    let trace_dispatch = load_trace::begin_dispatch();
+    let trace_headers = trace_dispatch.header_lines();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\nContent-Type: application/json\r\n{document_header}{attendance_header}Content-Length: {}\r\n\r\n{}",
+        "{method} {path} HTTP/1.1\r\nHost: caduceus.local\r\nConnection: close\r\nContent-Type: application/json\r\n{document_header}{attendance_header}{trace_headers}Content-Length: {}\r\n\r\n{}",
         body_text.len(), body_text
     );
-    if let Err(_err) = stream.write_all(request.as_bytes()) {
-        return CaduceusHttpReadback {
-            ok: false,
-            status: 0,
-            path: path.to_string(),
-            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
-            first_missing_signal: "caduceus-write-failed".to_string(),
-        };
+    if let Err(error) = write_request_until(&mut stream, request.as_bytes(), started, timeout) {
+        let signal = if deadline_error(&error, started, timeout) { "caduceus-write-timeout" } else { "caduceus-write-failed" };
+        return failed_caduceus_call(path, signal, started, Some(&trace_dispatch));
     }
-    let mut response = String::new();
-    if let Err(_err) = stream.read_to_string(&mut response) {
-        return CaduceusHttpReadback {
-            ok: false,
-            status: 0,
-            path: path.to_string(),
-            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
-            first_missing_signal: "caduceus-read-failed".to_string(),
-        };
-    }
-    parse_caduceus_response(path, &response)
+    let response = match read_response_until(&mut stream, started, timeout) {
+        Ok(response) => response,
+        Err(error) => {
+            let signal = if deadline_error(&error, started, timeout) { "caduceus-read-timeout" } else { "caduceus-read-failed" };
+            return failed_caduceus_call(path, signal, started, Some(&trace_dispatch));
+        }
+    };
+    parse_caduceus_response(path, &response, started.elapsed(), trace_dispatch)
 }
 
-fn parse_caduceus_response(path: &str, response: &str) -> CaduceusHttpReadback {
+fn parse_caduceus_response(path: &str, response: &str, io_duration: Duration, dispatch: load_trace::Dispatch) -> CaduceusHttpReadback {
     let (head, body_text) = response
         .split_once("\r\n\r\n")
         .unwrap_or(("", response));
-    let status = head
+    let Some(status) = head
         .lines()
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|raw| raw.parse::<u16>().ok());
-    let Some(status) = status else {
+        .and_then(|raw| raw.parse::<u16>().ok()) else {
+        load_trace::record_dispatch_failure(&dispatch, io_duration, "caduceus-empty-response");
         return CaduceusHttpReadback {
             ok: false,
             status: 0,
             path: path.to_string(),
             body: serde_json::json!({"error": "caduceus-upstream-failed"}),
-            first_missing_signal: "caduceus-empty-response".to_string(),
+            first_missing_signal: "caduceus-empty-response".to_owned(),
         };
     };
-    let body = serde_json::from_str(body_text).unwrap_or_else(|_| serde_json::json!({"raw": body_text}));
+    let status_valid = (100..=599).contains(&status);
+    let provider = load_trace::parse_provider_headers(head);
+    let decode_started = load_trace::current().and_then(|scope| scope.stage_start());
+    let parsed_body = serde_json::from_str(body_text).unwrap_or_else(|_| serde_json::json!({"raw": body_text}));
+    let (body, body_context) = load_trace::capture_provider_body(parsed_body);
     let body_ok = body
         .get("ok")
         .and_then(serde_json::Value::as_bool)
-        .unwrap_or(status < 400);
-    let first_missing_signal = body
-        .get("firstMissingSignal")
-        .or_else(|| body.get("first_missing_signal"))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or(if status < 400 && body_ok {
-            "none"
-        } else {
-            "caduceus-http-not-ok"
-        })
-        .to_string();
+        .unwrap_or(status_valid && status < 400);
+    let first_missing_signal = if !status_valid {
+        "caduceus-http-status-invalid".to_owned()
+    } else {
+        body
+            .get("firstMissingSignal")
+            .or_else(|| body.get("first_missing_signal"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(if status < 400 && body_ok { "none" } else { "caduceus-http-not-ok" })
+            .to_string()
+    };
+    let ok = status_valid && status < 400 && body_ok;
+    load_trace::record_provider_response(
+        &dispatch,
+        provider,
+        body_context,
+        io_duration,
+        decode_started.map(|started| started.elapsed()),
+        ok,
+        (!ok).then_some(first_missing_signal.as_str()),
+    );
     CaduceusHttpReadback {
-        ok: status < 400 && body_ok,
+        ok,
         status,
         path: path.to_string(),
         body,
         first_missing_signal,
+    }
+}
+
+fn failed_caduceus_call(path: &str, signal: &str, started: Instant, dispatch: Option<&load_trace::Dispatch>) -> CaduceusHttpReadback {
+    if let Some(dispatch) = dispatch {
+        load_trace::record_dispatch_failure(dispatch, started.elapsed(), signal);
+    } else {
+        load_trace::record_transport_failure(path, started.elapsed(), signal);
+    }
+    CaduceusHttpReadback {
+        ok: false,
+        status: 0,
+        path: path.to_string(),
+        body: serde_json::json!({"error": "caduceus-upstream-failed"}),
+        first_missing_signal: signal.to_owned(),
+    }
+}
+
+fn caduceus_failure_readback(path: &str, signal: &str) -> CaduceusHttpReadback {
+    CaduceusHttpReadback {
+        ok: false,
+        status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+        path: path.to_owned(),
+        body: serde_json::json!({"error": "caduceus-upstream-failed"}),
+        first_missing_signal: signal.to_owned(),
     }
 }
 
@@ -873,6 +983,11 @@ fn log_admin_action_admission(headers: &axum::http::HeaderMap, route: &str, read
     }));
 }
 
+
+pub(crate) mod load_trace {
+    use super::*;
+    include!("load-trace.rs");
+}
 
 #[cfg(test)]
 mod caduceus_uds_tests {

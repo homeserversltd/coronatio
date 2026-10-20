@@ -15,22 +15,33 @@ mod pulse {
     static STATS_TICKER_TEST_ENABLED: AtomicBool = AtomicBool::new(false);
     static STATS_REFRESH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
+    #[derive(Clone)]
     pub(crate) struct HeldStats {
         pub(crate) stats: serde_json::Value,
         pub(crate) stats_at: Option<Instant>,
         pub(crate) sampled_at: u64,
         pub(crate) stats_first_missing_signal: String,
         pub(crate) stats_last_missed_at: Option<u64>,
-        pub(crate) history: serde_json::Value,
-        pub(crate) history_at: Instant,
-        pub(crate) history_status: u16,
-        pub(crate) roster: StatsKeaLeases,
-        pub(crate) roster_at: Option<Instant>,
-        pub(crate) roster_first_missing_signal: String,
-        pub(crate) roster_last_missed_at: Option<u64>,
+        pub(crate) stats_stale_sections: Vec<String>,
+        pub(crate) stats_sample_id: Option<String>,
+        pub(crate) stats_generation: u64,
+        revision: u64,
+        section_at: HashMap<String, Instant>,
+    }
+    #[derive(Clone)]
+    pub(crate) struct StatsCurrentObservation {
+        pub(crate) body: serde_json::Value,
+        pub(crate) sampled_at: u64,
+        pub(crate) sample_age_ms: Option<u64>,
+        pub(crate) section_sample_age_ms: HashMap<String, u64>,
+        pub(crate) stale_sections: Vec<String>,
+        pub(crate) stale: bool,
+        pub(crate) first_missing_signal: String,
+        pub(crate) last_missed_at: Option<u64>,
+        pub(crate) sample_id: Option<String>,
+        pub(crate) generation: u64,
     }
     static HELD_STATS: OnceLock<Arc<RwLock<Option<HeldStats>>>> = OnceLock::new();
-    static STATS_REFRESH_GUARD: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
     fn held_stats() -> &'static Arc<RwLock<Option<HeldStats>>> { HELD_STATS.get_or_init(|| Arc::new(RwLock::new(None))) }
     fn unix_millis_now() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis().min(u64::MAX as u128) as u64 }
     fn has_caduceus_stats_fields(body: &serde_json::Value) -> bool {
@@ -50,64 +61,160 @@ mod pulse {
             || has_array(body.get("disk"), "io")
             || body.get("processes").and_then(serde_json::Value::as_array).is_some()
     }
+    fn section_present(body: &serde_json::Value, section: &str) -> bool {
+        match section {
+            "cpu" => body.pointer("/load/one").is_some_and(|value| !value.is_null()) || body.pointer("/temperature/celsius").is_some_and(|value| !value.is_null()),
+            "memory" => has_caduceus_stats_fields(&serde_json::json!({"memory":body.get("memory")})),
+            "network" => has_caduceus_stats_fields(&serde_json::json!({"network":body.get("network"),"tcp":body.get("tcp")})),
+            "storage" => body.pointer("/disk/usage").and_then(serde_json::Value::as_array).is_some(),
+            "io" => body.pointer("/disk/io").and_then(serde_json::Value::as_array).is_some(),
+            "processes" => body.get("processes").and_then(serde_json::Value::as_array).is_some(),
+            _ => false,
+        }
+    }
+    fn merge_observation(old: &mut serde_json::Value, new: &serde_json::Value) {
+        match (old, new) {
+            (serde_json::Value::Object(old), serde_json::Value::Object(new)) => {
+                for (key, value) in new { if let Some(previous) = old.get_mut(key) { merge_observation(previous, value); } else { old.insert(key.clone(), value.clone()); } }
+            }
+            (_, serde_json::Value::Null) => {},
+            (old, new) => *old = new.clone(),
+        }
+    }
     fn normalized_miss_signal(signal: &str, fallback: &str) -> String {
         let signal = signal.trim();
         if signal.is_empty() || signal.eq_ignore_ascii_case("none") { fallback.to_string() } else { signal.to_string() }
     }
-    fn refresh_stats_pool(seed_only: bool) {
-        let _guard=STATS_REFRESH_GUARD.get_or_init(Default::default).lock().unwrap();
-        if seed_only && held_stats().read().unwrap().is_some() { return; }
-        let (refresh_history,now)={let held=held_stats().read().unwrap(); let now=Instant::now(); (held.as_ref().is_none_or(|h| h.history_at.elapsed()>=Duration::from_secs(60)),now)};
-        let stats=super::indicators::caduceus_stats_sample();
-        let sample_is_good=stats.ok && has_caduceus_stats_fields(&stats.body);
-        let sample_missed_at=(!sample_is_good).then(unix_millis_now);
-        let sample_signal=if sample_is_good { String::new() } else if stats.ok { "caduceus-stats-body-empty".to_string() } else { normalized_miss_signal(&stats.first_missing_signal,"caduceus-stats-read-failed") };
-        let sample_at=sample_is_good.then(Instant::now);
-        let sampled_at=sample_is_good.then(unix_millis_now);
-        let history=refresh_history.then(||{let path=format!("/api/v1/appliance/stats/history?limit={STATS_HISTORY_ROW_LIMIT}"); super::caduceus_http("GET",&path)});
-        let (roster_at,roster,roster_signal)=super::stats_identity_roster_cached();
-        let roster_available=roster.status=="available";
-        let roster_missed_at=(!roster_available).then(unix_millis_now);
-        let roster_signal=if roster_available { String::new() } else { normalized_miss_signal(&roster_signal,"caduceus-lease-door-unavailable") };
-        let mut held=held_stats().write().unwrap();
-        let held=held.get_or_insert_with(||HeldStats{stats:serde_json::Value::Null,stats_at:None,sampled_at:0,stats_first_missing_signal:String::new(),stats_last_missed_at:None,history:serde_json::Value::Null,history_at:now,history_status:502,roster:StatsKeaLeases{status:"unavailable".to_string(),entries:Vec::new()},roster_at:None,roster_first_missing_signal:String::new(),roster_last_missed_at:None});
-        if sample_is_good {
-            held.stats=stats.body; held.stats_at=sample_at; held.sampled_at=sampled_at.unwrap_or_default(); held.stats_first_missing_signal.clear();
-        } else {
-            held.stats_first_missing_signal=sample_signal;
-            held.stats_last_missed_at=sample_missed_at;
+    fn refresh_stats_pool() {
+        let stats = super::indicators::caduceus_stats_sample();
+        let sections = ["cpu", "memory", "network", "storage", "io", "processes"];
+        for _ in 0..8 {
+            let previous = held_stats().read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+            let revision = previous.as_ref().map(|held| held.revision).unwrap_or(0);
+            if previous.as_ref().is_some_and(|held| stats.generation < held.stats_generation) { return; }
+            let same_sample = previous.as_ref().is_some_and(|held| held.stats_sample_id == stats.sample_id && stats.sample_id.is_some());
+            let mut next = previous.unwrap_or_else(|| HeldStats {
+                stats: serde_json::Value::Null, stats_at: None, sampled_at: 0,
+                stats_first_missing_signal: String::new(), stats_last_missed_at: None,
+                stats_stale_sections: sections.iter().map(|section| section.to_string()).collect(),
+                stats_sample_id: None, stats_generation: 0, revision, section_at: HashMap::new(),
+            });
+            if same_sample {
+                if stats.stale {
+                    let signal = normalized_miss_signal(&stats.first_missing_signal, "caduceus-stats-read-failed");
+                    if next.stats_first_missing_signal != signal || next.stats_last_missed_at.is_none() {
+                        next.stats_last_missed_at = Some(unix_millis_now());
+                    }
+                    next.stats_first_missing_signal = signal;
+                    next.stats_stale_sections = sections.iter().map(|section| (*section).to_owned()).collect();
+                    let mut held = held_stats().write().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if held.as_ref().map(|value| value.revision).unwrap_or(0) != revision { continue; }
+                    next.revision = revision.wrapping_add(1);
+                    *held = Some(next);
+                }
+                return;
+            }
+            let observed_at = stats.sampled_at.unwrap_or_else(Instant::now);
+            let wall_at = stats.sampled_at_unix_ms.unwrap_or_else(unix_millis_now);
+            if stats.ok && has_caduceus_stats_fields(&stats.body) {
+                let mut fresh = sections.iter().filter(|section| section_present(&stats.body, section)).copied().collect::<Vec<_>>();
+                let new_temperature = stats.body.pointer("/temperature/celsius").is_some_and(|value| !value.is_null());
+                let retained_temperature = next.stats.pointer("/temperature/celsius").is_some_and(|value| !value.is_null());
+                if fresh.contains(&"cpu") && !new_temperature && retained_temperature { fresh.retain(|section| *section != "cpu"); }
+                if !fresh.is_empty() {
+                    if next.stats.is_null() { next.stats = stats.body.clone(); }
+                    else { merge_observation(&mut next.stats, &stats.body); }
+                    for section in &fresh { next.section_at.insert((*section).to_owned(), observed_at); }
+                    next.stats_stale_sections = sections.iter().filter(|section| !fresh.contains(section)).map(|section| (*section).to_owned()).collect();
+                    next.stats_at = Some(observed_at);
+                    next.sampled_at = wall_at;
+                    next.stats_sample_id = stats.sample_id.clone().or(next.stats_sample_id);
+                    next.stats_generation = stats.generation.max(next.stats_generation);
+                    if next.stats_stale_sections.is_empty() {
+                        next.stats_first_missing_signal.clear();
+                        next.stats_last_missed_at = None;
+                    } else {
+                        next.stats_first_missing_signal = if stats.first_missing_signal.is_empty() || stats.first_missing_signal == "none" { "caduceus-stats-partial-sample".to_owned() } else { stats.first_missing_signal.clone() };
+                        next.stats_last_missed_at = Some(wall_at);
+                    }
+                } else {
+                    next.stats_first_missing_signal = "caduceus-stats-body-empty".to_owned();
+                    next.stats_last_missed_at.get_or_insert_with(unix_millis_now);
+                    next.stats_stale_sections = sections.iter().map(|section| (*section).to_owned()).collect();
+                }
+            } else {
+                next.stats_first_missing_signal = if stats.ok { "caduceus-stats-body-empty".to_owned() } else { normalized_miss_signal(&stats.first_missing_signal, "caduceus-stats-read-failed") };
+                next.stats_last_missed_at.get_or_insert_with(unix_millis_now);
+                next.stats_stale_sections = sections.iter().map(|section| (*section).to_owned()).collect();
+            }
+            let mut held = held_stats().write().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if held.as_ref().map(|value| value.revision).unwrap_or(0) != revision { continue; }
+            if held.as_ref().is_some_and(|value| stats.generation < value.stats_generation) { return; }
+            next.revision = revision.wrapping_add(1);
+            *held = Some(next);
+            return;
         }
-        if let Some(history)=history { held.history=history.body; held.history_status=history.status; held.history_at=now; }
-        if roster_available {
-            held.roster=roster; held.roster_at=Some(roster_at); held.roster_first_missing_signal.clear();
-        } else {
-            held.roster_first_missing_signal=roster_signal;
-            held.roster_last_missed_at=roster_missed_at;
+    }
+    pub(crate) fn stats_current_observation() -> StatsCurrentObservation {
+        let held = held_stats().read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+        match held {
+            Some(held) => {
+                let now = Instant::now();
+                let ages = held.section_at.iter().map(|(section, at)| (section.clone(), now.duration_since(*at).as_millis().min(u64::MAX as u128) as u64)).collect();
+                let age = held.stats_at.map(|at| now.duration_since(at).as_millis().min(u64::MAX as u128) as u64);
+                super::load_trace::record_cache_link("stats.held-current", held.stats_sample_id.clone(), age.map(Duration::from_millis));
+                StatsCurrentObservation {
+                    body: held.stats, sampled_at: held.sampled_at, sample_age_ms: age,
+                    section_sample_age_ms: ages, stale_sections: held.stats_stale_sections.clone(),
+                    stale: !held.stats_first_missing_signal.is_empty() || !held.stats_stale_sections.is_empty(),
+                    first_missing_signal: held.stats_first_missing_signal, last_missed_at: held.stats_last_missed_at,
+                    sample_id: held.stats_sample_id, generation: held.stats_generation,
+                }
+            }
+            None => StatsCurrentObservation {
+                body: serde_json::Value::Null, sampled_at: 0, sample_age_ms: None,
+                section_sample_age_ms: HashMap::new(),
+                stale_sections: vec!["cpu".to_owned(), "memory".to_owned(), "network".to_owned(), "storage".to_owned(), "io".to_owned(), "processes".to_owned()],
+                stale: true, first_missing_signal: "caduceus-stats-not-sampled".to_owned(), last_missed_at: None,
+                sample_id: None, generation: 0,
+            },
         }
     }
     pub(crate) async fn stats_snapshot() -> StatsSnapshot {
-        if held_stats().read().unwrap().is_none() { let _=tokio::task::spawn_blocking(|| refresh_stats_pool(true)).await; }
-        let held=held_stats().read().unwrap(); let held=held.as_ref().expect("stats pool seeded");
-        let mut snapshot=super::stats_caduceus_snapshot(held.stats.clone(),held.roster.clone(),held.sampled_at);
-        let stats_missed=!held.stats_first_missing_signal.is_empty();
-        let roster_missed=!held.roster_first_missing_signal.is_empty();
-        snapshot.telemetry.sample_age_ms=held.stats_at.map(|at|at.elapsed().as_millis().min(u64::MAX as u128) as u64);
-        snapshot.telemetry.last_missed_at=held.stats_last_missed_at;
-        snapshot.telemetry.roster_sample_age_ms=held.roster_at.map(|at|at.elapsed().as_millis().min(u64::MAX as u128) as u64);
-        snapshot.telemetry.roster_last_missed_at=held.roster_last_missed_at;
-        snapshot.telemetry.roster_first_missing_signal=held.roster_first_missing_signal.clone();
-        snapshot.telemetry.section_stale=StatsSectionStale{cpu:stats_missed,memory:stats_missed,network:stats_missed,storage:stats_missed,io:stats_missed,processes:stats_missed,kea_leases:roster_missed};
-        snapshot.telemetry.first_missing_signal=if stats_missed { held.stats_first_missing_signal.clone() } else if roster_missed { held.roster_first_missing_signal.clone() } else { String::new() };
-        snapshot
+        let result = super::load_trace::spawn_blocking_with_trace(|| {
+            refresh_stats_pool();
+            let current=stats_current_observation();
+            let (roster_at,roster,roster_signal)=super::stats_identity_roster_cached();
+            let leases=super::stats_kea_leases_cached();
+            let mut snapshot=super::stats_caduceus_snapshot(current.body,roster,leases.entries,current.sampled_at);
+            snapshot.telemetry.sample_age_ms=current.sample_age_ms;
+            snapshot.telemetry.last_missed_at=current.last_missed_at;
+            snapshot.telemetry.roster_sample_age_ms=Some(roster_at.elapsed().as_millis().min(u64::MAX as u128) as u64);
+            snapshot.telemetry.roster_last_missed_at=(!roster_signal.is_empty()).then(unix_millis_now);
+            snapshot.telemetry.roster_first_missing_signal=roster_signal.clone();
+            snapshot.telemetry.first_missing_signal=if !current.first_missing_signal.is_empty(){current.first_missing_signal.clone()}else if !roster_signal.is_empty(){roster_signal.clone()}else if leases.stale{leases.first_missing_signal.clone()}else{String::new()};
+            snapshot.telemetry.section_stale=StatsSectionStale{cpu:current.stale_sections.iter().any(|section|section=="cpu"),memory:current.stale_sections.iter().any(|section|section=="memory"),network:current.stale_sections.iter().any(|section|section=="network"),storage:current.stale_sections.iter().any(|section|section=="storage"),io:current.stale_sections.iter().any(|section|section=="io"),processes:current.stale_sections.iter().any(|section|section=="processes"),kea_leases:!roster_signal.is_empty()||leases.stale};
+            snapshot.telemetry.section_sample_age_ms=current.section_sample_age_ms;
+            snapshot.telemetry.stale_sections=current.stale_sections;
+            snapshot
+        }).await;
+        result.unwrap_or_else(|_|super::stats_caduceus_snapshot(serde_json::Value::Null,StatsKeaLeases{status:"unavailable".to_owned(),entries:Vec::new()},Vec::new(),0))
     }
     pub(crate) async fn stats_history() -> impl IntoResponse {
-        if held_stats().read().unwrap().is_none() { let _=tokio::task::spawn_blocking(|| refresh_stats_pool(true)).await; }
-        let held=held_stats().read().unwrap(); let held=held.as_ref().expect("stats pool seeded"); (StatusCode::from_u16(held.history_status).unwrap_or(StatusCode::BAD_GATEWAY),Json(held.history.clone()))
+        let history=super::load_trace::spawn_blocking_with_trace(||super::indicators::caduceus_stats_history()).await;
+        match history {
+            Ok(readback)=>(StatusCode::from_u16(readback.status).unwrap_or(if readback.ok{StatusCode::OK}else{StatusCode::BAD_GATEWAY}),Json(readback.body)),
+            Err(_)=>(StatusCode::BAD_GATEWAY,Json(serde_json::json!({"ok":false,"firstMissingSignal":"caduceus-stats-history-task-failed"}))),
+        }
+    }
+    pub(crate) async fn stats_current_route_observation() -> StatsCurrentObservation {
+        let _ = super::load_trace::spawn_blocking_with_trace(refresh_stats_pool).await;
+        stats_current_observation()
     }
     fn schedule_stats_collection() {
         if STATS_REFRESH_IN_FLIGHT.compare_exchange(false,true,Ordering::AcqRel,Ordering::Acquire).is_err() { return; }
         tokio::spawn(async {
-            let _ = tokio::task::spawn_blocking(|| refresh_stats_pool(false)).await;
+            let _ = super::load_trace::spawn_blocking_with_trace(refresh_stats_pool).await;
             STATS_REFRESH_IN_FLIGHT.store(false,Ordering::Release);
         });
     }

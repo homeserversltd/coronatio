@@ -90,6 +90,11 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/stats/pulse".to_string(),
             "/api/stats/pulse/renew".to_string(),
             "/api/stats".to_string(),
+            "/api/stats/current".to_string(),
+            "/api/stats/roster".to_string(),
+            "/api/stats/history".to_string(),
+            "/api/indicators/source-currency".to_string(),
+            "/api/indicators/admin".to_string(),
             "/api/faults".to_string(),
             "/admit/:tab_id".to_string(),
             "/admit/admin/toggle/:toggle_id".to_string(),
@@ -119,6 +124,201 @@ async fn panes_route() -> impl IntoResponse {
 }
 
 async fn stats_history_route() -> impl IntoResponse { stats_history().await }
+
+async fn stats_current_route() -> Response {
+    let result = load_trace::spawn_blocking_with_trace(|| {
+        let current = indicators::caduceus_stats_sample();
+        let projections = indicators::completed_current_indicator_projections(current.clone());
+        let has_completed_sample = current.sample_id.is_some();
+        let available = current.ok || has_completed_sample;
+        let sample = if available { current.body } else { serde_json::Value::Null };
+        let first_missing_signal = if current.first_missing_signal.is_empty() || current.first_missing_signal == "none" {
+            None
+        } else {
+            Some(current.first_missing_signal)
+        };
+        let payload = serde_json::json!({
+            "ok": current.ok,
+            "status": current.status,
+            "sampleId": current.sample_id,
+            "generation": current.generation,
+            "sampledAt": current.sampled_at_unix_ms,
+            "sampleAgeMs": current.age.map(|age| age.as_millis().min(u64::MAX as u128) as u64),
+            "stale": current.stale || !current.ok,
+            "firstMissingSignal": first_missing_signal,
+            "sample": sample,
+            "indicators": projections,
+        });
+        (if available { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE }, payload)
+    }).await;
+    match result {
+        Ok((status, payload)) => (status, Json(payload)).into_response(),
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+            "ok": false,
+            "stale": true,
+            "firstMissingSignal": "stats-current-task-failed",
+            "sampleId": null,
+            "sampledAt": null,
+            "sampleAgeMs": null,
+            "sample": null,
+            "indicators": null,
+        }))).into_response(),
+    }
+}
+
+async fn stats_roster_route() -> Response {
+    let (identity_result, leases_result) = tokio::join!(
+        load_trace::spawn_blocking_with_trace(|| stats_identity_roster_cached()),
+        load_trace::spawn_blocking_with_trace(|| stats_kea_leases_cached()),
+    );
+    let identity = identity_result.ok();
+    let leases = leases_result.ok();
+    let identity_known = identity.as_ref().is_some_and(|(_, roster, _)| roster.status == "available");
+    let identity_signal = identity.as_ref()
+        .and_then(|(_, _, signal)| (!signal.trim().is_empty()).then(|| signal.clone()))
+        .or_else(|| identity.is_none().then(|| "stats-roster-cache-task-failed".to_owned()));
+    let leases_known = leases.as_ref().is_some_and(|readback| readback.sample_id.is_some());
+    let leases_signal = leases.as_ref()
+        .and_then(|readback| (!readback.first_missing_signal.trim().is_empty()).then(|| readback.first_missing_signal.clone()))
+        .or_else(|| leases.as_ref().is_some_and(|readback| readback.stale).then(|| "stats-kea-leases-stale".to_owned()))
+        .or_else(|| leases.is_none().then(|| "stats-kea-cache-task-failed".to_owned()));
+    let identity_entries = identity.as_ref()
+        .map(|(_, roster, _)| serde_json::to_value(&roster.entries).unwrap_or(serde_json::Value::Null))
+        .unwrap_or(serde_json::Value::Null);
+    let raw_lease_entries = leases.as_ref()
+        .filter(|readback| readback.sample_id.is_some())
+        .map(|readback| serde_json::to_value(&readback.entries).unwrap_or(serde_json::Value::Null))
+        .unwrap_or(serde_json::Value::Null);
+    let identity_age_ms = identity.as_ref().filter(|_| identity_known)
+        .map(|(sampled_at, _, _)| sampled_at.elapsed().as_millis().min(u64::MAX as u128) as u64);
+    let identity_sampled_at = identity_age_ms.map(|age| {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default()
+            .as_millis().min(u64::MAX as u128) as u64;
+        now.saturating_sub(age)
+    });
+    let lease_age_ms = leases.as_ref().and_then(|readback| readback.sampled_at)
+        .map(|at| at.elapsed().as_millis().min(u64::MAX as u128) as u64);
+    let lease_sampled_at = lease_age_ms.map(|age| {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default()
+            .as_millis().min(u64::MAX as u128) as u64;
+        now.saturating_sub(age)
+    });
+    let stale = identity_signal.is_some() || leases_signal.is_some() || !identity_known || !leases_known;
+    let first_missing_signal = identity_signal.clone().or_else(|| leases_signal.clone());
+    let status = if identity_known || leases_known { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
+    let payload = serde_json::json!({
+        "ok": !stale,
+        "stale": stale,
+        "firstMissingSignal": first_missing_signal,
+        "identityRoster": identity_entries.clone(),
+        "entries": identity_entries,
+        "identityStatus": identity.as_ref().map(|(_, roster, _)| roster.status.as_str()).unwrap_or("unavailable"),
+        "identitySampleId": null,
+        "identitySampledAt": identity_sampled_at,
+        "identitySampleAgeMs": identity_age_ms,
+        "rawLeases": raw_lease_entries.clone(),
+        "leases": raw_lease_entries,
+        "rawLeasesSampleId": leases.as_ref().and_then(|readback| readback.sample_id.as_deref()),
+        "rawLeasesGeneration": leases.as_ref().map(|readback| readback.generation).unwrap_or(0),
+        "rawLeasesSampledAt": lease_sampled_at,
+        "rawLeasesSampleAgeMs": lease_age_ms,
+        "rawLeasesStale": leases.as_ref().map(|readback| readback.stale).unwrap_or(true),
+        "rawLeasesFirstMissingSignal": leases_signal,
+        "lastMissedAt": leases.as_ref().and_then(|readback| readback.last_missed_at),
+    });
+    (status, Json(payload)).into_response()
+}
+
+async fn source_currency_route() -> Response {
+    let result = load_trace::spawn_blocking_with_trace(|| {
+        indicators::cached_source_currency(|| indicators::collect_indicator_topic("source.currency", Session::Guest))
+    }).await;
+    match result {
+        Ok(observation) => {
+            let (sample, collector_signal) = match observation.value {
+                Ok(value) => (Some(value), None),
+                Err(signal) => (None, Some(signal)),
+            };
+            let source_signal = sample.as_ref().and_then(|value| value.get("firstMissingSignal")
+                .or_else(|| value.get("first_missing_signal")).and_then(serde_json::Value::as_str)
+                .filter(|signal| !signal.is_empty() && *signal != "none").map(str::to_owned));
+            let first_missing_signal = collector_signal.or(source_signal);
+            let has_sample = sample.is_some() && observation.sample_id.is_some();
+            let status = if has_sample { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
+            (status, Json(serde_json::json!({
+                "ok": has_sample && !observation.stale,
+                "stale": observation.stale || !has_sample,
+                "firstMissingSignal": first_missing_signal,
+                "sample": sample,
+                "sampleId": observation.sample_id,
+                "sampleAgeMs": observation.age.map(|age| age.as_millis().min(u64::MAX as u128) as u64),
+            }))).into_response()
+        }
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+            "ok": false,
+            "stale": true,
+            "firstMissingSignal": "source-currency-cache-task-failed",
+            "sample": null,
+            "sampleId": null,
+            "sampleAgeMs": null,
+        }))).into_response(),
+    }
+}
+
+async fn indicator_admin_route(headers: axum::http::HeaderMap) -> Response {
+    if session_projection_from_headers(&headers).await != Session::Admin {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+            "ok": false,
+            "firstMissingSignal": "caduceus-attendance-required",
+            "sample": null,
+            "sampleId": null,
+        }))).into_response();
+    }
+    let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+            "ok": false,
+            "firstMissingSignal": "caduceus-attendance-document-required",
+            "sample": null,
+            "sampleId": null,
+        }))).into_response();
+    };
+    let Some(attendance) = crate::caduceus_access::attendance_from_headers(&headers) else {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+            "ok": false,
+            "firstMissingSignal": "caduceus-attendance-required",
+            "sample": null,
+            "sampleId": null,
+        }))).into_response();
+    };
+    let readback = load_trace::spawn_blocking_with_trace(move || {
+        indicators::read_scoped_admin_stats_sample(&document, attendance)
+    }).await;
+    match readback {
+        Ok(readback) => {
+            let status = if readback.ok { StatusCode::OK } else {
+                StatusCode::from_u16(readback.status).ok().filter(|status| status.is_client_error() || status.is_server_error())
+                    .unwrap_or(StatusCode::BAD_GATEWAY)
+            };
+            (status, Json(serde_json::json!({
+                "ok": readback.ok,
+                "status": readback.status,
+                "firstMissingSignal": readback.first_missing_signal,
+                "stale": readback.stale,
+                "sample": if readback.ok { Some(readback.body) } else { None },
+                "sampleId": readback.sample_id,
+                "generation": readback.generation,
+                "sampledAt": readback.sampled_at_unix_ms,
+                "sampleAgeMs": readback.age.map(|age| age.as_millis().min(u64::MAX as u128) as u64),
+            }))).into_response()
+        }
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+            "ok": false,
+            "firstMissingSignal": "caduceus-attendance-task-failed",
+            "sample": null,
+            "sampleId": null,
+        }))).into_response(),
+    }
+}
 
 async fn stats_route(headers: axum::http::HeaderMap) -> Response {
     let raw = stats_snapshot().await;

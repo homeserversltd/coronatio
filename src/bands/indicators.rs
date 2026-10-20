@@ -12,6 +12,7 @@ mod indicators {
 }
 
 pub(crate) use indicators::{
-    collect_indicator_topic, collect_indicator_topic_for_request, render_indicator_modal_registry,
-    render_indicator_strip, IndicatorTopicSample,
+    cached_source_currency, caduceus_stats_sample, collect_indicator_topic, collect_indicator_topic_for_request,
+    completed_current_indicator_projections, read_scoped_admin_stats_sample, render_indicator_modal_registry,
+    render_indicator_strip, CaduceusStatsReadback, IndicatorTopicSample, SourceCurrencyCachedReadback,
 };

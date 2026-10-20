@@ -108,6 +108,7 @@ async fn main() {
 
 fn app(state: AppState) -> Router {
     pulse::ensure_stats_ticker_started();
+    load_trace::start_schema_initialization();
     Router::new()
         .route("/", get(crown_shell_route))
         .route("/stage", get(crown_stage_route))
@@ -164,7 +165,11 @@ fn app(state: AppState) -> Router {
         .route("/api/stats/pulse/upgrade", post(pulse::stats_pulse_upgrade_route))
         .route("/api/stats/pulse/downgrade", post(pulse::stats_pulse_downgrade_route))
         .route("/api/stats", get(stats_route))
+        .route("/api/stats/current", get(stats_current_route))
+        .route("/api/stats/roster", get(stats_roster_route))
         .route("/api/stats/history", get(stats_history_route))
+        .route("/api/indicators/source-currency", get(source_currency_route))
+        .route("/api/indicators/admin", get(indicator_admin_route))
         .route("/api/faults", get(faults_route))
         .route("/api/v1/cartridges", get(cartridges_read_proxy_route))
         .route("/api/v1/cartridges/admit", post(cartridges_admit_proxy_route))
@@ -191,6 +196,7 @@ fn app(state: AppState) -> Router {
         .fallback(face_stage_fallback)
         .route_layer(axum::middleware::from_fn(face_stage_route_gate))
         .with_state(state)
+        .layer(axum::middleware::from_fn(load_trace::load_trace_middleware_fn))
 }
 
 fn static_root() -> PathBuf {

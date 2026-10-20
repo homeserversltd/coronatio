@@ -878,6 +878,13 @@ fn read_scoped_admin_stats_once(
     )
 }
 
+pub(crate) fn read_scoped_admin_stats_sample(
+    parent_document: &str,
+    parent: crate::caduceus_access::AttendanceProof,
+) -> CaduceusStatsReadback {
+    read_scoped_admin_stats_once(parent_document, parent).into()
+}
+
 fn failed_stats_readback(signal: &str) -> CaduceusHttpReadback {
     CaduceusHttpReadback {
         ok: false,
@@ -1023,6 +1030,52 @@ fn topic_block_name(topic_id: &str) -> Option<&'static str> {
     }
 }
 
+pub(crate) fn completed_current_indicator_projections(current: CaduceusStatsReadback) -> serde_json::Value {
+    let source_stale = current.stale || !current.ok;
+    let source_signal = if current.first_missing_signal.is_empty() { "caduceus-stats-current-not-fresh".to_owned() } else { current.first_missing_signal.clone() };
+    let has_body = current.body.as_object().is_some_and(|object| !object.is_empty());
+    let mut topics = serde_json::Map::new();
+    for topic_id in ["power.status", "tailscale.status", "internet.status", "services.status", "vpn.status"] {
+        let Some(block_name) = topic_block_name(topic_id) else { continue; };
+        let sample = if !has_body {
+            unavailable_topic_sample(topic_id, source_signal.clone())
+        } else if let Some(block) = current.body.get(block_name).and_then(serde_json::Value::as_object) {
+            if let Some(signal) = stale_block_signal(block, stats_block_stale_after(block_name), block_name) {
+                unavailable_topic_sample(topic_id, signal)
+            } else {
+                match topic_id {
+                    "power.status" => project_power_guest_completed(block),
+                    "tailscale.status" => project_tailscale_guest(block),
+                    "internet.status" => project_internet_guest(block),
+                    "services.status" => project_services_completed(block),
+                    "vpn.status" => project_vpn_guest(block),
+                    _ => unavailable_topic_sample(topic_id, "unknown topic".to_owned()),
+                }
+            }
+        } else {
+            unavailable_topic_sample(topic_id, stats_signal(current.body.get(block_name), "caduceus-stats-block-missing"))
+        };
+        let mut snapshot = sample.snapshot;
+        if let Some(object) = snapshot.as_object_mut() {
+            object.insert("sampleAgeMs".to_owned(), current.age.map(|age| serde_json::json!(age.as_millis().min(u64::MAX as u128) as u64)).unwrap_or(serde_json::Value::Null));
+            object.insert("stale".to_owned(), serde_json::Value::Bool(source_stale || sample.unavailable_signal.is_some()));
+            if source_stale && object.get("firstMissingSignal").and_then(serde_json::Value::as_str).is_none_or(|signal| signal.is_empty() || signal == "none") {
+                object.insert("firstMissingSignal".to_owned(), serde_json::Value::String(source_signal.clone()));
+            }
+        }
+        topics.insert(topic_id.to_owned(), snapshot);
+    }
+    serde_json::json!({
+        "sampleId":current.sample_id,
+        "generation":current.generation,
+        "sampledAt":current.sampled_at_unix_ms,
+        "sampleAgeMs":current.age.map(|age| age.as_millis().min(u64::MAX as u128) as u64),
+        "stale":source_stale,
+        "firstMissingSignal":if source_stale { Some(source_signal) } else { None },
+        "topics":topics
+    })
+}
+
 fn stats_block_stale_after(block: &str) -> Duration {
     match block {
         "tailscale" | "services" | "vpn" => Duration::from_secs(15),
@@ -1158,18 +1211,21 @@ fn average_power_window(
 fn power_history_projection(
     current: Option<f64>,
     current_ts: Option<i64>,
+    history: Option<CaduceusStatsReadback>,
 ) -> (Vec<f64>, serde_json::Value, Option<String>) {
     let (Some(current), Some(current_ts)) = (current, current_ts) else {
         return (Vec::new(), null_power_averages(), Some("caduceus-stats-power-timestamp-unavailable".to_owned()));
     };
-    let history = caduceus_stats_history();
+    let Some(history) = history else {
+        return (vec![current], null_power_averages(), Some("caduceus-stats-history-not-observed".to_owned()));
+    };
     let mut samples = std::collections::BTreeMap::new();
     if !history.ok {
         samples.insert(current_ts, current);
         return (
             samples.values().copied().collect(),
             null_power_averages(),
-            Some(history.first_missing_signal),
+            Some(if history.first_missing_signal.is_empty() { "caduceus-stats-history-unavailable".to_owned() } else { history.first_missing_signal }),
         );
     }
     let Some(raw) = history.body.pointer("/tiers/raw").and_then(serde_json::Value::as_array) else {
@@ -1186,9 +1242,7 @@ fn power_history_projection(
             history_signal.get_or_insert_with(|| "caduceus-stats-history-timestamp-missing".to_owned());
             continue;
         };
-        if ts > current_ts {
-            continue;
-        }
+        if ts > current_ts { continue; }
         let Some(watts) = sample.pointer("/power/watts").and_then(finite_nonnegative) else {
             history_signal.get_or_insert_with(|| "caduceus-stats-history-power-watts-unavailable".to_owned());
             continue;
@@ -1197,7 +1251,6 @@ fn power_history_projection(
     }
     samples.insert(current_ts, current);
     let historical = samples.values().copied().collect::<Vec<_>>();
-    // Rows without a timestamp or watts are skipped above; the averages use every valid row.
     let averages = serde_json::json!({
         "5s":average_power_window(&samples, current_ts, 5),
         "30s":average_power_window(&samples, current_ts, 30),
@@ -1207,39 +1260,35 @@ fn power_history_projection(
 }
 
 fn project_power_guest(block: &serde_json::Map<String, serde_json::Value>) -> IndicatorTopicSample {
+    project_power_guest_with_inputs(block, Some(caduceus_stats_history()), caduceus_power_calibration())
+}
+
+fn project_power_guest_completed(block: &serde_json::Map<String, serde_json::Value>) -> IndicatorTopicSample {
+    project_power_guest_with_inputs(block, completed_stats_history_peek(), completed_power_calibration_peek())
+}
+
+fn project_power_guest_with_inputs(
+    block: &serde_json::Map<String, serde_json::Value>,
+    history_readback: Option<CaduceusStatsReadback>,
+    calibration_data: (f64, Option<String>),
+) -> IndicatorTopicSample {
     let current = block.get("watts").and_then(finite_nonnegative);
     let signal = stats_signal_from_object(block, "caduceus-stats-power-watts-unavailable");
     let timestamp = block.get("ts").cloned().unwrap_or(serde_json::Value::Null);
     let current_ts = block.get("ts").and_then(stats_timestamp_seconds);
-    let sources = block
-        .get("sources")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!([]));
+    let sources = block.get("sources").cloned().unwrap_or_else(|| serde_json::json!([]));
     let (historical, averages, history_signal) = if current.is_some() {
-        power_history_projection(current, current_ts)
+        power_history_projection(current, current_ts, history_readback)
     } else {
         (Vec::new(), null_power_averages(), None)
     };
-    let mut first_missing = block
-        .get("firstMissingSignal")
-        .cloned()
-        .unwrap_or(serde_json::Value::Null);
-    if first_missing
-        .as_str()
-        .is_none_or(|value| value.is_empty() || value == "none")
-    {
-        if let Some(signal) = history_signal.as_ref() {
-            first_missing = serde_json::Value::String(signal.clone());
-        }
+    let mut first_missing = block.get("firstMissingSignal").cloned().unwrap_or(serde_json::Value::Null);
+    if first_missing.as_str().is_none_or(|value| value.is_empty() || value == "none") {
+        if let Some(signal) = history_signal.as_ref() { first_missing = serde_json::Value::String(signal.clone()); }
     }
-    let (calibration, calibration_signal) = caduceus_power_calibration();
-    if first_missing
-        .as_str()
-        .is_none_or(|value| value.is_empty() || value == "none")
-    {
-        if let Some(signal) = calibration_signal {
-            first_missing = serde_json::Value::String(signal);
-        }
+    let (calibration, calibration_signal) = calibration_data;
+    if first_missing.as_str().is_none_or(|value| value.is_empty() || value == "none") {
+        if let Some(signal) = calibration_signal { first_missing = serde_json::Value::String(signal); }
     }
     IndicatorTopicSample {
         snapshot: serde_json::json!({
@@ -1298,65 +1347,61 @@ fn project_services(
     guest: bool,
     admin_units: Option<&serde_json::Value>,
 ) -> IndicatorTopicSample {
+    project_services_with_metadata(block, guest, admin_units, Some(caduceus_indicator_portals()))
+}
+
+fn project_services_completed(block: &serde_json::Map<String, serde_json::Value>) -> IndicatorTopicSample {
+    project_services_with_metadata(block, true, None, completed_indicator_portals_peek())
+}
+
+fn project_services_with_metadata(
+    block: &serde_json::Map<String, serde_json::Value>,
+    guest: bool,
+    admin_units: Option<&serde_json::Value>,
+    metadata: Option<Result<PortalConfigResponse, String>>,
+) -> IndicatorTopicSample {
     let rows = block.get("rows").and_then(serde_json::Value::as_array);
-    let metadata = caduceus_indicator_portals();
-    let metadata_signal = metadata.as_ref().err().cloned();
-    let portals = metadata
-        .as_ref()
-        .ok()
-        .map(|config| config.portals.as_slice())
-        .unwrap_or(&[]);
+    let metadata_signal = match metadata.as_ref() {
+        Some(Err(signal)) => Some(signal.clone()),
+        None => Some("caduceus-indicator-portals-not-observed".to_owned()),
+        Some(Ok(_)) => None,
+    };
+    let portals = metadata.as_ref().and_then(|result| result.as_ref().ok()).map(|config| config.portals.as_slice()).unwrap_or(&[]);
     let projected = project_service_rows(rows, portals, guest, admin_units);
-    let up = projected
-        .iter()
-        .filter(|row| row.get("status").and_then(serde_json::Value::as_str) == Some("up"))
-        .count();
+    let up = projected.iter().filter(|row| row.get("status").and_then(serde_json::Value::as_str) == Some("up")).count();
     let total = projected.len();
     let all_up = total > 0 && up == total;
-    let all_down = total > 0
-        && projected
-            .iter()
-            .all(|row| row.get("status").and_then(serde_json::Value::as_str) == Some("down"));
-    let all_unknown = total == 0
-        || projected
-            .iter()
-            .all(|row| row.get("status").and_then(serde_json::Value::as_str) == Some("unknown"));
+    let all_down = total > 0 && projected.iter().all(|row| row.get("status").and_then(serde_json::Value::as_str) == Some("down"));
+    let all_unknown = total == 0 || projected.iter().all(|row| row.get("status").and_then(serde_json::Value::as_str) == Some("unknown"));
     let status = if rows.is_none() || (guest && metadata_signal.is_some()) {
         "unavailable"
-    } else if all_up {
-        "up"
-    } else if all_down {
-        "down"
-    } else if all_unknown {
-        "unknown"
-    } else {
-        "partial"
-    };
+    } else if all_up { "up" } else if all_down { "down" } else if all_unknown { "unknown" } else { "partial" };
     let timestamp = block.get("ts").cloned().unwrap_or(serde_json::Value::Null);
-    let mut first_missing = block
-        .get("firstMissingSignal")
-        .and_then(serde_json::Value::as_str)
-        .filter(|signal| !signal.is_empty() && *signal != "none")
-        .map(str::to_owned);
-    if first_missing.is_none() {
-        first_missing = metadata_signal.clone();
-    }
+    let mut first_missing = block.get("firstMissingSignal").and_then(serde_json::Value::as_str)
+        .filter(|signal| !signal.is_empty() && *signal != "none").map(str::to_owned);
+    if first_missing.is_none() { first_missing = metadata_signal.clone(); }
     let unavailable_signal = if rows.is_none() {
         Some(stats_signal_from_object(block, "caduceus-stats-services-rows-unavailable"))
     } else {
         metadata_signal
     };
+    let counts = if guest && unavailable_signal.is_some() {
+        serde_json::json!({"up":null,"total":null})
+    } else {
+        serde_json::json!({"up":up,"total":total})
+    };
     IndicatorTopicSample {
         snapshot: serde_json::json!({
             "ok":unavailable_signal.is_none(),"success":unavailable_signal.is_none(),
             "status":status,"services":projected,"rows":projected,
-            "counts":{"up":up,"total":total},"timestamp":timestamp,"ts":timestamp,
+            "counts":counts,"timestamp":timestamp,"ts":timestamp,
             "firstMissingSignal":first_missing
         }),
         indicator_state: None,
         unavailable_signal,
     }
 }
+
 
 fn project_service_rows(
     rows: Option<&Vec<serde_json::Value>>,
@@ -1587,17 +1632,26 @@ fn collect_source_currency_indicator(session: Session) -> Result<serde_json::Val
         return Err(format!("{}: {path}", readback.first_missing_signal));
     }
     let Some(object) = readback.body.as_object() else {
-        return Err(format!("caduceus-invalid-json: {path}"));
+        return Ok(serde_json::json!({
+            "ok": false, "schema": "caduceus.coronatio.source_currency.v1",
+            "relation": "unknown", "firstMissingSignal": "caduceus-source-currency-not-observed"
+        }));
     };
+    let mut observed = object.clone();
+    if object.get("ok").and_then(serde_json::Value::as_bool).is_none() {
+        observed.insert("ok".to_owned(), serde_json::Value::Bool(false));
+        observed.entry("schema".to_owned()).or_insert_with(|| serde_json::Value::String("caduceus.coronatio.source_currency.v1".to_owned()));
+        observed.entry("relation".to_owned()).or_insert_with(|| serde_json::Value::String("unknown".to_owned()));
+        observed.entry("firstMissingSignal".to_owned()).or_insert_with(|| serde_json::Value::String("caduceus-source-currency-not-observed".to_owned()));
+    }
     if session == Session::Admin {
-        return Ok(serde_json::Value::Object(object.clone()));
+        return Ok(serde_json::Value::Object(observed));
     }
     let mut projection = serde_json::Map::new();
     for field in ["ok", "schema", "originMainSha", "buildSha", "relation", "firstMissingSignal"] {
-        if let Some(value) = object.get(field) {
+        if let Some(value) = observed.get(field) {
             projection.insert(field.to_owned(), value.clone());
         }
     }
-    projection.entry("ok".to_owned()).or_insert(serde_json::Value::Bool(true));
     Ok(serde_json::Value::Object(projection))
 }

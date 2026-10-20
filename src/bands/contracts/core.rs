@@ -364,6 +364,10 @@ struct StatsTelemetry {
     roster_first_missing_signal: String,
     #[serde(default)]
     section_stale: StatsSectionStale,
+    #[serde(default)]
+    section_sample_age_ms: std::collections::HashMap<String, u64>,
+    #[serde(default)]
+    stale_sections: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
