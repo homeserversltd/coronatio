@@ -1,10 +1,9 @@
 // Single successor authority and actuator seam for all Coronatio state changes.
-// Browser callers provide same-origin context, the current document incarnation,
-// and the opaque attendance proof held only by that document.
-use crate::caduceus_access::{attendance_from_headers, document_incarnation_from_headers, safe_access_code, same_origin_state_change, AttendanceProof, CaduceusAccessClient};
+// The current document incarnation and its opaque attendance proof are carried only by that document.
+use crate::caduceus_access::{attendance_from_headers, document_incarnation_from_headers, safe_access_code, AttendanceProof, CaduceusAccessClient};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MutationAuthorization { SameOrigin, AttendedDocument, AttendedParent }
+enum MutationAuthorization { AttendedDocument, AttendedParent }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MutationActionTarget {
@@ -24,7 +23,7 @@ impl MutationActionTarget {
         Some(Self {
             action: action.to_string(),
             target: target.to_string(),
-            authorization: MutationAuthorization::SameOrigin,
+            authorization: MutationAuthorization::AttendedDocument,
         })
     }
 
@@ -32,17 +31,13 @@ impl MutationActionTarget {
         Self {
             action: "coronatio.config.set".to_string(),
             target: target.to_string(),
-            authorization: MutationAuthorization::SameOrigin,
+            authorization: MutationAuthorization::AttendedDocument,
         }
     }
 
     fn caduceus(action: impl Into<String>, target: impl Into<String>) -> Self {
         let action = action.into();
-        let authorization = match action.as_str() {
-            "coronatio.linker.browse" | "coronatio.linker.hardlink-scan" => MutationAuthorization::AttendedDocument,
-            _ => MutationAuthorization::SameOrigin,
-        };
-        Self { action, target: target.into(), authorization }
+        Self { action, target: target.into(), authorization: MutationAuthorization::AttendedDocument }
     }
 
     fn attended_parent(action: impl Into<String>, target: impl Into<String>) -> Self {
@@ -50,35 +45,23 @@ impl MutationActionTarget {
     }
 
     fn request_context(&self, headers: &axum::http::HeaderMap) -> MutationRequestContext {
-        match self.authorization {
-            MutationAuthorization::SameOrigin | MutationAuthorization::AttendedParent => MutationRequestContext::from_headers(headers),
-            MutationAuthorization::AttendedDocument => MutationRequestContext::attended_document_from_headers(headers),
-        }
+        MutationRequestContext::from_headers(headers)
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MutationRequestContext {
-    same_origin: bool,
     document: Option<String>,
     attendance: Option<AttendanceProof>,
 }
 
 impl MutationRequestContext {
     fn from_headers(headers: &axum::http::HeaderMap) -> Self {
-        let same_origin = same_origin_state_change(headers);
-        if !same_origin {
-            return Self { same_origin: false, document: None, attendance: None };
-        }
-        Self { same_origin: true, document: document_incarnation_from_headers(headers), attendance: attendance_from_headers(headers) }
+        Self::attended_document_from_headers(headers)
     }
 
     fn attended_document_from_headers(headers: &axum::http::HeaderMap) -> Self {
-        Self {
-            same_origin: true,
-            document: document_incarnation_from_headers(headers),
-            attendance: attendance_from_headers(headers),
-        }
+        Self { document: document_incarnation_from_headers(headers), attendance: attendance_from_headers(headers) }
     }
 }
 
@@ -108,9 +91,6 @@ impl MutationAuthority {
         context: &MutationRequestContext,
         mapping: MutationActionTarget,
     ) -> Result<MutationAttendance, MutationRefusal> {
-        if !context.same_origin {
-            return Err(MutationRefusal { code: "caduceus-access-origin-refused".to_string(), status: 403 });
-        }
         let Some(document) = context.document.as_ref() else {
             return Err(MutationRefusal { code: "caduceus-attendance-document-required".to_string(), status: 400 });
         };
@@ -186,9 +166,7 @@ fn mutation_authority() -> MutationAuthority { MutationAuthority::default() }
 
 fn mutation_context_refusal(headers: &axum::http::HeaderMap) -> Option<MutationRefusal> {
     let context = MutationRequestContext::from_headers(headers);
-    if !context.same_origin {
-        Some(MutationRefusal { code: "caduceus-access-origin-refused".to_string(), status: 403 })
-    } else if context.document.is_none() {
+    if context.document.is_none() {
         Some(MutationRefusal { code: "caduceus-attendance-document-required".to_string(), status: 400 })
     } else if context.attendance.is_none() {
         Some(MutationRefusal { code: "caduceus-attendance-required".to_string(), status: 401 })
@@ -198,7 +176,7 @@ fn mutation_context_refusal(headers: &axum::http::HeaderMap) -> Option<MutationR
 }
 
 fn admin_fragment_context_refusal(headers: &axum::http::HeaderMap) -> Option<MutationRefusal> {
-    let context = MutationRequestContext::attended_document_from_headers(headers);
+    let context = MutationRequestContext::from_headers(headers);
     if context.document.is_none() {
         Some(MutationRefusal { code: "caduceus-attendance-document-required".to_string(), status: 400 })
     } else if context.attendance.is_none() {
@@ -223,9 +201,7 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
         return axum::http::StatusCode::OK;
     }
     let signal = readback.first_missing_signal.as_str();
-    if matches!(signal, "caduceus-access-origin-refused" | "caduceus-attendance-origin-refused") {
-        axum::http::StatusCode::FORBIDDEN
-    } else if matches!(
+    if matches!(
         signal,
         "caduceus-attendance-wrong-document"
             | "caduceus-attendance-document-wrong"

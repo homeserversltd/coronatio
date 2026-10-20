@@ -290,15 +290,49 @@ fn shell_document_4() -> &'static str {
       const modal = binding.root.querySelector('[data-upload-pin-modal]'), input = modal?.querySelector('[data-upload-pin-input]'), message = modal?.querySelector('[data-upload-pin-message]'), pin = input?.value?.trim() || '';
       if (!pin) { if (message) message.textContent = 'Admin PIN is required.'; input?.focus(); return; }
       let scopedAttendance = null;
+      const documentIncarnation = coronatioAttendanceRuntime.documentIncarnation;
       try {
-        const response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) });
-        const result = await response.json().catch(() => ({}));
-        scopedAttendance = response.ok && result.admin === true && typeof result.attendance === 'string' ? result.attendance : null;
+        let response;
+        try {
+          response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) });
+        } catch (_) {
+          if (uploadCurrent(binding) && message) { message.textContent = attendancePinFailureMessage(null, null, false); input?.focus(); }
+          return;
+        }
+        let result = null;
+        let jsonValid = true;
+        try { result = await response.json(); } catch (_) { jsonValid = false; }
+        scopedAttendance = response.ok && typeof result?.attendance === 'string' ? result.attendance : null;
         if (!uploadCurrent(binding)) return;
-        if (!scopedAttendance) { if (message) message.textContent = response.status === 401 ? 'Invalid PIN' : (result.firstMissingSignal || 'PIN check unavailable'); input?.focus(); return; }
-        showCoronatioToast('PIN Verified.', 'success'); closeUploadModal(modal); await uploadSelectedFiles(scopedAttendance, binding);
-      } catch (_) { if (uploadCurrent(binding) && message) { message.textContent = 'PIN check unavailable'; input?.focus(); } }
-      finally { if (scopedAttendance) await fetch('/api/v1/attendance/invalidate', { method: 'POST', headers: { 'X-Caduceus-Document': coronatioAttendanceRuntime.documentIncarnation, 'X-Caduceus-Attendance': scopedAttendance }, cache: 'no-store' }).catch(() => {}); }
+        const failure = attendancePinFailureMessage(response, result, jsonValid);
+        if (failure) { if (message) message.textContent = failure; input?.focus(); return; }
+        if (response.status !== 200 || result?.admin !== true || !scopedAttendance) {
+          if (message) message.textContent = adminScreenLoadFailureMessage();
+          input?.focus();
+          return;
+        }
+        try {
+          showCoronatioToast('PIN Verified.', 'success');
+          closeUploadModal(modal);
+          await uploadSelectedFiles(scopedAttendance, binding);
+        } catch (_) {
+          if (uploadCurrent(binding)) {
+            if (message) message.textContent = adminScreenLoadFailureMessage();
+            openUploadModal('[data-upload-pin-modal]');
+            input?.focus();
+          }
+        }
+      } catch (_) {
+        if (uploadCurrent(binding) && message) {
+          message.textContent = adminScreenLoadFailureMessage();
+          openUploadModal('[data-upload-pin-modal]');
+          input?.focus();
+        }
+      } finally {
+        if (scopedAttendance) {
+          try { await invalidatePinAttendanceProof(scopedAttendance, documentIncarnation, true); } catch (_) {}
+        }
+      }
     }
     function refreshUploadTree(path = uploadCurrentPath()) { const binding = uploadBinding(), tree = binding?.root.querySelector('[data-upload-tree][data-scaffold-slot="upload-tree"]'); if (!binding || !uploadCurrent(binding) || !tree) return false; return window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(path), { source: tree, target: tree, swap: 'innerHTML' }); }
     async function postUploadDirectoryAction(url, successMessage) { const binding = uploadBinding(); if (!binding || !uploadCurrent(binding) || !headerState.isAdmin) return null; try { const response = await fetch(url, { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }); const data = await response.json().catch(() => ({})); if (!uploadCurrent(binding)) return null; if (!response.ok || !(data.success ?? data.ok)) throw new Error(data.message || data.error || data.firstMissingSignal || `Request failed with status ${response.status}`); showCoronatioToast(successMessage, 'success'); return data; } catch (error) { if (uploadCurrent(binding)) showCoronatioToast(error?.message || 'Request failed', 'error'); return null; } }

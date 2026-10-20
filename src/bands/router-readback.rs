@@ -1004,7 +1004,6 @@ fn attendance_failure_status(call: &crate::caduceus_access::AttendanceCall) -> S
         return StatusCode::OK;
     }
     match call.receipt.code.as_str() {
-        "caduceus-access-origin-refused" | "caduceus-attendance-origin-refused" => StatusCode::FORBIDDEN,
         "caduceus-attendance-wrong-document"
         | "caduceus-attendance-document-wrong"
         | "caduceus-attendance-document-mismatch"
@@ -1052,9 +1051,6 @@ fn attendance_projection_response(
 
 async fn caduceus_attendance_open_route(headers: axum::http::HeaderMap, body: axum::body::Bytes) -> Response {
     const ROUTE: &str = "/api/v1/attendance/open";
-    if !crate::caduceus_access::same_origin_state_change(&headers) {
-        return attendance_projection_response(&headers, ROUTE, StatusCode::FORBIDDEN, guest_session_projection("caduceus-access-origin-refused"), None);
-    }
     if !json_content_type(&headers) || body.len() > CADUCEUS_SESSION_BODY_MAX {
         return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-request-invalid"), None);
     }

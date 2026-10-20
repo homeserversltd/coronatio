@@ -360,68 +360,6 @@ pub(crate) fn staff_socket_path() -> PathBuf {
 
 pub(crate) fn document_incarnation_from_headers(headers:&axum::http::HeaderMap)->Option<String>{headers.get("x-caduceus-document").and_then(|v|v.to_str().ok()).map(str::trim).filter(|v|!v.is_empty()&&v.len()<=128&&v.bytes().all(|b|b.is_ascii_alphanumeric()||matches!(b,b'-'|b'_'|b'.'))).map(ToOwned::to_owned)}
 pub(crate) fn attendance_from_headers(headers:&axum::http::HeaderMap)->Option<AttendanceProof>{headers.get("x-caduceus-attendance").and_then(|v|v.to_str().ok()).and_then(AttendanceProof::parse)}
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct MutationOriginPolicy { allowed_origins: Vec<BrowserOrigin> }
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct BrowserOrigin { scheme: String, host: String, port: u16 }
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum MutationOriginConfigError { HomeserverJson(String), MissingAllowedOrigins, EmptyAllowedOrigins, InvalidAllowedOrigins, InvalidOrigin(String) }
-
-pub(crate) fn mutation_origin_policy_from_homeserver(value: &serde_json::Value) -> Result<MutationOriginPolicy, MutationOriginConfigError> {
-    let origins = value.get("global").and_then(serde_json::Value::as_object).and_then(|global| global.get("cors")).and_then(serde_json::Value::as_object).and_then(|cors| cors.get("allowed_origins")).ok_or(MutationOriginConfigError::MissingAllowedOrigins)?;
-    let origins = origins.as_array().ok_or(MutationOriginConfigError::InvalidAllowedOrigins)?;
-    if origins.is_empty() { return Err(MutationOriginConfigError::EmptyAllowedOrigins); }
-    let allowed_origins = origins.iter().map(|entry| {
-        let raw = entry.as_str().ok_or(MutationOriginConfigError::InvalidAllowedOrigins)?;
-        parse_browser_origin(raw).ok_or_else(|| MutationOriginConfigError::InvalidOrigin(raw.to_string()))
-    }).collect::<Result<Vec<_>, _>>()?;
-    Ok(MutationOriginPolicy { allowed_origins })
-}
-
-pub(crate) fn load_mutation_origin_policy_sync() -> Result<MutationOriginPolicy, MutationOriginConfigError> {
-    let (_, value) = crate::load_homeserver_json_sync().map_err(MutationOriginConfigError::HomeserverJson)?;
-    mutation_origin_policy_from_homeserver(&value)
-}
-
-pub(crate) fn same_origin_state_change_with_policy(headers: &axum::http::HeaderMap, policy: &MutationOriginPolicy) -> bool {
-    let origin = match headers.get(header::ORIGIN) {
-        Some(value) => match value.to_str().ok().and_then(parse_browser_origin) {
-            Some(origin) => origin,
-            None => return false,
-        },
-        None => return headers
-            .get("sec-fetch-site")
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|site| site == "same-origin"),
-    };
-    let Some(matched) = policy.allowed_origins.iter().find(|allowed| **allowed == origin) else { return false; };
-    let Some(host) = forwarded_first(headers, "x-forwarded-host").or_else(|| headers.get(header::HOST).and_then(|value| value.to_str().ok())).and_then(parse_host_authority) else { return false; };
-    if host.0 != matched.host || host.1.unwrap_or(matched.port) != matched.port { return false; }
-    match forwarded_first(headers, "x-forwarded-proto") { Some(proto) => proto.eq_ignore_ascii_case(&matched.scheme), None => true }
-}
-
-pub(crate) fn same_origin_state_change(headers: &axum::http::HeaderMap) -> bool {
-    load_mutation_origin_policy_sync().map(|policy| same_origin_state_change_with_policy(headers, &policy)).unwrap_or(false)
-}
-
-fn parse_browser_origin(raw: &str) -> Option<BrowserOrigin> {
-    let url = url::Url::parse(raw.trim()).ok()?;
-    if !matches!(url.scheme(), "http" | "https") || url.cannot_be_a_base() || url.username() != "" || url.password().is_some() || url.path() != "/" || url.query().is_some() || url.fragment().is_some() { return None; }
-    Some(BrowserOrigin { scheme: url.scheme().to_ascii_lowercase(), host: url.host_str()?.to_ascii_lowercase(), port: url.port_or_known_default()? })
-}
-
-fn parse_host_authority(raw: &str) -> Option<(String, Option<u16>)> {
-    let raw = raw.trim();
-    if raw.is_empty() || raw.contains(['/', '?', '#', '@']) { return None; }
-    let url = url::Url::parse(&format!("http://{raw}/")).ok()?;
-    if url.username() != "" || url.password().is_some() || url.path() != "/" || url.query().is_some() || url.fragment().is_some() { return None; }
-    Some((url.host_str()?.to_ascii_lowercase(), url.port()))
-}
-
-fn forwarded_first<'a>(headers:&'a axum::http::HeaderMap,name:&str)->Option<&'a str>{headers.get(name)?.to_str().ok()?.split(',').next().map(str::trim).filter(|v|!v.is_empty())}
-
 #[cfg(test)]
 mod mutation_origin_policy_tests {
     use super::*;

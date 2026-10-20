@@ -1432,6 +1432,65 @@ fn shell_document_3() -> &'static str {
     });
     changePinButton?.addEventListener('click', () => openPinModal('change'));
     document.querySelector('[data-pin-cancel]')?.addEventListener('click', closePinModal);
+    function attendancePinFailureMessage(response, result, jsonValid) {
+      if (!response || response.status === 503) return "Crown can't reach Caduceus";
+      if (response.status === 401) return 'Invalid PIN';
+      if (!jsonValid) return "Crown can't reach Caduceus";
+      if (!response.ok) {
+        return typeof result?.firstMissingSignal === 'string' && result.firstMissingSignal
+          ? result.firstMissingSignal
+          : 'PIN check unavailable';
+      }
+      return null;
+    }
+    function adminScreenLoadFailureMessage() {
+      return 'Admin screen failed to load. Reload the page.';
+    }
+    async function invalidatePinAttendanceProof(attendance, documentIncarnation, preserveDocumentAttendance = false, waitForResponse = true) {
+      const currentAttendance = coronatioAttendanceRuntime.currentAttendance;
+      coronatioAttendanceRuntime.currentAttendance = null;
+      let invalidation = null;
+      try {
+        if (typeof attendance === 'string' && attendance && typeof documentIncarnation === 'string' && documentIncarnation) {
+          invalidation = fetch('/api/v1/attendance/invalidate', {
+            method: 'POST',
+            headers: {
+              'X-Caduceus-Document': documentIncarnation,
+              'X-Caduceus-Attendance': attendance,
+            },
+            cache: 'no-store',
+          });
+        }
+      } catch (_) {
+        // The local projection still becomes guest if invalidation is unavailable.
+      } finally {
+        coronatioAttendanceRuntime.currentAttendance = preserveDocumentAttendance ? currentAttendance : null;
+      }
+      if (invalidation) {
+        const completion = Promise.resolve(invalidation).catch(() => {});
+        if (waitForResponse) await completion;
+      }
+    }
+    async function discardFailedAdminAdmission(attendance, documentIncarnation) {
+      coronatioAttendanceRuntime.currentAttendance = null;
+      try { await invalidatePinAttendanceProof(attendance, documentIncarnation, false, false); } catch (_) {}
+      try {
+        document.querySelectorAll('[data-admin-document-patch-owned], [data-admin-document-patch="true"]').forEach(node => {
+          try { node.remove(); } catch (_) {}
+        });
+      } catch (_) {}
+      try {
+        const reset = setAdminMode(false);
+        Promise.resolve(reset).catch(() => {});
+      } catch (_) { headerState.isAdmin = false; }
+      try { removeAdminDocumentPatch(); } catch (_) {}
+      coronatioAttendanceRuntime.currentAttendance = null;
+    }
+    async function failAdminAdmission(attendance, documentIncarnation) {
+      try { await discardFailedAdminAdmission(attendance, documentIncarnation); } catch (_) {}
+      coronatioAttendanceRuntime.currentAttendance = null;
+      modalMessage.textContent = adminScreenLoadFailureMessage();
+    }
     document.querySelector('[data-pin-confirm-button]')?.addEventListener('click', async () => {
       if (modalMode === 'change') {
         if (!changeCurrentPinInput.value || !newPinInput.value || !confirmPinInput.value) { modalMessage.textContent = 'Please fill in all fields'; return; }
@@ -1442,21 +1501,44 @@ fn shell_document_3() -> &'static str {
         [changeCurrentPinInput, newPinInput, confirmPinInput].forEach(input => { input.value = ''; }); modalMessage.textContent = 'PIN changed successfully'; window.setTimeout(closePinModal, 1000); return;
       }
       if (modalMode === 'enter' && !currentPinInput.value) { modalMessage.textContent = 'Enter PIN'; return; }
-      if (modalMode === 'enter') {
-        try {
-          const response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
-          const result = await response.json().catch(() => ({}));
-          const explicitPinRefusal = response.status === 401 && result?.firstMissingSignal === 'caduceus-attendance-refused';
-          if (explicitPinRefusal) { modalMessage.textContent = 'Invalid PIN'; return; }
-          if (!response.ok || result.admin !== true) { modalMessage.textContent = 'PIN check unavailable'; return; }
-          coronatioAttendanceRuntime.currentAttendance = typeof result.attendance === 'string' ? result.attendance : null;
-          if (!coronatioAttendanceRuntime.currentAttendance || !installAdminDocumentPatch(result.adminPatch, result.adminTabs)) { coronatioAttendanceRuntime.currentAttendance = null; modalMessage.textContent = 'PIN check unavailable'; return; }
-        } catch (_) { modalMessage.textContent = 'PIN check unavailable'; return; }
+      if (modalMode !== 'enter') return;
+      let response;
+      try {
+        response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: currentPinInput.value }) });
+      } catch (_) {
+        modalMessage.textContent = attendancePinFailureMessage(null, null, false);
+        return;
+      }
+      let result = null;
+      let jsonValid = true;
+      try { result = await response.json(); } catch (_) { jsonValid = false; }
+      const failure = attendancePinFailureMessage(response, result, jsonValid);
+      if (failure) { modalMessage.textContent = failure; return; }
+      const openedAttendance = typeof result?.attendance === 'string' ? result.attendance : null;
+      const admissionDocument = coronatioAttendanceRuntime.documentIncarnation;
+      coronatioAttendanceRuntime.currentAttendance = openedAttendance;
+      if (response.status !== 200) {
+        await failAdminAdmission(openedAttendance, admissionDocument);
+        return;
+      }
+      try {
+        if (result?.admin !== true || !openedAttendance
+            || typeof result.adminPatch !== 'string' || !result.adminPatch
+            || typeof result.adminTabs !== 'string' || !result.adminTabs) throw new Error('attendance admin projection contract missing');
+        if (!installAdminDocumentPatch(result.adminPatch, result.adminTabs)) throw new Error('admin document patch was not installed');
+      } catch (_) {
+        await failAdminAdmission(openedAttendance, admissionDocument);
+        return;
       }
       modalMessage.textContent = '✓ Admin access confirmed. Loading…';
-      await new Promise(resolve => requestAnimationFrame(resolve));
-      const admitted = await setAdminMode(true, { admission: true });
-      if (admitted) closePinModal();
+      try {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const admitted = await setAdminMode(true, { admission: true });
+        if (admitted !== true) throw new Error('admin chrome projection was not admitted');
+        closePinModal();
+      } catch (_) {
+        await failAdminAdmission(openedAttendance, admissionDocument);
+      }
     });
     async function enterInactivityHeadless() {
       if (coronatioAttendanceRuntime.inactivityHeadless) return;
