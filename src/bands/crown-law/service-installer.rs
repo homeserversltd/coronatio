@@ -85,7 +85,7 @@ fn boundary_readback() -> BoundaryReadback {
         api_unknown_path_policy: "/api/* misses return JSON 404 with coronatio.api.error.v1, never shell HTML".to_string(),
         static_shell_policy: "non-API unknown GET paths return the Coronatio shell for client-side routing".to_string(),
         cartridge_static_policy: "/tabs/<tab-id>/... is served from the configured tab root through safe tab ids and manifest validation".to_string(),
-        cors_source: "homeserver.json global.cors.allowed_origins becomes Coronatio config law in the later config tranche".to_string(),
+        cors_source: "homeserver.json global.cors.allowed_origins is appliance hostname data; Coronatio never reads it as an access gate, the PIN is the only gate".to_string(),
         flask_quarry_blueprint_replacement: "dynamic Flask blueprint injection is replaced by dynamic-cartridge, source-injection-recompile, or first-party-native lanes".to_string(),
     }
 }

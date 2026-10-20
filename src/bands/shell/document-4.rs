@@ -317,14 +317,14 @@ fn shell_document_4() -> &'static str {
           await uploadSelectedFiles(scopedAttendance, binding);
         } catch (_) {
           if (uploadCurrent(binding)) {
-            if (message) message.textContent = adminScreenLoadFailureMessage();
+            if (message) message.textContent = 'Upload failed. Try again.';
             openUploadModal('[data-upload-pin-modal]');
             input?.focus();
           }
         }
       } catch (_) {
         if (uploadCurrent(binding) && message) {
-          message.textContent = adminScreenLoadFailureMessage();
+          message.textContent = 'Upload failed. Try again.';
           openUploadModal('[data-upload-pin-modal]');
           input?.focus();
         }
