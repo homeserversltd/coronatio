@@ -797,10 +797,10 @@ fn shell_document_4() -> &'static str {
       scaffoldRegistry.onRetire(binding, () => { if (statsPaneBinding === binding) statsPaneBinding = null; });
     }
     let statsHistoryLoaded = false;
-    function setStatsHistoryStatus(binding, message, state = 'stale', retry = false, hidden = false) {
+    function setStatsHistoryStatus(binding, message, state = 'stale', retry = false, hidden = false, preserveReadySlots = false) {
       if (!binding || !scaffoldRegistry.current(binding)) return;
       const status = binding.root.querySelector('[data-stats-history-status]');
-      if (!status) return;
+      if (!status || !scaffoldReadProjectionAllowed(status, preserveReadySlots)) return;
       status.hidden = hidden;
       status.dataset.state = state;
       status.textContent = message;
@@ -812,7 +812,7 @@ fn shell_document_4() -> &'static str {
     function startStatsHistory(binding) {
       if (!binding || statsHistoryLoaded || statsHistoryAttemptedBindings.has(binding) || !scaffoldRegistry.current(binding)) return Promise.resolve(false);
       statsHistoryAttemptedBindings.add(binding);
-      setStatsHistoryStatus(binding, 'Loading saved chart history…', 'pending', false, false);
+      setStatsHistoryStatus(binding, 'Loading saved chart history…', 'pending', false, false, true);
       return scaffoldRegistry.run(binding, 'stats-history', async context => {
         const history = await context.fetchJson('/api/stats/history');
         if (!context.current()) return false;
@@ -839,7 +839,7 @@ fn shell_document_4() -> &'static str {
         slots: [], timeoutMs: 8000, slowMs: 750,
         onFailure: ({ current, reason }) => {
           if (!current() || !scaffoldRegistry.current(binding)) return;
-          setStatsHistoryStatus(binding, `Saved chart history unavailable: ${reason || 'Read failed'}.`, 'stale', true, false);
+          setStatsHistoryStatus(binding, `Saved chart history unavailable: ${reason || 'Read failed'}.`, 'stale', true, false, true);
         }
       });
     }

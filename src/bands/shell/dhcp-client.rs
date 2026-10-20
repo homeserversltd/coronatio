@@ -15,21 +15,20 @@ fn shell_dhcp_client() -> &'static str {
     function identityCurrent(binding = identityState.binding) { return Boolean(binding && identityState.binding === binding && headerState.isAdmin && ['dhcp', 'unbound'].includes(binding.guest) && window.scaffoldRegistry?.current(binding)); }
     function identityHas(binding, keys) { return identityCurrent(binding) && keys.every(key => identityState.ready[key] === true); }
     function identityMutationSlot(binding) { return binding?.root?.querySelector('[data-scaffold-slot="identity-mutation"]') || binding?.root?.querySelector('[data-scaffold-slot="identity-roster"]') || null; }
-    function identitySetControls(binding = identityState.binding) {
+    function identitySetControls(binding = identityState.binding, preserveReadySlots = false) {
       const root = binding?.root; if (!(root instanceof Element) || !root.isConnected) return;
       const current = identityCurrent(binding); const addressReady = identityHas(binding, ['roster', 'boundary', 'leases', 'reservations']); const reservationReady = identityHas(binding, ['roster', 'reservations']);
-      root.querySelectorAll('[data-dhcp-pin], [data-identity-claim]').forEach(node => { node.disabled = !current || !addressReady || identityState.writeBusy; });
-      root.querySelectorAll('[data-dhcp-edit], [data-dhcp-remove]').forEach(node => { node.disabled = !current || !reservationReady || identityState.writeBusy; });
-      root.querySelectorAll('[data-edit-note-button]').forEach(node => { node.disabled = !current || !identityState.ready.roster || identityState.writeBusy; });
-      root.querySelectorAll('[data-identity-claim-save], [data-identity-reservation-save]').forEach(node => { node.disabled = !current || !addressReady || identityState.writeBusy; });
-      root.querySelectorAll('[data-dhcp-boundary], [data-dhcp-boundary-save]').forEach(node => { node.disabled = !current || !identityState.dhcpReady.statistics || !identityState.dhcpReady.pool || identityState.writeBusy; });
+      root.querySelectorAll('[data-dhcp-pin], [data-identity-claim]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !addressReady || identityState.writeBusy; });
+      root.querySelectorAll('[data-dhcp-edit], [data-dhcp-remove]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !reservationReady || identityState.writeBusy; });
+      root.querySelectorAll('[data-edit-note-button]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !identityState.ready.roster || identityState.writeBusy; });
+      root.querySelectorAll('[data-identity-claim-save], [data-identity-reservation-save]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !addressReady || identityState.writeBusy; });
+      root.querySelectorAll('[data-dhcp-boundary], [data-dhcp-boundary-save]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !identityState.dhcpReady.statistics || !identityState.dhcpReady.pool || identityState.writeBusy; });
     }
     function identityMarkRetired(binding) {
       if (identityState.binding !== binding) return;
       Object.keys(identityState.ready).forEach(key => { identityState.ready[key] = false; });
       identityState.dhcpReady.statistics = false; identityState.dhcpReady.pool = false;
       const root = binding.root; if (!(root instanceof Element) || !root.isConnected) return;
-      root.querySelectorAll('[data-scaffold-slot]').forEach(slot => { if (slot.dataset.scaffoldUpdatedAt) slot.dataset.scaffoldStale = 'true'; slot.setAttribute('aria-busy', 'false'); });
       identitySetControls(binding);
     }
     function identityAdopt(binding) {
@@ -58,7 +57,7 @@ fn shell_dhcp_client() -> &'static str {
       return scaffoldRegistry.run(binding, `identity-${key}`, async ctx => {
         if (!ctx.current() || !identityCurrent(binding)) return false;
         identityState.ready[key] = false;
-        identitySetControls(binding); if (key === 'boundary' || key === 'leases' || key === 'reservations' || key === 'roster') renderIdentityRoster('address', binding);
+        identitySetControls(binding, true); if (key === 'boundary' || key === 'leases' || key === 'reservations' || key === 'roster') renderIdentityRoster('address', binding, true);
         document.dispatchEvent(new CustomEvent('coronatio:network-identity-started', { detail: { binding, key } }));
         const body = await ctx.fetchJson(route);
         if (!ctx.current() || !identityCurrent(binding)) return false;
@@ -73,7 +72,7 @@ fn shell_dhcp_client() -> &'static str {
         ctx.ready(slot);
         const error = binding.root.querySelector('[data-dhcp-error]'); if (error && key !== 'dns') error.hidden = true;
         return true;
-      }, { slots: [slot], supersede: options.supersede === true, onFailure: ({ current, reason }) => { if (!current() || !identityCurrent(binding)) return; identityState.ready[key] = false; identitySetControls(binding); if (key === 'boundary' || key === 'leases' || key === 'reservations') renderIdentityRoster('address', binding); const error = binding.root.querySelector('[data-dhcp-error]'); if (error) { error.hidden = false; error.textContent = `Network identity unavailable: ${reason || 'Read failed'}`; } document.dispatchEvent(new CustomEvent('coronatio:network-identity-failed', { detail: { binding, key, reason } })); } });
+      }, { slots: [slot], supersede: options.supersede === true, onFailure: ({ current, reason }) => { if (!current() || !identityCurrent(binding)) return; identityState.ready[key] = false; identitySetControls(binding, true); if (key === 'boundary' || key === 'leases' || key === 'reservations') renderIdentityRoster('address', binding, true); const error = binding.root.querySelector('[data-dhcp-error]'); if (error) { error.hidden = false; error.textContent = `Network identity unavailable: ${reason || 'Read failed'}`; } document.dispatchEvent(new CustomEvent('coronatio:network-identity-failed', { detail: { binding, key, reason } })); } });
     }
     function identityRender(binding) {
       if (!identityCurrent(binding)) return;
@@ -96,11 +95,12 @@ fn shell_dhcp_client() -> &'static str {
     function identityReservation(row) { const reservation = row?.declared_reservation; if (!reservation || typeof reservation !== 'object') return null; const id = reservation.id || reservation.reservationId || reservation.reservation_id || row.reservation_id || row.reservationId || row.mac; return id ? { id: String(id), ip: reservation.ip || reservation['ip-address'] || reservation.ipAddress || '' } : null; }
     function identityLastActivity(row) { return row?.observed_lease?.last_activity || row?.observed_lease?.lastActivity || row?.observed_lease?.hostname || row?.last_activity || row?.lastActivity || '—'; }
         function identityRosterMarkup(row, perspective) { const cfg = identityPerspective[perspective]; const names = (row.dns_names || []).join(', ') || '—'; const marks = (row.mismatches || []).map(identityText).join(', ') || 'None'; const observed = identityIp(row, 'observed_lease'); const declared = identityIp(row, 'declared_reservation'); if (!cfg.writable) { const canonicalMac = canonicalNetworkNoteMac(row.mac), note = canonicalMac ? identityState.notes[canonicalMac] ?? '' : '', pencil = headerState.isAdmin ? `<button type="button" class="edit-note-button" data-edit-note-button data-mac="${escapeHtml(row.mac)}" data-note="${escapeHtml(note)}" title="Edit device note" aria-label="Edit note for ${escapeHtml(row.mac)}"><i class="fas fa-pencil-alt" aria-hidden="true"></i></button>` : ''; return `<tr data-device-mac="${escapeHtml(row.mac)}" data-scaffold-key="identity-row:${escapeHtml(row.mac)}" data-roster-emphasis="${cfg.emphasis}"><td><code>${dhcpMasked(row.mac, 'mac')}</code></td><td>${dhcpMasked(identityLastActivity(row), 'hostname')}</td><td>${dhcpMasked(observed, 'ip')}</td><td>${dhcpMasked(names, 'hostname')}</td><td class="device-note-cell" data-label="Note:"><span class="note-text" data-note-text data-mac="${escapeHtml(row.mac)}">${dhcpMasked(note, 'hostname')}</span>${pencil}</td><td>${escapeHtml(row.claim_state || 'unclaimed')}</td><td>${escapeHtml(marks)}</td></tr>`; } const reservation = identityReservation(row); if (perspective === 'address') { const state = reservation ? `<span class="dhcp-pin-badge" aria-label="Pinned address">Pinned</span>` : '<span class="dhcp-unpinned-state">Available to pin</span>'; const action = reservation ? `<button type="button" class="ui-button ui-button--secondary ui-button--small" data-dhcp-edit="${escapeHtml(reservation.id)}" data-dhcp-ip="${escapeHtml(reservation.ip)}">Edit</button><button type="button" class="ui-button ui-button--danger ui-button--small" data-dhcp-remove="${escapeHtml(reservation.id)}">Unreserve</button>` : `<button type="button" class="ui-button ui-button--primary ui-button--small" data-dhcp-pin="${escapeHtml(row.mac)}">Pin</button>`; return `<tr class="dhcp-device-row ${reservation ? 'dhcp-device-row--pinned' : 'dhcp-device-row--lease'}" data-device-mac="${escapeHtml(row.mac)}" data-scaffold-key="identity-row:${escapeHtml(row.mac)}"><td><code>${dhcpMasked(row.mac, 'mac')}</code></td><td>${dhcpMasked(observed, 'ip')}</td><td>${dhcpMasked(declared, 'ip')}</td><td>${dhcpMasked(names, 'hostname')}</td><td>${state}</td><td class="dhcp-device-actions">${action}</td></tr>`; } const lead = names; const action = reservation ? `<button type="button" class="ui-button ui-button--secondary ui-button--small" data-dhcp-edit="${escapeHtml(reservation.id)}" data-dhcp-ip="${escapeHtml(reservation.ip)}">Edit</button><button type="button" class="ui-button ui-button--danger ui-button--small" data-dhcp-remove="${escapeHtml(reservation.id)}">Remove</button>` : `<button type="button" class="ui-button ui-button--primary ui-button--small" data-identity-claim="${escapeHtml(row.mac)}">Claim</button>`; return `<tr data-device-mac="${escapeHtml(row.mac)}" data-scaffold-key="identity-row:${escapeHtml(row.mac)}" data-roster-emphasis="${cfg.emphasis}"><td><code>${dhcpMasked(row.mac, 'mac')}</code></td><td>${dhcpMasked(lead, 'hostname')}</td><td>${dhcpMasked(observed, 'ip')}</td><td>${dhcpMasked(declared, 'ip')}</td><td>${dhcpMasked(names, 'hostname')}</td><td>${escapeHtml(row.claim_state || 'unclaimed')}</td><td>${escapeHtml(marks)}</td><td>${action}</td></tr>`; }
-    function renderIdentityRoster(perspective, suppliedBinding = null) {
+    function renderIdentityRoster(perspective, suppliedBinding = null, preserveReadySlots = false) {
       const binding = suppliedBinding || (identityCurrent() ? identityState.binding : scaffoldRegistry.capture('stats'));
       if (!binding || !scaffoldRegistry.current(binding)) return;
       const targets = binding.root.querySelectorAll(`[data-identity-roster-host][data-identity-perspective="${perspective}"] [data-identity-roster]`);
       targets.forEach(target => {
+        if (!scaffoldReadProjectionAllowed(target, preserveReadySlots)) return;
         const cfg = identityPerspective[perspective]; if (!cfg) return;
         const isDhcpAddress = perspective === 'address';
         const headings = isDhcpAddress ? '<th>MAC</th><th>Observed lease</th><th>Declared reservation</th><th>DNS names</th><th>Status</th><th>Action</th>' : cfg.writable ? `<th>${cfg.lead[0]}</th><th>${cfg.lead[1]}</th><th>Observed lease</th><th>Declared reservation</th><th>DNS names</th><th>${cfg.lead[2]}</th><th>Mismatches</th><th>Action</th>` : `<th>${cfg.lead[0]}</th><th>${cfg.lead[1]}</th><th>${cfg.lead[2]}</th><th>Names</th><th>Note</th><th>Claim state</th><th>Mismatches</th>`;
@@ -108,7 +108,7 @@ fn shell_dhcp_client() -> &'static str {
         const html = `<table class="${tableClass}"><thead><tr>${headings}</tr></thead><tbody>${identityState.roster.map(row => identityRosterMarkup(row, perspective)).join('') || `<tr data-scaffold-key="identity-empty-${perspective}"><td colspan="${columns}">${identityState.ready.roster ? 'No devices reported.' : 'Reading device identities…'}</td></tr>`}</tbody></table>`;
         morphLivePane(target, html);
       });
-      if (identityCurrent(binding)) identitySetControls(binding);
+      if (identityCurrent(binding)) identitySetControls(binding, preserveReadySlots);
     }
     function identityWrite(binding, key, route, options, dependencies, accept = () => true) {
       const slot = identityMutationSlot(binding); if (!slot) return Promise.resolve(false);
@@ -203,12 +203,12 @@ fn shell_dhcp_client() -> &'static str {
       return scaffoldRegistry.run(binding,key,async ctx => {
         if (!ctx.current() || !identityCurrent(binding)) return false;
         if (key === 'dhcp-statistics') identityState.dhcpReady.statistics=false; else identityState.dhcpReady.pool=false;
-        identitySetControls(binding);
+        identitySetControls(binding, true);
         const body=await ctx.fetchJson(route); if (!ctx.current() || !identityCurrent(binding)) return false;
         const value=validate(body); if (!ctx.current() || !identityCurrent(binding)) return false;
         apply(value); if (!ctx.current() || !identityCurrent(binding)) return false;
         ctx.ready(slot); return true;
-      },{slots:[slot],supersede:options.supersede === true,onFailure:({current,reason})=>{if(!current()||!identityCurrent(binding))return;if(key==='dhcp-statistics')identityState.dhcpReady.statistics=false;else identityState.dhcpReady.pool=false;identitySetControls(binding);const error=binding.root.querySelector('[data-dhcp-error]');if(error){error.hidden=false;error.textContent=`DHCP settings unavailable: ${reason || 'Read failed'}`;}}});
+      },{slots:[slot],supersede:options.supersede === true,onFailure:({current,reason})=>{if(!current()||!identityCurrent(binding))return;if(key==='dhcp-statistics')identityState.dhcpReady.statistics=false;else identityState.dhcpReady.pool=false;identitySetControls(binding,true);const error=binding.root.querySelector('[data-dhcp-error]');if(error){error.hidden=false;error.textContent=`DHCP settings unavailable: ${reason || 'Read failed'}`;}}});
     }
     function hydrateDhcpBoundary(options = {}) {
       const binding=scaffoldRegistry.capture('dhcp'); if (!binding || !identityAdopt(binding)) return Promise.resolve(false);

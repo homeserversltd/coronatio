@@ -534,12 +534,6 @@ fn shell_document_4_tail() -> &'static str {
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         owner.dataReady = false; owner.stale = true; owner.error = '';
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
-        refreshNasSetupButtons(owner);
-        if (!adminDiskSnapshotCurrent(owner, context)) return true;
-        if (owner.hasSnapshot) morphLivePane(owner.host, adminDiskCensusMarkup(owner));
-        if (!adminDiskSnapshotCurrent(owner, context)) return true;
-        const lastRead = owner.observedAt ? ` Last successful read: ${new Date(owner.observedAt).toLocaleTimeString()}.` : '';
-        adminDiskReadStatus(owner, owner.hasSnapshot ? `Refreshing disk census; last-known devices remain visible with actions disabled.${lastRead}` : 'Reading available devices…', 'pending');
         const nasStatus = owner.host.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         if (nasStatus) { nasStatus.textContent = 'Reading current disk status…'; nasStatus.dataset.state = 'pending'; }
@@ -568,13 +562,9 @@ fn shell_document_4_tail() -> &'static str {
         if (!current() || !adminDiskSnapshotCurrent(owner)) return;
         owner.dataReady = false; owner.stale = true; owner.error = reason || 'Read failed';
         if (!adminDiskSnapshotCurrent(owner)) return;
-        const lastRead = owner.observedAt ? ` Last successful read: ${new Date(owner.observedAt).toLocaleTimeString()}.` : '';
-        adminDiskReadStatus(owner, `Available devices unavailable: ${owner.error}. ${owner.hasSnapshot ? `Showing last known devices; setup is disabled.${lastRead}` : 'No current device list is available.'}`, 'stale');
         const nasStatus = owner.host.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
         if (!adminDiskSnapshotCurrent(owner)) return;
         if (nasStatus) { nasStatus.textContent = 'NAS status unknown until the disk census refreshes.'; nasStatus.dataset.state = 'unknown'; }
-        if (!adminDiskSnapshotCurrent(owner)) return;
-        refreshNasSetupButtons(owner);
       };
       owner.task = task; owner.onFailure = onFailure;
       owner.promise = scaffoldRegistry.run(owner.binding, 'admin-disk-census', task, { slots: [owner.host], timeoutMs: adminDiskSnapshotFamily.timeoutMs, slowMs: 750, supersede, onFailure });

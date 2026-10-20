@@ -12,15 +12,15 @@ fn shell_unbound_client() -> &'static str {
     function dnsRequireAccepted(value) { const refusal = dnsRefusal(value); if (refusal) throw new Error(refusal); if (!dnsFindObject(value, node => node.ok === true || node.success === true || node.accepted === true)) throw new Error('dns-mutation-receipt-missing-success'); return value; }
     async function dnsJson(route, options = {}) { const response = await fetch(route, { cache: 'no-store', headers: options.body ? {'content-type':'application/json'} : {}, ...options }); const body = await response.json().catch(() => null); const refusal = dnsRefusal(body); if (!response.ok || refusal) throw new Error(refusal || body?.first_failing_boundary || body?.firstMissingSignal || body?.error || `Request failed (${response.status})`); return body; }
     function dnsSetState(message) { const binding=dnsUiState.binding; if(!dnsCurrent(binding))return; binding.root.querySelectorAll('[data-dns-state]').forEach(node => { node.textContent=message; }); }
-    function dnsSetResolverControls() { const status=dnsUiState.resolver,binding=dnsUiState.binding,root=binding?.root;
+    function dnsSetResolverControls(preserveReadySlots = false) { const status=dnsUiState.resolver,binding=dnsUiState.binding,root=binding?.root;
         if(!root)return;
-        root.querySelectorAll('[data-dns-resolver-control], [data-dns-upstream-save]').forEach(node=>{let available=dnsCurrent(binding)&&dnsUiState.resolverReady;
+        root.querySelectorAll('[data-dns-resolver-control], [data-dns-upstream-save]').forEach(node=>{if(!scaffoldReadProjectionAllowed(node,preserveReadySlots))return;let available=dnsCurrent(binding)&&dnsUiState.resolverReady;
           if(node.matches('[data-dns-adblock]'))available=available&&typeof status?.adblockEnabled==='boolean';
           else if(node.matches('[data-dns-dot], [data-dns-upstream-provider], [data-dns-upstream-custom-toggle], [data-dns-upstream-custom-addresses], [data-dns-upstream-save]'))available=available&&Array.isArray(status?.upstreams)&&typeof status?.dnsOverTls==='boolean';
           node.disabled=!available||dnsUiState.mutationBusy;
           });
         }
-    function dnsSetIdentityControls() { const binding=dnsUiState.binding;dnsUiState.identityReady=dnsIdentityCurrent(binding);const root=binding?.root;if(!root)return;root.querySelectorAll('[data-dns-add-name], [data-dns-device-pick], [data-dns-name-remove], [data-dns-add-save]').forEach(node=>{node.disabled=!dnsUiState.identityReady||dnsUiState.mutationBusy;});dnsUpdateAddSave(); }
+    function dnsSetIdentityControls(preserveReadySlots = false) { const binding=dnsUiState.binding;dnsUiState.identityReady=dnsIdentityCurrent(binding);const root=binding?.root;if(!root)return;root.querySelectorAll('[data-dns-add-name], [data-dns-device-pick], [data-dns-name-remove], [data-dns-add-save]').forEach(node=>{if(scaffoldReadProjectionAllowed(node,preserveReadySlots))node.disabled=!dnsUiState.identityReady||dnsUiState.mutationBusy;});dnsUpdateAddSave(); }
     function dnsSetMutationBusy(busy) { const binding=dnsUiState.binding;if(!dnsCurrent(binding))return;dnsUiState.mutationBusy=Boolean(busy);dnsSetResolverControls();dnsSetIdentityControls();renderDnsNames();renderDnsModalRoster();renderDnsModalRecords();if(dnsUiState.pickedMac)renderDnsIpCalendar(); }
     function dnsProvenanceHas(value, wanted) { const values = Array.isArray(value) ? value : [value]; return values.some(item => String(item || '').toLowerCase() === wanted); }
     function dnsOctet(value) { const match = String(value || '').match(/^192\.168\.123\.(\d{1,3})$/); if (!match) return null; const octet = Number(match[1]); return Number.isInteger(octet) && octet >= 1 && octet <= 254 ? octet : null; }
@@ -67,8 +67,9 @@ fn shell_unbound_client() -> &'static str {
       }));
       return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name) || a.address.localeCompare(b.address));
     }
-    function renderDnsNames() { const target=dnsUiState.binding?.root?.querySelector('[data-dns-names]');
+    function renderDnsNames(preserveReadySlots = false) { const target=dnsUiState.binding?.root?.querySelector('[data-dns-names]');
         if(!target||!dnsCurrent())return;
+        if(!scaffoldReadProjectionAllowed(target,preserveReadySlots))return;
         const rows=dnsNameRows();
         if(!rows.length&&!identityState.ready.roster&&!identityState.ready.dns)return;
         const html=rows.length?`<table class="ui-table dns-name-table"><thead><tr><th>Name</th><th>Address</th><th>PTR</th><th>Provenance</th><th>Action</th></tr></thead><tbody>${rows.map(row=>{const key=`${row.name.toLowerCase()}-${row.address.toLowerCase()}`;
@@ -298,7 +299,7 @@ fn shell_unbound_client() -> &'static str {
         if(!slot)return Promise.resolve(false);
         return scaffoldRegistry.run(binding,'dns-resolver',async ctx=>{if(!ctx.current()||!dnsCurrent(binding))return false;
           dnsUiState.resolverReady=false;
-          dnsSetResolverControls();
+          dnsSetResolverControls(true);
           dnsSetState('Refreshing resolver status; last successful values remain visible.');
           const envelope=await ctx.fetchJson('/api/v1/network/dns/resolver/status');
           if(!ctx.current()||!dnsCurrent(binding))return false;
@@ -316,7 +317,7 @@ fn shell_unbound_client() -> &'static str {
           return true;
           },{slots:[slot],supersede:options.supersede===true,onFailure:({current,reason})=>{if(!current()||!dnsCurrent(binding))return;
             dnsUiState.resolverReady=false;
-            dnsSetResolverControls();
+            dnsSetResolverControls(true);
             dnsSetState(`Resolver status unavailable; showing the last successful values. ${reason||'Read failed'}`);
             }});
 
@@ -332,16 +333,13 @@ fn shell_unbound_client() -> &'static str {
             dnsUiState.identityReady=false;
             dnsUiState.resolverReady=false;
             dnsUiState.mutationBusy=false;
-            binding.root?.querySelectorAll('[data-scaffold-slot]').forEach(slot=>{if(slot.dataset.scaffoldUpdatedAt)slot.dataset.scaffoldStale='true';
-              slot.setAttribute('aria-busy','false');
-              });
             dnsSetResolverControls();
             dnsSetIdentityControls();
             });
           }if(!dnsCurrent(binding))return false;
-        dnsSetResolverControls();
-        dnsSetIdentityControls();
-        renderDnsNames();
+        dnsSetResolverControls(true);
+        dnsSetIdentityControls(true);
+        renderDnsNames(true);
         renderDnsModalRoster();
         renderDnsModalRecords();
         if(dnsUiState.pickedMac)renderDnsIpCalendar();
@@ -353,7 +351,7 @@ fn shell_unbound_client() -> &'static str {
       const binding=event.detail?.binding;
       if(!dnsCurrent(binding)||dnsUiState.binding!==binding||identityState.binding!==binding)return;
       dnsUiState.identityReady=false;
-      dnsSetIdentityControls();
+      dnsSetIdentityControls(true);
       dnsSetState('Local identity is refreshing; last successful names and selection remain visible.');
     });
     document.addEventListener('coronatio:network-identity-updated',event=>{const binding=event.detail?.binding;
@@ -373,7 +371,7 @@ fn shell_unbound_client() -> &'static str {
       const binding=event.detail?.binding;
       if(!dnsCurrent(binding)||dnsUiState.binding!==binding)return;
       dnsUiState.identityReady=false;
-      dnsSetIdentityControls();
+      dnsSetIdentityControls(true);
       dnsSetState('Local identity is stale; last successful names and selection remain visible.');
     });
     document.addEventListener('click',async event=>{const binding=dnsUiState.binding,target=event.target instanceof Element?event.target:null;

@@ -147,7 +147,8 @@ fn shell_native_htmx_owner_client() -> &'static str {
     }
 
     function displayNativeReadState(owner, message, withRetry = false) {
-      if (!nativeHtmxOwnerCurrent(owner) || !owner.target.isConnected) return;
+      if (!nativeHtmxOwnerCurrent(owner) || !owner.target.isConnected
+          || !scaffoldReadProjectionAllowed(owner.target, true)) return;
       const host = nativeReadStatusHost(owner);
       if (!host?.container || !host.label) return;
       if (owner.originalStatusText === undefined) owner.originalStatusText = host.label.textContent || '';
@@ -170,7 +171,8 @@ fn shell_native_htmx_owner_client() -> &'static str {
     }
 
     function clearNativeReadState(owner, { restoreStatus = true } = {}) {
-      if (!owner?.target?.isConnected) return;
+      if (!owner?.target?.isConnected
+          || !scaffoldReadProjectionAllowed(owner.target, true)) return;
       const host = nativeReadStatusHost(owner);
       if (!host?.container || !host.label) return;
       const retry = host.container.querySelector('[data-native-read-retry]');
@@ -196,6 +198,20 @@ fn shell_native_htmx_owner_client() -> &'static str {
       if (!(pane instanceof Element) || pane.dataset.panePanel !== 'upload') return null;
       const slots = pane.querySelectorAll('[data-upload-tree][data-scaffold-slot="upload-tree"]');
       return slots.length === 1 ? slots[0] : null;
+    }
+
+    function primeNativeHtmxSlotIndicators(...elements) {
+      const panes = new Set();
+      elements.forEach(element => {
+        if (!(element instanceof Element)) return;
+        const pane = element.closest('[data-pane-panel]');
+        if (pane) panes.add(pane);
+      });
+      panes.forEach(pane => {
+        if (pane.getAttribute('hx-indicator') !== 'body') {
+          pane.setAttribute('hx-indicator', 'body');
+        }
+      });
     }
 
     function nativeUploadTreePathAllowed(path) {
@@ -241,6 +257,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
     }
 
     function addNativeUploadTreeRetry(owner) {
+      if (owner.target.dataset.scaffoldState === 'ready') return false;
       const status = Array.from(owner.target.children).find(child => child.hasAttribute('data-scaffold-status'));
       if (!status) return false;
       let retry = status.querySelector('[data-native-read-retry]');
@@ -295,7 +312,8 @@ fn shell_native_htmx_owner_client() -> &'static str {
         return false;
       }
       if (!uploadTree) displayNativeReadState(owner, reason, false);
-      scaffoldRegistry.registerRetry(binding, owner.readKey, () => {
+      const readySlot = !scaffoldReadProjectionAllowed(target, true);
+      if (!readySlot) scaffoldRegistry.registerRetry(binding, owner.readKey, () => {
         if (!scaffoldRegistry.current(binding) || binding.root !== pane
             || !target?.isConnected || !pane.contains(target)) return false;
         const retrySource = guest === 'upload' ? (nativeUploadTreeSlot(pane) === target ? target : null)
@@ -307,12 +325,14 @@ fn shell_native_htmx_owner_client() -> &'static str {
         return window.htmx?.ajax('GET', path, { source: retrySource, target, swap });
       }, { slots: [], timeoutMs: owner.timeoutMs, slowMs: DEFAULT_NATIVE_SLOW_READ_MS });
       if (uploadTree) {
-        clearNativeReadState(owner);
-        scaffoldRegistry.setSlot(binding, target, 'fault', reason);
-        clearNativeUploadTreeGeneratedLabel(target);
-        addNativeUploadTreeRetry(owner);
+        if (!readySlot) {
+          clearNativeReadState(owner);
+          scaffoldRegistry.setSlot(binding, target, 'fault', reason);
+          clearNativeUploadTreeGeneratedLabel(target);
+          addNativeUploadTreeRetry(owner);
+        }
       } else displayNativeReadState(owner, reason, true);
-      retireNativeHtmxOwner(owner, reason, { abort: reason === 'Read timed out', keepRetry: true });
+      retireNativeHtmxOwner(owner, reason, { abort: reason === 'Read timed out', keepRetry: !readySlot });
       return true;
     }
 
@@ -458,6 +478,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
     }
 
     function guestSlotStatus(slot, state, guest, readKey, message, retry = false) {
+      if (!(slot instanceof Element) || !slot.isConnected || slot.dataset.scaffoldState === 'ready') return;
       let status = Array.from(slot.children).find(child => child.hasAttribute('data-scaffold-status')) || null;
       if (!status) {
         status = document.createElement('div');
@@ -482,21 +503,14 @@ fn shell_native_htmx_owner_client() -> &'static str {
     }
 
     function guestSlotSetPending(slot, guest, readKey, slow = false) {
-      if (!(slot instanceof Element) || !slot.isConnected) return;
+      if (!(slot instanceof Element) || !slot.isConnected || slot.dataset.scaffoldState === 'ready') return;
       slot.setAttribute('aria-busy', 'true');
-      if (slot.dataset.scaffoldState === 'ready') {
-        slot.dataset.scaffoldStale = 'true';
-        guestSlotStatus(slot, 'stale', guest, readKey,
-          `Refreshing ${slot.dataset.scaffoldPlaceholder || 'content'}; showing the last successful read${slot.dataset.scaffoldUpdatedAt ? ` from ${new Date(Number(slot.dataset.scaffoldUpdatedAt)).toLocaleTimeString()}` : ''}.`, true);
-        return;
-      }
       if (slot.dataset.scaffoldState === 'fault' && !slow) {
         Array.from(slot.children).filter(child => child.hasAttribute('data-scaffold-status')).forEach(child => child.remove());
       }
       slot.dataset.scaffoldState = 'pending';
       slot.dataset.scaffoldPending = 'true';
       delete slot.dataset.scaffoldError;
-      delete slot.dataset.scaffoldStale;
       slot.removeAttribute('aria-invalid');
       if (slow) guestSlotStatus(slot, 'pending', guest, readKey,
         `Still waiting for ${slot.dataset.scaffoldPlaceholder || 'this region'}.`, true);
@@ -509,29 +523,18 @@ fn shell_native_htmx_owner_client() -> &'static str {
       slot.dataset.scaffoldUpdatedAt = String(Date.now());
       delete slot.dataset.scaffoldPending;
       delete slot.dataset.scaffoldError;
-      delete slot.dataset.scaffoldStale;
       slot.removeAttribute('aria-invalid');
       slot.setAttribute('aria-busy', 'false');
     }
 
     function guestSlotSetFailure(slot, guest, readKey, message, retry = true) {
-      if (!(slot instanceof Element) || !slot.isConnected) return;
-      const hadGoodContent = slot.dataset.scaffoldState === 'ready';
+      if (!(slot instanceof Element) || !slot.isConnected || slot.dataset.scaffoldState === 'ready') return;
       slot.setAttribute('aria-busy', 'false');
       delete slot.dataset.scaffoldPending;
       slot.dataset.scaffoldError = message;
-      if (hadGoodContent) {
-        slot.dataset.scaffoldStale = 'true';
-        slot.removeAttribute('aria-invalid');
-        const age = slot.dataset.scaffoldUpdatedAt
-          ? ` Last successful read: ${new Date(Number(slot.dataset.scaffoldUpdatedAt)).toLocaleTimeString()}.` : '';
-        guestSlotStatus(slot, 'stale', guest, readKey, `${message}.${age}`, retry);
-      } else {
-        slot.dataset.scaffoldState = 'fault';
-        delete slot.dataset.scaffoldStale;
-        slot.setAttribute('aria-invalid', 'true');
-        guestSlotStatus(slot, 'fault', guest, readKey, `${message}. `, retry);
-      }
+      slot.dataset.scaffoldState = 'fault';
+      slot.setAttribute('aria-invalid', 'true');
+      guestSlotStatus(slot, 'fault', guest, readKey, `${message}. `, retry);
     }
 
     function guestSlotOwnerCurrent(owner) {
@@ -649,10 +652,8 @@ fn shell_native_htmx_owner_client() -> &'static str {
         return false;
       }
       guestSlotDeferred.set(info.slot, info);
-      if (info.slot.dataset.scaffoldState !== 'ready') {
-        info.slot.dataset.scaffoldState = 'pending';
-        info.slot.setAttribute('aria-busy', 'true');
-      }
+      primeNativeHtmxSlotIndicators(info.slot);
+      guestSlotSetPending(info.slot, info.guest, guestSlotReadKey(info.slot, info.guest));
       return true;
     }
 
@@ -678,19 +679,21 @@ fn shell_native_htmx_owner_client() -> &'static str {
           return;
         }
         if (binding.readOwners.has(readKey)) return;
+        const state = slot.dataset.scaffoldState;
         const queued = guestSlotDeferred.get(slot);
+        if (state === 'ready' && !queued) return;
         if (queued?.reason) {
           guestSlotDeferred.delete(slot);
           guestSlotSetFailure(slot, guest, null, queued.reason, false);
           return;
         }
-        const state = slot.dataset.scaffoldState;
-        if (!queued && state !== 'pending' && slot.dataset.scaffoldStale !== 'true') return;
+        if (!queued && state !== 'pending') return;
         guestSlotDeferred.delete(slot);
         if (!window.htmx?.ajax) {
           guestSlotSetFailure(slot, guest, null, 'Guest slot transport is unavailable', false);
           return;
         }
+        primeNativeHtmxSlotIndicators(slot);
         guestSlotSetPending(slot, guest, readKey);
         try { window.htmx.ajax('GET', path, { source: slot, target: slot, swap: 'innerHTML' }); }
         catch (_) { guestSlotSetFailure(slot, guest, readKey, 'Guest slot transport is unavailable', true); }
@@ -720,6 +723,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
       }
       event.preventDefault(); event.stopPropagation();
       const key = guestSlotReadKey(slot, guest);
+      primeNativeHtmxSlotIndicators(slot);
       guestSlotSetPending(slot, guest, key);
       try { window.htmx?.ajax('GET', path, { source: slot, target: slot, swap: 'innerHTML' }); }
       catch (_) { guestSlotSetFailure(slot, guest, key, 'Guest slot transport is unavailable', true); }
@@ -802,6 +806,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
       const detail = event.detail || {};
       const guestSlot = guestSlotRequestInfo(detail);
       if (guestSlot) {
+        primeNativeHtmxSlotIndicators(guestSlot.slot);
         const seated = window.immortalFloor?.state === 'Seated'
           && window.immortalFloor?.activeGuest === guestSlot.guest;
         const binding = seated ? scaffoldRegistry.capture(guestSlot.guest) : null;
@@ -851,6 +856,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
         event.preventDefault();
         return;
       }
+      primeNativeHtmxSlotIndicators(source, target);
       const binding = scaffoldRegistry.capture(guest);
       if (!binding || !scaffoldRegistry.current(binding) || binding.root !== pane || !target || !binding.root.contains(target)) {
         event.preventDefault();

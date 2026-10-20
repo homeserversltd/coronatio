@@ -1,6 +1,6 @@
 fn shell_pane_structure_owner_client() -> &'static str {
     r####"    const scaffoldSlotStructures = new WeakMap();
-    const scaffoldDynamicAttributes = new Set(['data-scaffold-state', 'data-scaffold-pending', 'data-scaffold-error', 'data-scaffold-stale', 'data-scaffold-updated-at', 'aria-busy', 'aria-invalid', 'aria-selected', 'aria-checked', 'aria-pressed', 'checked', 'selected', 'value', 'open']);
+    const scaffoldDynamicAttributes = new Set(['data-scaffold-state', 'data-scaffold-pending', 'data-scaffold-error', 'data-scaffold-updated-at', 'aria-busy', 'aria-invalid', 'aria-selected', 'aria-checked', 'aria-pressed', 'checked', 'selected', 'value', 'open']);
     const scaffoldLiveAttributes = new Set([...scaffoldDynamicAttributes, 'data-scaffold-status']);
     function scaffoldStructureSignature(node) {
       if (node.nodeType === Node.TEXT_NODE) return '#text';
@@ -225,6 +225,10 @@ fn shell_pane_structure_owner_client() -> &'static str {
       reset: resetNativePaneSkeleton,
       retire: retireNativePaneSkeleton
     });
+    function scaffoldReadProjectionAllowed(target, preserveReadySlots = false) {
+      if (!(target instanceof Element) || !target.isConnected) return false;
+      return !preserveReadySlots || !target.closest('[data-scaffold-slot][data-scaffold-state="ready"]');
+    }
     const scaffoldRegistry = (() => {
       const guests = new Map();
       const bindings = new Map();
@@ -251,9 +255,9 @@ fn shell_pane_structure_owner_client() -> &'static str {
         slot.querySelector('[data-scaffold-status]')?.remove();
         slot.removeAttribute('aria-invalid');
         slot.removeAttribute('data-scaffold-error');
-        delete slot.dataset.scaffoldStale;
       }
       function statusNode(slot, state, guest, readKey, message, retry = false) {
+        if (stateFor(slot) === 'ready') return;
         let status = slot.querySelector('[data-scaffold-status]');
         if (!status) { status = document.createElement('div'); status.dataset.scaffoldStatus = state; status.className = `scaffold-slot-${state}`; status.setAttribute('role', state === 'fault' ? 'alert' : 'status'); slot.appendChild(status); }
         status.dataset.scaffoldStatus = state;
@@ -268,12 +272,8 @@ fn shell_pane_structure_owner_client() -> &'static str {
         }
       }
       function setPending(slot, key, guest, readKey = null) {
+        if (stateFor(slot) === 'ready') return;
         slot.setAttribute('aria-busy', 'true');
-        if (stateFor(slot) === 'ready') {
-          slot.dataset.scaffoldStale = 'true';
-          statusNode(slot, 'stale', guest, readKey, `Refreshing ${slot.dataset.scaffoldPlaceholder || key || 'content'}; showing the last successful read${slot.dataset.scaffoldUpdatedAt ? ` from ${new Date(Number(slot.dataset.scaffoldUpdatedAt)).toLocaleTimeString()}` : ''}.`, Boolean(readKey));
-          return;
-        }
         removeStatus(slot);
         slot.dataset.scaffoldState = 'pending';
         slot.dataset.scaffoldPending = 'true';
@@ -288,8 +288,8 @@ fn shell_pane_structure_owner_client() -> &'static str {
         slot.setAttribute('aria-busy', 'false');
       }
       function setFault(slot, guest, detail, readKey = null) {
+        if (stateFor(slot) === 'ready') return;
         const message = detail || 'Content unavailable';
-        if (stateFor(slot) === 'ready') { setStale(slot, guest, message, readKey); return; }
         slot.dataset.scaffoldState = 'fault';
         delete slot.dataset.scaffoldPending;
         slot.setAttribute('aria-busy', 'false');
@@ -297,16 +297,7 @@ fn shell_pane_structure_owner_client() -> &'static str {
         slot.dataset.scaffoldError = message;
         statusNode(slot, 'fault', guest, readKey, `${message}. `, Boolean(readKey));
       }
-      function setStale(slot, guest, detail, readKey = null) {
-        const message = detail || 'Showing last known data';
-        slot.dataset.scaffoldState = 'ready';
-        slot.dataset.scaffoldStale = 'true';
-        slot.setAttribute('aria-busy', 'false');
-        slot.removeAttribute('aria-invalid');
-        slot.dataset.scaffoldError = message;
-        const age = slot.dataset.scaffoldUpdatedAt ? ` Last successful read: ${new Date(Number(slot.dataset.scaffoldUpdatedAt)).toLocaleTimeString()}.` : '';
-        statusNode(slot, 'stale', guest, readKey, `${message}.${age} `, Boolean(readKey));
-      }
+
       function current(binding, run = null, allowTimedOut = false) {
         if (!binding || binding.retired || bindings.get(binding.guest) !== binding || guests.get(binding.guest) !== binding.registration || !(binding.root instanceof Element) || !binding.root.isConnected || document.visibilityState !== 'visible') return false;
         if (typeof viewportFamilyAdmitted === 'function' && !viewportFamilyAdmitted(binding.guest)) return false;
@@ -372,7 +363,6 @@ fn shell_pane_structure_owner_client() -> &'static str {
           if (!validStates.has(slot.dataset.scaffoldState)) setPending(slot, slot.dataset.scaffoldKey || slot.dataset.scaffoldSlot, guest);
           else if (stateFor(slot) === 'fault') setFault(slot, guest, slot.dataset.scaffoldError || 'Content unavailable');
           else if (stateFor(slot) === 'pending') setPending(slot, slot.dataset.scaffoldKey || slot.dataset.scaffoldSlot, guest);
-          else if (stateFor(slot) === 'ready') slot.setAttribute('aria-busy', 'false');
         });
         return binding;
       }
@@ -403,8 +393,8 @@ fn shell_pane_structure_owner_client() -> &'static str {
         if (!target || !binding.root.contains(target)) return false;
         if (state === 'ready') { setReady(target); run?.failedSlots.delete(target); }
         else if (state === 'fault') { setFault(target, binding.guest, safeFailureText(detail, 'Content unavailable'), run?.key); markRunFailure(run, target); }
-        else if (state === 'stale') { setStale(target, binding.guest, safeFailureText(detail, 'Showing last known data'), run?.key); markRunFailure(run, target); }
-        else setPending(target, key, binding.guest, run?.key || null);
+        else if (state === 'pending') setPending(target, key, binding.guest, run?.key || null);
+        else return false;
         return true;
       }
       function publish(binding, payload, options = {}) {
@@ -453,8 +443,7 @@ fn shell_pane_structure_owner_client() -> &'static str {
         const message = safeFailureText(detail, 'Content unavailable');
         selected.forEach(target => {
           if (!current(binding, run, allowTimedOut) || !binding.root.contains(target)) return;
-          if (stateFor(target) === 'ready') setStale(target, binding.guest, message, run?.key);
-          else setFault(target, binding.guest, message, run?.key);
+          setFault(target, binding.guest, message, run?.key);
           markRunFailure(run, target);
         });
         return true;

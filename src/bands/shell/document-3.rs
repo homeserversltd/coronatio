@@ -1767,7 +1767,7 @@ __NATIVE_HTMX_OWNER__
           || !headerState.isAdmin || !coronatioAttendanceRuntime.currentAttendance || !viewportFamilyAdmitted('admin')
           || !scaffoldRegistry.current(binding)) return Promise.resolve(false);
       if (adminMountDestinationBindings.has(binding)) return binding.runs.get(readKey)?.promise || Promise.resolve(true);
-      if (host.dataset.scaffoldState === 'ready' && host.dataset.scaffoldStale !== 'true') {
+      if (host.dataset.scaffoldState === 'ready') {
         adminMountDestinationBindings.add(binding);
         return Promise.resolve(true);
       }

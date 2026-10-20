@@ -37,7 +37,6 @@ fn shell_firewall_client() -> &'static str {
       if (firewallState.binding !== binding) return;
       firewallState.observedReady = false; firewallState.childrenReady = false; firewallState.whitelistReady = false;
       const root = binding.root; if (!(root instanceof Element) || !root.isConnected) return;
-      root.querySelectorAll('[data-scaffold-slot]').forEach(slot => { if (slot.dataset.scaffoldUpdatedAt) slot.dataset.scaffoldStale = 'true'; slot.setAttribute('aria-busy', 'false'); });
       firewallSetControls(binding);
     }
     function firewallAdoptBinding(binding) {
@@ -49,35 +48,37 @@ fn shell_firewall_client() -> &'static str {
       window.scaffoldRegistry.onRetire(binding, () => firewallMarkRetired(binding));
       return true;
     }
-    function firewallSetControls(binding = firewallState.binding) {
+    function firewallSetControls(binding = firewallState.binding, preserveReadySlots = false) {
       if (!binding?.root) return;
       const current = firewallCurrent(binding);
       binding.root.querySelectorAll('[data-firewall-register]').forEach(button => {
+        if (!scaffoldReadProjectionAllowed(button, preserveReadySlots)) return;
         const mac = firewallMac(button.dataset.firewallRegister);
         const registered = firewallState.children.some(child => firewallMac(child) === mac);
         button.disabled = !current || !firewallState.observedReady || !firewallState.childrenReady || registered;
       });
       binding.root.querySelectorAll('[data-firewall-unregister], [data-firewall-whitelist]').forEach(button => {
+        if (!scaffoldReadProjectionAllowed(button, preserveReadySlots)) return;
         button.disabled = !current || !firewallState.childrenReady;
       });
       const editing = current && firewallState.childrenReady && firewallState.whitelistReady && Boolean(firewallState.selectedMac);
-      binding.root.querySelectorAll('[data-firewall-host-input], [data-firewall-host-form] button[type="submit"], [data-firewall-remove-host], [data-firewall-modal-save]').forEach(button => { button.disabled = !editing; });
+      binding.root.querySelectorAll('[data-firewall-host-input], [data-firewall-host-form] button[type="submit"], [data-firewall-remove-host], [data-firewall-modal-save]').forEach(button => { if (scaffoldReadProjectionAllowed(button, preserveReadySlots)) button.disabled = !editing; });
     }
-    function renderFirewall(binding = firewallState.binding) {
+    function renderFirewall(binding = firewallState.binding, preserveReadySlots = false) {
       if (!firewallCurrent(binding)) return;
       const observed = binding.root.querySelector('[data-firewall-observed]'); const children = binding.root.querySelector('[data-firewall-children]');
-      if (observed) morphLivePane(observed, firewallState.observed.map(row => {
+      if (observed && scaffoldReadProjectionAllowed(observed, preserveReadySlots)) morphLivePane(observed, firewallState.observed.map(row => {
         const mac = firewallMac(row); const hostname = String(row?.hostname ?? '').trim() || 'Unknown'; const ip = String(row?.ip ?? '').trim() || 'Unknown';
         const registered = firewallState.childrenReady && firewallState.children.some(child => firewallMac(child) === mac);
         const disabled = !firewallState.observedReady || !firewallState.childrenReady || registered;
         const label = registered ? 'Registered' : (firewallState.childrenReady ? 'Register child device' : 'Checking registration');
         return `<li data-scaffold-key="firewall-observed:${escapeHtml(mac)}"><code>${escapeHtml(hostname)} — ${escapeHtml(ip)} — ${escapeHtml(mac)}</code><button type="button" class="ui-button ui-button--primary ui-button--small" data-firewall-register="${escapeHtml(mac)}"${disabled ? ' disabled' : ''}>${label}</button></li>`;
       }).join('') || (firewallState.observedReady ? '<li data-scaffold-key="firewall-observed-empty">No observed MAC addresses are available.</li>' : ''));
-      if (children) morphLivePane(children, firewallState.children.map(row => {
+      if (children && scaffoldReadProjectionAllowed(children, preserveReadySlots)) morphLivePane(children, firewallState.children.map(row => {
         const mac = firewallMac(row);
         return `<li data-scaffold-key="firewall-child:${escapeHtml(mac)}"><code>${escapeHtml(mac)}</code><div><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-whitelist="${escapeHtml(mac)}"${firewallState.childrenReady ? '' : ' disabled'}>Website whitelist</button><button type="button" class="ui-button ui-button--danger ui-button--small" data-firewall-unregister="${escapeHtml(mac)}"${firewallState.childrenReady ? '' : ' disabled'}>Unregister</button></div></li>`;
       }).join('') || (firewallState.childrenReady ? '<li data-scaffold-key="firewall-children-empty">No child devices are registered.</li>' : ''));
-      firewallSetControls(binding);
+      firewallSetControls(binding, preserveReadySlots);
     }
     function firewallRead(binding, key, route, field, slotName, options = {}) {
       const target = binding.root.querySelector(`[data-scaffold-slot="${slotName}"]`);
@@ -85,7 +86,7 @@ fn shell_firewall_client() -> &'static str {
       return scaffoldRegistry.run(binding, key, async ctx => {
         if (!ctx.current() || !firewallCurrent(binding)) return false;
         if (field === 'observed') firewallState.observedReady = false; else firewallState.childrenReady = false;
-        renderFirewall(binding);
+        renderFirewall(binding, true);
         const body = await ctx.fetchJson(route);
         if (!ctx.current() || !firewallCurrent(binding)) return false;
         const rows = firewallAcceptArray(body, field);
@@ -96,7 +97,7 @@ fn shell_firewall_client() -> &'static str {
         ctx.ready(target);
         const error = binding.root.querySelector('[data-firewall-error]'); if (error) error.hidden = true;
         return true;
-      }, { slots: [target], supersede: options.supersede === true, onFailure: ({ current, reason }) => { if (!current() || !firewallCurrent(binding)) return; if (field === 'observed') firewallState.observedReady = false; else firewallState.childrenReady = false; renderFirewall(binding); const error = binding.root.querySelector('[data-firewall-error]'); if (error) { error.hidden = false; error.textContent = reason || 'Child-device controls are unavailable'; } } });
+      }, { slots: [target], supersede: options.supersede === true, onFailure: ({ current, reason }) => { if (!current() || !firewallCurrent(binding)) return; if (field === 'observed') firewallState.observedReady = false; else firewallState.childrenReady = false; renderFirewall(binding, true); const error = binding.root.querySelector('[data-firewall-error]'); if (error) { error.hidden = false; error.textContent = reason || 'Child-device controls are unavailable'; } } });
     }
     function hydrateFirewall(options = {}) {
       const binding = scaffoldRegistry.capture('firewall');
@@ -115,7 +116,7 @@ fn shell_firewall_client() -> &'static str {
       const readKey = 'firewall-whitelist';
       return scaffoldRegistry.run(binding, readKey, async ctx => {
         if (!ctx.current() || !firewallCurrent(binding) || firewallState.selectedMac !== mac || !firewallState.childrenReady || !firewallState.children.some(row => firewallMac(row) === mac)) return false;
-        firewallState.whitelistReady = false; firewallSetControls(binding);
+        firewallState.whitelistReady = false; firewallSetControls(binding, true);
         const body = await ctx.fetchJson(`/api/firewall/children/${encodeURIComponent(mac)}/whitelist`);
         if (!ctx.current() || !firewallCurrent(binding) || firewallState.selectedMac !== mac) return false;
         const refusal = firewallRefusal(body); if (refusal) throw new Error(refusal);
@@ -128,7 +129,7 @@ fn shell_firewall_client() -> &'static str {
         const error = slot.querySelector('[data-firewall-whitelist-error]'); if (error) { error.hidden = true; error.textContent = ''; }
         const modal = firewallModalElement(); if (modal) { modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); binding.root.querySelector('[data-firewall-host-input]')?.focus(); }
         return true;
-      }, { slots: [slot], supersede: options.supersede === true, onFailure: ({ current, reason }) => { if (!current() || !firewallCurrent(binding) || firewallState.selectedMac !== mac) return; firewallState.whitelistReady = false; firewallSetControls(binding); const error = slot.querySelector('[data-firewall-whitelist-error]'); if (error) { error.hidden = false; error.textContent = reason || 'Whitelist is unavailable'; } } });
+      }, { slots: [slot], supersede: options.supersede === true, onFailure: ({ current, reason }) => { if (!current() || !firewallCurrent(binding) || firewallState.selectedMac !== mac) return; firewallState.whitelistReady = false; firewallSetControls(binding, true); const error = slot.querySelector('[data-firewall-whitelist-error]'); if (error && scaffoldReadProjectionAllowed(error, true)) { error.hidden = false; error.textContent = reason || 'Whitelist is unavailable'; } } });
     }
     async function openFirewallModal(mac) {
       const binding = scaffoldRegistry.capture('firewall'); const value = String(mac || '').trim().toUpperCase();

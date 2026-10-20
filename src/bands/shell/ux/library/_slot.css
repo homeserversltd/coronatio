@@ -21,11 +21,6 @@
 
 .ui-slot[data-scaffold-state="ready"] { border-color: var(--border); }
 
-.ui-slot[data-scaffold-state="ready"][data-scaffold-stale="true"] {
-  border-color: var(--warning);
-  background-color: color-mix(in srgb, var(--warning) 6%, var(--background));
-}
-
 .ui-slot[data-scaffold-state="fault"] {
   border-color: var(--error);
   background-color: color-mix(in srgb, var(--error) 6%, var(--background));
@@ -34,8 +29,7 @@
 .ui-slot [data-scaffold-status],
 .ui-slot .scaffold-slot-pending,
 .ui-slot .scaffold-slot-ready,
-.ui-slot .scaffold-slot-fault,
-.ui-slot .scaffold-slot-stale {
+.ui-slot .scaffold-slot-fault {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -46,7 +40,6 @@
 }
 
 .ui-slot .scaffold-slot-fault { color: var(--error); }
-.ui-slot .scaffold-slot-stale { color: var(--warning); }
 
 .ui-slot .scaffold-slot-retry {
   padding: 0.3rem 0.65rem;

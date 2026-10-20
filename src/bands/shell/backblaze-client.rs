@@ -167,7 +167,13 @@ fn shell_backblaze_client() -> &'static str {
       const binding = state.binding; if (!current(binding)) return;
       root(binding).querySelectorAll('[data-backblaze-view]').forEach(button => { const on = button.dataset.backblazeView === view; button.classList.toggle('is-active', on); button.setAttribute('aria-selected', String(on)); });
       root(binding).querySelectorAll('[data-backblaze-panel]').forEach(panel => { panel.hidden = panel.dataset.backblazePanel !== view; });
-      if (view === 'ledger') { if (state.statusReady) void loadSnapshots(binding); else renderReadStatus('[data-backblaze-ledger]', 'Waiting for status before reading snapshots.', 'pending'); }
+      if (view === 'ledger') {
+        if (state.statusReady) void loadSnapshots(binding);
+        else {
+          const ledgerSlot = el('[data-scaffold-slot="backblaze-ledger"]', binding);
+          if (ledgerSlot) scaffoldRegistry.setSlot(binding, ledgerSlot, 'pending');
+        }
+      }
     }
     function adoptBackblazeBinding() {
       const binding = admitted() ? scaffoldRegistry.capture('backblaze') : null;
@@ -233,10 +239,10 @@ fn shell_backblaze_client() -> &'static str {
       if (!canUse(binding)) return false;
       const bucket = state.bucket, generation = state.selectionGeneration;
       if (!bucket) { state.ledger = []; state.ledgerBucket = null; state.snapshotsReady = true; renderLedger(binding); return true; }
-      if (state.ledgerBucket !== bucket) { state.ledger = []; state.ledgerBucket = bucket; state.snapshotsReady = false; state.snapshotsStale = false; renderLedger(binding); }
+      if (state.ledgerBucket !== bucket) { state.ledger = []; state.ledgerBucket = bucket; state.snapshotsReady = false; state.snapshotsStale = false; }
       const ledgerSlot = el('[data-scaffold-slot="backblaze-ledger"]', binding);
       if (!ledgerSlot) return Promise.resolve(false);
-      renderReadStatus('[data-backblaze-ledger]', state.snapshotsReady ? '' : 'Loading snapshots…', state.snapshotsStale ? 'stale' : 'pending');
+      state.snapshotsStale = true;
       return scaffoldRegistry.run(binding, 'backblaze-snapshots', async context => {
         const body = await context.fetchJson('/api/backblaze/snapshots?bucket=' + encodeURIComponent(bucket));
         if (!context.current() || !current(binding)) return false;
@@ -250,11 +256,9 @@ fn shell_backblaze_client() -> &'static str {
         return true;
       }, {
         slots: [ledgerSlot], supersede: options.supersede === true, timeoutMs: 8000, slowMs: 750,
-        onFailure: ({ current: runCurrent, reason }) => {
+        onFailure: ({ current: runCurrent }) => {
           if (!runCurrent() || !current(binding) || state.bucket !== bucket || state.selectionGeneration !== generation) return;
           state.snapshotsStale = true;
-          renderReadStatus('[data-backblaze-ledger]', `${state.snapshotsReady ? 'Showing last known snapshots; refresh' : 'Snapshots'} unavailable: ${reason || 'Read failed'}.`, 'stale', true);
-          renderLedger(binding);
         }
       });
     }
@@ -265,8 +269,7 @@ fn shell_backblaze_client() -> &'static str {
       return scaffoldRegistry.run(binding, 'backblaze-status', async context => {
         if (!context.current() || !current(binding)) return false;
         state.statusStale = true;
-        renderReadStatus('[data-backblaze-ribbon]', 'Refreshing status; controls are disabled.', 'pending');
-        renderBuckets(); renderSelected();
+        renderReadStatus('[data-backblaze-ribbon]', 'Refreshing status; actions wait for a current read.', 'pending');
         const body = await context.fetchJson('/api/backblaze/status');
         if (!context.current() || !current(binding)) return false;
         const data = projectStatus(body);
@@ -291,8 +294,8 @@ fn shell_backblaze_client() -> &'static str {
           state.statusStale = true;
           const status = el('[data-backblaze-state]', binding);
           if (status) { status.dataset.state = 'stale'; status.textContent = state.statusReady ? `STALE · ${health({ status: { running: state.data?.running, last_run_ok: state.data?.last_run_ok } })}` : 'UNAVAILABLE'; }
-          renderReadStatus('[data-backblaze-ribbon]', `Status refresh unavailable: ${reason || 'Read failed'}. ${state.statusReady ? 'Showing last known status.' : ''}`, 'stale', true);
-          renderBuckets(); renderSelected(); scheduleStatusPoll(binding);
+          renderReadStatus('[data-backblaze-ribbon]', `Status refresh unavailable: ${reason || 'Read failed'}. ${state.statusReady ? 'Showing last known status; actions remain blocked until a current read succeeds.' : ''}`, 'stale', true);
+          scheduleStatusPoll(binding);
         }
       });
     }
