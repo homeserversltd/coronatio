@@ -39,16 +39,12 @@ async fn storage_disk_census_route(headers: axum::http::HeaderMap) -> Response {
     let mapping = MutationActionTarget::attended_parent("coronatio.storage.disk.census", path);
     let context = MutationRequestContext::attended_document_from_headers(&headers);
     let mut readback = match authority.authorize(&context, mapping) {
-        Ok(attendance) => invalidate_scoped_attendance(
-            &authority,
-            &attendance,
-            caduceus_http_with_attendance_and_document(
+        Ok(attendance) => caduceus_http_with_attendance_and_document(
                 "GET",
                 path,
                 Some(&attendance.proof),
                 Some(&attendance.document),
             ),
-        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     };
     storage_project_local_mutation_refusal(&mut readback);
@@ -149,10 +145,7 @@ fn storage_actuate_json_timeout(
 ) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
-        Ok(attendance) => invalidate_scoped_attendance(
-            authority,
-            &attendance,
-            caduceus_http_json_with_attendance_and_document_timeout(
+        Ok(attendance) => caduceus_http_json_with_attendance_and_document_timeout(
                 "POST",
                 path,
                 body,
@@ -160,7 +153,6 @@ fn storage_actuate_json_timeout(
                 Some(&attendance.document),
                 timeout,
             ),
-        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }

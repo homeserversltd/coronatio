@@ -215,7 +215,7 @@ async fn set_starred_tab_route(headers: axum::http::HeaderMap, Json(request): Js
             "source": source,
         }))).into_response(),
     };
-    let persisted = caduceus_guest_star_set(serde_json::Value::String(next.starred.clone()));
+    let persisted = caduceus_guest_star_set(&headers, serde_json::Value::String(next.starred.clone()));
     if !persisted.ok {
         return caduceus_config_failure_response(persisted);
     }

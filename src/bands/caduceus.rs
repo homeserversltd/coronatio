@@ -251,7 +251,10 @@ fn caduceus_config_set(headers: &axum::http::HeaderMap, path: &str, value: serde
 // IRIS T01/T02 permits a guest to choose an already guest-visible regular tab.
 // This is deliberately separate from caduceus_config_set: every other config
 // mutation remains bound to the Coronatio attendance authority.
-fn caduceus_guest_star_set(value: serde_json::Value) -> CaduceusHttpReadback {
+fn caduceus_guest_star_set(headers: &axum::http::HeaderMap, value: serde_json::Value) -> CaduceusHttpReadback {
+    if crate::caduceus_access::attendance_from_headers(headers).is_some() {
+        return caduceus_config_set(headers, "tabs.starred", value);
+    }
     caduceus_http_json(
         "POST",
         "/api/v1/config/set",

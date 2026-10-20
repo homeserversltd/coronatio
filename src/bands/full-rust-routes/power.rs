@@ -82,7 +82,7 @@ async fn power_calibration_post_route(headers: axum::http::HeaderMap, body: Byte
         }))).into_response();
     };
     let request_headers = headers.clone();
-    // The config-set door admits the viewer's attended parent; a scoped derivation of this key is refused.
+    // The config-set door receives the viewer's validated document attendance unchanged.
     let readback = tokio::task::spawn_blocking(move || caduceus_actuate_json_with_timeout(
         &mutation_authority(), &request_headers,
         MutationActionTarget::attended_parent("coronatio.power.calibration", "/api/v1/config/set"),

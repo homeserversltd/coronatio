@@ -2,14 +2,11 @@
 // The current document incarnation and its opaque attendance proof are carried only by that document.
 use crate::caduceus_access::{attendance_from_headers, document_incarnation_from_headers, safe_access_code, AttendanceProof, CaduceusAccessClient};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MutationAuthorization { AttendedDocument, AttendedParent }
-
+// Route/action labels remain descriptive metadata; they do not select an attendance scope.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MutationActionTarget {
-    action: String,
-    target: String,
-    authorization: MutationAuthorization,
+    _action: String,
+    _target: String,
 }
 
 impl MutationActionTarget {
@@ -21,27 +18,24 @@ impl MutationActionTarget {
             _ => return None,
         };
         Some(Self {
-            action: action.to_string(),
-            target: target.to_string(),
-            authorization: MutationAuthorization::AttendedDocument,
+            _action: action.to_string(),
+            _target: target.to_string(),
         })
     }
 
     fn config(target: &str) -> Self {
         Self {
-            action: "coronatio.config.set".to_string(),
-            target: target.to_string(),
-            authorization: MutationAuthorization::AttendedDocument,
+            _action: "coronatio.config.set".to_string(),
+            _target: target.to_string(),
         }
     }
 
     fn caduceus(action: impl Into<String>, target: impl Into<String>) -> Self {
-        let action = action.into();
-        Self { action, target: target.into(), authorization: MutationAuthorization::AttendedDocument }
+        Self { _action: action.into(), _target: target.into() }
     }
 
     fn attended_parent(action: impl Into<String>, target: impl Into<String>) -> Self {
-        Self { action: action.into(), target: target.into(), authorization: MutationAuthorization::AttendedParent }
+        Self::caduceus(action, target)
     }
 
     fn request_context(&self, headers: &axum::http::HeaderMap) -> MutationRequestContext {
@@ -65,11 +59,8 @@ impl MutationRequestContext {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MutationAttendanceScope { ScopedChild, AttendedParent }
-
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct MutationAttendance { proof: AttendanceProof, document: String, scope: MutationAttendanceScope }
+struct MutationAttendance { proof: AttendanceProof, document: String }
 
 
 #[derive(Clone, Debug)]
@@ -89,7 +80,7 @@ impl MutationAuthority {
     fn authorize(
         &self,
         context: &MutationRequestContext,
-        mapping: MutationActionTarget,
+        _mapping: MutationActionTarget,
     ) -> Result<MutationAttendance, MutationRefusal> {
         let Some(document) = context.document.as_ref() else {
             return Err(MutationRefusal { code: "caduceus-attendance-document-required".to_string(), status: 400 });
@@ -102,64 +93,8 @@ impl MutationAuthority {
             crate::caduceus_access::bust_attendance_projection(attendance, document, "validation-refused");
             return Err(MutationRefusal { code: call.receipt.code, status: call.receipt.status });
         }
-        if mapping.authorization == MutationAuthorization::AttendedParent {
-            return Ok(MutationAttendance {
-                proof: attendance.clone(),
-                document: document.clone(),
-                scope: MutationAttendanceScope::AttendedParent,
-            });
-        }
-        let target = canonical_mutation_target(&mapping.target);
-        let scoped = self.access.attendance_open_scoped(attendance, document, &target);
-        if let Some(proof) = scoped.proof {
-            Ok(MutationAttendance { proof, document: target, scope: MutationAttendanceScope::ScopedChild })
-        } else {
-            Err(MutationRefusal { code: scoped.receipt.code, status: scoped.receipt.status })
-        }
+        Ok(MutationAttendance { proof: attendance.clone(), document: document.clone() })
     }
-}
-
-fn canonical_mutation_target(target: &str) -> String {
-    if let Some(action) = target.strip_prefix("/api/v1/appliance/service/").and_then(|value| value.rsplit('/').next()).filter(|value| !value.is_empty()) {
-        return format!("/api/v1/appliance/service/{{service}}/{action}");
-    }
-    if target == "/api/v1/network/firewall/children" || target == "/api/firewall/children" {
-        return "/api/v1/network/firewall/policies/{mac}".to_string();
-    }
-    for prefix in [
-        "/api/v1/network/firewall/children/",
-        "/api/v1/network/firewall/policies/",
-        "/api/firewall/children/",
-    ] {
-        if let Some(value) = target.strip_prefix(prefix) {
-            let segments: Vec<_> = value.split('/').collect();
-            if !segments[0].is_empty()
-                && (segments.len() == 1 || (segments.len() == 2 && segments[1] == "whitelist"))
-            {
-                return "/api/v1/network/firewall/policies/{mac}".to_string();
-            }
-        }
-    }
-    if target == "/api/v1/file/ingress/start" {
-        return "/api/v1/file/ingress/start".to_string();
-    }
-    if let Some(value) = target.strip_prefix("/api/v1/file/ingress/") {
-        let segments: Vec<_> = value.split('/').collect();
-        if segments.len() == 3
-            && !segments[0].is_empty()
-            && segments[1] == "chunk"
-            && !segments[2].is_empty()
-        {
-            return "/api/v1/file/ingress/{upload_id}/chunk/{index}".to_string();
-        }
-        if segments.len() == 2 && !segments[0].is_empty() && segments[1] == "complete" {
-            return "/api/v1/file/ingress/{upload_id}/complete".to_string();
-        }
-        if segments.len() == 1 && !segments[0].is_empty() {
-            return "/api/v1/file/ingress/{upload_id}".to_string();
-        }
-    }
-    target.to_string()
 }
 
 fn mutation_authority() -> MutationAuthority { MutationAuthority::default() }
@@ -227,7 +162,6 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
     } else if matches!(
         signal,
         "caduceus-attendance-unbound"
-            | "caduceus-derived-unbound"
             | "caduceus-attendance-verifier-unbound"
             | "caduceus-signer-stale-derived"
             | "caduceus-signer-current-bind-unavailable"
@@ -237,41 +171,6 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
     } else {
         axum::http::StatusCode::SERVICE_UNAVAILABLE
     }
-}
-
-fn invalidate_scoped_attendance(
-    authority: &MutationAuthority,
-    attendance: &MutationAttendance,
-    mut readback: CaduceusHttpReadback,
-) -> CaduceusHttpReadback {
-    if attendance.scope == MutationAttendanceScope::AttendedParent {
-        return readback;
-    }
-    let invalidation = authority
-        .access
-        .attendance_invalidate(&attendance.proof, &attendance.document);
-    crate::caduceus_access::bust_attendance_projection(
-        &attendance.proof,
-        &attendance.document,
-        "attendance-invalidated",
-    );
-    if !invalidation.receipt.ok && readback.ok {
-        readback.ok = false;
-        readback.status = if invalidation.receipt.status == 0 {
-            503
-        } else {
-            invalidation.receipt.status
-        };
-        readback.first_missing_signal = "caduceus-attendance-invalidate-failed".to_string();
-        if let Some(object) = readback.body.as_object_mut() {
-            object.insert("ok".to_string(), serde_json::Value::Bool(false));
-            object.insert(
-                "firstMissingSignal".to_string(),
-                serde_json::Value::String(readback.first_missing_signal.clone()),
-            );
-        }
-    }
-    readback
 }
 
 fn caduceus_actuate_json(
@@ -301,10 +200,7 @@ fn caduceus_actuate_json_with_timeout(
 ) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
-        Ok(attendance) => invalidate_scoped_attendance(
-            authority,
-            &attendance,
-            caduceus_http_json_with_attendance_and_document_timeout(
+        Ok(attendance) => caduceus_http_json_with_attendance_and_document_timeout(
                 "POST",
                 path,
                 body,
@@ -312,7 +208,6 @@ fn caduceus_actuate_json_with_timeout(
                 Some(&attendance.document),
                 timeout,
             ),
-        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
@@ -351,17 +246,13 @@ fn caduceus_actuate_with_timeout(
 ) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
-        Ok(attendance) => invalidate_scoped_attendance(
-            authority,
-            &attendance,
-            caduceus_http_with_attendance_and_document_timeout(
+        Ok(attendance) => caduceus_http_with_attendance_and_document_timeout(
                 "POST",
                 path,
                 Some(&attendance.proof),
                 Some(&attendance.document),
                 timeout,
             ),
-        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
@@ -372,16 +263,12 @@ fn admin_fragment_caduceus_request(headers: &axum::http::HeaderMap, method: &str
         &MutationRequestContext::attended_document_from_headers(headers),
         MutationActionTarget::attended_parent("coronatio.admin.fragment", path),
     ) {
-        Ok(attendance) => invalidate_scoped_attendance(
-            &authority,
-            &attendance,
-            caduceus_http_with_attendance_and_document(
+        Ok(attendance) => caduceus_http_with_attendance_and_document(
                 method,
                 path,
                 Some(&attendance.proof),
                 Some(&attendance.document),
             ),
-        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
@@ -397,17 +284,13 @@ fn admin_fragment_caduceus_json_request(
         &MutationRequestContext::attended_document_from_headers(headers),
         MutationActionTarget::attended_parent("coronatio.admin.fragment", path),
     ) {
-        Ok(attendance) => invalidate_scoped_attendance(
-            &authority,
-            &attendance,
-            caduceus_http_json_with_attendance_and_document(
+        Ok(attendance) => caduceus_http_json_with_attendance_and_document(
                 method,
                 path,
                 body,
                 Some(&attendance.proof),
                 Some(&attendance.document),
             ),
-        ),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
@@ -450,11 +333,7 @@ fn caduceus_translation_debt(
 ) -> CaduceusHttpReadback {
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
-        Ok(attendance) => invalidate_scoped_attendance(
-            authority,
-            &attendance,
-            translation_debt_readback(method, path, historical_target, current_candidate),
-        ),
+        Ok(_) => translation_debt_readback(method, path, historical_target, current_candidate),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
 }
@@ -506,98 +385,4 @@ fn mutation_config_set(
         crate::indicators::invalidate_indicator_portal_metadata();
     }
     readback
-}
-
-#[cfg(test)]
-fn mutation_mapping_table() -> Vec<(String, String, String)> {
-    let mut table = full_rust_route_inventory()
-        .iter()
-        .flat_map(|(path, methods)| {
-            methods.iter().filter_map(move |method| {
-                MutationActionTarget::route(method.to_ascii_uppercase().as_str(), path)
-                    .map(|mapping| ((*method).to_string(), (*path).to_string(), mapping.action))
-            })
-        })
-        .collect::<Vec<_>>();
-    table.extend([
-        ("post".to_string(), "/api/set_starred_tab".to_string(), "coronatio.config.set".to_string()),
-        ("post".to_string(), "/api/caduceus/update/check".to_string(), "caduceus.update.check".to_string()),
-        ("post".to_string(), "/api/caduceus/update/now".to_string(), "caduceus.update.now".to_string()),
-        ("post".to_string(), "/api/caduceus/update/service/toggle".to_string(), "caduceus.update.service.toggle".to_string()),
-        ("post".to_string(), "/admit/admin/toggle/:toggle_id".to_string(), "coronatio.route.post".to_string()),
-        ("post".to_string(), "/admit/admin/action/:action_id".to_string(), "coronatio.route.post".to_string()),
-    ]);
-    table
-}
-
-#[cfg(any())]
-mod mutation_authority_tests {
-
-    #[test]
-    fn mutation_mapping_covers_every_registered_state_changing_route() {
-        let table = mutation_mapping_table();
-        let mut unique = std::collections::BTreeSet::new();
-        for (method, path, _) in &table {
-            assert!(
-                unique.insert((method.clone(), path.clone())),
-                "duplicate mutation mapping {method} {path}"
-            );
-        }
-        for (path, methods) in full_rust_route_inventory() {
-            for method in *methods {
-                if *method != "get" {
-                    assert!(table.iter().any(|(mapped_method, mapped_path, _)| mapped_method == method && mapped_path == path), "unmapped mutation {method} {path}");
-                }
-            }
-        }
-        assert_eq!(table.len(), unique.len());
-    }
-
-    #[test]
-    fn successor_refuses_missing_origin_or_cookie_without_ticket_leak() {
-        let authority = MutationAuthority { access: CaduceusAccessClient::new(std::env::temp_dir().join(format!("coronatio-caduceus-absent-{}-{}.sock", std::process::id(), line!()))) };
-        let mapping = MutationActionTarget::caduceus("caduceus.update.now", "/api/v1/update/now");
-        for context in [
-            MutationRequestContext { same_origin: false, document: Some("test-document".to_string()), attendance: AttendanceProof::parse("test-attendance") },
-            MutationRequestContext { same_origin: true, document: Some("test-document".to_string()), attendance: None },
-        ] {
-            let refusal = authority.authorize(&context, mapping.clone()).unwrap_err();
-            assert!(!refusal.code.contains("test-attendance"));
-            assert!(refusal.code.contains("refused") || refusal.code.contains("required"));
-        }
-    }
-
-    #[test]
-    fn ordered_context_never_extracts_cross_origin_cookie_or_calls_upstream() {
-        let mark = crate::caduceus_access::test_fixture::mark();
-        let mut headers = crate::caduceus_access::test_fixture::same_origin_headers(true);
-        headers.insert(axum::http::header::ORIGIN, axum::http::HeaderValue::from_static("https://evil.example"));
-        let context = MutationRequestContext::from_headers(&headers);
-        assert!(!context.same_origin);
-        assert!(context.attendance.is_none());
-        assert!(mutation_context_refusal(&headers).is_some());
-        assert!(crate::caduceus_access::test_fixture::records_since(mark).is_empty());
-    }
-
-    #[test]
-    fn central_mutation_status_classifies_refusal_and_fault_signals() {
-        for (signal, expected) in [
-            ("caduceus-access-origin-refused", axum::http::StatusCode::FORBIDDEN),
-            ("caduceus-attendance-required", axum::http::StatusCode::UNAUTHORIZED),
-            ("caduceus-attendance-refused", axum::http::StatusCode::UNAUTHORIZED),
-            ("caduceus-attendance-invalid", axum::http::StatusCode::UNAUTHORIZED),
-            ("caduceus-access-unavailable", axum::http::StatusCode::SERVICE_UNAVAILABLE),
-            ("caduceus-access-malformed-response", axum::http::StatusCode::SERVICE_UNAVAILABLE),
-            ("caduceus-loopback-required", axum::http::StatusCode::SERVICE_UNAVAILABLE),
-        ] {
-            let readback = CaduceusHttpReadback {
-                ok: false,
-                status: 0,
-                path: "/test".to_string(),
-                body: serde_json::json!({}),
-                first_missing_signal: signal.to_string(),
-            };
-            assert_eq!(mutation_response_status(&readback), expected, "{signal}");
-        }
-    }
 }

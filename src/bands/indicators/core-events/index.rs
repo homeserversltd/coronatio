@@ -13,7 +13,6 @@ struct CoreMembership {
     session: Session,
     document: Option<String>,
     parent_attendance: Option<crate::caduceus_access::AttendanceProof>,
-    admin_attendance: Option<crate::caduceus_access::AttendanceProof>,
     admin_stats_cache: Option<std::sync::Arc<ScopedAdminStatsCache>>,
     fallback_signal: Option<String>,
     generation: u64,
@@ -35,6 +34,7 @@ pub(crate) struct CoreRenewQuery {
 #[derive(Clone)]
 struct CoreAdminContext {
     attendance: crate::caduceus_access::AttendanceProof,
+    document: String,
     stats_cache: std::sync::Arc<ScopedAdminStatsCache>,
     generation: u64,
 }
@@ -220,7 +220,6 @@ pub(crate) fn subscribe_core_stream(
             session,
             document: None,
             parent_attendance: None,
-            admin_attendance: None,
             admin_stats_cache: None,
             fallback_signal: None,
             generation: 0,
@@ -489,7 +488,7 @@ fn minimum_refresh_interval(topic_id: &str) -> Duration {
 
 pub(crate) fn renew_core_stream(stream_id: &str, lease: Duration) -> bool {
     let now = Instant::now();
-    let expired_child = {
+    {
         let mut memberships = core_memberships().lock().unwrap();
         if memberships
             .get(stream_id)
@@ -500,11 +499,8 @@ pub(crate) fn renew_core_stream(stream_id: &str, lease: Duration) -> bool {
                 return true;
             }
         }
-        memberships
-            .remove(stream_id)
-            .and_then(|mut membership| membership.admin_attendance.take())
-    };
-    revoke_core_admin_child(expired_child, "lease-expired");
+        let _ = memberships.remove(stream_id);
+    }
     false
 }
 
@@ -513,43 +509,21 @@ async fn upgrade_core_stream_attended(
     document: String,
     parent: crate::caduceus_access::AttendanceProof,
 ) -> Result<(), String> {
-    let (generation, previous_child) = match begin_core_upgrade(stream_id, &document, &parent)? {
-        Some(state) => state,
+    let generation = match begin_core_upgrade(stream_id, &document, &parent)? {
+        Some(generation) => generation,
         None => return Ok(()),
     };
-    revoke_core_admin_child(previous_child, "stream-transitioned");
-    let parent_document = document.clone();
-    let parent_for_call = parent.clone();
-    let call = match tokio::task::spawn_blocking(move || {
-        crate::caduceus_access::CaduceusAccessClient::default().attendance_open_scoped(
-            &parent_for_call,
-            &parent_document,
-            CADUCEUS_STATS_ADMIN_PATH,
-        )
-    })
-    .await
-    {
-        Ok(call) => call,
-        Err(_) => {
-            let signal = "caduceus-attendance-task-failed".to_owned();
-            fail_core_upgrade(stream_id, generation, signal.clone());
-            return Err(signal);
-        }
-    };
+    let call = crate::caduceus_access::CaduceusAccessClient::default()
+        .attendance_validate_async(parent.clone(), document.clone())
+        .await;
     if !call.receipt.ok {
         let signal = call.receipt.code;
         fail_core_upgrade(stream_id, generation, signal.clone());
         return Err(signal);
     }
-    let Some(child) = call.take_proof() else {
-        let signal = "caduceus-attendance-admin-scope-missing".to_owned();
-        fail_core_upgrade(stream_id, generation, signal.clone());
-        return Err(signal);
-    };
-    if finish_core_upgrade(stream_id, generation, document, parent, child.clone()) {
+    if finish_core_upgrade(stream_id, generation, document, parent) {
         Ok(())
     } else {
-        revoke_core_admin_child(Some(child), "stream-transitioned");
         Err("caduceus-attendance-session-transitioned".to_owned())
     }
 }
@@ -558,7 +532,7 @@ fn begin_core_upgrade(
     stream_id: &str,
     document: &str,
     parent: &crate::caduceus_access::AttendanceProof,
-) -> Result<Option<(u64, Option<crate::caduceus_access::AttendanceProof>)>, String> {
+) -> Result<Option<u64>, String> {
     let mut memberships = core_memberships().lock().unwrap();
     let Some(membership) = memberships.get_mut(stream_id) else {
         return Err("unknown-stream".to_owned());
@@ -572,11 +546,10 @@ fn begin_core_upgrade(
     if membership.session == Session::Admin
         && membership.document.as_deref() == Some(document)
         && membership.parent_attendance.as_ref() == Some(parent)
-        && membership.admin_attendance.is_some()
+        && membership.admin_stats_cache.is_some()
     {
         return Ok(None);
     }
-    let previous_child = membership.admin_attendance.take();
     membership.admin_stats_cache = None;
     membership.document = Some(document.to_owned());
     membership.parent_attendance = Some(parent.clone());
@@ -587,7 +560,7 @@ fn begin_core_upgrade(
     }
     membership.upgrading = true;
     membership.generation = membership.generation.wrapping_add(1);
-    Ok(Some((membership.generation, previous_child)))
+    Ok(Some(membership.generation))
 }
 
 fn finish_core_upgrade(
@@ -595,7 +568,6 @@ fn finish_core_upgrade(
     generation: u64,
     document: String,
     parent: crate::caduceus_access::AttendanceProof,
-    child: crate::caduceus_access::AttendanceProof,
 ) -> bool {
     let mut memberships = core_memberships().lock().unwrap();
     let Some(membership) = memberships.get_mut(stream_id) else {
@@ -610,7 +582,6 @@ fn finish_core_upgrade(
     membership.session = Session::Admin;
     membership.document = Some(document);
     membership.parent_attendance = Some(parent);
-    membership.admin_attendance = Some(child);
     membership.admin_stats_cache = Some(std::sync::Arc::new(ScopedAdminStatsCache::default()));
     membership.fallback_signal = None;
     membership.upgrading = false;
@@ -624,7 +595,6 @@ fn fail_core_upgrade(stream_id: &str, generation: u64, signal: String) {
             membership.session = Session::Guest;
             membership.document = None;
             membership.parent_attendance = None;
-            membership.admin_attendance = None;
             membership.admin_stats_cache = None;
             membership.fallback_signal = Some(signal);
             membership.upgrading = false;
@@ -634,14 +604,30 @@ fn fail_core_upgrade(stream_id: &str, generation: u64, signal: String) {
 }
 
 pub(crate) fn downgrade_core_stream(stream_id: &str, document: Option<&str>) -> bool {
-    let child = {
-        let mut memberships = core_memberships().lock().unwrap();
-        let Some(membership) = memberships.get_mut(stream_id) else {
-            return false;
-        };
-        if document.is_some() && membership.document.as_deref() != document {
-            return false;
-        }
+    let mut memberships = core_memberships().lock().unwrap();
+    let Some(membership) = memberships.get_mut(stream_id) else {
+        return false;
+    };
+    if document.is_some() && membership.document.as_deref() != document {
+        return false;
+    }
+    membership.session = Session::Guest;
+    membership.document = None;
+    membership.parent_attendance = None;
+    membership.admin_stats_cache = None;
+    membership.fallback_signal = None;
+    membership.upgrading = false;
+    membership.generation = membership.generation.wrapping_add(1);
+    let _ = membership.control_tx.send(CoreControl::Set(Session::Guest));
+    true
+}
+
+pub(crate) fn downgrade_core_document(document: &str) {
+    let mut memberships = core_memberships().lock().unwrap();
+    for membership in memberships
+        .values_mut()
+        .filter(|membership| membership.document.as_deref() == Some(document))
+    {
         membership.session = Session::Guest;
         membership.document = None;
         membership.parent_attendance = None;
@@ -650,35 +636,6 @@ pub(crate) fn downgrade_core_stream(stream_id: &str, document: Option<&str>) -> 
         membership.upgrading = false;
         membership.generation = membership.generation.wrapping_add(1);
         let _ = membership.control_tx.send(CoreControl::Set(Session::Guest));
-        membership.admin_attendance.take()
-    };
-    revoke_core_admin_child(child, "stream-downgraded");
-    true
-}
-
-pub(crate) fn downgrade_core_document(document: &str) {
-    let children = {
-        let mut memberships = core_memberships().lock().unwrap();
-        memberships
-            .values_mut()
-            .filter(|membership| membership.document.as_deref() == Some(document))
-            .map(|membership| {
-                membership.session = Session::Guest;
-                membership.document = None;
-                membership.parent_attendance = None;
-                membership.admin_stats_cache = None;
-                membership.fallback_signal = None;
-                membership.upgrading = false;
-                membership.generation = membership.generation.wrapping_add(1);
-                let _ = membership.control_tx.send(CoreControl::Set(Session::Guest));
-                membership.admin_attendance.take()
-            })
-            .collect::<Vec<_>>()
-    };
-    if !children.is_empty() {
-        for child in children {
-            revoke_core_admin_child(child, "stream-downgraded");
-        }
     }
 }
 
@@ -690,11 +647,13 @@ fn core_live_projection(stream_id: &str) -> Option<CoreLiveProjection> {
     }
     let admin = match (
         membership.session,
-        membership.admin_attendance.as_ref(),
+        membership.document.as_ref(),
+        membership.parent_attendance.as_ref(),
         membership.admin_stats_cache.as_ref(),
     ) {
-        (Session::Admin, Some(attendance), Some(stats_cache)) => Some(CoreAdminContext {
+        (Session::Admin, Some(document), Some(attendance), Some(stats_cache)) => Some(CoreAdminContext {
             attendance: attendance.clone(),
+            document: document.clone(),
             stats_cache: stats_cache.clone(),
             generation: membership.generation,
         }),
@@ -708,48 +667,17 @@ fn core_live_projection(stream_id: &str) -> Option<CoreLiveProjection> {
     })
 }
 
-fn remove_core_membership(stream_id: &str, reason: &str) {
-    let child = core_memberships()
-        .lock()
-        .unwrap()
-        .remove(stream_id)
-        .and_then(|mut membership| membership.admin_attendance.take());
-    revoke_core_admin_child(child, reason);
+fn remove_core_membership(stream_id: &str, _reason: &str) {
+    let _ = core_memberships().lock().unwrap().remove(stream_id);
 }
 
-fn remove_core_membership_if_generation(stream_id: &str, generation: u64, reason: &str) {
-    let child = {
-        let mut memberships = core_memberships().lock().unwrap();
-        if memberships
-            .get(stream_id)
-            .is_some_and(|membership| membership.generation == generation)
-        {
-            memberships
-                .remove(stream_id)
-                .and_then(|mut membership| membership.admin_attendance.take())
-        } else {
-            None
-        }
-    };
-    revoke_core_admin_child(child, reason);
-}
-
-fn revoke_core_admin_child(
-    child: Option<crate::caduceus_access::AttendanceProof>,
-    reason: &str,
-) {
-    if let Some(child) = child {
-        crate::caduceus_access::bust_attendance_projection(
-            &child,
-            CADUCEUS_STATS_ADMIN_PATH,
-            reason,
-        );
-        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-            let _ = runtime.spawn_blocking(move || {
-                let _ = crate::caduceus_access::CaduceusAccessClient::default()
-                    .attendance_invalidate(&child, CADUCEUS_STATS_ADMIN_PATH);
-            });
-        }
+fn remove_core_membership_if_generation(stream_id: &str, generation: u64, _reason: &str) {
+    let mut memberships = core_memberships().lock().unwrap();
+    if memberships
+        .get(stream_id)
+        .is_some_and(|membership| membership.generation == generation)
+    {
+        let _ = memberships.remove(stream_id);
     }
 }
 
@@ -811,7 +739,7 @@ fn read_core_pulse_batch(live: &CoreLiveProjection) -> CorePulseBatch {
                         "GET",
                         CADUCEUS_STATS_ADMIN_PATH,
                         Some(&context.attendance),
-                        Some(CADUCEUS_STATS_ADMIN_PATH),
+                        Some(&context.document),
                     )
                 });
                 let signal = (!readback.ok).then(|| readback.first_missing_signal.clone());
@@ -938,26 +866,16 @@ fn read_scoped_admin_stats_once(
     parent: crate::caduceus_access::AttendanceProof,
 ) -> CaduceusHttpReadback {
     let client = crate::caduceus_access::CaduceusAccessClient::default();
-    let call = client.attendance_open_scoped(&parent, parent_document, CADUCEUS_STATS_ADMIN_PATH);
+    let call = client.attendance_validate(&parent, parent_document);
     if !call.receipt.ok {
         return failed_stats_readback(&call.receipt.code);
     }
-    let Some(child) = call.take_proof() else {
-        return failed_stats_readback("caduceus-attendance-admin-scope-missing");
-    };
-    let readback = caduceus_http_with_attendance_and_document(
+    caduceus_http_with_attendance_and_document(
         "GET",
         CADUCEUS_STATS_ADMIN_PATH,
-        Some(&child),
-        Some(CADUCEUS_STATS_ADMIN_PATH),
-    );
-    let _ = client.attendance_invalidate(&child, CADUCEUS_STATS_ADMIN_PATH);
-    crate::caduceus_access::bust_attendance_projection(
-        &child,
-        CADUCEUS_STATS_ADMIN_PATH,
-        "attendance-invalidated",
-    );
-    readback
+        Some(&parent),
+        Some(parent_document),
+    )
 }
 
 fn failed_stats_readback(signal: &str) -> CaduceusHttpReadback {

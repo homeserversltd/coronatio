@@ -1020,7 +1020,6 @@ fn attendance_failure_status(call: &crate::caduceus_access::AttendanceCall) -> S
         | "caduceus-attendance-stale-document"
         | "caduceus-attendance-incarnation-stale" => StatusCode::UNAUTHORIZED,
         "caduceus-attendance-unbound"
-        | "caduceus-derived-unbound"
         | "caduceus-attendance-verifier-unbound"
         | "caduceus-signer-stale-derived"
         | "caduceus-signer-current-bind-unavailable"

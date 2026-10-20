@@ -56,7 +56,7 @@ fn firewall_seated_mutation(
     let context = mapping.request_context(headers);
     match authority.authorize(&context, mapping) {
         Ok(attendance) => {
-            let readback = match body {
+            match body {
                 Some(body) => caduceus_http_json_with_attendance_and_document(
                     method,
                     caduceus_path,
@@ -70,8 +70,7 @@ fn firewall_seated_mutation(
                     Some(&attendance.proof),
                     Some(&attendance.document),
                 ),
-            };
-            invalidate_scoped_attendance(&authority, &attendance, readback)
+            }
         }
         Err(refusal) => mutation_refusal_readback(caduceus_path, refusal),
     }
