@@ -406,17 +406,21 @@ fn shell_document_4() -> &'static str {
         tx: directTx !== null ? directTx : interfaces.reduce((sum, iface) => { const value = optionalNumber(iface.txBytes); return value === null ? sum : (sum === null ? value : sum + value); }, null)
       };
     }
+    function holdLastValue(values) {
+      let last = null;
+      return values.map(value => value === null || value === undefined ? last : (last = value));
+    }
     function rebuildStatsChartSeries() {
       const points = statsChartState.points;
       statsChartState.labels = points.map(point => formatChartTime(point.timestamp));
-      statsChartState.cpu = points.map(point => point.cpu);
-      statsChartState.temp = points.map(point => point.temp);
-      statsChartState.download = points.map(point => point.download);
-      statsChartState.upload = points.map(point => point.upload);
+      statsChartState.cpu = holdLastValue(points.map(point => point.cpu));
+      statsChartState.temp = holdLastValue(points.map(point => point.temp));
+      statsChartState.download = holdLastValue(points.map(point => point.download));
+      statsChartState.upload = holdLastValue(points.map(point => point.upload));
       const keys = new Set(points.flatMap(point => Object.keys(point.io || {})));
       statsChartState.ioSeries = Object.fromEntries([...keys].map(key => [key, {
-        read: points.map(point => point.io?.[key]?.read ?? null),
-        write: points.map(point => point.io?.[key]?.write ?? null), label: key
+        read: holdLastValue(points.map(point => point.io?.[key]?.read ?? null)),
+        write: holdLastValue(points.map(point => point.io?.[key]?.write ?? null)), label: key
       }]));
     }
     function statsTimestamp(value) {
