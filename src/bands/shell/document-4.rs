@@ -440,11 +440,10 @@ fn shell_document_4() -> &'static str {
     }
     function statsRendererPresent(data, section, elementId, contentPresent) {
       const stale = statsSectionStale(data, section);
-      const element = document.querySelector(`[data-stat-element-id="${elementId}"]`);
       setStatsRendererLoading(elementId, stale);
       if (stale) {
         const age = section === 'keaLeases' ? data?.telemetry?.rosterSampleAgeMs : data?.telemetry?.sampleAgeMs;
-        if (age === null || age === undefined || element?.dataset.scaffoldState !== 'ready') return false;
+        if (age === null || age === undefined) return false;
       }
       return Boolean(contentPresent);
     }
@@ -556,7 +555,7 @@ fn shell_document_4() -> &'static str {
       return statsCharts.io;
     }
     function renderCpuChart(data) {
-      const stale=statsSectionStale(data,'cpu'); setStatsRendererLoading('cpu-chart',stale); if(stale)return;
+      const stale=statsSectionStale(data,'cpu'); setStatsRendererLoading('cpu-chart',stale);
       const ctx = document.getElementById('cpuChart');
       if (ctx && window.Chart) {
         if (statsCharts.cpu && statsCharts.cpu.canvas !== ctx) destroyStatsChart('cpu');
@@ -591,7 +590,7 @@ fn shell_document_4() -> &'static str {
       return encodeURIComponent(raw).replace(/[^A-Za-z0-9_-]/g, '_') || fallback;
     }
     function renderNetwork(data) {
-      const stale=statsSectionStale(data,'network'); setStatsRendererLoading('network-chart',stale); if(stale)return;
+      const stale=statsSectionStale(data,'network'); setStatsRendererLoading('network-chart',stale);
       const ctx = document.getElementById('networkChart');
       if (ctx && window.Chart) {
         if (statsCharts.network && statsCharts.network.canvas !== ctx) destroyStatsChart('network');
@@ -619,7 +618,7 @@ fn shell_document_4() -> &'static str {
       }
     }
     function renderDiskIo(data) {
-      const stale=statsSectionStale(data,'io'); setStatsRendererLoading('io-section',stale); if(stale)return;
+      const stale=statsSectionStale(data,'io'); setStatsRendererLoading('io-section',stale);
       const controls = document.querySelector('[data-device-controls]'), checked = new Map(Array.from(controls?.querySelectorAll('input[type="checkbox"]') || []).map(input => [input.name, input.checked])), devices = data.io?.devices || [];
       if (controls) morphLivePane(controls, devices.map(device => {
         const name = diskDisplayName(device), readName = `read-${name}`, writeName = `write-${name}`, readChecked = checked.has(readName) ? checked.get(readName) : true, writeChecked = checked.has(writeName) ? checked.get(writeName) : true;
@@ -680,7 +679,7 @@ fn shell_document_4() -> &'static str {
       document.getElementById('swap-total').textContent = 'Total: ' + fmtBytes(swap.totalBytes);
     }
     function renderDiskUsage(data) {
-      const stale=statsSectionStale(data,'storage'); setStatsRendererLoading('disk-usage',stale); if(stale)return;
+      const stale=statsSectionStale(data,'storage'); setStatsRendererLoading('disk-usage',stale);
       const target = document.querySelector('[data-disk-usage-stats]');
       if (!target) return;
       morphLivePane(target, (data.storage || []).map((drive, index) => {
@@ -694,7 +693,7 @@ fn shell_document_4() -> &'static str {
     function renderStatsRoster(data, projection) {
       const binding = projection?.binding, run = projection?.run;
       if (!binding || binding.guest !== 'stats' || !scaffoldRegistry.current(binding, run)) return;
-      const stale=statsSectionStale(data,'keaLeases'); setStatsRendererLoading('kea-leases',stale,binding.root); if(stale)return;
+      const stale=statsSectionStale(data,'keaLeases'); setStatsRendererLoading('kea-leases',stale,binding.root);
       if (!headerState.isAdmin) {
         const target = binding.root.querySelector('[data-identity-roster-host="stats"] [data-identity-roster]');
         if (target && scaffoldRegistry.current(binding, run)) target.textContent = 'Network activity requires Admin Mode.';
@@ -735,7 +734,7 @@ fn shell_document_4() -> &'static str {
       catch (error) { if (statsAuthorizedBinding(binding) && errorNode) { errorNode.textContent = String(error); errorNode.hidden = false; } }
     }
     function renderProcesses(data) {
-      const stale=statsSectionStale(data,'processes'); setStatsRendererLoading('process-usage',stale); if(stale)return;
+      const stale=statsSectionStale(data,'processes'); setStatsRendererLoading('process-usage',stale);
       const target = document.querySelector('[data-process-usage-list]');
       if (!target) return;
       const processes = data.processes || [];
