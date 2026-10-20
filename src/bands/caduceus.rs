@@ -356,8 +356,16 @@ fn caduceus_http_with_attendance_and_document_timeout(
         .lines()
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|raw| raw.parse::<u16>().ok())
-        .unwrap_or(0);
+        .and_then(|raw| raw.parse::<u16>().ok());
+    let Some(status) = status else {
+        return CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: path.to_string(),
+            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
+            first_missing_signal: "caduceus-empty-response".to_string(),
+        };
+    };
     let body =
         serde_json::from_str(body_text).unwrap_or_else(|_| serde_json::json!({"raw": body_text}));
     let body_ok = body
@@ -526,8 +534,16 @@ fn parse_caduceus_response(path: &str, response: &str) -> CaduceusHttpReadback {
         .lines()
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|raw| raw.parse::<u16>().ok())
-        .unwrap_or(0);
+        .and_then(|raw| raw.parse::<u16>().ok());
+    let Some(status) = status else {
+        return CaduceusHttpReadback {
+            ok: false,
+            status: 0,
+            path: path.to_string(),
+            body: serde_json::json!({"error": "caduceus-upstream-failed"}),
+            first_missing_signal: "caduceus-empty-response".to_string(),
+        };
+    };
     let body = serde_json::from_str(body_text).unwrap_or_else(|_| serde_json::json!({"raw": body_text}));
     let body_ok = body
         .get("ok")
