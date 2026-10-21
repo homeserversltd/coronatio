@@ -85,7 +85,6 @@ async fn power_calibration_post_route(headers: axum::http::HeaderMap, body: Byte
     // The config-set door receives the viewer's validated document attendance unchanged.
     let readback = tokio::task::spawn_blocking(move || caduceus_actuate_json_with_timeout(
         &mutation_authority(), &request_headers,
-        MutationActionTarget::attended_parent("coronatio.power.calibration", "/api/v1/config/set"),
         "/api/v1/config/set",
         serde_json::json!({"path": "global.power.calibration", "value": factor}),
         std::time::Duration::from_secs(30),

@@ -73,7 +73,6 @@ async fn network_notes_write_route(headers: axum::http::HeaderMap, body: Bytes) 
     let authority = mutation_authority();
     let attendance = match authority.authorize(
         &MutationRequestContext::from_headers(&headers),
-        MutationActionTarget::caduceus("coronatio.network.notes.put", "/api/v1/network/notes"),
     ) {
         Ok(attendance) => attendance,
         Err(refusal) => return network_note_write_response(mutation_refusal_readback("/api/v1/network/notes", refusal), false),

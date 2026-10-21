@@ -200,21 +200,19 @@ async fn tailscale_mutation_route(headers: axum::http::HeaderMap, uri: Uri, body
     let call = tokio::task::spawn_blocking(move || {
         let authority = mutation_authority();
         if matches!(action, "enable" | "disable") {
-            // The appliance service door admits a child scoped to its own document and requires `{}`,
+            // The appliance service door requires `{}`,
             // the same road as portal service control.
             return caduceus_actuate_json_with_timeout(
                 &authority, &headers,
-                MutationActionTarget::caduceus("coronatio.tailscale.service", &caduceus_path),
                 &caduceus_path, serde_json::json!({}), timeout,
             );
         }
-        let mapping = MutationActionTarget::attended_parent(format!("coronatio.tailscale.{action}"), caduceus_path.clone());
         match request_body {
             Some(request_body) => caduceus_actuate_json_with_timeout(
-                &authority, &headers, mapping, &caduceus_path, request_body, timeout,
+                &authority, &headers, &caduceus_path, request_body, timeout,
             ),
             None => caduceus_actuate_with_timeout(
-                &authority, &headers, mapping, &caduceus_path, timeout,
+                &authority, &headers, &caduceus_path, timeout,
             ),
         }
     }).await;

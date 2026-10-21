@@ -88,7 +88,6 @@ async fn device_claim_route(
     let readback = caduceus_actuate_json(
         &mutation_authority(),
         &headers,
-        MutationActionTarget::caduceus("caduceus.network.device.claim", direct_path),
         direct_path,
         payload
             .map(|Json(v)| v)

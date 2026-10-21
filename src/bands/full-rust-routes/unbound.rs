@@ -49,7 +49,6 @@ fn dns_intent(headers: &axum::http::HeaderMap, path: &str, intent: serde_json::V
     let readback = caduceus_actuate_json(
         &mutation_authority(),
         headers,
-        MutationActionTarget::caduceus("caduceus.network.dns", "/api/v1/network/dns"),
         "/api/v1/network/dns",
         intent,
     );
@@ -74,23 +73,12 @@ async fn dns_caduceus_mutation_route(
     if let Some(refusal) = mutation_context_refusal(&headers) {
         return dns_refusal(path, mutation_refusal_readback("/api/v1/network/dns", refusal));
     }
-    let mapping = match path {
-        "/api/v1/network/dns/device-name/create"
-        | "/api/v1/network/dns/device-name/remove"
-        | "/api/v1/network/dns/adblock"
-        | "/api/v1/network/dns/blocklist/update"
-        | "/api/v1/network/dns/upstream" => {
-            MutationActionTarget::attended_parent("caduceus.network.dns", path)
-        }
-        _ => MutationActionTarget::caduceus("caduceus.network.dns", path),
-    };
     let readback = if path == "/api/v1/network/dns/blocklist/update" {
-        caduceus_actuate(&mutation_authority(), &headers, mapping, path)
+        caduceus_actuate(&mutation_authority(), &headers, path)
     } else {
         caduceus_actuate_json(
             &mutation_authority(),
             &headers,
-            mapping,
             path,
             payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({})),
         )

@@ -379,10 +379,9 @@ fn cartridge_mutation_proxy_response(headers: axum::http::HeaderMap, route: &str
         body["guest_class"] = serde_json::json!("iframe");
         body["admin_only"] = serde_json::json!(request.admin_only);
     }
-    let target = MutationActionTarget::caduceus(if admitting { "coronatio.cartridges.admit" } else { "coronatio.cartridges.remove" }, route);
-    let context = target.request_context(&headers);
+    let context = MutationRequestContext::from_headers(&headers);
     let authority = mutation_authority();
-    let attendance = match authority.authorize(&context, target) {
+    let attendance = match authority.authorize(&context) {
         Ok(attendance) => attendance,
         Err(refusal) => return cartridge_proxy_response(mutation_refusal_readback(route, refusal)),
     };

@@ -238,7 +238,6 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
         caduceus_actuate_json_with_timeout(
             &mutation_authority(),
             &headers,
-            MutationActionTarget::caduceus("coronatio.portals.service_control", &path),
             &path,
             serde_json::json!({}),
             timeout,

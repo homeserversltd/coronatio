@@ -52,9 +52,8 @@ fn firewall_seated_mutation(
     body: Option<serde_json::Value>,
 ) -> CaduceusHttpReadback {
     let authority = mutation_authority();
-    let mapping = MutationActionTarget::caduceus("caduceus_staff.child_device", caduceus_path);
-    let context = mapping.request_context(headers);
-    match authority.authorize(&context, mapping) {
+    let context = MutationRequestContext::from_headers(headers);
+    match authority.authorize(&context) {
         Ok(attendance) => {
             match body {
                 Some(body) => caduceus_http_json_with_attendance_and_document(

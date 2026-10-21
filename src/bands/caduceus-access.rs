@@ -369,8 +369,6 @@ pub(crate) mod test_fixture {
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub(crate) struct TestRecord {
         pub(crate) path: String,
-        pub(crate) action: Option<String>,
-        pub(crate) target: Option<String>,
     }
 
     struct Fixture {
@@ -439,11 +437,7 @@ pub(crate) mod test_fixture {
         let mut body = vec![0; length];
         if reader.read_exact(&mut body).is_err() { return; }
         let path = head.split_whitespace().nth(1).unwrap_or("/").to_string();
-        let value = serde_json::from_slice::<serde_json::Value>(&body).ok();
-        let (action, target) = if path == "/api/v1/config/set" {
-            (Some("coronatio.config.set".to_string()), value.as_ref().and_then(|v| v.get("path")).and_then(|v| v.as_str()).map(str::to_string))
-        } else { (None, None) };
-        records.lock().unwrap().push(TestRecord { path: path.clone(), action, target });
+        records.lock().unwrap().push(TestRecord { path: path.clone() });
         let response = if path == "/api/v1/exousia/open" {
             r#"{"ok":true,"attendance":"test-attendance"}"#
         } else {

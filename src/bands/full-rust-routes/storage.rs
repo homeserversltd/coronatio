@@ -36,9 +36,8 @@ fn storage_project_local_mutation_refusal(readback: &mut CaduceusHttpReadback) {
 async fn storage_disk_census_route(headers: axum::http::HeaderMap) -> Response {
     let path = "/api/v1/storage/disk/census";
     let authority = mutation_authority();
-    let mapping = MutationActionTarget::attended_parent("coronatio.storage.disk.census", path);
     let context = MutationRequestContext::attended_document_from_headers(&headers);
-    let mut readback = match authority.authorize(&context, mapping) {
+    let mut readback = match authority.authorize(&context) {
         Ok(attendance) => caduceus_http_with_attendance_and_document(
                 "GET",
                 path,
@@ -110,7 +109,6 @@ async fn storage_vault_unlock_route(
             FaceStage::Face => caduceus_actuate_json(
                 &mutation_authority(),
                 &headers,
-                MutationActionTarget::attended_parent("coronatio.storage.vault.unlock", path),
                 path,
                 serde_json::json!({ "password": password }),
             ),
@@ -162,13 +160,12 @@ fn storage_nas_receipt_ok(body: &serde_json::Value) -> bool {
 fn storage_actuate_json_timeout(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
-    mapping: MutationActionTarget,
     path: &str,
     body: serde_json::Value,
     timeout: Duration,
 ) -> CaduceusHttpReadback {
-    let context = mapping.request_context(headers);
-    match authority.authorize(&context, mapping) {
+    let context = MutationRequestContext::from_headers(headers);
+    match authority.authorize(&context) {
         Ok(attendance) => caduceus_http_json_with_attendance_and_document_timeout(
                 "POST",
                 path,
@@ -225,7 +222,6 @@ async fn storage_nas_setup_route(
         storage_actuate_json_timeout(
             &mutation_authority(),
             &headers,
-            MutationActionTarget::attended_parent("coronatio.storage.nas.setup", path),
             path,
             body,
             NAS_SETUP_UPSTREAM_TIMEOUT,

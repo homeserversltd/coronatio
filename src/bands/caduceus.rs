@@ -31,11 +31,11 @@ async fn caduceus_status_route() -> impl IntoResponse {
 }
 
 async fn caduceus_update_check_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    caduceus_mutation_route(&headers, "update_check", "/api/v1/update/check", "update check", "local")
+    caduceus_mutation_route(&headers, "update_check", "/api/v1/update/check")
 }
 
 async fn caduceus_update_now_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    caduceus_mutation_route(&headers, "update_now", "/api/v1/update/now", "harmonia update", "local")
+    caduceus_mutation_route(&headers, "update_now", "/api/v1/update/now")
 }
 
 async fn caduceus_update_service_status_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
@@ -63,7 +63,6 @@ async fn caduceus_update_service_toggle_route(
     let readback = caduceus_actuate_json(
         &mutation_authority(),
         &headers,
-        MutationActionTarget::caduceus("caduceus.update.service.toggle", path),
         path,
         body,
     );
@@ -159,7 +158,6 @@ async fn caduceus_keyman_create_key_route(headers: axum::http::HeaderMap, Json(r
     };
     keyman_response(caduceus_actuate_json(
         &mutation_authority(), &headers,
-        MutationActionTarget::caduceus("keyman.create-key", "/api/v1/keyman/create-key"),
         "/api/v1/keyman/create-key",
         serde_json::json!({"target": target, "strategy": strategy, "password": password, "planned": request.planned}),
     ))
@@ -171,7 +169,6 @@ async fn caduceus_keyman_update_key_route(headers: axum::http::HeaderMap, Json(r
     };
     keyman_response(caduceus_actuate_json(
         &mutation_authority(), &headers,
-        MutationActionTarget::caduceus("keyman.update-key", "/api/v1/keyman/update-key"),
         "/api/v1/keyman/update-key",
         serde_json::json!({"device": device, "strategy": strategy, "current_password": current_password, "planned": request.planned}),
     ))
@@ -183,7 +180,6 @@ async fn caduceus_keyman_admin_password_route(headers: axum::http::HeaderMap, Js
     };
     keyman_response(caduceus_actuate_json(
         &mutation_authority(), &headers,
-        MutationActionTarget::caduceus("keyman.admin-password", "/api/v1/keyman/admin-password"),
         "/api/v1/keyman/admin-password",
         serde_json::json!({"old_password": old_password, "new_password": new_password, "planned": request.planned}),
     ))
@@ -192,7 +188,6 @@ async fn caduceus_keyman_admin_password_route(headers: axum::http::HeaderMap, Js
 async fn caduceus_keyman_key_status_route(headers: axum::http::HeaderMap, Json(request): Json<KeymanDoorRequest>) -> impl IntoResponse {
     keyman_response(caduceus_actuate_json(
         &mutation_authority(), &headers,
-        MutationActionTarget::caduceus("keyman.key-status", "/api/v1/keyman/key-status"),
         "/api/v1/keyman/key-status",
         serde_json::json!({"planned": request.planned}),
     ))
@@ -215,17 +210,16 @@ async fn caduceus_receipts_latest_route() -> impl IntoResponse {
     )
 }
 
-fn caduceus_mutation_readback(headers: &axum::http::HeaderMap, path: &str, action: &str, target: &str) -> CaduceusHttpReadback {
+fn caduceus_mutation_readback(headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpReadback {
     caduceus_actuate(
         &mutation_authority(),
         &headers,
-        MutationActionTarget::caduceus(action, target),
         path,
     )
 }
 
-fn caduceus_mutation_route(headers: &axum::http::HeaderMap, route: &str, path: &str, action: &str, target: &str) -> (StatusCode, Json<serde_json::Value>) {
-    let readback = caduceus_mutation_readback(headers, path, action, target);
+fn caduceus_mutation_route(headers: &axum::http::HeaderMap, route: &str, path: &str) -> (StatusCode, Json<serde_json::Value>) {
+    let readback = caduceus_mutation_readback(headers, path);
     (
         mutation_response_status(&readback),
         Json(serde_json::json!({
@@ -839,7 +833,7 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
         );
     };
     let readback = if action_id == "update" {
-        caduceus_mutation_readback(&headers, path, "update now", "local")
+        caduceus_mutation_readback(&headers, path)
     } else if mutation {
         admin_fragment_translation_debt(&headers, method, path)
     } else {

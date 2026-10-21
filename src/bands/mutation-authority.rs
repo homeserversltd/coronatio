@@ -2,47 +2,6 @@
 // The current document incarnation and its opaque attendance proof are carried only by that document.
 use crate::caduceus_access::{attendance_from_headers, document_incarnation_from_headers, safe_access_code, AttendanceProof, CaduceusAccessClient};
 
-// Route/action labels remain descriptive metadata; they do not select an attendance scope.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct MutationActionTarget {
-    _action: String,
-    _target: String,
-}
-
-impl MutationActionTarget {
-    fn route(method: &str, target: &str) -> Option<Self> {
-        let action = match method {
-            "POST" => "coronatio.route.post",
-            "PUT" => "coronatio.route.put",
-            "DELETE" => "coronatio.route.delete",
-            _ => return None,
-        };
-        Some(Self {
-            _action: action.to_string(),
-            _target: target.to_string(),
-        })
-    }
-
-    fn config(target: &str) -> Self {
-        Self {
-            _action: "coronatio.config.set".to_string(),
-            _target: target.to_string(),
-        }
-    }
-
-    fn caduceus(action: impl Into<String>, target: impl Into<String>) -> Self {
-        Self { _action: action.into(), _target: target.into() }
-    }
-
-    fn attended_parent(action: impl Into<String>, target: impl Into<String>) -> Self {
-        Self::caduceus(action, target)
-    }
-
-    fn request_context(&self, headers: &axum::http::HeaderMap) -> MutationRequestContext {
-        MutationRequestContext::from_headers(headers)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MutationRequestContext {
     document: Option<String>,
@@ -80,7 +39,6 @@ impl MutationAuthority {
     fn authorize(
         &self,
         context: &MutationRequestContext,
-        _mapping: MutationActionTarget,
     ) -> Result<MutationAttendance, MutationRefusal> {
         let Some(document) = context.document.as_ref() else {
             return Err(MutationRefusal { code: "caduceus-attendance-document-required".to_string(), status: 400 });
@@ -176,14 +134,12 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
 fn caduceus_actuate_json(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
-    mapping: MutationActionTarget,
     path: &str,
     body: serde_json::Value,
 ) -> CaduceusHttpReadback {
     caduceus_actuate_json_with_timeout(
         authority,
         headers,
-        mapping,
         path,
         body,
         std::time::Duration::from_secs(4),
@@ -193,13 +149,12 @@ fn caduceus_actuate_json(
 fn caduceus_actuate_json_with_timeout(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
-    mapping: MutationActionTarget,
     path: &str,
     body: serde_json::Value,
     timeout: std::time::Duration,
 ) -> CaduceusHttpReadback {
-    let context = mapping.request_context(headers);
-    match authority.authorize(&context, mapping) {
+    let context = MutationRequestContext::from_headers(headers);
+    match authority.authorize(&context) {
         Ok(attendance) => caduceus_http_json_with_attendance_and_document_timeout(
                 "POST",
                 path,
@@ -225,13 +180,11 @@ fn mutation_task_failure_readback(path: &str) -> CaduceusHttpReadback {
 fn caduceus_actuate(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
-    mapping: MutationActionTarget,
     path: &str,
 ) -> CaduceusHttpReadback {
     caduceus_actuate_with_timeout(
         authority,
         headers,
-        mapping,
         path,
         std::time::Duration::from_secs(4),
     )
@@ -240,12 +193,11 @@ fn caduceus_actuate(
 fn caduceus_actuate_with_timeout(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
-    mapping: MutationActionTarget,
     path: &str,
     timeout: std::time::Duration,
 ) -> CaduceusHttpReadback {
-    let context = mapping.request_context(headers);
-    match authority.authorize(&context, mapping) {
+    let context = MutationRequestContext::from_headers(headers);
+    match authority.authorize(&context) {
         Ok(attendance) => caduceus_http_with_attendance_and_document_timeout(
                 "POST",
                 path,
@@ -261,7 +213,6 @@ fn admin_fragment_caduceus_request(headers: &axum::http::HeaderMap, method: &str
     let authority = mutation_authority();
     match authority.authorize(
         &MutationRequestContext::attended_document_from_headers(headers),
-        MutationActionTarget::attended_parent("coronatio.admin.fragment", path),
     ) {
         Ok(attendance) => caduceus_http_with_attendance_and_document(
                 method,
@@ -282,7 +233,6 @@ fn admin_fragment_caduceus_json_request(
     let authority = mutation_authority();
     match authority.authorize(
         &MutationRequestContext::attended_document_from_headers(headers),
-        MutationActionTarget::attended_parent("coronatio.admin.fragment", path),
     ) {
         Ok(attendance) => caduceus_http_json_with_attendance_and_document(
                 method,
@@ -325,14 +275,13 @@ fn translation_debt_readback(
 fn caduceus_translation_debt(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
-    mapping: MutationActionTarget,
     method: &str,
     path: &str,
     historical_target: Option<&str>,
     current_candidate: Option<&str>,
 ) -> CaduceusHttpReadback {
-    let context = mapping.request_context(headers);
-    match authority.authorize(&context, mapping) {
+    let context = MutationRequestContext::from_headers(headers);
+    match authority.authorize(&context) {
         Ok(_) => translation_debt_readback(method, path, historical_target, current_candidate),
         Err(refusal) => mutation_refusal_readback(path, refusal),
     }
@@ -346,10 +295,11 @@ fn route_translation_debt(
     historical_target: Option<&str>,
     current_candidate: Option<&str>,
 ) -> CaduceusHttpReadback {
-    let Some(mapping) = MutationActionTarget::route(method, path) else {
-        return mutation_refusal_readback(path, MutationRefusal { code: "coronatio-mutation-method-unmapped".to_string(), status: 0 });
-    };
-    caduceus_translation_debt(authority, headers, mapping, method, path, historical_target, current_candidate)
+    match method {
+        "POST" | "PUT" | "DELETE" => {},
+        _ => return mutation_refusal_readback(path, MutationRefusal { code: "coronatio-mutation-method-unmapped".to_string(), status: 0 }),
+    }
+    caduceus_translation_debt(authority, headers, method, path, historical_target, current_candidate)
 }
 
 fn admin_fragment_translation_debt(
@@ -360,7 +310,6 @@ fn admin_fragment_translation_debt(
     caduceus_translation_debt(
         &mutation_authority(),
         headers,
-        MutationActionTarget::caduceus("coronatio.admin.fragment", path),
         method,
         path,
         None,
@@ -377,7 +326,6 @@ fn mutation_config_set(
     let readback = caduceus_actuate_json(
         authority,
         headers,
-        MutationActionTarget::config(path),
         "/api/v1/config/set",
         serde_json::json!({"path": path, "value": value}),
     );

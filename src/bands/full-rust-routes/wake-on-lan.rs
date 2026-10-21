@@ -34,7 +34,6 @@ fn wake_on_lan_staff_read(headers: &axum::http::HeaderMap, ip: &str) -> Caduceus
     caduceus_actuate_json(
         &mutation_authority(),
         headers,
-        MutationActionTarget::caduceus("wake-on-lan.probe", "/api/admin/wake-on-lan/probe"),
         "/api/admin/wake-on-lan/probe",
         serde_json::json!({ "ip": ip }),
     )
@@ -102,7 +101,6 @@ async fn wake_on_lan_wake_route(
     let readback = caduceus_actuate_json(
         &mutation_authority(),
         &headers,
-        MutationActionTarget::caduceus("wake-on-lan.send", "/api/admin/wake-on-lan/send"),
         "/api/admin/wake-on-lan/send",
         serde_json::json!({ "mac": mac, "broadcast": broadcast }),
     );
