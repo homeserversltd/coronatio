@@ -58,7 +58,7 @@ fn notifications_view(readback: &CaduceusHttpReadback) -> NotificationsView {
     }
     if !readback.ok { return unavailable(); }
     if readback.body.get("schema").and_then(serde_json::Value::as_str)
-        .is_some_and(|schema| schema != "caduceus.notifications.v1") {
+        != Some("caduceus.notifications.v1") {
         return unavailable();
     }
     // Missing optional fields select the primitive empty view; unknown fields are ignored.
