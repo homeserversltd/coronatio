@@ -235,7 +235,7 @@ fn shell_dhcp_client() -> &'static str {
     window.addEventListener('coronatio:privileged-state-retired', () => {
       window.scaffoldRegistry?.retire('dhcp','Admin role retired');
       identityState.roster=[];identityState.boundary={};identityState.dhcpBoundary={};identityState.dhcpBoundaryCommitted=null;identityState.leases=[];identityState.reservations=[];identityState.dns={};identityState.notes={};identityState.statistics=null;identityState.ready={roster:false,boundary:false,leases:false,reservations:false,dns:false};identityState.dhcpReady={statistics:false,pool:false};identityState.binding=null;identityState.modalMac=null;identityState.reservation=null;identityState.writeBusy=false;
-      document.querySelectorAll('[data-pane-panel="dhcp"] [data-identity-roster], [data-pane-panel="stats"] [data-identity-roster]').forEach(node=>node.replaceChildren());
+      document.querySelectorAll('[data-pane-panel="dhcp"] [data-identity-roster]').forEach(node=>node.replaceChildren());
       document.querySelectorAll('[data-pane-panel="dhcp"] [data-dhcp-homeserver], [data-pane-panel="dhcp"] [data-dhcp-reservations-count], [data-pane-panel="dhcp"] [data-dhcp-hosts-count], [data-pane-panel="dhcp"] [data-dhcp-leases-count], [data-pane-panel="dhcp"] [data-dhcp-boundary-min], [data-pane-panel="dhcp"] [data-dhcp-boundary-max], [data-pane-panel="dhcp"] [data-dhcp-boundary-value]').forEach(node=>node.textContent='—');
       document.querySelectorAll('[data-pane-panel="dhcp"] [data-dhcp-boundary]').forEach(node=>{node.disabled=true;});
       document.querySelectorAll('[data-pane-panel="dhcp"] [data-dhcp-loading]').forEach(node=>{node.hidden=true;});

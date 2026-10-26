@@ -728,11 +728,6 @@ fn shell_document_4() -> &'static str {
       const binding = projection?.binding, run = projection?.run;
       if (!binding || binding.guest !== 'stats' || !scaffoldRegistry.current(binding, run)) return;
       const stale=statsSectionStale(data,'keaLeases'); setStatsRendererLoading('kea-leases',stale,binding.root);
-      if (!headerState.isAdmin) {
-        const target = binding.root.querySelector('[data-identity-roster-host="stats"] [data-identity-roster]');
-        if (target && scaffoldRegistry.current(binding, run)) target.textContent = 'Network activity requires Admin Mode.';
-        return;
-      }
       const entries = data?.keaLeases?.entries;
       if (!Array.isArray(entries)) throw new Error('Network activity entries are unavailable');
       const roster = identityRows(entries);
@@ -958,7 +953,7 @@ fn shell_document_4() -> &'static str {
       identityState.roster = []; identityState.notes = {}; identityState.ready.roster = false;
       retireTestLanIpCatalogForGuest();
       closeNoteModal();
-      document.querySelectorAll('[data-pane-panel="stats"] [data-identity-roster]').forEach(target => { target.replaceChildren(); target.textContent = 'Network activity requires Admin Mode.'; });
+      document.querySelectorAll('[data-pane-panel="stats"] [data-edit-note-button]').forEach(button => button.remove());
     });
     window.addEventListener('coronatio:native-pane-reset', event => {
       const detail = event.detail || {}, pane = detail.pane;
