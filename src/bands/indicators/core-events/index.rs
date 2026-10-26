@@ -300,6 +300,16 @@ pub(crate) fn subscribe_core_stream(
         reconcile_core_stream_state(&mut state, &live);
         let entry = catalog()[state.index];
         state.index += 1;
+        if entry.topic_id == NOTIFICATIONS_TOPIC {
+            // This band's event is an invalidation only; the face pulls its fragment.
+            // All viewers share the band's coalesced TTL, rather than a door call per tick.
+            let revision = tokio::task::spawn_blocking(|| notifications_snapshot(false).1)
+                .await.unwrap_or(0).to_string();
+            let changed = state.last_payload.get(entry.topic_id) != Some(&revision);
+            state.last_payload.insert(entry.topic_id, revision);
+            let event = if changed { entry.topic_id } else { "core.keepalive" };
+            return Some(((event.to_owned(), format!("{}:{}", state.stream_id, state.index), "{}".to_owned()), Some(state)));
+        }
         let now = Instant::now();
         let refresh_due = state
             .last_collected

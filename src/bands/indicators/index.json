@@ -8,6 +8,7 @@
     "openvpn",
     "services",
     "power-meter",
-    "source-currency"
+    "source-currency",
+    "notifications"
   ]
 }

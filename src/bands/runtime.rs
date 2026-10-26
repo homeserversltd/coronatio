@@ -156,6 +156,7 @@ fn app(state: AppState) -> Router {
         .route("/api/tab-bar", get(tab_bar_fragment_route))
         .route("/api/boundary", get(boundary_route))
         .route("/api/installer", get(installer_route))
+        .merge(indicators::notifications_routes())
         .route("/api/core/pulse", get(indicators::core_pulse_route))
         .route("/api/core/pulse/renew", post(indicators::core_pulse_renew_route))
         .route("/api/core/pulse/upgrade", post(indicators::core_pulse_upgrade_route))

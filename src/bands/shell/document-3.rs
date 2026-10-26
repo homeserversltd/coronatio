@@ -76,6 +76,9 @@ fn shell_document_3() -> &'static str {
       applyAdminDomState();
       if (previousAdmin && !headerState.isAdmin) setInternetIndicatorState({ status: internetState.status });
       const currentIndicatorKind = infoBody.querySelector('[data-modal-kind-body]')?.dataset.modalKindBody;
+      if (previousAdmin !== headerState.isAdmin && infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-indicator-fragment]')) {
+        openInfoModal(infoTitle.textContent, currentIndicatorKind);
+      }
       if (previousAdmin !== headerState.isAdmin && infoBackdrop.classList.contains('open') && ['power-meter', 'tailscale', 'internet', 'services'].includes(currentIndicatorKind)) {
         if (!headerState.isAdmin && currentIndicatorKind === 'power-meter') cancelPowerCalibrationEditing();
         openInfoModal(infoTitle.textContent, currentIndicatorKind);
@@ -1358,6 +1361,7 @@ fn shell_document_3() -> &'static str {
       const modalGeneration = sourceCurrencyModalGeneration;
       infoTitle.textContent = title;
       infoBody.innerHTML = modalTemplate(kind);
+      if (window.htmx) window.htmx.process(infoBody);
       themeChoiceRow.hidden = kind !== 'theme';
       infoBackdrop.classList.add('open');
       infoBackdrop.setAttribute('aria-hidden', 'false');
@@ -1591,8 +1595,9 @@ fn shell_document_3() -> &'static str {
       if (coreStreamId) requests.push(setStreamMembership('core', coreStreamId, 'downgrade'));
       return Promise.all(requests);
     }
-    const coreTopicIds = ['internet.status', 'tailscale.status', 'vpn.status', 'services.status', 'power.status', 'source.currency'];
+    const coreTopicIds = indicatorTopicIds;
     function applyCoreTopic(topicId, envelope) {
+      if (window.htmx) window.htmx.trigger(document.body, topicId);
       if (topicId === 'source.currency') {
         setSourceCurrencyIndicatorState(envelope);
         return;

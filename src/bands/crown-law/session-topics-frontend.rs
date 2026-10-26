@@ -1,6 +1,15 @@
 fn core_topic_contracts() -> Vec<TopicContract> {
     vec![
         topic_contract(
+            "notifications.status",
+            "core",
+            30,
+            false,
+            vec![],
+            "guest-readable household notifications; Admin Mode controls use Caduceus attendance",
+            "data-free poke on changed notification view; pull through one shared 30-second cache",
+        ),
+        topic_contract(
             "internet.status",
             "core",
             10,

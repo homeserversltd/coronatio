@@ -9,6 +9,7 @@ mod indicators {
     include!("indicators/services/index.rs");
     include!("indicators/power-meter/index.rs");
     include!("indicators/source-currency/index.rs");
+    include!("indicators/notifications/index.rs");
 }
 
 pub(crate) use indicators::{

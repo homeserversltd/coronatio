@@ -21,10 +21,10 @@ pub(crate) struct IndicatorManifest {
     pub(crate) collector: Option<IndicatorCollector>,
 }
 
-const TOPIC_IDS: &[&str] = &["tailscale.status", "internet.status", "vpn.status", "services.status", "power.status", "source.currency"];
+const TOPIC_IDS: &[&str] = &["tailscale.status", "internet.status", "vpn.status", "services.status", "power.status", "source.currency", NOTIFICATIONS_TOPIC];
 
 pub(crate) fn catalog() -> Vec<IndicatorManifest> {
-    let mut entries = vec![tailscale_manifest(), internet_manifest(), openvpn_manifest(), services_manifest(), power_meter_manifest(), source_currency_manifest()];
+    let mut entries = vec![tailscale_manifest(), internet_manifest(), openvpn_manifest(), services_manifest(), power_meter_manifest(), source_currency_manifest(), notifications_manifest()];
     validate_catalog(&entries).expect("invalid compiled indicator catalog");
     entries.sort_by_key(|entry| (entry.order, entry.id));
     entries
@@ -61,5 +61,6 @@ pub(crate) fn render_indicator_modal_registry(session: Session) -> String {
         Some(format!("{}: () => `{}`", serde_json::to_string(entry.id).unwrap(), body))
     }).collect::<Vec<_>>().join(",
 ");
-    format!("const indicatorModalTemplates = {{\n{}\n}};", rows)
+    let topics = catalog().iter().map(|entry| entry.topic_id).collect::<Vec<_>>();
+    format!("const indicatorModalTemplates = {{\n{}\n}};\nconst indicatorTopicIds = {};", rows, serde_json::to_string(&topics).unwrap())
 }
