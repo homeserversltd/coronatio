@@ -3,6 +3,7 @@
       const names = ['Overview', 'Modules', 'Schedule', 'Interactables', 'History'];
       const body = `<nav aria-label="Update manager views">${names.map(name => `<button type="button" class="ui-button ui-button--secondary ui-button--small" data-update-view="${name}">${name}</button>`).join(' ')}</nav><div data-update-content aria-live="polite"></div>`;
       const modal = managerModal('updates', 'System Update Manager', body);
+
       modal.querySelector('[data-manager-confirm]').remove();
       const close = modal.querySelector('.modal-actions [data-manager-close]');
       if (close) close.textContent = 'Close';
@@ -55,16 +56,18 @@
         } else if (selected === 'Schedule') {
           const known = typeof service?.enabled === 'boolean';
           const cadence = status?.cadence ?? status?.schedule;
-          content.innerHTML = `<label>Automatic updates <input type="checkbox" data-update-schedule ${service?.enabled ? 'checked' : ''} ${known ? '' : 'disabled'}></label><p>${known ? `Timer ${service.active ? 'active' : 'inactive'}` : 'Automatic updates status unavailable'}</p>${typeof cadence === 'string' && cadence ? `<p>${esc(cadence)}</p>` : ''}`;
+          const timerStatus = typeof service?.active === 'boolean' ? `Timer ${service.active ? 'active' : 'inactive'}` : 'Timer status unavailable';
+          content.innerHTML = `<label>Automatic updates <input type="checkbox" data-update-schedule ${service?.enabled ? 'checked' : ''} ${known ? '' : 'disabled'}></label><p>${known ? timerStatus : 'Automatic updates status unavailable'}</p>${typeof cadence === 'string' && cadence ? `<p>${esc(cadence)}</p>` : ''}`;
         } else if (selected === 'Interactables') {
           const draw = (items, silenced) => items.map(row => `<article><strong>${esc(row.name || row.id)}</strong>${row.summary || row.description ? `<p>${esc(row.summary || row.description)}</p>` : ''}${silenced ? `<button type="button" data-interactable-action="unsilence" data-interactable-id="${esc(row.id)}">Unsilence</button>` : `<button type="button" data-interactable-action="run" data-interactable-id="${esc(row.id)}">Run</button> <button type="button" data-interactable-action="silence" data-interactable-id="${esc(row.id)}">Silence</button>`}</article>`).join('');
           const pending = rows.filter(row => !row.silenced), muted = rows.filter(row => row.silenced);
-          content.innerHTML = draw(pending, false) + (muted.length ? `<p>Silenced</p>${draw(muted, true)}` : '') || '<p>No interactables available.</p>';
+          content.innerHTML = draw(pending, false) + (muted.length ? `<p>Silenced</p>${draw(muted, true)}` : '');
         } else {
           content.innerHTML = runs.map(run => `<article><p>${esc(localTime(run.finished_at))} · ${esc(run.outcome)} · ${esc(run.duration_ms)} ms · ${esc(run.module_count)} modules · ${esc(run.updated_count)} updated</p>${(Array.isArray(run.failures) ? run.failures : []).map(f => `<p>${esc(f.module)}: ${esc(f.signal)} <button type="button" data-copy-failure="${esc(`${f.module}: ${f.signal}`)}">Copy</button></p>`).join('')}</article>`).join('') || '<p>No update history available.</p>';
         }
       }
       modal.addEventListener('click', async event => {
+        if (!headerState.isAdmin || !modal.isConnected) return;
         const target = event.target instanceof Element ? event.target : null;
         const tab = target?.closest('[data-update-view]');
         if (tab) { view = tab.dataset.updateView; await render(); return; }
@@ -76,6 +79,7 @@
         if (copy) { try { await navigator.clipboard.writeText(copy.dataset.copyFailure); showCoronatioToast('Copied.', 'success'); } catch (_) { showCoronatioToast('Could not copy.', 'warning'); } }
       });
       modal.addEventListener('change', async event => {
+        if (!headerState.isAdmin || !modal.isConnected) return;
         const input = event.target;
         if (!(input instanceof HTMLInputElement)) return;
         if (input.matches('[data-update-schedule]')) { const state = input.checked ? 'on' : 'off'; input.disabled = true; await post('update/service/toggle', {state}, `Automatic updates turned ${state}.`); await render(); }
@@ -83,6 +87,9 @@
       });
       void render();
     }
+    window.addEventListener('coronatio:privileged-state-retired', () => {
+      document.querySelectorAll('[data-manager-modal="updates"]').forEach(modal => modal.remove());
+    });
     document.body.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('[data-update-manager-open]')) { event.preventDefault(); systemUpdateManager(); }

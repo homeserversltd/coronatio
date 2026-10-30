@@ -1573,4 +1573,3 @@ fn merge_admin_indicator_fields(
         _ => {}
     }
 }
-
