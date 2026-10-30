@@ -54,15 +54,7 @@ fn core_topic_contracts() -> Vec<TopicContract> {
             "power sample",
             "always broadcast realtime power samples",
         ),
-        topic_contract(
-            "source.currency",
-            "core",
-            60,
-            false,
-            vec![],
-            "Coronatio source currency against origin/main",
-            "source build or origin/main relation changes",
-        ),
+
     ]
 }
 

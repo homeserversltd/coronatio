@@ -1214,7 +1214,7 @@ fn known_json_observation_path(path: &str) -> bool {
         | "/api/stats/current"
         | "/api/stats/roster"
         | "/api/stats/history"
-        | "/api/indicators/source-currency"
+
         | "/api/indicators/admin"
         | "/api/status"
         | "/api/status/services"

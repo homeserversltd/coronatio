@@ -319,38 +319,18 @@ pub(crate) fn subscribe_core_stream(
         let mut payload = if refresh_due {
             tracing::debug!(topic_id = entry.topic_id, "collecting core indicator topic");
             let topic_id = entry.topic_id;
-            let stats_batch = if topic_id == "source.currency" {
-                None
-            } else {
-                if state
-                    .pulse_batch
-                    .as_ref()
-                    .is_none_or(|batch| batch.generation != live.generation)
-                {
-                    let batch_live = live.clone();
-                    let batch = tokio::task::spawn_blocking(move || read_core_pulse_batch(&batch_live))
-                        .await
-                        .unwrap_or_else(|_| failed_core_pulse_batch(
-                            live.generation,
-                            "caduceus-stats-collector-task-failed",
-                        ));
-                    state.pulse_batch = Some(batch);
-                }
-                state.pulse_batch.clone()
-            };
+            if state.pulse_batch.as_ref().is_none_or(|batch| batch.generation != live.generation) {
+                let batch_live = live.clone();
+                let batch = tokio::task::spawn_blocking(move || read_core_pulse_batch(&batch_live))
+                    .await.unwrap_or_else(|_| failed_core_pulse_batch(live.generation, "caduceus-stats-collector-task-failed"));
+                state.pulse_batch = Some(batch);
+            }
+            let stats_batch = state.pulse_batch.clone();
             let topic_session = live.session;
             let collected = if let Some(batch) = stats_batch.clone() {
-                let session = topic_session;
-                tokio::task::spawn_blocking(move || {
-                    Ok(project_core_stats_topic(topic_id, session, batch))
-                })
-                .await
-                .unwrap_or_else(|_| Err("caduceus-stats-collector-task-failed".to_owned()))
-            } else {
-                tokio::task::spawn_blocking(move || collect_source_currency_core_topic(topic_session))
-                    .await
-                    .unwrap_or_else(|_| Err("caduceus-source-currency-task-failed".to_owned()))
-            };
+                tokio::task::spawn_blocking(move || Ok(project_core_stats_topic(topic_id, topic_session, batch)))
+                    .await.unwrap_or_else(|_| Err("caduceus-stats-collector-task-failed".to_owned()))
+            } else { Err("caduceus-stats-collector-task-failed".to_owned()) };
             let still_current = core_live_projection(&state.stream_id)
                 .is_some_and(|current| current.generation == live.generation);
             let mut collected = collected;
@@ -358,11 +338,7 @@ pub(crate) fn subscribe_core_stream(
                 state.last_collected.clear();
                 state.last_payload.clear();
                 state.pulse_batch = None;
-                let guest = if topic_id == "source.currency" {
-                    tokio::task::spawn_blocking(move || collect_source_currency_core_topic(Session::Guest))
-                        .await
-                        .unwrap_or_else(|_| Err("caduceus-source-currency-task-failed".to_owned()))
-                } else if let Some(batch) = stats_batch {
+                let guest = if let Some(batch) = stats_batch {
                     tokio::task::spawn_blocking(move || {
                         let signal = Some("caduceus-attendance-session-transitioned".to_owned());
                         Ok(project_core_stats_topic(
@@ -489,7 +465,6 @@ fn reconcile_core_stream_state(state: &mut CoreStreamState, live: &CoreLiveProje
 
 fn minimum_refresh_interval(topic_id: &str) -> Duration {
     match topic_id {
-        "source.currency" => Duration::from_secs(60),
         "tailscale.status" | "vpn.status" | "services.status" => Duration::from_secs(5),
         "internet.status" => Duration::from_secs(7),
         _ => Duration::from_secs(1),
@@ -719,9 +694,6 @@ pub(crate) fn collect_indicator_topic(
     topic_id: &str,
     session: Session,
 ) -> Result<serde_json::Value, String> {
-    if topic_id == "source.currency" {
-        return collect_source_currency_indicator(session);
-    }
     let admin_signal = (session == Session::Admin)
         .then(|| "caduceus-attendance-admin-scope-required".to_owned());
     let sample = collect_stats_indicator_topic(topic_id, session, None, admin_signal);
@@ -729,14 +701,6 @@ pub(crate) fn collect_indicator_topic(
         Some(signal) => Err(signal),
         None => Ok(sample.snapshot),
     }
-}
-
-fn collect_source_currency_core_topic(session: Session) -> Result<IndicatorTopicSample, String> {
-    collect_source_currency_indicator(session).map(|snapshot| IndicatorTopicSample {
-        snapshot,
-        indicator_state: None,
-        unavailable_signal: None,
-    })
 }
 
 fn read_core_pulse_batch(live: &CoreLiveProjection) -> CorePulseBatch {
@@ -802,17 +766,6 @@ pub(crate) async fn collect_indicator_topic_for_request(
     headers: &axum::http::HeaderMap,
 ) -> (Session, IndicatorTopicSample) {
     let session = session_projection_from_headers(headers).await;
-    if topic_id == "source.currency" {
-        let topic = topic_id.to_owned();
-        let error_topic = topic.clone();
-        let sample = tokio::task::spawn_blocking(move || {
-            collect_source_currency_core_topic(session)
-        })
-        .await
-        .unwrap_or_else(|_| Err("caduceus-source-currency-task-failed".to_owned()))
-        .unwrap_or_else(|signal| unavailable_topic_sample(&error_topic, signal));
-        return (session, sample);
-    }
     if session != Session::Admin {
         let topic = topic_id.to_owned();
         let error_topic = topic.clone();
@@ -1621,47 +1574,3 @@ fn merge_admin_indicator_fields(
     }
 }
 
-fn collect_source_currency_indicator(session: Session) -> Result<serde_json::Value, String> {
-    if crate::CORONATIO_BUILD_SHA.is_empty() {
-        return Ok(serde_json::json!({
-            "ok": false,
-            "schema": "caduceus.coronatio.source_currency.v1",
-            "status": "unavailable",
-            "originMainSha": null,
-            "buildSha": "",
-            "relation": "unknown",
-            "firstMissingSignal": "CORONATIO_BUILD_SHA"
-        }));
-    }
-    let path = format!(
-        "/api/v1/coronatio/source-currency?buildSha={}",
-        crate::CORONATIO_BUILD_SHA
-    );
-    let readback = caduceus_http("GET", &path);
-    if !readback.ok {
-        return Err(format!("{}: {path}", readback.first_missing_signal));
-    }
-    let Some(object) = readback.body.as_object() else {
-        return Ok(serde_json::json!({
-            "ok": false, "schema": "caduceus.coronatio.source_currency.v1",
-            "relation": "unknown", "firstMissingSignal": "caduceus-source-currency-not-observed"
-        }));
-    };
-    let mut observed = object.clone();
-    if object.get("ok").and_then(serde_json::Value::as_bool).is_none() {
-        observed.insert("ok".to_owned(), serde_json::Value::Bool(false));
-        observed.entry("schema".to_owned()).or_insert_with(|| serde_json::Value::String("caduceus.coronatio.source_currency.v1".to_owned()));
-        observed.entry("relation".to_owned()).or_insert_with(|| serde_json::Value::String("unknown".to_owned()));
-        observed.entry("firstMissingSignal".to_owned()).or_insert_with(|| serde_json::Value::String("caduceus-source-currency-not-observed".to_owned()));
-    }
-    if session == Session::Admin {
-        return Ok(serde_json::Value::Object(observed));
-    }
-    let mut projection = serde_json::Map::new();
-    for field in ["ok", "schema", "originMainSha", "buildSha", "relation", "firstMissingSignal"] {
-        if let Some(value) = observed.get(field) {
-            projection.insert(field.to_owned(), value.clone());
-        }
-    }
-    Ok(serde_json::Value::Object(projection))
-}

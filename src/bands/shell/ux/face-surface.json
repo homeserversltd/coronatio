@@ -204,7 +204,7 @@
       "cartridges/remove",
       "cert/bundle/download",
       "config/set",
-      "coronatio/source-currency",
+
       "doors",
       "exousia/change-pin",
       "exousia/invalidate",

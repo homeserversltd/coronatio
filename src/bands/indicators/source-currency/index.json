@@ -1,6 +1,0 @@
-{
-  "schema": "coronatio.indicator-band.v1",
-  "id": "source-currency",
-  "topicId": "source.currency",
-  "children": []
-}

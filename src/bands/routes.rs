@@ -93,7 +93,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/stats/current".to_string(),
             "/api/stats/roster".to_string(),
             "/api/stats/history".to_string(),
-            "/api/indicators/source-currency".to_string(),
+
             "/api/indicators/admin".to_string(),
             "/api/faults".to_string(),
             "/admit/:tab_id".to_string(),
@@ -227,42 +227,6 @@ async fn stats_roster_route() -> Response {
         "lastMissedAt": leases.as_ref().and_then(|readback| readback.last_missed_at),
     });
     (status, Json(payload)).into_response()
-}
-
-async fn source_currency_route() -> Response {
-    let result = load_trace::spawn_blocking_with_trace(|| {
-        indicators::cached_source_currency(|| indicators::collect_indicator_topic("source.currency", Session::Guest))
-    }).await;
-    match result {
-        Ok(observation) => {
-            let (sample, collector_signal) = match observation.value {
-                Ok(value) => (Some(value), None),
-                Err(signal) => (None, Some(signal)),
-            };
-            let source_signal = sample.as_ref().and_then(|value| value.get("firstMissingSignal")
-                .or_else(|| value.get("first_missing_signal")).and_then(serde_json::Value::as_str)
-                .filter(|signal| !signal.is_empty() && *signal != "none").map(str::to_owned));
-            let first_missing_signal = collector_signal.or(source_signal);
-            let has_sample = sample.is_some() && observation.sample_id.is_some();
-            let status = if has_sample { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
-            (status, Json(serde_json::json!({
-                "ok": has_sample && !observation.stale,
-                "stale": observation.stale || !has_sample,
-                "firstMissingSignal": first_missing_signal,
-                "sample": sample,
-                "sampleId": observation.sample_id,
-                "sampleAgeMs": observation.age.map(|age| age.as_millis().min(u64::MAX as u128) as u64),
-            }))).into_response()
-        }
-        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
-            "ok": false,
-            "stale": true,
-            "firstMissingSignal": "source-currency-cache-task-failed",
-            "sample": null,
-            "sampleId": null,
-            "sampleAgeMs": null,
-        }))).into_response(),
-    }
 }
 
 async fn indicator_admin_route(headers: axum::http::HeaderMap) -> Response {

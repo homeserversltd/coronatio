@@ -169,7 +169,7 @@ fn app(state: AppState) -> Router {
         .route("/api/stats/current", get(stats_current_route))
         .route("/api/stats/roster", get(stats_roster_route))
         .route("/api/stats/history", get(stats_history_route))
-        .route("/api/indicators/source-currency", get(source_currency_route))
+
         .route("/api/indicators/admin", get(indicator_admin_route))
         .route("/api/faults", get(faults_route))
         .route("/api/v1/cartridges", get(cartridges_read_proxy_route))
