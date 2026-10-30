@@ -771,6 +771,7 @@ fn shell_document_4_tail() -> &'static str {
       if (manager) { const kind = manager.dataset.managerOpen; if (kind === 'key-guide') managerGuideModal(); else managerKeyModal(kind); return; }
       if (target?.closest('[data-hard-drive-test-open]')) { hardDriveTestModal(); return; }
     });
+    __UPDATE_MANAGER_CLIENT__
     __DHCP_CLIENT__
     __UNBOUND_CLIENT__
     __FIREWALL_CLIENT__
