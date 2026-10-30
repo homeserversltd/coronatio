@@ -43,10 +43,12 @@
         const runs = recent(history), rows = list(interactables, 'interactables');
         if (selected === 'Overview') {
           const latest = runs[0];
-          const waiting = status?.updates_available ?? status?.updatesAvailable ?? status?.pending_count ?? status?.pendingCount;
-          const failed = latest && ['failed','failure','error'].includes(String(latest.outcome).toLowerCase());
-          const headline = failed ? 'Last update failed' : typeof waiting === 'number' ? (waiting > 0 ? `${waiting} updates waiting` : 'Up to date') : 'Update status unavailable';
-          const failures = runs.flatMap(run => Array.isArray(run.failures) ? run.failures : []).slice(0,3);
+          const ready = status?.ok === true && status?.profilePresent === true && status?.statePresent === true && status?.routePresent === true && (Array.isArray(interactables) || Array.isArray(interactables?.interactables)) && history?.ok === true && Array.isArray(history?.runs);
+          const historyKnown = runs.every(run => localTime(run.finished_at)) && (!latest || ['ok', 'failed'].includes(latest.outcome));
+          const pendingCount = rows.filter(row => !row.silenced).length;
+          const failed = latest?.outcome === 'failed';
+          const headline = !ready || !historyKnown ? 'Update status unavailable' : failed ? 'Last update failed' : pendingCount ? `${pendingCount} updates waiting` : 'Up to date';
+          const failures = failed && Array.isArray(latest.failures) ? latest.failures.slice(0,3) : [];
           content.innerHTML = `<p><strong>${esc(headline)}</strong></p>${latest?.finished_at ? `<p>Last update: ${esc(localTime(latest.finished_at))}</p>` : ''}<div aria-label="Recent outcomes">${runs.map(run => `<span>${esc(run.outcome)} </span>`).join('')}</div>${failures.map(f => `<p>${esc(f.module)}: ${esc(f.signal)}</p>`).join('')}<p><button type="button" class="ui-button ui-button--secondary ui-button--small" data-update-action="check">Check for updates</button> <button type="button" class="ui-button ui-button--primary ui-button--small" data-update-action="now">Update now</button></p>`;
         } else if (selected === 'Modules') {
           content.innerHTML = list(modules, 'modules').map(m => `<article><strong>${esc(m.title || String(m.id || '').replace(/[-_]+/g, ' '))}</strong>${m.summary ? `<p>${esc(m.summary)}</p>` : ''}<label>Enabled <input type="checkbox" data-update-module="${esc(m.id)}" ${m.enabled ? 'checked' : ''}></label></article>`).join('') || '<p>No modules available.</p>';
@@ -55,7 +57,7 @@
           const cadence = status?.cadence ?? status?.schedule;
           content.innerHTML = `<label>Automatic updates <input type="checkbox" data-update-schedule ${service?.enabled ? 'checked' : ''} ${known ? '' : 'disabled'}></label><p>${known ? `Timer ${service.active ? 'active' : 'inactive'}` : 'Automatic updates status unavailable'}</p>${typeof cadence === 'string' && cadence ? `<p>${esc(cadence)}</p>` : ''}`;
         } else if (selected === 'Interactables') {
-          const draw = (items, silenced) => items.map(row => `<article><strong>${esc(row.name || row.id)}</strong>${row.summary ? `<p>${esc(row.summary)}</p>` : ''}${silenced ? `<button type="button" data-interactable-action="unsilence" data-interactable-id="${esc(row.id)}">Unsilence</button>` : `<button type="button" data-interactable-action="run" data-interactable-id="${esc(row.id)}">Run</button> <button type="button" data-interactable-action="silence" data-interactable-id="${esc(row.id)}">Silence</button>`}</article>`).join('');
+          const draw = (items, silenced) => items.map(row => `<article><strong>${esc(row.name || row.id)}</strong>${row.summary || row.description ? `<p>${esc(row.summary || row.description)}</p>` : ''}${silenced ? `<button type="button" data-interactable-action="unsilence" data-interactable-id="${esc(row.id)}">Unsilence</button>` : `<button type="button" data-interactable-action="run" data-interactable-id="${esc(row.id)}">Run</button> <button type="button" data-interactable-action="silence" data-interactable-id="${esc(row.id)}">Silence</button>`}</article>`).join('');
           const pending = rows.filter(row => !row.silenced), muted = rows.filter(row => row.silenced);
           content.innerHTML = draw(pending, false) + (muted.length ? `<p>Silenced</p>${draw(muted, true)}` : '') || '<p>No interactables available.</p>';
         } else {
