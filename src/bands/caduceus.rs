@@ -90,6 +90,51 @@ async fn caduceus_update_service_toggle_route(
     )
 }
 
+fn update_manager_read(headers: &axum::http::HeaderMap, path: &str) -> (StatusCode, Json<serde_json::Value>) {
+    let readback = admin_fragment_caduceus_request(headers, "GET", path);
+    let status = mutation_response_status(&readback);
+    let ok = readback.ok;
+    (status, Json(serde_json::json!({"ok": ok, "readback": readback})))
+}
+
+async fn update_manager_status(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_read(&headers, "/api/v1/update/status") }
+async fn update_manager_modules(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_read(&headers, "/api/v1/update/modules") }
+async fn update_manager_history(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_read(&headers, "/api/v1/update/history") }
+async fn update_manager_interactables(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_read(&headers, "/api/v1/interactables") }
+
+fn update_manager_segment(id: &str) -> Option<String> {
+    if id.is_empty() || id.len() > 512 || id.chars().any(char::is_control) { return None; }
+    let mut encoded = String::new();
+    for b in id.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'~') { encoded.push(b as char); }
+        else { encoded.push_str(&format!("%{b:02X}")); }
+    }
+    Some(encoded)
+}
+
+fn update_manager_mutation(headers: &axum::http::HeaderMap, path: &str, body: Option<serde_json::Value>) -> (StatusCode, Json<serde_json::Value>) {
+    let authority = mutation_authority();
+    let readback = match body {
+        Some(body) => caduceus_actuate_json(&authority, headers, path, body),
+        None => caduceus_actuate(&authority, headers, path),
+    };
+    let status = mutation_response_status(&readback);
+    let ok = readback.ok;
+    (status, Json(serde_json::json!({"ok": ok, "accepted": ok, "readback": readback})))
+}
+
+async fn update_manager_module(headers: axum::http::HeaderMap, Path(id): Path<String>, Json(body): Json<serde_json::Value>) -> (StatusCode, Json<serde_json::Value>) {
+    let Some(id) = update_manager_segment(&id) else { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok":false}))); };
+    let Some(enabled) = body.get("enabled").and_then(serde_json::Value::as_bool) else { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok":false}))); };
+    update_manager_mutation(&headers, &format!("/api/v1/update/modules/{id}"), Some(serde_json::json!({"enabled":enabled})))
+}
+
+async fn update_manager_interactable(headers: axum::http::HeaderMap, Path((id, action)): Path<(String, String)>) -> (StatusCode, Json<serde_json::Value>) {
+    let Some(id) = update_manager_segment(&id) else { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok":false}))); };
+    if !matches!(action.as_str(), "run" | "silence" | "unsilence") { return (StatusCode::NOT_FOUND, Json(serde_json::json!({"ok":false}))); }
+    update_manager_mutation(&headers, &format!("/api/v1/interactables/{id}/{action}"), None)
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct KeymanDoorRequest {
