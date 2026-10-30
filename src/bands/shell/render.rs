@@ -172,7 +172,7 @@ fn build_crown_shell_source(session: Session) -> String {
         .replace("__UPLOAD_TREE_FRAGMENT__", render_upload_tree_placeholder())
         .replace("__STATS_ELEMENTS_FRAGMENT__", &render_stats_elements_fragment(session))
         .replace("__UPDATE_MANAGER_CLIENT__", include_str!("update-manager-client.js"))
-    .replace("__DHCP_CLIENT__", shell_dhcp_client())
+        .replace("__DHCP_CLIENT__", shell_dhcp_client())
         .replace("__UNBOUND_CLIENT__", shell_unbound_client())
         .replace(
             "__FIREWALL_CLIENT__",

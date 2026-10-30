@@ -25,9 +25,9 @@
           if (body !== undefined) { options.headers = {'Content-Type':'application/json'}; options.body = JSON.stringify(body); }
           const response = await fetch('/api/caduceus/' + path, options);
           const result = await response.json().catch(() => ({}));
-          if (result?.readback?.status === 404 || response.status === 404) showCoronatioToast('Caduceus is not deployed yet.', 'warning');
+          if (result?.readback?.status === 404 || response.status === 404) showCoronatioToast(path === 'update/service/toggle' ? 'Automatic updates unavailable — Caduceus is not deployed yet.' : path === 'update/now' ? 'Update pending — Caduceus is not deployed yet.' : 'Caduceus is not deployed yet.', 'warning');
           else if (result?.accepted) showCoronatioToast(success, 'success');
-          else if (result?.readback?.status === 409) showCoronatioToast('This action is already running or cannot be changed yet.', 'warning');
+          else if (result?.readback?.status === 409) showCoronatioToast(path === 'update/now' ? 'Update is already running.' : path === 'update/service/toggle' ? 'Automatic updates could not be changed yet.' : 'This action could not be completed yet.', 'warning');
           else showCoronatioToast('This action could not be completed.', 'warning');
         } catch (_) { showCoronatioToast('This action could not be completed.', 'warning'); }
       };
@@ -52,7 +52,7 @@
           const failures = failed && Array.isArray(latest.failures) ? latest.failures.slice(0,3) : [];
           content.innerHTML = `<p><strong>${esc(headline)}</strong></p>${latest?.finished_at ? `<p>Last update: ${esc(localTime(latest.finished_at))}</p>` : ''}<div aria-label="Recent outcomes">${runs.map(run => `<span>${esc(run.outcome)} </span>`).join('')}</div>${failures.map(f => `<p>${esc(f.module)}: ${esc(f.signal)}</p>`).join('')}<p><button type="button" class="ui-button ui-button--secondary ui-button--small" data-update-action="check">Check for updates</button> <button type="button" class="ui-button ui-button--primary ui-button--small" data-update-action="now">Update now</button></p>`;
         } else if (selected === 'Modules') {
-          content.innerHTML = list(modules, 'modules').map(m => `<article><strong>${esc(m.title || String(m.id || '').replace(/[-_]+/g, ' '))}</strong>${m.summary ? `<p>${esc(m.summary)}</p>` : ''}<label>Enabled <input type="checkbox" data-update-module="${esc(m.id)}" ${m.enabled ? 'checked' : ''}></label></article>`).join('') || '<p>No modules available.</p>';
+          content.innerHTML = list(modules, 'modules').map(m => `<article><strong>${esc(m.title || String(m.id || '').replace(/[-_]+/g, ' '))}</strong>${m.summary ? `<p>${esc(m.summary)}</p>` : ''}<label>Enabled <input type="checkbox" data-update-module="${esc(m.id)}" ${m.enabled === true ? 'checked' : ''} ${typeof m.enabled === 'boolean' ? '' : 'disabled'}></label></article>`).join('') || '<p>No modules available.</p>';
         } else if (selected === 'Schedule') {
           const known = typeof service?.enabled === 'boolean';
           const cadence = status?.cadence ?? status?.schedule;
