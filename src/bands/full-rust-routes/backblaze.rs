@@ -5,9 +5,11 @@ const BACKBLAZE_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(
 #[derive(Clone)]
 struct BackblazeStatusRow { bucket: String, running: bool, last_run_at: Option<serde_json::Value>, last_run_ok: Option<bool>, connected: Option<bool> }
 #[derive(Clone)]
-struct BackblazeSnapshot { id: String, time: String, paths: Vec<String>, tags: Vec<String> }
+struct BackblazeSnapshot { id: String, time: String, paths: Vec<String>, tags: Vec<String>, bucket: Option<String> }
+#[derive(Clone)]
+struct BackblazeSnapshotError { bucket: String, step: String, reason: String }
 static BACKBLAZE_STATUS_CACHE: OnceLock<Mutex<Option<(Instant, Vec<BackblazeStatusRow>)>>> = OnceLock::new();
-static BACKBLAZE_SNAPSHOT_CACHE: OnceLock<Mutex<Option<(Instant, String, Vec<BackblazeSnapshot>)>>> = OnceLock::new();
+static BACKBLAZE_SNAPSHOT_CACHE: OnceLock<Mutex<Option<(Instant, String, Vec<BackblazeSnapshot>, Vec<BackblazeSnapshotError>)>>> = OnceLock::new();
 
 fn backblaze_error(status: StatusCode, reason: &str) -> Response {
     (status, Json(serde_json::json!({"ok": false, "reason": reason}))).into_response()
@@ -39,25 +41,12 @@ fn backblaze_redact_credentials(value: &mut serde_json::Value, key: &str, secret
         _ => {}
     }
 }
-fn backblaze_same_origin(headers: &axum::http::HeaderMap) -> bool {
-    let origin = headers.get(axum::http::header::ORIGIN).and_then(|v| v.to_str().ok()).and_then(|v| url::Url::parse(v).ok());
-    let host = headers.get(axum::http::header::HOST).and_then(|v| v.to_str().ok());
-    match (origin, host) {
-        (Some(origin), Some(host)) if matches!(origin.scheme(), "http" | "https") && origin.path() == "/" && origin.query().is_none() && origin.fragment().is_none() && origin.username().is_empty() && origin.password().is_none() => {
-            let expected = url::Url::parse(&format!("{}://{host}/", origin.scheme())).ok();
-            expected.is_some_and(|expected| expected.host_str() == origin.host_str() && expected.port_or_known_default() == origin.port_or_known_default())
-        }
-        _ => false,
-    }
-}
+
 fn backblaze_invalidate() {
     *BACKBLAZE_STATUS_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = None;
     *BACKBLAZE_SNAPSHOT_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 fn backblaze_act(headers: &axum::http::HeaderMap, path: &str, body: serde_json::Value) -> CaduceusHttpReadback {
-    if !backblaze_same_origin(headers) {
-        return CaduceusHttpReadback { ok: false, status: 403, path: path.to_owned(), body: serde_json::json!({"ok":false,"reason":"same-origin-required"}), first_missing_signal: "same-origin-required".into() };
-    }
     let result = caduceus_actuate_json(&mutation_authority(), headers, path, body);
     if result.ok { backblaze_invalidate(); }
     result
@@ -170,22 +159,20 @@ fn backblaze_item_mutate(headers: axum::http::HeaderMap, bucket: String, item: s
     backblaze_readback_response(backblaze_act(&headers, &format!("{BACKBLAZE_DOOR}/bucket/items"), serde_json::json!({"bucket":bucket,"path":path,"op":op})))
 }
 async fn backblaze_config_post_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
-    let current = match backblaze_config_value() { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &e) };
-    let old_rows = match backblaze_bucket_rows(&current) { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
     let Some(rows) = body.get("buckets").and_then(serde_json::Value::as_array) else { return backblaze_error(StatusCode::BAD_REQUEST, "buckets must be an array"); };
-    let expected_rows = match body.get("expected") { None | Some(serde_json::Value::Null) => None, Some(value) => match value.as_array() { Some(values) if values.len() == rows.len() => Some(values), _ => return backblaze_error(StatusCode::BAD_REQUEST, "expected bucket state is incomplete") } };
+    let expected_rows = match body.get("expected") { None | Some(serde_json::Value::Null) => None, Some(value) => match value.as_array() { Some(values) => Some(values), _ => return backblaze_error(StatusCode::BAD_REQUEST, "expected bucket state is incomplete") } };
     let mut changes = Vec::new(); let mut names = std::collections::HashSet::new();
-    for (index, row) in rows.iter().enumerate() {
-        let save = match backblaze_save_body(row) { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
+    for row in rows {
+        let mut save = match backblaze_save_body(row) { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
         let name = save["bucket"].as_str().unwrap_or_default();
         if !names.insert(name.to_owned()) { return backblaze_error(StatusCode::BAD_REQUEST, "duplicate bucket"); }
-        let Some(old) = old_rows.iter().find(|v| v.get("bucket").and_then(serde_json::Value::as_str) == Some(name)) else { return backblaze_error(StatusCode::BAD_REQUEST, "bucket is not configured"); };
-        let old_save = match backblaze_save_body(old) { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
         if let Some(expected_rows) = expected_rows {
-            let expected = match backblaze_save_body(&expected_rows[index]) { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
-            if expected != old_save { return backblaze_error(StatusCode::CONFLICT, "bucket changed; refresh before saving"); }
+            let mut matching = expected_rows.iter().filter(|v| v.get("bucket").and_then(serde_json::Value::as_str) == Some(name));
+            let Some(expected) = matching.next() else { return backblaze_error(StatusCode::BAD_REQUEST, "expected bucket state is incomplete"); };
+            if matching.next().is_some() { return backblaze_error(StatusCode::BAD_REQUEST, "duplicate expected bucket"); }
+            save["expected"] = expected.clone();
         }
-        if save != old_save { changes.push(save); }
+        changes.push(save);
     }
     let mut last = None; let mut applied: Vec<String> = Vec::new();
     for body in changes {
@@ -236,12 +223,11 @@ async fn backblaze_status_route() -> Response {
     for row in &mut buckets {
         let name = match backblaze_bucket_identifier(row) { Ok(v) => v.to_owned(), Err(e) => return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &e) };
         let status = statuses.iter().find(|s| s.bucket == name);
-        let Some(status) = status else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "bucket status unavailable"); };
-        row["status"] = serde_json::json!({"running":status.running,"last_run_at":status.last_run_at,"last_run_ok":status.last_run_ok});
-        row["connected"] = status.connected.into();
+        row["status"] = status.map(|s| serde_json::json!({"running":s.running,"last_run_at":s.last_run_at,"last_run_ok":s.last_run_ok})).unwrap_or(serde_json::Value::Null);
+        row["connected"] = status.and_then(|s| s.connected).into();
     }
     let running = statuses.iter().any(|s| s.running);
-    let last = statuses.iter().filter(|s| s.last_run_at.is_some()).max_by_key(|s| s.last_run_at.as_ref().and_then(serde_json::Value::as_u64).unwrap_or(0));
+    let last = statuses.iter().filter(|s| s.last_run_at.as_ref().and_then(serde_json::Value::as_i64).is_some()).max_by_key(|s| s.last_run_at.as_ref().and_then(serde_json::Value::as_i64));
     (StatusCode::OK, Json(serde_json::json!({"ok":true,"buckets":buckets,"running":running,"last_run_at":last.and_then(|s|s.last_run_at.clone()),"last_run_ok":last.and_then(|s|s.last_run_ok)}))).into_response()
 }
 #[derive(Debug, Deserialize)]
@@ -249,8 +235,8 @@ struct BackblazeSnapshotsQuery { bucket: Option<String> }
 async fn backblaze_snapshots_route(Query(query): Query<BackblazeSnapshotsQuery>) -> Response {
     let Some(bucket) = query.bucket.filter(|b| !b.is_empty()) else { return backblaze_error(StatusCode::BAD_REQUEST, "bucket is required"); };
     let mut cache = BACKBLAZE_SNAPSHOT_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner());
-    let cached = cache.as_ref().filter(|(time,name,_)| *name == bucket && time.elapsed() < BACKBLAZE_CACHE_TTL).map(|(_,_,rows)| rows.clone());
-    let rows = if let Some(rows) = cached { rows } else {
+    let cached = cache.as_ref().filter(|(time,name,_,_)| *name == bucket && time.elapsed() < BACKBLAZE_CACHE_TTL).map(|(_,_,rows,errors)| (rows.clone(),errors.clone()));
+    let (rows, errors) = if let Some(rows) = cached { rows } else {
         let encoded: String = url::form_urlencoded::byte_serialize(bucket.as_bytes()).collect();
         let receipt = caduceus_http("GET", &format!("{BACKBLAZE_DOOR}/snapshots?bucket={encoded}"));
         if !receipt.ok { return backblaze_readback_response(receipt); }
@@ -258,13 +244,22 @@ async fn backblaze_snapshots_route(Query(query): Query<BackblazeSnapshotsQuery>)
         if values.len() > 512 { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "too many snapshots"); }
         let mut rows = Vec::new();
         for value in values {
-            let (Some(id), Some(time), Some(paths), Some(tags)) = (value.get("id").and_then(serde_json::Value::as_str), value.get("time").and_then(serde_json::Value::as_str), value.get("paths").and_then(serde_json::Value::as_array), value.get("tags").and_then(serde_json::Value::as_array)) else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot row"); };
-            let Some(paths) = paths.iter().map(|v|v.as_str().map(str::to_owned)).collect::<Option<Vec<_>>>() else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot paths"); };
-            let Some(tags) = tags.iter().map(|v|v.as_str().map(str::to_owned)).collect::<Option<Vec<_>>>() else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot tags"); };
-            rows.push(BackblazeSnapshot{id:id.to_owned(),time:time.to_owned(),paths,tags});
+            let (Some(id), Some(time)) = (value.get("id").and_then(serde_json::Value::as_str), value.get("time").and_then(serde_json::Value::as_str)) else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot row"); };
+            let fields = |name: &str| -> Option<Vec<String>> { match value.get(name) { None | Some(serde_json::Value::Null) => Some(vec![]), Some(v) => v.as_array()?.iter().map(|v|v.as_str().map(str::to_owned)).collect() } };
+            let (Some(paths), Some(tags)) = (fields("paths"),fields("tags")) else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot paths or tags"); };
+            rows.push(BackblazeSnapshot{id:id.to_owned(),time:time.to_owned(),paths,tags,bucket:value.get("bucket").and_then(serde_json::Value::as_str).map(str::to_owned)});
         }
-        *cache = Some((Instant::now(), bucket.clone(), rows.clone())); rows
+        let mut errors = Vec::new();
+        if let Some(values) = receipt.body.get("errors").filter(|v| !v.is_null()) {
+            let Some(values) = values.as_array().filter(|v| v.len() <= 512) else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot errors"); };
+            for value in values {
+                let (Some(bucket),Some(step),Some(reason)) = (value.get("bucket").and_then(serde_json::Value::as_str),value.get("step").and_then(serde_json::Value::as_str),value.get("reason").and_then(serde_json::Value::as_str)) else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot error"); };
+                errors.push(BackblazeSnapshotError { bucket:bucket.to_owned(),step:step.to_owned(),reason:reason.to_owned() });
+            }
+        }
+        *cache = Some((Instant::now(), bucket.clone(), rows.clone(), errors.clone())); (rows, errors)
     };
-    let snapshots: Vec<_> = rows.into_iter().map(|row|serde_json::json!({"id":row.id,"time":row.time,"paths":row.paths,"tags":row.tags})).collect();
-    (StatusCode::OK, Json(serde_json::json!({"ok":true,"snapshots":snapshots}))).into_response()
+    let snapshots: Vec<_> = rows.into_iter().map(|row|serde_json::json!({"id":row.id,"time":row.time,"paths":row.paths,"tags":row.tags,"bucket":row.bucket})).collect();
+    let errors: Vec<_> = errors.into_iter().map(|row|serde_json::json!({"bucket":row.bucket,"step":row.step,"reason":row.reason})).collect();
+    (StatusCode::OK, Json(serde_json::json!({"ok":true,"snapshots":snapshots,"errors":errors}))).into_response()
 }

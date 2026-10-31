@@ -1,6 +1,6 @@
 fn shell_backblaze_client() -> &'static str {
     r####"
-    const state = { binding: null, data: null, bucket: null, ledger: [], ledgerBucket: null, statusReady: false, statusStale: false, snapshotsReady: false, snapshotsStale: false, selectionGeneration: 0, managerDrafts: {} };
+    const state = { binding: null, data: null, bucket: null, ledger: [], ledgerErrors: [], ledgerBucket: null, statusReady: false, statusStale: false, snapshotsReady: false, snapshotsStale: false, selectionGeneration: 0, managerDrafts: {}, managerBaselines: {} };
     let managerDraftBucket = null;
     let managerDraftBeforeOpen = null;
     const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,7 +10,7 @@ fn shell_backblaze_client() -> &'static str {
     const el = (selector, binding = state.binding) => root(binding)?.querySelector(selector) || null;
     const current = (binding = state.binding) => Boolean(binding && state.binding === binding && admitted() && scaffoldRegistry.current(binding));
     const canUse = (binding = state.binding) => Boolean(current(binding) && state.statusReady && !state.statusStale && state.data);
-    const health = b => b?.status?.running ? 'RUNNING' : (b?.status?.last_run_ok === true ? 'GOOD' : (b?.status?.last_run_ok === false ? 'FAILED' : 'IDLE'));
+    const health = b => !b?.status ? 'UNKNOWN' : b.status.running ? 'RUNNING' : (b.status.last_run_ok === true ? 'GOOD' : (b.status.last_run_ok === false ? 'FAILED' : 'IDLE'));
     const isRecord = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
     const forgejo = b => isRecord(b?.managers?.forgejo) ? b.managers.forgejo : null;
     const validSkip = text => typeof text === 'string' && /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?$/.test(text);
@@ -157,6 +157,7 @@ fn shell_backblaze_client() -> &'static str {
       else if (state.ledgerBucket !== state.bucket) html = '<p class="backblaze-empty">Loading snapshots…</p>';
       else if (!state.ledger.length && !state.snapshotsReady) html = '<p class="backblaze-empty">Snapshots unavailable.</p>';
       else html = state.ledger.map((row, index) => `<div class="backblaze-ledger-row" data-backblaze-snapshot="${esc(row.id || `${state.bucket}-${index}`)}"><time>${esc(row.time || row.status || 'Snapshot')}</time><span>${esc(row.id || '—')}</span></div>`).join('') || '<p class="backblaze-empty" data-backblaze-empty-snapshots>No snapshots available.</p>';
+      if (state.ledgerBucket === state.bucket && state.snapshotsReady) html += state.ledgerErrors.map(row => `<p data-backblaze-snapshot-error>${esc(row.bucket)}: ${esc(row.step)} — ${esc(row.reason)}</p>`).join('');
       morphLivePane(content, html);
     }
     function setView(view) {
@@ -186,7 +187,7 @@ fn shell_backblaze_client() -> &'static str {
     }
     function scrubBackblazeProtectedState(pane) {
       state.data = null; state.bucket = null; state.ledger = []; state.ledgerBucket = null;
-      state.statusReady = false; state.statusStale = true; state.snapshotsReady = false; state.snapshotsStale = true; state.managerDrafts = {};
+      state.statusReady = false; state.statusStale = true; state.snapshotsReady = false; state.snapshotsStale = true; state.managerDrafts = {}; state.managerBaselines = {}; state.ledgerErrors = [];
       if (!(pane instanceof Element) || !pane.isConnected) return;
       pane.querySelectorAll('[data-backblaze-buckets], [data-backblaze-ledger-buckets], [data-backblaze-items], [data-backblaze-ledger], [data-backblaze-forgejo-skips]').forEach(node => node.replaceChildren());
       pane.querySelectorAll('[data-backblaze-state], [data-backblaze-last], [data-backblaze-duration], [data-backblaze-next], [data-backblaze-selected], [data-backblaze-bucket-status], [data-backblaze-connected], [data-backblaze-result]').forEach(node => { node.textContent = ''; });
@@ -220,7 +221,7 @@ fn shell_backblaze_client() -> &'static str {
       cancelSecretDialogs(); actions.forEach(controller => controller.abort()); actions.clear();
       state.binding = null; state.data = null; state.bucket = null; state.ledger = []; state.ledgerBucket = null;
       state.statusReady = false; state.statusStale = false; state.snapshotsReady = false; state.snapshotsStale = false;
-      state.selectionGeneration += 1; state.managerDrafts = {}; managerDraftBucket = null; managerDraftBeforeOpen = null;
+      state.selectionGeneration += 1; state.managerDrafts = {}; state.managerBaselines = {}; state.ledgerErrors = []; managerDraftBucket = null; managerDraftBeforeOpen = null;
     });
     function normalizeSnapshot(row) {
       if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Backblaze snapshot row is malformed');
@@ -229,8 +230,8 @@ fn shell_backblaze_client() -> &'static str {
     async function loadSnapshots(binding = state.binding, options = {}) {
       if (!canUse(binding)) return false;
       const bucket = state.bucket, generation = state.selectionGeneration;
-      if (!bucket) { state.ledger = []; state.ledgerBucket = null; state.snapshotsReady = true; renderLedger(binding); return true; }
-      if (state.ledgerBucket !== bucket) { state.ledger = []; state.ledgerBucket = bucket; state.snapshotsReady = false; state.snapshotsStale = false; }
+      if (!bucket) { state.ledger = []; state.ledgerErrors = []; state.ledgerBucket = null; state.snapshotsReady = true; renderLedger(binding); return true; }
+      if (state.ledgerBucket !== bucket) { state.ledger = []; state.ledgerErrors = []; state.ledgerBucket = bucket; state.snapshotsReady = false; state.snapshotsStale = false; }
       const ledgerSlot = el('[data-scaffold-slot="backblaze-ledger"]', binding);
       if (!ledgerSlot) return Promise.resolve(false);
       state.snapshotsStale = true;
@@ -239,9 +240,11 @@ fn shell_backblaze_client() -> &'static str {
         if (!context.current() || !current(binding)) return false;
         if (!body || typeof body !== 'object' || Array.isArray(body) || body.ok === false || !Array.isArray(body.snapshots)) throw new Error('Backblaze snapshots response is incomplete');
         const ledger = body.snapshots.map(normalizeSnapshot);
+        const errors = body.errors == null ? [] : body.errors;
+        if (!Array.isArray(errors) || errors.some(row => !isRecord(row) || typeof row.bucket !== 'string' || typeof row.step !== 'string' || typeof row.reason !== 'string')) throw new Error('Backblaze snapshot errors are malformed');
         if (!context.current() || !current(binding)) return false;
         if (state.bucket !== bucket || state.selectionGeneration !== generation) return true;
-        state.ledger = ledger; state.ledgerBucket = bucket; state.snapshotsReady = true; state.snapshotsStale = false;
+        state.ledger = ledger; state.ledgerErrors = errors; state.ledgerBucket = bucket; state.snapshotsReady = true; state.snapshotsStale = false;
         renderLedger(binding); renderReadStatus('[data-backblaze-ledger]', '', 'ready');
         context.ready(ledgerSlot);
         return true;
@@ -381,14 +384,16 @@ fn shell_backblaze_client() -> &'static str {
       if (!bucket || !canRewriteConfig(binding)) return;
       const selectedBucket = bucket.bucket, generation = state.selectionGeneration;
       const edited = configBucketForWrite(bucket);
-      const { connected, status, backblazeProjection, ...expected } = bucket;
+      const { connected, status, backblazeProjection, ...shown } = bucket;
+      const expected = state.managerBaselines[selectedBucket] || shown;
       if (!edited || !currentConfigAction(binding, generation, selectedBucket)) return;
       const controller = actionController(binding);
       const body = await getJson('/api/backblaze/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buckets: [edited], expected: [expected] }), signal: controller.signal }, binding).catch(() => ({ ok: false }));
       try {
         if (!currentConfigAction(binding, generation, selectedBucket)) return;
-        setResult(binding, body.ok ? 'Config saved without credentials' : (body.reason || 'Config could not be saved'));
-        if (body.ok && await hydrateBackblaze(binding) && current(binding)) { delete state.managerDrafts[selectedBucket]; renderSelected(); }
+        setResult(binding, body.ok === true ? 'Saved' : (body.reason || 'Config could not be saved'));
+        if (body.ok !== true && body.step === 'stale') { const result = el('[data-backblaze-result]', binding); if (result) { const button = document.createElement('button'); button.type = 'button'; button.dataset.backblazeRefreshStale = selectedBucket; button.textContent = 'Refresh'; result.append(document.createTextNode(' '), button); } }
+        if (body.ok === true && await hydrateBackblaze(binding) && current(binding)) { delete state.managerDrafts[selectedBucket]; delete state.managerBaselines[selectedBucket]; renderSelected(); }
       } finally { actions.delete(controller); }
     }
     function renderSkips(binding = state.binding) {
@@ -400,6 +405,7 @@ fn shell_backblaze_client() -> &'static str {
       const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket);
       if (!bucket || !canRewriteConfig(binding) || !bucket.backblazeProjection?.managerFieldsKnown) return;
       managerDraftBucket = bucket.bucket; managerDraftBeforeOpen = Object.prototype.hasOwnProperty.call(state.managerDrafts, bucket.bucket) ? { ...state.managerDrafts[bucket.bucket] } : null;
+      if (!managerDraftBeforeOpen) { const { connected, status, backblazeProjection, ...shown } = bucket; state.managerBaselines[bucket.bucket] = JSON.parse(JSON.stringify(shown)); }
       const model = state.managerDrafts[bucket.bucket] || forgejo(bucket);
       state.managerDrafts[bucket.bucket] = { ...model, skip: [...(model.skip || [])] };
       const local = el('[data-backblaze-local-nas]', binding), backup = el('[data-backblaze-forgejo-backup]', binding); if (local) local.checked = state.managerDrafts[bucket.bucket].localNas; if (backup) backup.checked = state.managerDrafts[bucket.bucket].backblazeBackup;
@@ -418,7 +424,7 @@ fn shell_backblaze_client() -> &'static str {
     }
     function closeManager(save, binding = state.binding) {
       const bucket = state.data?.buckets?.find(row => row.bucket === managerDraftBucket);
-      if (!save && managerDraftBucket !== null) { if (managerDraftBeforeOpen) state.managerDrafts[managerDraftBucket] = { ...managerDraftBeforeOpen }; else delete state.managerDrafts[managerDraftBucket]; }
+      if (!save && managerDraftBucket !== null) { if (managerDraftBeforeOpen) state.managerDrafts[managerDraftBucket] = { ...managerDraftBeforeOpen }; else { delete state.managerDrafts[managerDraftBucket]; delete state.managerBaselines[managerDraftBucket]; } }
       if (bucket && current(binding)) renderManager(bucket);
       const modal = el('[data-backblaze-manager-modal]', binding); if (modal) modal.hidden = true;
       managerDraftBucket = null; managerDraftBeforeOpen = null;
@@ -434,6 +440,7 @@ fn shell_backblaze_client() -> &'static str {
       const binding = state.binding; if (!binding || !root(binding)?.contains(target)) return;
       const view = target.closest('[data-backblaze-view]'); if (view) { setViewEvent(view.dataset.backblazeView); return; }
       const retry = target.closest('[data-backblaze-retry]'); if (retry && current(binding)) { event.preventDefault(); scaffoldRegistry.retry(binding, retry.dataset.backblazeRetry).catch(() => {}); return; }
+      const refresh = target.closest('[data-backblaze-refresh-stale]'); if (refresh && current(binding)) { delete state.managerDrafts[refresh.dataset.backblazeRefreshStale]; delete state.managerBaselines[refresh.dataset.backblazeRefreshStale]; setResult(binding, 'Refreshing'); void hydrateBackblaze(binding); return; }
       const select = target.closest('[data-backblaze-select]'); if (select) { selectBucket(select.dataset.backblazeSelect, binding); return; }
       const remove = target.closest('[data-backblaze-remove]'); if (remove) { void removeBucket(remove.dataset.backblazeRemove, binding); return; }
       const pathRemove = target.closest('[data-backblaze-path-remove]'); if (pathRemove) { void mutateItem(pathRemove.dataset.backblazePathRemove, 'DELETE', binding); return; }
