@@ -1,4 +1,5 @@
 const NAS_SETUP_UPSTREAM_TIMEOUT: Duration = Duration::from_secs(600);
+const VAULT_UNLOCK_UPSTREAM_TIMEOUT: Duration = Duration::from_secs(600);
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -98,21 +99,29 @@ async fn storage_vault_unlock_route(
                 .into_response();
         }
         let path = "/api/v1/storage/vault/unlock";
-        let readback = match face_stage() {
-            FaceStage::Vault => caduceus_http_json_with_attendance_and_document(
+        let mut readback = match face_stage() {
+            FaceStage::Vault => caduceus_http_json_with_attendance_and_document_timeout(
                 "POST",
                 path,
                 serde_json::json!({ "password": password }),
                 None,
                 None,
+                VAULT_UNLOCK_UPSTREAM_TIMEOUT,
             ),
-            FaceStage::Face => caduceus_actuate_json(
+            FaceStage::Face => storage_actuate_json_timeout(
                 &mutation_authority(),
                 &headers,
                 path,
                 serde_json::json!({ "password": password }),
+                VAULT_UNLOCK_UPSTREAM_TIMEOUT,
             ),
         };
+        if !readback.ok
+            && matches!(readback.first_missing_signal.as_str(), "caduceus-connect-timeout" | "caduceus-write-timeout" | "caduceus-read-timeout")
+            && readback.body == serde_json::json!({ "error": "caduceus-upstream-failed" })
+        {
+            readback.body["firstMissingSignal"] = serde_json::Value::String(readback.first_missing_signal.clone());
+        }
         let receipt_ok = readback.ok
             && storage_receipt_reports_success(&readback.body)
             && !storage_receipt_has_failure(&readback.body);
