@@ -144,6 +144,22 @@ fn backblaze_config_value() -> Result<serde_json::Value, String> {
     config["buckets"] = serde_json::Value::Array(vec![serde_json::Value::Object(row)]);
     Ok(config)
 }
+fn forgejo_skip(value: Option<&serde_json::Value>) -> Result<Vec<String>, String> {
+    let Some(value) = value else { return Ok(Vec::new()); };
+    let entries = value.as_array().ok_or_else(|| "forgejo skip must be an array".to_string())?;
+    let mut result = Vec::new();
+    for entry in entries {
+        let text = entry.as_str().ok_or_else(|| format!("invalid forgejo skip entry: {entry}"))?;
+        let text = text.trim();
+        let parts: Vec<&str> = text.split('/').collect();
+        if parts.len() > 2 || parts.iter().any(|part| part.is_empty() || !part.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))) {
+            return Err(format!("invalid forgejo skip entry: {text}"));
+        }
+        if result.iter().any(|old| old == text) { return Err(format!("duplicate forgejo skip entry: {text}")); }
+        result.push(text.to_owned());
+    }
+    Ok(result)
+}
 fn normalized_config(raw: serde_json::Value) -> Result<serde_json::Value, String> {
     let buckets = raw
         .get("buckets")
@@ -185,6 +201,7 @@ fn normalized_config(raw: serde_json::Value) -> Result<serde_json::Value, String
         let managers = serde_json::json!({"forgejo": {
             "localNas": forgejo.get("localNas").and_then(|v| v.as_bool()).unwrap_or(false),
             "backblazeBackup": forgejo.get("backblazeBackup").and_then(|v| v.as_bool()).unwrap_or(false),
+            "skip": forgejo_skip(forgejo.get("skip"))?,
         }});
         out.push(serde_json::json!({"bucket": bucket, "prefix": prefix, "encrypted": encrypted, "items": items, "managers": managers}));
     }
@@ -239,6 +256,12 @@ fn validate_backblaze_bucket_rewrite(bucket: &serde_json::Value) -> Result<(), S
             .is_none()
         {
             return Err("bucket manager flags are unknown".into());
+        }
+    }
+    let normalized_skip = forgejo_skip(forgejo.get("skip"))?;
+    if let Some(original) = forgejo.get("skip") {
+        if *original != serde_json::json!(normalized_skip) {
+            return Err("forgejo skip entries must be trimmed".into());
         }
     }
     Ok(())
@@ -695,6 +718,9 @@ fn backblaze_public(config: serde_json::Value) -> Result<serde_json::Value, Stri
     let mut buckets = Vec::new();
     for row in backblaze_bucket_rows(&config)? {
         let mut bucket = row.clone();
+        if let Some(forgejo) = bucket.get_mut("managers").and_then(|v| v.get_mut("forgejo")).and_then(serde_json::Value::as_object_mut) {
+            if !forgejo.contains_key("skip") { forgejo.insert("skip".into(), serde_json::json!([])); }
+        }
         let name = backblaze_bucket_identifier(row)?;
         let cached = state.buckets.get(name).cloned().unwrap_or_default();
         bucket["status"] = serde_json::json!(cached);
@@ -769,6 +795,14 @@ async fn backblaze_bucket_post_route(
     object.remove("applicationKey");
     object.remove("application_key");
     bucket_value["bucket"] = serde_json::json!(bucket);
+    if let Some(forgejo) = bucket_value.get_mut("managers").and_then(|v| v.get_mut("forgejo")).and_then(serde_json::Value::as_object_mut) {
+        if forgejo.contains_key("skip") {
+            match forgejo_skip(forgejo.get("skip")) {
+                Ok(skip) => { forgejo.insert("skip".to_string(), serde_json::json!(skip)); }
+                Err(error) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "reason": error}))).into_response(),
+            }
+        }
+    }
     if let Err(error) = validate_backblaze_bucket_rewrite(&bucket_value) {
         return (
             StatusCode::BAD_REQUEST,
@@ -1290,7 +1324,18 @@ async fn backblaze_run_bucket_route(
         )
             .into_response();
     }
+    let forgejo_enabled = selected.get("managers").and_then(|v| v.get("forgejo"))
+        .and_then(|v| v.get("backblazeBackup")).and_then(serde_json::Value::as_bool) == Some(true);
+    let forgejo_bucket = bucket.clone();
     std::thread::spawn(move || execute_backblaze_bucket(bucket));
+    if forgejo_enabled {
+        let receipt = caduceus_actuate_json(&mutation_authority(), &headers,
+            "/api/v1/storage/backup/forgejo/backup-b2", serde_json::json!({"bucket": forgejo_bucket}));
+        let ok = receipt.ok && receipt.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true);
+        let reason = receipt.body.get("reason").and_then(serde_json::Value::as_str)
+            .unwrap_or(&receipt.first_missing_signal).to_owned();
+        return (StatusCode::ACCEPTED, Json(serde_json::json!({"ok": ok, "status": "queued", "forgejo": receipt.body, "reason": if ok { "" } else { &reason }}))).into_response();
+    }
     (
         StatusCode::ACCEPTED,
         Json(serde_json::json!({"ok": true, "status": "queued"})),
@@ -1520,10 +1565,30 @@ async fn backblaze_config_post_route(headers: axum::http::HeaderMap, Json(body):
         None,
     );
     if !r.ok { return (mutation_response_status(&r), Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal}))).into_response(); }
-    match normalized_config(body).and_then(save_backblaze_config) { Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(), Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "reason": e}))).into_response() }
+    let current = backblaze_config_value().and_then(|config| {
+        for row in backblaze_bucket_rows(&config)? {
+            if let Some(forgejo) = row.get("managers").and_then(|v| v.get("forgejo")).and_then(serde_json::Value::as_object) {
+                let normalized = forgejo_skip(forgejo.get("skip"))?;
+                if forgejo.get("skip").is_some_and(|original| *original != serde_json::json!(normalized)) {
+                    return Err("forgejo skip entries must be trimmed".into());
+                }
+            }
+        }
+        Ok(())
+    });
+    match current.and_then(|()| normalized_config(body)).and_then(save_backblaze_config) { Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(), Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "reason": e}))).into_response() }
 }
 
 async fn backblaze_run_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    if body.get("plan").and_then(serde_json::Value::as_bool) == Some(true) {
+        let Some(bucket) = body.get("bucket").and_then(serde_json::Value::as_str) else {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "reason": "bucket must be a string"}))).into_response();
+        };
+        let receipt = caduceus_actuate_json(&mutation_authority(), &headers,
+            "/api/v1/storage/backup/forgejo/backup-b2", serde_json::json!({"bucket": bucket, "plan": true}));
+        let status = if receipt.ok { StatusCode::OK } else { mutation_response_status(&receipt) };
+        return (status, Json(receipt.body)).into_response();
+    }
     let bucket = if let Some(value) = body.get("bucket") {
         match value.as_str() {
             Some(bucket) => Some(bucket.to_owned()),

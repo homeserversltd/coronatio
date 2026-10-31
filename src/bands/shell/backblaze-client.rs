@@ -14,6 +14,8 @@ fn shell_backblaze_client() -> &'static str {
     const health = b => b?.status?.running ? 'RUNNING' : (b?.status?.last_run_ok === true ? 'GOOD' : (b?.status?.last_run_ok === false ? 'FAILED' : 'IDLE'));
     const isRecord = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
     const forgejo = b => isRecord(b?.managers?.forgejo) ? b.managers.forgejo : null;
+    const validSkip = text => typeof text === 'string' && /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?$/.test(text);
+    const knownSkips = value => value === undefined || (Array.isArray(value) && value.every(validSkip) && new Set(value).size === value.length);
     const actions = new Set();
     const secretDialogs = new Set();
     function clearStatusPoll() { if (statusPollTimer !== null) window.clearTimeout(statusPollTimer); statusPollTimer = null; }
@@ -39,7 +41,7 @@ fn shell_backblaze_client() -> &'static str {
         const bucketNameWriteSafe = bucket.bucket === bucket.bucket.trim() && !bucket.bucket.includes('/');
         const encryptedKnown = typeof bucket.encrypted === 'boolean';
         const managersKnown = isRecord(bucket.managers) && isRecord(bucket.managers.forgejo);
-        const managerFieldsKnown = managersKnown && typeof managerFlags.localNas === 'boolean' && typeof managerFlags.backblazeBackup === 'boolean';
+        const managerFieldsKnown = managersKnown && typeof managerFlags.localNas === 'boolean' && typeof managerFlags.backblazeBackup === 'boolean' && knownSkips(managerFlags.skip);
         return {
           ...bucket,
           backblazeProjection: {
@@ -193,9 +195,10 @@ fn shell_backblaze_client() -> &'static str {
       state.data = null; state.bucket = null; state.ledger = []; state.ledgerBucket = null;
       state.statusReady = false; state.statusStale = true; state.snapshotsReady = false; state.snapshotsStale = true; state.managerDrafts = {};
       if (!(pane instanceof Element) || !pane.isConnected) return;
-      pane.querySelectorAll('[data-backblaze-buckets], [data-backblaze-ledger-buckets], [data-backblaze-items], [data-backblaze-ledger]').forEach(node => node.replaceChildren());
+      pane.querySelectorAll('[data-backblaze-buckets], [data-backblaze-ledger-buckets], [data-backblaze-items], [data-backblaze-ledger], [data-backblaze-forgejo-skips]').forEach(node => node.replaceChildren());
       pane.querySelectorAll('[data-backblaze-state], [data-backblaze-last], [data-backblaze-duration], [data-backblaze-next], [data-backblaze-selected], [data-backblaze-bucket-status], [data-backblaze-connected], [data-backblaze-result]').forEach(node => { node.textContent = ''; });
-      pane.querySelectorAll('[data-backblaze-bucket-name], [data-backblaze-path]').forEach(node => { node.value = ''; });
+      pane.querySelectorAll('[data-backblaze-bucket-name], [data-backblaze-path], [data-backblaze-forgejo-skip-input]').forEach(node => { node.value = ''; });
+      pane.querySelectorAll('[data-backblaze-forgejo-plan], [data-backblaze-forgejo-skip-message]').forEach(node => { node.textContent = ''; });
       pane.querySelectorAll('[data-backblaze-encrypted], [data-backblaze-local-nas], [data-backblaze-forgejo-backup]').forEach(node => { node.checked = false; });
       pane.querySelectorAll('[data-backblaze-manager-modal]').forEach(node => { node.hidden = true; });
       pane.querySelectorAll('[data-backblaze-add], [data-backblaze-select], [data-backblaze-remove], [data-backblaze-save], [data-backblaze-verify], [data-backblaze-update], [data-backblaze-run], [data-backblaze-manager-open], [data-backblaze-item-add], [data-backblaze-path-remove], [data-backblaze-encrypted], [data-backblaze-local-nas], [data-backblaze-forgejo-backup]').forEach(node => { node.disabled = true; });
@@ -327,7 +330,7 @@ fn shell_backblaze_client() -> &'static str {
       let applicationKey = await secretInput('B2 application key', binding); if (!applicationKey || !currentConfigAction(binding, generation, selectedBucket)) { applicationKey = ''; return; }
       const controller = actionController(binding);
       try {
-        const body = await getJson('/api/backblaze/buckets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket, prefix: '', encrypted: true, items: [], managers: { forgejo: { localNas: false, backblazeBackup: false } }, keyId, applicationKey }), signal: controller.signal }, binding);
+        const body = await getJson('/api/backblaze/buckets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket, prefix: '', encrypted: true, items: [], managers: { forgejo: { localNas: false, backblazeBackup: false, skip: [] } }, keyId, applicationKey }), signal: controller.signal }, binding);
         applicationKey = ''; if (!currentConfigAction(binding, generation, selectedBucket)) return;
         setResult(binding, body.ok === false ? (body.reason || 'Bucket could not be added') : 'Bucket added and verified'); await hydrateBackblaze(binding);
       } catch (_) { applicationKey = ''; if (current(binding)) setResult(binding, 'Bucket could not be added'); }
@@ -402,14 +405,30 @@ fn shell_backblaze_client() -> &'static str {
         if (body.ok && await hydrateBackblaze(binding) && current(binding)) { state.managerDrafts = {}; renderSelected(); }
       } finally { actions.delete(controller); }
     }
+    function renderSkips(binding = state.binding) {
+      const host = el('[data-backblaze-forgejo-skips]', binding), draft = state.managerDrafts[managerDraftBucket];
+      if (!host || !draft) return;
+      host.innerHTML = (draft.skip || []).map((name, index) => `<div><span>${esc(name)}</span> <button type="button" data-backblaze-forgejo-skip-remove="${index}" aria-label="Remove ${esc(name)}">Remove</button></div>`).join('');
+    }
     function openManager(binding = state.binding) {
       const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket);
       if (!bucket || !canRewriteConfig(binding) || !bucket.backblazeProjection?.managerFieldsKnown) return;
       managerDraftBucket = bucket.bucket; managerDraftBeforeOpen = Object.prototype.hasOwnProperty.call(state.managerDrafts, bucket.bucket) ? { ...state.managerDrafts[bucket.bucket] } : null;
       const model = state.managerDrafts[bucket.bucket] || forgejo(bucket);
-      state.managerDrafts[bucket.bucket] = { ...model };
+      state.managerDrafts[bucket.bucket] = { ...model, skip: [...(model.skip || [])] };
       const local = el('[data-backblaze-local-nas]', binding), backup = el('[data-backblaze-forgejo-backup]', binding); if (local) local.checked = state.managerDrafts[bucket.bucket].localNas; if (backup) backup.checked = state.managerDrafts[bucket.bucket].backblazeBackup;
-      renderManager(bucket); const modal = el('[data-backblaze-manager-modal]', binding); if (modal) modal.hidden = false;
+      renderManager(bucket); renderSkips(binding); const modal = el('[data-backblaze-manager-modal]', binding); if (modal) modal.hidden = false;
+      const input = el('[data-backblaze-forgejo-skip-input]', binding), message = el('[data-backblaze-forgejo-skip-message]', binding), plan = el('[data-backblaze-forgejo-plan]', binding);
+      if (input) input.value = ''; if (message) message.textContent = ''; if (plan) plan.textContent = '';
+      if (model.backblazeBackup === true) {
+        const name = bucket.bucket, controller = actionController(binding);
+        getJson('/api/backblaze/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket: name, plan: true }), signal: controller.signal }, binding).then(body => {
+          if (!current(binding) || managerDraftBucket !== name || modal?.hidden || !plan) return;
+          const p = body.plan; const n = Array.isArray(p?.excluded) ? p.excluded.length : p?.excluded;
+          const m = Array.isArray(p?.excludedAttachments) ? p.excludedAttachments.length : p?.excludedAttachments;
+          plan.textContent = body.ok === true && Number.isInteger(n) && Number.isInteger(m) ? `Skips ${n} repos, ${m} attachments` : (body.reason || 'Preview unavailable');
+        }).catch(() => { if (current(binding) && managerDraftBucket === name && plan) plan.textContent = 'Preview unavailable'; }).finally(() => actions.delete(controller));
+      }
     }
     function closeManager(save, binding = state.binding) {
       const bucket = state.data?.buckets?.find(row => row.bucket === managerDraftBucket);
@@ -432,6 +451,13 @@ fn shell_backblaze_client() -> &'static str {
       const select = target.closest('[data-backblaze-select]'); if (select) { selectBucket(select.dataset.backblazeSelect, binding); return; }
       const remove = target.closest('[data-backblaze-remove]'); if (remove) { void removeBucket(remove.dataset.backblazeRemove, binding); return; }
       const pathRemove = target.closest('[data-backblaze-path-remove]'); if (pathRemove) { void mutateItem(pathRemove.dataset.backblazePathRemove, 'DELETE', binding); return; }
+      const skipRemove = target.closest('[data-backblaze-forgejo-skip-remove]');
+      if (skipRemove && managerDraftBucket === state.bucket && canRewriteConfig(binding)) { const draft = state.managerDrafts[managerDraftBucket]; draft.skip = draft.skip.filter((_, i) => i !== Number(skipRemove.dataset.backblazeForgejoSkipRemove)); renderSkips(binding); return; }
+      if (target.closest('[data-backblaze-forgejo-skip-add]') && managerDraftBucket === state.bucket && canRewriteConfig(binding)) {
+        const input = el('[data-backblaze-forgejo-skip-input]', binding), message = el('[data-backblaze-forgejo-skip-message]', binding), name = input?.value.trim() || '', draft = state.managerDrafts[managerDraftBucket];
+        if (!validSkip(name) || draft.skip.includes(name)) { if (message) message.textContent = `Invalid or duplicate entry: ${name}`; return; }
+        draft.skip = [...draft.skip, name]; if (input) input.value = ''; if (message) message.textContent = ''; renderSkips(binding); return;
+      }
       if (target.closest('[data-backblaze-add]')) { void addBucket(binding); return; }
       if (target.closest('[data-backblaze-save]')) { void saveConfig(binding); return; }
       if (target.closest('[data-backblaze-verify]')) { void verifyBucket(state.bucket, binding); return; }
@@ -442,7 +468,7 @@ fn shell_backblaze_client() -> &'static str {
       if (target.closest('[data-backblaze-item-add]')) { const path = el('[data-backblaze-path]', binding)?.value.trim(); if (path) void mutateItem(path, 'POST', binding); return; }
       if (target.closest('[data-backblaze-run]') && currentAction(binding)) {
         const bucket = state.bucket, controller = actionController(binding);
-        getJson('/api/backblaze/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket }), signal: controller.signal }, binding).then(() => { if (currentAction(binding, bucket)) return hydrateBackblaze(binding); }).catch(() => { if (currentAction(binding, bucket)) setResult(binding, 'Backup could not be started'); }).finally(() => actions.delete(controller));
+        getJson('/api/backblaze/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket }), signal: controller.signal }, binding).then(body => { if (currentAction(binding, bucket)) { if (body.ok === false) setResult(binding, body.reason || body.forgejo?.reason || 'Backup could not be started'); else setResult(binding, 'Backup queued'); return hydrateBackblaze(binding); } }).catch(() => { if (currentAction(binding, bucket)) setResult(binding, 'Backup could not be started'); }).finally(() => actions.delete(controller));
       }
     });
     document.body.addEventListener('change', event => {
