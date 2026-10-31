@@ -1,7 +1,6 @@
 fn shell_backblaze_client() -> &'static str {
     r####"
     const state = { binding: null, data: null, bucket: null, ledger: [], ledgerBucket: null, statusReady: false, statusStale: false, snapshotsReady: false, snapshotsStale: false, selectionGeneration: 0, managerDrafts: {} };
-    let statusPollTimer = null;
     let managerDraftBucket = null;
     let managerDraftBeforeOpen = null;
     const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -18,7 +17,6 @@ fn shell_backblaze_client() -> &'static str {
     const knownSkips = value => value === undefined || (Array.isArray(value) && value.every(validSkip) && new Set(value).size === value.length);
     const actions = new Set();
     const secretDialogs = new Set();
-    function clearStatusPoll() { if (statusPollTimer !== null) window.clearTimeout(statusPollTimer); statusPollTimer = null; }
     function cancelSecretDialogs() { secretDialogs.forEach(dialog => dialog.cancel()); secretDialogs.clear(); }
     function renderReadStatus(selector, message, stateName, retry = false) {
       const host = el(selector); if (!host) return;
@@ -39,7 +37,6 @@ fn shell_backblaze_client() -> &'static str {
         const prefixKnown = typeof bucket.prefix === 'string';
         const prefixWriteSafe = prefixKnown && bucket.prefix === bucket.prefix.trim() && bucket.prefix.replace(/^\/+|\/+$/g, '') === bucket.prefix;
         const bucketNameWriteSafe = bucket.bucket === bucket.bucket.trim() && !bucket.bucket.includes('/');
-        const encryptedKnown = typeof bucket.encrypted === 'boolean';
         const managersKnown = isRecord(bucket.managers) && isRecord(bucket.managers.forgejo);
         const managerFieldsKnown = managersKnown && typeof managerFlags.localNas === 'boolean' && typeof managerFlags.backblazeBackup === 'boolean' && knownSkips(managerFlags.skip);
         return {
@@ -48,11 +45,10 @@ fn shell_backblaze_client() -> &'static str {
             prefixKnown,
             prefixWriteSafe,
             bucketNameWriteSafe,
-            encryptedKnown,
             itemsKnown,
             managersKnown,
             managerFieldsKnown,
-            complete: prefixWriteSafe && bucketNameWriteSafe && encryptedKnown && itemsKnown && managerFieldsKnown
+            complete: prefixWriteSafe && bucketNameWriteSafe && itemsKnown && managerFieldsKnown
           }
         };
       });
@@ -115,11 +111,11 @@ fn shell_backblaze_client() -> &'static str {
     function renderSelected() {
       const binding = state.binding, bucket = state.data?.buckets?.find(candidate => candidate.bucket === state.bucket);
       const addBucket = el('[data-backblaze-add]'); if (addBucket) addBucket.disabled = !canRewriteConfig(binding);
-      const title = el('[data-backblaze-selected]'), save = el('[data-backblaze-save]'), verify = el('[data-backblaze-verify]'), update = el('[data-backblaze-update]'), run = el('[data-backblaze-run]'), encrypted = el('[data-backblaze-encrypted]'), path = el('[data-backblaze-path]'), add = el('[data-backblaze-item-add]');
+      const title = el('[data-backblaze-selected]'), save = el('[data-backblaze-save]'), verify = el('[data-backblaze-verify]'), update = el('[data-backblaze-update]'), run = el('[data-backblaze-run]'), path = el('[data-backblaze-path]'), add = el('[data-backblaze-item-add]');
       if (!state.statusReady || !bucket) {
         if (title) title.textContent = state.statusReady ? 'Select a bucket' : 'Loading buckets…';
         const status = el('[data-backblaze-bucket-status]'); if (status) status.textContent = state.statusReady ? 'Select a bucket.' : 'Waiting for current status…';
-        [save, verify, update, run, encrypted, path, add].forEach(control => { if (control) control.disabled = true; });
+        [save, verify, update, run, path, add].forEach(control => { if (control) control.disabled = true; });
         const host = el('[data-backblaze-items]'); if (host && state.statusReady) morphLivePane(host, '<p class="backblaze-empty">Select a bucket to manage paths.</p>');
         const name = el('[data-backblaze-bucket-name]'); if (name) name.value = '';
         renderManager(null); return;
@@ -133,7 +129,6 @@ fn shell_backblaze_client() -> &'static str {
         !projection.prefixKnown && 'prefix',
         projection.prefixKnown && !projection.prefixWriteSafe && 'prefix format',
         !projection.bucketNameWriteSafe && 'bucket name',
-        !projection.encryptedKnown && 'encryption setting',
         !projection.itemsKnown && 'item list',
         !projection.managerFieldsKnown && 'manager flags'
       ].filter(Boolean);
@@ -141,7 +136,6 @@ fn shell_backblaze_client() -> &'static str {
       if (status) status.textContent = `${health(bucket)}${unknown.length ? ` · Configuration unavailable: ${unknown.join(', ')}; changes are disabled.` : ''}`;
       const name = el('[data-backblaze-bucket-name]'); if (name) name.value = bucket.bucket;
       const connected = el('[data-backblaze-connected]'); if (connected) { connected.textContent = bucket.connected === true ? 'Connected' : bucket.connected === false ? 'Not connected' : 'Unknown'; connected.classList.toggle('is-connected', bucket.connected === true); connected.classList.toggle('is-disconnected', bucket.connected === false); }
-      if (encrypted) { encrypted.checked = projection.encryptedKnown ? bucket.encrypted : false; encrypted.indeterminate = !projection.encryptedKnown; encrypted.disabled = !rewriteEnabled || !projection.encryptedKnown; }
       if (path) path.disabled = !rewriteEnabled; if (add) add.disabled = !rewriteEnabled;
       if (save) save.disabled = !rewriteEnabled; if (verify) verify.disabled = !probeEnabled; if (update) update.disabled = !rewriteEnabled; if (run) run.disabled = !operateEnabled;
       const host = el('[data-backblaze-items]'); if (host) {
@@ -162,7 +156,7 @@ fn shell_backblaze_client() -> &'static str {
       if (!state.bucket) html = '<p class="backblaze-empty">Select a bucket</p>';
       else if (state.ledgerBucket !== state.bucket) html = '<p class="backblaze-empty">Loading snapshots…</p>';
       else if (!state.ledger.length && !state.snapshotsReady) html = '<p class="backblaze-empty">Snapshots unavailable.</p>';
-      else html = state.ledger.map((row, index) => `<div class="backblaze-ledger-row" data-backblaze-snapshot="${esc(row.id || `${state.bucket}-${index}`)}"><time>${esc(row.time || row.status || 'Snapshot')}</time><span>${esc(row.id || '—')}</span></div>`).join('') || '<p class="backblaze-empty" data-backblaze-empty-snapshots>No restic snapshots available.</p>';
+      else html = state.ledger.map((row, index) => `<div class="backblaze-ledger-row" data-backblaze-snapshot="${esc(row.id || `${state.bucket}-${index}`)}"><time>${esc(row.time || row.status || 'Snapshot')}</time><span>${esc(row.id || '—')}</span></div>`).join('') || '<p class="backblaze-empty" data-backblaze-empty-snapshots>No snapshots available.</p>';
       morphLivePane(content, html);
     }
     function setView(view) {
@@ -179,12 +173,11 @@ fn shell_backblaze_client() -> &'static str {
     }
     function adoptBackblazeBinding() {
       const binding = admitted() ? scaffoldRegistry.capture('backblaze') : null;
-      if (!binding) { clearStatusPoll(); if (!roleAuthorized()) { if (state.binding) retireBackblaze(state.binding, true); else scrubBackblazeProtectedState(document.querySelector('[data-pane-panel="backblaze"]')); } return null; }
+      if (!binding) { if (!roleAuthorized()) { if (state.binding) retireBackblaze(state.binding, true); else scrubBackblazeProtectedState(document.querySelector('[data-pane-panel="backblaze"]')); } return null; }
       if (state.binding !== binding) {
         const previous = state.binding;
         if (previous) scaffoldRegistry.retire(previous, 'Backblaze binding replaced');
         state.binding = binding; state.statusStale = true; state.snapshotsStale = state.snapshotsReady || state.snapshotsStale;
-        clearStatusPoll();
         scaffoldRegistry.onRetire(binding, () => retireBackblaze(binding));
         renderBuckets(); renderSelected();
         if (state.statusReady) renderReadStatus('[data-backblaze-ribbon]', 'Showing last known status while the current view refreshes.', 'stale');
@@ -199,19 +192,19 @@ fn shell_backblaze_client() -> &'static str {
       pane.querySelectorAll('[data-backblaze-state], [data-backblaze-last], [data-backblaze-duration], [data-backblaze-next], [data-backblaze-selected], [data-backblaze-bucket-status], [data-backblaze-connected], [data-backblaze-result]').forEach(node => { node.textContent = ''; });
       pane.querySelectorAll('[data-backblaze-bucket-name], [data-backblaze-path], [data-backblaze-forgejo-skip-input]').forEach(node => { node.value = ''; });
       pane.querySelectorAll('[data-backblaze-forgejo-plan], [data-backblaze-forgejo-skip-message]').forEach(node => { node.textContent = ''; });
-      pane.querySelectorAll('[data-backblaze-encrypted], [data-backblaze-local-nas], [data-backblaze-forgejo-backup]').forEach(node => { node.checked = false; });
+      pane.querySelectorAll('[data-backblaze-local-nas], [data-backblaze-forgejo-backup]').forEach(node => { node.checked = false; });
       pane.querySelectorAll('[data-backblaze-manager-modal]').forEach(node => { node.hidden = true; });
-      pane.querySelectorAll('[data-backblaze-add], [data-backblaze-select], [data-backblaze-remove], [data-backblaze-save], [data-backblaze-verify], [data-backblaze-update], [data-backblaze-run], [data-backblaze-manager-open], [data-backblaze-item-add], [data-backblaze-path-remove], [data-backblaze-encrypted], [data-backblaze-local-nas], [data-backblaze-forgejo-backup]').forEach(node => { node.disabled = true; });
+      pane.querySelectorAll('[data-backblaze-add], [data-backblaze-select], [data-backblaze-remove], [data-backblaze-save], [data-backblaze-verify], [data-backblaze-update], [data-backblaze-run], [data-backblaze-manager-open], [data-backblaze-item-add], [data-backblaze-path-remove], [data-backblaze-local-nas], [data-backblaze-forgejo-backup]').forEach(node => { node.disabled = true; });
     }
     function retireBackblaze(binding, privilegedLoss = false) {
       if (state.binding !== binding) return;
       const roleLost = privilegedLoss || !roleAuthorized();
-      clearStatusPoll(); cancelSecretDialogs(); actions.forEach(controller => controller.abort()); actions.clear();
+      cancelSecretDialogs(); actions.forEach(controller => controller.abort()); actions.clear();
       state.binding = null; state.statusStale = true; state.snapshotsStale = true;
       const pane = binding.root;
       if (roleLost) { scrubBackblazeProtectedState(pane); return; }
       if (!(pane instanceof Element) || !pane.isConnected) return;
-      pane.querySelectorAll('[data-backblaze-add], [data-backblaze-select], [data-backblaze-remove], [data-backblaze-save], [data-backblaze-verify], [data-backblaze-update], [data-backblaze-run], [data-backblaze-manager-open], [data-backblaze-item-add], [data-backblaze-path-remove], [data-backblaze-encrypted], [data-backblaze-local-nas], [data-backblaze-forgejo-backup]').forEach(node => { node.disabled = true; });
+      pane.querySelectorAll('[data-backblaze-add], [data-backblaze-select], [data-backblaze-remove], [data-backblaze-save], [data-backblaze-verify], [data-backblaze-update], [data-backblaze-run], [data-backblaze-manager-open], [data-backblaze-item-add], [data-backblaze-path-remove], [data-backblaze-local-nas], [data-backblaze-forgejo-backup]').forEach(node => { node.disabled = true; });
       const status = pane.querySelector('[data-backblaze-state]'); if (status) { status.textContent = 'STALE · showing last known status'; status.dataset.state = 'stale'; }
       const ribbon = pane.querySelector('[data-backblaze-ribbon]');
       if (ribbon) { let node = ribbon.querySelector(':scope > [data-backblaze-read-state]'); if (!node) { node = document.createElement('p'); node.dataset.backblazeReadState = ''; node.setAttribute('role', 'status'); ribbon.prepend(node); } node.dataset.state = 'stale'; node.textContent = 'This view is stale; reconnecting will refresh it.'; }
@@ -224,16 +217,11 @@ fn shell_backblaze_client() -> &'static str {
       const detail = event.detail || {}, pane = detail.pane, binding = state.binding;
       if (detail.id !== 'backblaze' || !(pane instanceof Element) || !pane.isConnected || document.querySelector('[data-pane-panel="backblaze"]') !== pane) return;
       if (binding && (binding.root !== pane || scaffoldRegistry.current(binding))) return;
-      clearStatusPoll(); cancelSecretDialogs(); actions.forEach(controller => controller.abort()); actions.clear();
+      cancelSecretDialogs(); actions.forEach(controller => controller.abort()); actions.clear();
       state.binding = null; state.data = null; state.bucket = null; state.ledger = []; state.ledgerBucket = null;
       state.statusReady = false; state.statusStale = false; state.snapshotsReady = false; state.snapshotsStale = false;
       state.selectionGeneration += 1; state.managerDrafts = {}; managerDraftBucket = null; managerDraftBeforeOpen = null;
     });
-    function scheduleStatusPoll(binding) {
-      clearStatusPoll();
-      if (!current(binding) || state.data?.running !== true) return;
-      statusPollTimer = window.setTimeout(() => { statusPollTimer = null; if (current(binding)) void hydrateBackblaze(binding); else clearStatusPoll(); }, 5000);
-    }
     function normalizeSnapshot(row) {
       if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Backblaze snapshot row is malformed');
       return { time: typeof row.time === 'string' || typeof row.time === 'number' ? row.time : '', status: typeof row.status === 'string' ? row.status : '', id: typeof row.id === 'string' || typeof row.id === 'number' ? row.id : '' };
@@ -282,13 +270,12 @@ fn shell_backblaze_client() -> &'static str {
         state.data = data; state.statusReady = true; state.statusStale = false;
         const status = el('[data-backblaze-state]', binding);
         if (status) { status.textContent = health({ status: { running: data.running, last_run_ok: data.last_run_ok } }); status.dataset.state = 'ready'; }
-        const last = el('[data-backblaze-last]', binding); if (last) last.textContent = data.last_run_at ? new Date(Number(data.last_run_at) * 1000).toLocaleString() : 'Never';
+        const last = el('[data-backblaze-last]', binding); if (last) { const value = data.last_run_at; const date = typeof value === 'number' ? new Date(value * 1000) : (typeof value === 'string' ? new Date(value) : null); last.textContent = date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : 'Never'; }
         const duration = el('[data-backblaze-duration]', binding); if (duration) duration.textContent = 'duration unavailable';
         const next = el('[data-backblaze-next]', binding); if (next) next.textContent = 'Not scheduled';
         renderReadStatus('[data-backblaze-ribbon]', '', 'ready'); renderBuckets(); renderSelected();
         statusSlots.forEach(slot => context.ready(slot));
         if (!el('[data-backblaze-panel="ledger"]', binding)?.hidden) void loadSnapshots(binding);
-        scheduleStatusPoll(binding);
         return true;
       }, {
         slots: statusSlots, timeoutMs: 8000, slowMs: 750,
@@ -298,7 +285,6 @@ fn shell_backblaze_client() -> &'static str {
           const status = el('[data-backblaze-state]', binding);
           if (status) { status.dataset.state = 'stale'; status.textContent = state.statusReady ? `STALE · ${health({ status: { running: state.data?.running, last_run_ok: state.data?.last_run_ok } })}` : 'UNAVAILABLE'; }
           renderReadStatus('[data-backblaze-ribbon]', `Status refresh unavailable: ${reason || 'Read failed'}. ${state.statusReady ? 'Showing last known status; actions remain blocked until a current read succeeds.' : ''}`, 'stale', true);
-          scheduleStatusPoll(binding);
         }
       });
     }
@@ -330,9 +316,9 @@ fn shell_backblaze_client() -> &'static str {
       let applicationKey = await secretInput('B2 application key', binding); if (!applicationKey || !currentConfigAction(binding, generation, selectedBucket)) { applicationKey = ''; return; }
       const controller = actionController(binding);
       try {
-        const body = await getJson('/api/backblaze/buckets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket, prefix: '', encrypted: true, items: [], managers: { forgejo: { localNas: false, backblazeBackup: false, skip: [] } }, keyId, applicationKey }), signal: controller.signal }, binding);
+        const body = await getJson('/api/backblaze/buckets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket, keyId, applicationKey }), signal: controller.signal }, binding);
         applicationKey = ''; if (!currentConfigAction(binding, generation, selectedBucket)) return;
-        setResult(binding, body.ok === false ? (body.reason || 'Bucket could not be added') : 'Bucket added and verified'); await hydrateBackblaze(binding);
+        setResult(binding, body.ok === true ? 'Bucket added' : (body.reason || 'Bucket could not be added')); await hydrateBackblaze(binding);
       } catch (_) { applicationKey = ''; if (current(binding)) setResult(binding, 'Bucket could not be added'); }
       finally { actions.delete(controller); }
     }
@@ -349,7 +335,7 @@ fn shell_backblaze_client() -> &'static str {
       try {
         const body = await getJson('/api/backblaze/buckets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...configBucket, keyId, applicationKey }), signal: controller.signal }, binding);
         applicationKey = ''; if (!currentConfigAction(binding, generation, selectedBucket)) return;
-        setResult(binding, body.ok === false ? (body.reason || 'Credentials could not be updated') : 'Credentials updated and verified'); await hydrateBackblaze(binding);
+        setResult(binding, body.ok === true ? 'Credentials updated' : (body.reason || 'Credentials could not be updated')); await hydrateBackblaze(binding);
       } catch (_) { applicationKey = ''; if (currentConfigAction(binding, generation, selectedBucket)) setResult(binding, 'Credentials could not be updated'); }
       finally { actions.delete(controller); }
     }
@@ -359,13 +345,11 @@ fn shell_backblaze_client() -> &'static str {
       try {
         const body = await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket) + '/verify', { method: 'POST', signal: controller.signal }, binding);
         if (!currentProbeAction(binding, bucket)) return;
-        const selected = state.data?.buckets?.find(row => row.bucket === bucket); if (body.ok !== false && selected && typeof body.connected === 'boolean') selected.connected = body.connected;
-        renderBuckets(); renderSelected(); setResult(binding, body.ok === false ? (body.reason || 'Connection verification failed') : (body.connected === true ? 'Connected' : 'Not connected'));
-        await hydrateBackblaze(binding);
+        const selected = state.data?.buckets?.find(row => row.bucket === bucket); if (body.ok === true && selected && typeof body.connected === 'boolean') selected.connected = body.connected;
+        renderBuckets(); renderSelected(); setResult(binding, body.ok !== true ? (body.reason || 'Connection verification failed') : (body.connected === true ? 'Connected' : body.connected === false ? 'Not connected' : 'Connection status unavailable'));
       } catch (_) {
         if (currentProbeAction(binding, bucket)) {
           setResult(binding, 'Connection verification failed');
-          await hydrateBackblaze(binding);
         }
       }
       finally { actions.delete(controller); }
@@ -376,8 +360,9 @@ fn shell_backblaze_client() -> &'static str {
       if (!currentConfigWrite(binding, generation)) return;
       const controller = actionController(binding);
       try {
-        await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket), { method: 'DELETE', signal: controller.signal }, binding);
+        const body = await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket), { method: 'DELETE', signal: controller.signal }, binding);
         if (!currentConfigWrite(binding, generation)) return;
+        if (body.ok !== true) { setResult(binding, body.reason || 'Bucket could not be removed'); return; }
         if (state.bucket === bucket) { state.bucket = null; state.selectionGeneration += 1; }
         await hydrateBackblaze(binding);
       } catch (_) { if (currentConfigWrite(binding, generation)) setResult(binding, 'Bucket could not be removed'); }
@@ -387,7 +372,7 @@ fn shell_backblaze_client() -> &'static str {
       const bucket = state.bucket, generation = state.selectionGeneration;
       if (!canRewriteConfig(binding) || !canOperateBucket(binding, bucket)) return;
       const controller = actionController(binding);
-      try { await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket) + '/items', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }), signal: controller.signal }, binding); if (currentConfigAction(binding, generation, bucket)) await hydrateBackblaze(binding); }
+      try { const body = await getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket) + '/items', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }), signal: controller.signal }, binding); if (currentConfigAction(binding, generation, bucket)) { if (body.ok !== true) setResult(binding, body.reason || 'File path could not be updated'); else await hydrateBackblaze(binding); } }
       catch (_) { if (currentConfigAction(binding, generation, bucket)) setResult(binding, 'File path could not be updated'); }
       finally { actions.delete(controller); }
     }
@@ -395,14 +380,15 @@ fn shell_backblaze_client() -> &'static str {
       const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket);
       if (!bucket || !canRewriteConfig(binding)) return;
       const selectedBucket = bucket.bucket, generation = state.selectionGeneration;
-      const buckets = state.data.buckets.map(configBucketForWrite);
-      if (buckets.some(config => !config) || !currentConfigAction(binding, generation, selectedBucket)) return;
+      const edited = configBucketForWrite(bucket);
+      const { connected, status, backblazeProjection, ...expected } = bucket;
+      if (!edited || !currentConfigAction(binding, generation, selectedBucket)) return;
       const controller = actionController(binding);
-      const body = await getJson('/api/backblaze/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buckets }), signal: controller.signal }, binding).catch(() => ({ ok: false }));
+      const body = await getJson('/api/backblaze/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buckets: [edited], expected: [expected] }), signal: controller.signal }, binding).catch(() => ({ ok: false }));
       try {
         if (!currentConfigAction(binding, generation, selectedBucket)) return;
         setResult(binding, body.ok ? 'Config saved without credentials' : (body.reason || 'Config could not be saved'));
-        if (body.ok && await hydrateBackblaze(binding) && current(binding)) { state.managerDrafts = {}; renderSelected(); }
+        if (body.ok && await hydrateBackblaze(binding) && current(binding)) { delete state.managerDrafts[selectedBucket]; renderSelected(); }
       } finally { actions.delete(controller); }
     }
     function renderSkips(binding = state.binding) {
@@ -468,18 +454,13 @@ fn shell_backblaze_client() -> &'static str {
       if (target.closest('[data-backblaze-item-add]')) { const path = el('[data-backblaze-path]', binding)?.value.trim(); if (path) void mutateItem(path, 'POST', binding); return; }
       if (target.closest('[data-backblaze-run]') && currentAction(binding)) {
         const bucket = state.bucket, controller = actionController(binding);
-        getJson('/api/backblaze/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket }), signal: controller.signal }, binding).then(body => { if (currentAction(binding, bucket)) { if (body.ok === false) setResult(binding, body.reason || body.forgejo?.reason || 'Backup could not be started'); else setResult(binding, 'Backup queued'); return hydrateBackblaze(binding); } }).catch(() => { if (currentAction(binding, bucket)) setResult(binding, 'Backup could not be started'); }).finally(() => actions.delete(controller));
+        getJson('/api/backblaze/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket }), signal: controller.signal }, binding).then(body => { if (currentAction(binding, bucket)) { if (body.ok !== true) setResult(binding, body.reason || 'Backup could not be started'); else setResult(binding, 'Backup queued'); return hydrateBackblaze(binding); } }).catch(() => { if (currentAction(binding, bucket)) setResult(binding, 'Backup could not be started'); }).finally(() => actions.delete(controller));
       }
     });
     document.body.addEventListener('change', event => {
       const target = event.target instanceof Element ? event.target : null; const binding = state.binding;
       if (!target || !binding || !root(binding)?.contains(target) || !current(binding)) return;
       const bucket = state.data?.buckets?.find(row => row.bucket === state.bucket); if (!bucket) return;
-      if (target.matches('[data-backblaze-encrypted]')) {
-        if (!canRewriteConfig(binding) || !bucket.backblazeProjection?.encryptedKnown) { renderSelected(); return; }
-        const selectedBucket = bucket.bucket, generation = state.selectionGeneration, controller = actionController(binding);
-        getJson('/api/backblaze/buckets/' + encodeURIComponent(bucket.bucket) + '/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encrypted: target.checked }), signal: controller.signal }, binding).then(() => { if (currentConfigAction(binding, generation, selectedBucket)) return hydrateBackblaze(binding); }).catch(() => { if (currentConfigAction(binding, generation, selectedBucket)) setResult(binding, 'Encryption setting could not be updated'); }).finally(() => actions.delete(controller));
-      }
       if (target.matches('[data-backblaze-local-nas]') || target.matches('[data-backblaze-forgejo-backup]')) {
         if (!canRewriteConfig(binding) || !bucket.backblazeProjection?.managerFieldsKnown) { renderManager(bucket); return; }
         const currentDraft = state.managerDrafts[bucket.bucket] || forgejo(bucket);

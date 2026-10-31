@@ -1,1652 +1,270 @@
-const BACKBLAZE_STATE_PATH: &str = "/var/lib/coronatio/backblaze_state.json";
-const BACKBLAZE_KEYMAN_NEWKEY: &str = "/vault/keyman/newkey.sh";
-const BACKBLAZE_KEYMAN_EXPORT: &str = "/vault/keyman/exportkey.sh";
-const BACKBLAZE_KEY_EXCHANGE: &str = "/mnt/keyexchange";
-const BACKBLAZE_RESTIC_SALT: &[u8] = b"coronatio_backblaze_restic_v1";
-static BACKBLAZE_RUN_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+// Backblaze is a face for the Caduceus doors; the config seat is read-only here.
+const BACKBLAZE_DOOR: &str = "/api/v1/storage/backup/backblaze";
+const BACKBLAZE_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(10);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct BackblazeState {
-    #[serde(default)]
-    buckets: BTreeMap<String, BackblazeBucketState>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct BackblazeBucketState {
-    running: bool,
-    last_run_at: Option<u64>,
-    last_run_ok: Option<bool>,
-    #[serde(default)]
-    connected: Option<bool>,
-    #[serde(default)]
-    last_error: Option<String>,
-}
-#[derive(Debug, Clone)]
-struct BackblazeCredentials {
-    key_id: String,
-    application_key: String,
-}
-#[derive(Debug, Clone)]
-struct B2Authorization {
-    api_url: String,
-    token: String,
-    bucket_id: String,
-}
+#[derive(Clone)]
+struct BackblazeStatusRow { bucket: String, running: bool, last_run_at: Option<serde_json::Value>, last_run_ok: Option<bool>, connected: Option<bool> }
+#[derive(Clone)]
+struct BackblazeSnapshot { id: String, time: String, paths: Vec<String>, tags: Vec<String> }
+static BACKBLAZE_STATUS_CACHE: OnceLock<Mutex<Option<(Instant, Vec<BackblazeStatusRow>)>>> = OnceLock::new();
+static BACKBLAZE_SNAPSHOT_CACHE: OnceLock<Mutex<Option<(Instant, String, Vec<BackblazeSnapshot>)>>> = OnceLock::new();
 
-fn backblaze_state_path() -> PathBuf {
-    env::var("CORONATIO_BACKBLAZE_STATE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(BACKBLAZE_STATE_PATH))
+fn backblaze_error(status: StatusCode, reason: &str) -> Response {
+    (status, Json(serde_json::json!({"ok": false, "reason": reason}))).into_response()
 }
-fn backblaze_state() -> BackblazeState {
-    std::fs::read_to_string(backblaze_state_path())
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
-}
-fn write_backblaze_state(state: &BackblazeState) -> Result<(), String> {
-    let path = backblaze_state_path();
-    let parent = path.parent().ok_or("invalid state path")?;
-    std::fs::create_dir_all(parent).map_err(|_| "state directory unavailable")?;
-    let tmp = parent.join(format!(".backblaze.{}.tmp", std::process::id()));
-    std::fs::write(
-        &tmp,
-        serde_json::to_vec(state).map_err(|_| "state encode failed")?,
-    )
-    .map_err(|_| "state write failed")?;
-    std::fs::rename(tmp, path).map_err(|_| "state promote failed".to_string())
-}
-fn normalized_service(bucket: &str) -> String {
-    bucket.replace('-', "_")
-}
-fn keyman_service(bucket: &str) -> String {
-    normalized_service(bucket)
-}
-
-fn backblaze_bucket_identifier(row: &serde_json::Value) -> Result<&str, String> {
-    let bucket = row
-        .as_object()
-        .and_then(|row| row.get("bucket"))
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "bucket row must include a string identifier".to_string())?;
-    if bucket.trim().is_empty() || bucket.contains('/') {
-        return Err("bucket identifier is invalid".into());
+fn backblaze_readback_response(readback: CaduceusHttpReadback) -> Response {
+    let status = StatusCode::from_u16(readback.status).ok().filter(|s| readback.ok || s.is_client_error() || s.is_server_error())
+        .unwrap_or_else(|| if readback.ok { StatusCode::OK } else { mutation_response_status(&readback) });
+    let mut body = readback.body;
+    if !readback.ok && body.get("reason").is_none() {
+        if let Some(object) = body.as_object_mut() { object.insert("ok".into(), false.into()); object.insert("reason".into(), readback.first_missing_signal.into()); }
     }
-    Ok(bucket)
+    (status, Json(body)).into_response()
 }
-
+fn backblaze_redact_credentials(value: &mut serde_json::Value, key: &str, secret: &str) {
+    match value {
+        serde_json::Value::String(text) => {
+            *text = text.replace(secret, "[redacted]").replace(key, "[redacted]");
+        }
+        serde_json::Value::Array(values) => for value in values { backblaze_redact_credentials(value, key, secret); },
+        serde_json::Value::Object(values) => {
+            let old = std::mem::take(values);
+            for (field, mut value) in old {
+                let name = field.replace(secret, "[redacted]").replace(key, "[redacted]");
+                if matches!(field.as_str(), "keyId" | "key_id" | "applicationKey" | "application_key") { value = "[redacted]".into(); }
+                else { backblaze_redact_credentials(&mut value, key, secret); }
+                values.insert(name, value);
+            }
+        }
+        _ => {}
+    }
+}
+fn backblaze_same_origin(headers: &axum::http::HeaderMap) -> bool {
+    let origin = headers.get(axum::http::header::ORIGIN).and_then(|v| v.to_str().ok()).and_then(|v| url::Url::parse(v).ok());
+    let host = headers.get(axum::http::header::HOST).and_then(|v| v.to_str().ok());
+    match (origin, host) {
+        (Some(origin), Some(host)) if matches!(origin.scheme(), "http" | "https") && origin.path() == "/" && origin.query().is_none() && origin.fragment().is_none() && origin.username().is_empty() && origin.password().is_none() => {
+            let expected = url::Url::parse(&format!("{}://{host}/", origin.scheme())).ok();
+            expected.is_some_and(|expected| expected.host_str() == origin.host_str() && expected.port_or_known_default() == origin.port_or_known_default())
+        }
+        _ => false,
+    }
+}
+fn backblaze_invalidate() {
+    *BACKBLAZE_STATUS_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *BACKBLAZE_SNAPSHOT_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+fn backblaze_act(headers: &axum::http::HeaderMap, path: &str, body: serde_json::Value) -> CaduceusHttpReadback {
+    if !backblaze_same_origin(headers) {
+        return CaduceusHttpReadback { ok: false, status: 403, path: path.to_owned(), body: serde_json::json!({"ok":false,"reason":"same-origin-required"}), first_missing_signal: "same-origin-required".into() };
+    }
+    let result = caduceus_actuate_json(&mutation_authority(), headers, path, body);
+    if result.ok { backblaze_invalidate(); }
+    result
+}
+fn backblaze_bucket_identifier(row: &serde_json::Value) -> Result<&str, String> {
+    let name = row.get("bucket").and_then(serde_json::Value::as_str).ok_or("bucket row must include a string identifier")?;
+    if name.trim() != name || name.is_empty() || name.contains('/') { return Err("bucket identifier is invalid".into()); }
+    Ok(name)
+}
 fn backblaze_config_value() -> Result<serde_json::Value, String> {
     let (_, root) = load_homeserver_json_sync()?;
-    let root = root
-        .as_object()
-        .ok_or_else(|| "backblaze config is unavailable".to_string())?;
-    let Some(tabs) = root.get("tabs") else {
-        return Ok(serde_json::json!({"buckets": []}));
-    };
-    let tabs = tabs
-        .as_object()
-        .ok_or_else(|| "backblaze config is unavailable".to_string())?;
-    let Some(backblaze) = tabs.get("backblaze") else {
-        return Ok(serde_json::json!({"buckets": []}));
-    };
-    let backblaze = backblaze
-        .as_object()
-        .ok_or_else(|| "backblaze config is unavailable".to_string())?;
-    let Some(config) = backblaze.get("config") else {
-        return Ok(serde_json::json!({"buckets": []}));
-    };
-    let mut config = config.clone();
-    if !config.is_object() {
-        return Err("backblaze config must be an object".into());
+    let root = root.as_object().ok_or("backblaze config is unavailable")?;
+    let Some(tabs) = root.get("tabs") else { return Ok(serde_json::json!({"buckets":[]})); };
+    let tabs = tabs.as_object().ok_or("backblaze config is unavailable")?;
+    let Some(backblaze) = tabs.get("backblaze") else { return Ok(serde_json::json!({"buckets":[]})); };
+    let backblaze = backblaze.as_object().ok_or("backblaze config is unavailable")?;
+    let Some(config) = backblaze.get("config") else { return Ok(serde_json::json!({"buckets":[]})); };
+    let mut config = config.as_object().ok_or("backblaze config must be an object")?.clone();
+    if !config.contains_key("buckets") {
+        if let Some(bucket) = config.get("bucket") {
+            let mut row = serde_json::Map::new(); row.insert("bucket".into(), bucket.clone());
+            for field in ["prefix", "items", "managers"] { if let Some(value) = config.get(field) { row.insert(field.into(), value.clone()); } }
+            if !row.contains_key("items") { if let Some(paths) = config.get("paths").and_then(serde_json::Value::as_array) { row.insert("items".into(), paths.iter().map(|p| serde_json::json!({"path":p})).collect()); } }
+            config.insert("buckets".into(), serde_json::json!([row]));
+        } else { config.insert("buckets".into(), serde_json::json!([])); }
     }
-    if let Some(buckets) = config.get("buckets") {
-        let buckets = buckets
-            .as_array()
-            .ok_or_else(|| "buckets must be an array".to_string())?;
-        for bucket in buckets {
-            backblaze_bucket_identifier(bucket)?;
-        }
-        return Ok(config);
-    }
-    if !config
-        .as_object()
-        .is_some_and(|config| config.contains_key("bucket"))
-    {
-        config["buckets"] = serde_json::Value::Array(Vec::new());
-        return Ok(config);
-    }
-
-    let bucket = config
-        .get("bucket")
-        .and_then(serde_json::Value::as_str)
-        .filter(|bucket| !bucket.trim().is_empty())
-        .ok_or_else(|| "legacy backblaze bucket identifier is unavailable".to_string())?
-        .to_owned();
-    if bucket.contains('/') {
-        return Err("legacy backblaze bucket identifier is invalid".into());
-    }
-    let mut row = serde_json::Map::new();
-    row.insert("bucket".into(), serde_json::Value::String(bucket));
-    for field in ["prefix", "encrypted", "items", "managers"] {
-        if let Some(value) = config.get(field) {
-            row.insert(field.into(), value.clone());
+    let rows = config.get_mut("buckets").and_then(serde_json::Value::as_array_mut).ok_or("buckets must be an array")?;
+    for row in rows {
+        backblaze_bucket_identifier(row)?;
+        if let Some(object) = row.as_object_mut() { object.remove("encrypted"); }
+        if let Some(forgejo) = row.get_mut("managers").and_then(|v| v.get_mut("forgejo")).and_then(serde_json::Value::as_object_mut) {
+            if !forgejo.contains_key("skip") { forgejo.insert("skip".into(), serde_json::json!([])); }
         }
     }
-    if !row.contains_key("items") {
-        if let Some(serde_json::Value::Array(paths)) = config.get("paths") {
-            let items = paths
-                .iter()
-                .cloned()
-                .map(|path| serde_json::json!({"path": path}))
-                .collect();
-            row.insert("items".into(), serde_json::Value::Array(items));
-        }
-    }
-    config["buckets"] = serde_json::Value::Array(vec![serde_json::Value::Object(row)]);
-    Ok(config)
+    config.remove("encrypted");
+    Ok(serde_json::Value::Object(config))
+}
+fn backblaze_bucket_rows(config: &serde_json::Value) -> Result<&[serde_json::Value], String> {
+    config.get("buckets").and_then(serde_json::Value::as_array).map(Vec::as_slice).ok_or_else(|| "buckets must be an array".into())
+}
+fn backblaze_bucket(config: &serde_json::Value, name: &str) -> Option<serde_json::Value> {
+    backblaze_bucket_rows(config).ok()?.iter().find(|v| v.get("bucket").and_then(serde_json::Value::as_str) == Some(name)).cloned()
 }
 fn forgejo_skip(value: Option<&serde_json::Value>) -> Result<Vec<String>, String> {
     let Some(value) = value else { return Ok(Vec::new()); };
-    let entries = value.as_array().ok_or_else(|| "forgejo skip must be an array".to_string())?;
+    let values = value.as_array().ok_or("forgejo skip must be an array")?;
     let mut result = Vec::new();
-    for entry in entries {
-        let text = entry.as_str().ok_or_else(|| format!("invalid forgejo skip entry: {entry}"))?;
-        let text = text.trim();
+    for value in values {
+        let text = value.as_str().ok_or_else(|| format!("invalid forgejo skip entry: {value}"))?.trim();
         let parts: Vec<&str> = text.split('/').collect();
-        if parts.len() > 2 || parts.iter().any(|part| part.is_empty() || !part.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))) {
-            return Err(format!("invalid forgejo skip entry: {text}"));
-        }
-        if result.iter().any(|old| old == text) { return Err(format!("duplicate forgejo skip entry: {text}")); }
+        if parts.len() > 2 || parts.iter().any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))) { return Err(format!("invalid forgejo skip entry: {text}")); }
+        if result.iter().any(|v| v == text) { return Err(format!("duplicate forgejo skip entry: {text}")); }
         result.push(text.to_owned());
     }
     Ok(result)
 }
-fn normalized_config(raw: serde_json::Value) -> Result<serde_json::Value, String> {
-    let buckets = raw
-        .get("buckets")
-        .and_then(|v| v.as_array())
-        .ok_or("buckets must be an array")?;
-    let mut out = Vec::new();
-    for b in buckets {
-        let bucket = b
-            .get("bucket")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim();
-        if bucket.is_empty() || bucket.contains('/') {
-            return Err("bucket is invalid".into());
-        }
-        let prefix = b
-            .get("prefix")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim()
-            .trim_matches('/');
-        let encrypted = b.get("encrypted").and_then(|v| v.as_bool()).unwrap_or(true);
-        let items = b
-            .get("items")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|i| {
-                let p = i.get("path").and_then(|v| v.as_str()).unwrap_or("").trim();
-                (!p.is_empty() && p.starts_with('/')).then(|| serde_json::json!({"path": p}))
-            })
-            .collect::<Vec<_>>();
-        let forgejo = b
-            .get("managers")
-            .and_then(|v| v.get("forgejo"))
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({}));
-        let managers = serde_json::json!({"forgejo": {
-            "localNas": forgejo.get("localNas").and_then(|v| v.as_bool()).unwrap_or(false),
-            "backblazeBackup": forgejo.get("backblazeBackup").and_then(|v| v.as_bool()).unwrap_or(false),
-            "skip": forgejo_skip(forgejo.get("skip"))?,
-        }});
-        out.push(serde_json::json!({"bucket": bucket, "prefix": prefix, "encrypted": encrypted, "items": items, "managers": managers}));
-    }
-    Ok(serde_json::json!({"buckets": out}))
-}
-fn backblaze_bucket_rows(config: &serde_json::Value) -> Result<&[serde_json::Value], String> {
-    config
-        .get("buckets")
-        .and_then(serde_json::Value::as_array)
-        .map(|buckets| buckets.as_slice())
-        .ok_or_else(|| "buckets must be an array".into())
-}
-fn validate_backblaze_bucket_rewrite(bucket: &serde_json::Value) -> Result<(), String> {
-    let name = backblaze_bucket_identifier(bucket)?;
-    if name.trim() != name {
-        return Err("bucket identifier is incomplete or unsafe".into());
-    }
-    let prefix = bucket
-        .get("prefix")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "bucket prefix is unknown".to_string())?;
-    if prefix.trim() != prefix || prefix.trim_matches('/') != prefix {
-        return Err("bucket prefix is incomplete or unsafe".into());
-    }
-    if bucket.get("encrypted").and_then(serde_json::Value::as_bool).is_none() {
-        return Err("bucket encryption setting is unknown".into());
-    }
-    let items = bucket
-        .get("items")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| "bucket item list is unknown".to_string())?;
+fn backblaze_save_body(row: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let bucket = backblaze_bucket_identifier(row)?;
+    let items = row.get("items").and_then(serde_json::Value::as_array).ok_or("bucket item list is unknown")?;
+    let mut normalized_items = Vec::new();
     for item in items {
-        let path = item
-            .as_object()
-            .and_then(|item| item.get("path"))
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "bucket item path is unknown".to_string())?;
-        if path.trim() != path || !path.starts_with('/') {
-            return Err("bucket item path is incomplete or unsafe".into());
-        }
+        let path = item.get("path").and_then(serde_json::Value::as_str).ok_or("bucket item path is unknown")?;
+        if path.trim() != path || !path.starts_with('/') { return Err("bucket item path is incomplete or unsafe".into()); }
+        normalized_items.push(item.clone());
     }
-    let forgejo = bucket
-        .get("managers")
-        .and_then(serde_json::Value::as_object)
-        .and_then(|managers| managers.get("forgejo"))
-        .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| "bucket manager configuration is unknown".to_string())?;
-    for field in ["localNas", "backblazeBackup"] {
-        if forgejo
-            .get(field)
-            .and_then(serde_json::Value::as_bool)
-            .is_none()
-        {
-            return Err("bucket manager flags are unknown".into());
-        }
-    }
-    let normalized_skip = forgejo_skip(forgejo.get("skip"))?;
-    if let Some(original) = forgejo.get("skip") {
-        if *original != serde_json::json!(normalized_skip) {
-            return Err("forgejo skip entries must be trimmed".into());
-        }
-    }
-    Ok(())
+    let forgejo = row.get("managers").and_then(|v| v.get("forgejo")).and_then(serde_json::Value::as_object).ok_or("bucket manager configuration is unknown")?;
+    forgejo.get("localNas").and_then(serde_json::Value::as_bool).ok_or("bucket manager flags are unknown")?;
+    forgejo.get("backblazeBackup").and_then(serde_json::Value::as_bool).ok_or("bucket manager flags are unknown")?;
+    let skip = forgejo_skip(forgejo.get("skip"))?;
+    let mut managers = row.get("managers").cloned().ok_or("bucket manager configuration is unknown")?;
+    managers["forgejo"]["skip"] = serde_json::json!(skip);
+    Ok(serde_json::json!({"bucket":bucket,"items":normalized_items,"managers":managers}))
 }
-fn validate_backblaze_config_rewrite(config: &serde_json::Value) -> Result<(), String> {
-    for bucket in backblaze_bucket_rows(config)? {
-        validate_backblaze_bucket_rewrite(bucket)?;
-    }
-    Ok(())
-}
-fn merge_backblaze_bucket(
-    existing: &serde_json::Value,
-    incoming: serde_json::Value,
-) -> serde_json::Value {
-    let Some(existing_object) = existing.as_object() else {
-        return incoming;
-    };
-    let Some(incoming_object) = incoming.as_object() else {
-        return incoming;
-    };
-    let mut merged = existing_object.clone();
-    for (key, value) in incoming_object {
-        if key == "managers" {
-            if let (Some(old_managers), Some(new_managers)) = (
-                merged.get("managers").and_then(serde_json::Value::as_object),
-                value.as_object(),
-            ) {
-                let mut managers = old_managers.clone();
-                for (manager, settings) in new_managers {
-                    if let (Some(old_settings), Some(new_settings)) = (
-                        managers.get(manager).and_then(serde_json::Value::as_object),
-                        settings.as_object(),
-                    ) {
-                        let mut merged_settings = old_settings.clone();
-                        for (field, value) in new_settings {
-                            merged_settings.insert(field.clone(), value.clone());
-                        }
-                        managers.insert(
-                            manager.clone(),
-                            serde_json::Value::Object(merged_settings),
-                        );
-                    } else {
-                        managers.insert(manager.clone(), settings.clone());
-                    }
-                }
-                merged.insert(key.clone(), serde_json::Value::Object(managers));
-                continue;
-            }
-        }
-        merged.insert(key.clone(), value.clone());
-    }
-    serde_json::Value::Object(merged)
-}
-fn save_backblaze_config(config: serde_json::Value) -> Result<(), String> {
-    let path = homeserver_json_path();
-    let raw = std::fs::read_to_string(&path).map_err(|_| "homeserver.json unreadable")?;
-    let mut root: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|_| "homeserver.json invalid")?;
-    root["tabs"]["backblaze"]["config"] = config;
-    std::fs::write(
-        path,
-        serde_json::to_vec_pretty(&root).map_err(|_| "config encode failed")?,
-    )
-    .map_err(|_| "config write failed".into())
-}
-fn backblaze_bucket(config: &serde_json::Value, name: &str) -> Option<serde_json::Value> {
-    config
-        .get("buckets")?
-        .as_array()?
-        .iter()
-        .find(|b| b.get("bucket").and_then(|v| v.as_str()) == Some(name))
-        .cloned()
-}
-
-fn backblaze_credential_candidates(service: &str) -> Vec<PathBuf> {
-    let root = PathBuf::from(BACKBLAZE_KEY_EXCHANGE);
-    let mut candidates = [
-        service.to_string(),
-        format!("{service}.env"),
-        format!("{service}.json"),
-        format!("{service}.key"),
-        "backblaze".to_string(),
-        "backblaze.env".to_string(),
-        "backblaze.json".to_string(),
-        "backblaze.key".to_string(),
-    ]
-    .into_iter()
-    .map(|name| root.join(name))
-    .filter(|path| path.is_file())
-    .collect::<Vec<_>>();
-    if let Ok(entries) = std::fs::read_dir(&root) {
-        candidates.extend(entries.flatten().map(|entry| entry.path()).filter(|path| {
-            path.is_file()
-                && path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with(service) || name.starts_with("backblaze"))
-        }));
-    }
-    candidates.sort();
-    candidates.dedup();
-    candidates
-}
-
-fn credential_field(value: &serde_json::Value, names: &[&str]) -> Option<String> {
-    names
-        .iter()
-        .find_map(|name| value.get(*name).and_then(serde_json::Value::as_str))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
-
-fn parse_keyman_credentials(raw: &str) -> Option<BackblazeCredentials> {
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) {
-        let key_id = credential_field(
-            &value,
-            &["B2_ACCOUNT_ID", "key_id", "accountId", "key_id", "keyId"],
-        );
-        let application_key = credential_field(
-            &value,
-            &["B2_ACCOUNT_KEY", "application_key", "applicationKey", "key"],
-        );
-        if let (Some(key_id), Some(application_key)) = (key_id, application_key) {
-            return Some(BackblazeCredentials {
-                key_id,
-                application_key,
-            });
-        }
-    }
-    let values = raw
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| {
-            (
-                key.trim(),
-                value.trim().trim_matches('"').trim_matches('\''),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let key_id = ["B2_ACCOUNT_ID", "B2_KEY_ID", "key_id", "key_id"]
-        .into_iter()
-        .find_map(|key| values.get(key).copied())
-        .filter(|value| !value.is_empty())?;
-    let application_key = ["B2_ACCOUNT_KEY", "B2_APPLICATION_KEY", "application_key"]
-        .into_iter()
-        .find_map(|key| values.get(key).copied())
-        .filter(|value| !value.is_empty())?;
-    Some(BackblazeCredentials {
-        key_id: key_id.to_string(),
-        application_key: application_key.to_string(),
-    })
-}
-
-fn keyman_credentials(bucket: &str) -> Result<BackblazeCredentials, String> {
-    let service = keyman_service(bucket);
-    let exporter = PathBuf::from(BACKBLAZE_KEYMAN_EXPORT);
-    if !exporter.is_file() {
-        return Err("backblaze Keyman export is not configured".to_string());
-    }
-    let export = Command::new(exporter)
-        .arg(&service)
-        .output()
-        .map_err(|_| "backblaze Keyman export could not start".to_string())?;
-    if !export.status.success() {
-        return Err("backblaze Keyman credentials are not available".to_string());
-    }
-    backblaze_credential_candidates(&service)
-        .into_iter()
-        .find_map(|path| {
-            std::fs::read_to_string(path)
-                .ok()
-                .and_then(|raw| parse_keyman_credentials(&raw))
-        })
-        .ok_or_else(|| "backblaze Keyman credentials are not available".to_string())
-}
-
-fn b2_authorize(credentials: &BackblazeCredentials) -> Result<B2Authorization, String> {
-    let basic = format!("{}:{}", credentials.key_id, credentials.application_key);
-    let output = Command::new("curl")
-        .args([
-            "-fsS",
-            "-u",
-            &basic,
-            "https://api.backblazeb2.com/b2api/v2/b2_authorize_account",
-        ])
-        .output()
-        .map_err(|_| "B2 authorize failed")?;
-    if !output.status.success() {
-        return Err("B2 authorize failed".into());
-    }
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|_| "B2 authorize returned invalid response")?;
-    Ok(B2Authorization {
-        api_url: value["apiUrl"]
-            .as_str()
-            .ok_or("B2 authorize returned no API URL")?
-            .to_owned(),
-        token: value["authorizationToken"]
-            .as_str()
-            .ok_or("B2 authorize returned no token")?
-            .to_owned(),
-        bucket_id: String::new(),
-    })
-}
-fn authorize_and_list(
-    bucket: &str,
-    credentials: &BackblazeCredentials,
-) -> Result<B2Authorization, String> {
-    let auth = b2_authorize(credentials)?;
-    let url = format!("{}/b2api/v2/b2_list_buckets", auth.api_url);
-    let output = Command::new("curl")
-        .args([
-            "-fsS",
-            "-H",
-            &format!("Authorization: {}", auth.token),
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            &serde_json::json!({"accountId": credentials.key_id, "bucketName": bucket}).to_string(),
-            &url,
-        ])
-        .output()
-        .map_err(|_| "B2 bucket listing failed")?;
-    if !output.status.success() {
-        return Err("B2 bucket listing failed".into());
-    }
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|_| "B2 bucket listing returned invalid response")?;
-    if let Some(found) = value
-        .get("buckets")
-        .and_then(|v| v.as_array())
-        .and_then(|bs| {
-            bs.iter()
-                .find(|b| b.get("bucketName").and_then(|v| v.as_str()) == Some(bucket))
-        })
-    {
-        let mut auth = auth;
-        auth.bucket_id = found
-            .get("bucketId")
-            .and_then(|v| v.as_str())
-            .ok_or("B2 bucket listing returned no bucket ID")?
-            .to_owned();
-        Ok(auth)
-    } else {
-        Err("B2 bucket is not reachable".into())
+fn backblaze_config_response() -> Response {
+    match backblaze_config_value() {
+        Ok(config) => (StatusCode::OK, Json(serde_json::json!({"buckets":config["buckets"]}))).into_response(),
+        Err(reason) => backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &reason),
     }
 }
-fn validate_submitted_credentials(submitted: &serde_json::Value) -> Result<(), String> {
-    for (names, label) in [
-        (&["keyId", "key_id"][..], "keyId"),
-        (&["applicationKey", "application_key"][..], "applicationKey"),
-    ] {
-        let value = names
-            .iter()
-            .find_map(|name| submitted.get(*name).and_then(serde_json::Value::as_str));
-        if !value.is_some_and(|value| !value.trim().is_empty()) {
-            return Err(format!("{label} is required"));
-        }
-    }
-    Ok(())
-}
-fn authorize_bucket(bucket: &str, submitted: &serde_json::Value) -> Result<(), String> {
-    validate_submitted_credentials(submitted)?;
-    let key_id = submitted
-        .get("keyId")
-        .and_then(|v| v.as_str())
-        .or_else(|| submitted.get("key_id").and_then(|v| v.as_str()))
-        .ok_or("keyId is required")?;
-    let application_key = submitted
-        .get("applicationKey")
-        .and_then(|v| v.as_str())
-        .or_else(|| submitted.get("application_key").and_then(|v| v.as_str()))
-        .ok_or("applicationKey is required")?;
-    let credentials = BackblazeCredentials {
-        key_id: key_id.to_owned(),
-        application_key: application_key.to_owned(),
-    };
-    let _ = authorize_and_list(bucket, &credentials)?;
-    let service = keyman_service(bucket);
-    let seed = Command::new(BACKBLAZE_KEYMAN_NEWKEY)
-        .args([&service, key_id, application_key])
-        .output()
-        .map_err(|_| "Keyman newkey service unavailable")?;
-    if !seed.status.success() {
-        return Err("Keyman newkey service unavailable".into());
-    }
-    Ok(())
-}
-
-fn restic_password(key: &str) -> String {
-    let mut derived = [0u8; 32];
-    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(
-        key.as_bytes(),
-        BACKBLAZE_RESTIC_SALT,
-        100_000,
-        &mut derived,
-    );
-    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, derived)
-}
-fn restic_init(repo: &str, credentials: &BackblazeCredentials) -> Result<(), String> {
-    let out = Command::new("restic")
-        .args(["--repo", repo, "init"])
-        .env(
-            "RESTIC_PASSWORD",
-            restic_password(&credentials.application_key),
-        )
-        .env("B2_ACCOUNT_ID", &credentials.key_id)
-        .env("B2_ACCOUNT_KEY", &credentials.application_key)
-        .output()
-        .map_err(|_| "restic init failed")?;
-    out.status
-        .success()
-        .then_some(())
-        .ok_or_else(|| "restic init failed".into())
-}
-fn restic_uninitialized(stderr: &[u8]) -> bool {
-    let s = String::from_utf8_lossy(stderr).to_ascii_lowercase();
-    s.contains("not initialized")
-        || s.contains("repository does not exist")
-        || s.contains("is there a repository")
-}
-fn restic_backup(
-    repo: &str,
-    paths: &[String],
-    credentials: &BackblazeCredentials,
-) -> Result<(), String> {
-    let run = || {
-        Command::new("restic")
-            .args(["--repo", repo, "backup", "--json"])
-            .args(paths)
-            .env(
-                "RESTIC_PASSWORD",
-                restic_password(&credentials.application_key),
-            )
-            .env("B2_ACCOUNT_ID", &credentials.key_id)
-            .env("B2_ACCOUNT_KEY", &credentials.application_key)
-            .output()
-    };
-    let output = run().map_err(|_| "restic backup could not start")?;
-    let output = if !output.status.success() && restic_uninitialized(&output.stderr) {
-        restic_init(repo, credentials)?;
-        run().map_err(|_| "restic backup could not start")?
-    } else {
-        output
-    };
-    output
-        .status
-        .success()
-        .then_some(())
-        .ok_or_else(|| "restic backup failed".into())
-}
-fn collect_files(path: &std::path::Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let meta = std::fs::symlink_metadata(path)
-        .map_err(|_| format!("cannot read backup path {}", path.display()))?;
-    if meta.is_file() {
-        out.push(path.to_owned());
-        return Ok(());
-    }
-    if meta.is_dir() {
-        for entry in std::fs::read_dir(path)
-            .map_err(|_| format!("cannot read backup directory {}", path.display()))?
-        {
-            collect_files(
-                &entry
-                    .map_err(|_| "cannot enumerate backup directory")?
-                    .path(),
-                out,
-            )?;
-        }
-    }
-    Ok(())
-}
-fn b2_upload_files(auth: &B2Authorization, paths: &[String], prefix: &str) -> Result<u64, String> {
-    let url = format!("{}/b2api/v2/b2_get_upload_url", auth.api_url);
-    let info = Command::new("curl")
-        .args([
-            "-fsS",
-            "-H",
-            &format!("Authorization: {}", auth.token),
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            &serde_json::json!({"bucketId": auth.bucket_id}).to_string(),
-            &url,
-        ])
-        .output()
-        .map_err(|_| "B2 upload URL failed")?;
-    if !info.status.success() {
-        return Err("B2 upload URL failed".into());
-    }
-    let v: serde_json::Value =
-        serde_json::from_slice(&info.stdout).map_err(|_| "B2 upload URL invalid")?;
-    let upload_url = v["uploadUrl"].as_str().ok_or("B2 upload URL missing")?;
-    let token = v["authorizationToken"]
-        .as_str()
-        .ok_or("B2 upload token missing")?;
-    let mut files = Vec::new();
-    for path in paths {
-        collect_files(std::path::Path::new(path), &mut files)?;
-    }
-    let mut total = 0;
-    for file in files {
-        let bytes = std::fs::read(&file).map_err(|_| "cannot read backup file")?;
-        let name = format!(
-            "{}{}",
-            prefix.trim_matches('/').to_owned() + if prefix.is_empty() { "" } else { "/" },
-            file.to_string_lossy().trim_start_matches('/')
-        );
-        let size = bytes.len().to_string();
-        let sha1_output = Command::new("sha1sum")
-            .arg(&file)
-            .output()
-            .map_err(|_| "sha1sum unavailable")?;
-        if !sha1_output.status.success() {
-            return Err("cannot hash backup file".into());
-        }
-        let sha1 = String::from_utf8_lossy(&sha1_output.stdout)
-            .split_whitespace()
-            .next()
-            .ok_or("invalid file hash")?
-            .to_owned();
-        let out = Command::new("curl")
-            .args([
-                "-fsS",
-                "-X",
-                "POST",
-                upload_url,
-                "-H",
-                &format!("Authorization: {}", token),
-                "-H",
-                &format!("X-Bz-File-Name: {}", name),
-                "-H",
-                "Content-Type: application/octet-stream",
-                "-H",
-                &format!("Content-Length: {}", size),
-                "-H",
-                &format!("X-Bz-Content-Sha1: {}", sha1),
-                "--data-binary",
-                &format!("@{}", file.display()),
-            ])
-            .output()
-            .map_err(|_| "B2 upload failed")?;
-        if !out.status.success() {
-            return Err("B2 upload failed".into());
-        }
-        total += bytes.len() as u64;
-    }
-    Ok(total)
-}
-
-fn backblaze_public(config: serde_json::Value) -> Result<serde_json::Value, String> {
-    let state = backblaze_state();
-    let mut buckets = Vec::new();
-    for row in backblaze_bucket_rows(&config)? {
-        let mut bucket = row.clone();
-        if let Some(forgejo) = bucket.get_mut("managers").and_then(|v| v.get_mut("forgejo")).and_then(serde_json::Value::as_object_mut) {
-            if !forgejo.contains_key("skip") { forgejo.insert("skip".into(), serde_json::json!([])); }
-        }
-        let name = backblaze_bucket_identifier(row)?;
-        let cached = state.buckets.get(name).cloned().unwrap_or_default();
-        bucket["status"] = serde_json::json!(cached);
-        bucket["connected"] = serde_json::json!(cached.connected);
-        buckets.push(bucket);
-    }
-    Ok(serde_json::json!({"buckets": buckets}))
-}
-async fn backblaze_buckets_get_route() -> Response {
-    let config = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    match backblaze_public(config) {
-        Ok(public) => (StatusCode::OK, Json(public)).into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response(),
-    }
-}
-async fn backblaze_bucket_post_route(
-    headers: axum::http::HeaderMap,
-    Json(body): Json<serde_json::Value>,
-) -> Response {
-    let r = route_translation_debt(
-        &mutation_authority(),
-        &headers,
-        "POST",
-        "/api/backblaze/buckets",
-        None,
-        None,
-    );
-    if !r.ok {
-        return (
-            mutation_response_status(&r),
-            Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal})),
-        )
-            .into_response();
-    }
-    let bucket = body
-        .get("bucket")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_owned();
-    if bucket.is_empty() || bucket.contains('/') {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": "bucket is required"})),
-        )
-            .into_response();
-    }
-
-    let mut bucket_value = body.clone();
-    let Some(object) = bucket_value.as_object_mut() else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": "bucket configuration must be an object"})),
-        )
-            .into_response();
-    };
-    object.remove("keyId");
-    object.remove("key_id");
-    object.remove("applicationKey");
-    object.remove("application_key");
-    bucket_value["bucket"] = serde_json::json!(bucket);
-    if let Some(forgejo) = bucket_value.get_mut("managers").and_then(|v| v.get_mut("forgejo")).and_then(serde_json::Value::as_object_mut) {
-        if forgejo.contains_key("skip") {
-            match forgejo_skip(forgejo.get("skip")) {
-                Ok(skip) => { forgejo.insert("skip".to_string(), serde_json::json!(skip)); }
-                Err(error) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "reason": error}))).into_response(),
-            }
-        }
-    }
-    if let Err(error) = validate_backblaze_bucket_rewrite(&bucket_value) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response();
-    }
-    let mut config = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    if let Err(error) = validate_backblaze_config_rewrite(&config) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response();
-    }
-    if let Err(error) = validate_submitted_credentials(&body) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response();
-    }
-    if let Err(error) = authorize_bucket(&bucket, &body) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response();
-    }
-
-    let mut buckets = match backblaze_bucket_rows(&config) {
-        Ok(buckets) => buckets.to_vec(),
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    let mut replacement = if let Some(existing) = buckets
-        .iter()
-        .find(|row| {
-            row.get("bucket").and_then(serde_json::Value::as_str) == Some(bucket.as_str())
-        })
-        .cloned()
-    {
-        merge_backblaze_bucket(&existing, bucket_value)
-    } else {
-        bucket_value
-    };
-    if let Some(object) = replacement.as_object_mut() {
-        object.remove("keyId");
-        object.remove("key_id");
-        object.remove("applicationKey");
-        object.remove("application_key");
-    }
-    buckets.retain(|row| {
-        row.get("bucket").and_then(serde_json::Value::as_str) != Some(bucket.as_str())
-    });
-    buckets.push(replacement);
-    config["buckets"] = serde_json::Value::Array(buckets);
-    match save_backblaze_config(config) {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false, "reason": e})),
-        )
-            .into_response(),
-    }
-}
-async fn backblaze_bucket_verify_route(
-    headers: axum::http::HeaderMap,
-    Path(bucket): Path<String>,
-) -> Response {
-    let r = route_translation_debt(
-        &mutation_authority(),
-        &headers,
-        "POST",
-        "/api/backblaze/buckets/:bucket/verify",
-        None,
-        None,
-    );
-    if !r.ok {
-        return (
-            mutation_response_status(&r),
-            Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal})),
-        )
-            .into_response();
-    }
-    let _guard = BACKBLAZE_RUN_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let config = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    if backblaze_bucket(&config, &bucket).is_none() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"ok": false, "connected": false, "reason": "bucket not configured"})),
-        )
-            .into_response();
-    }
-    let result = keyman_credentials(&bucket)
-        .and_then(|credentials| authorize_and_list(&bucket, &credentials));
-    let connected = result.is_ok();
-    let reason = result.err();
-    let mut state = backblaze_state();
-    state.buckets.entry(bucket).or_default().connected = Some(connected);
-    if let Err(error) = write_backblaze_state(&state) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false, "connected": connected, "reason": error})),
-        )
-            .into_response();
-    }
-    let mut response = serde_json::json!({"ok": true, "connected": connected});
-    if let Some(reason) = reason {
-        response["reason"] = serde_json::json!(reason);
-    }
-    (StatusCode::OK, Json(response)).into_response()
-}
-async fn backblaze_bucket_delete_route(
-    headers: axum::http::HeaderMap,
-    Path(bucket): Path<String>,
-) -> Response {
-    let r = route_translation_debt(
-        &mutation_authority(),
-        &headers,
-        "DELETE",
-        "/api/backblaze/buckets/:bucket",
-        None,
-        None,
-    );
-    if !r.ok {
-        return (
-            mutation_response_status(&r),
-            Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal})),
-        )
-            .into_response();
-    }
-    let config = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    if let Err(error) = validate_backblaze_config_rewrite(&config) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response();
-    }
-    let buckets = match backblaze_bucket_rows(&config) {
-        Ok(buckets) => buckets
-            .iter()
-            .filter(|row| {
-                row.get("bucket").and_then(serde_json::Value::as_str) != Some(bucket.as_str())
-            })
-            .cloned()
-            .collect::<Vec<_>>(),
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    let mut config = config;
-    config["buckets"] = serde_json::Value::Array(buckets);
-    match save_backblaze_config(config) {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false, "reason": e})),
-        )
-            .into_response(),
-    }
-}
+async fn backblaze_buckets_get_route() -> Response { backblaze_config_response() }
+async fn backblaze_config_get_route() -> Response { backblaze_config_response() }
 async fn backblaze_items_get_route(Path(bucket): Path<String>) -> Response {
-    let config = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    match backblaze_bucket(&config, &bucket) {
-        Some(bucket) => (StatusCode::OK, Json(bucket)).into_response(),
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"ok": false, "reason": "bucket not configured"})),
-        )
-            .into_response(),
+    match backblaze_config_value() {
+        Ok(config) => match backblaze_bucket(&config, &bucket) { Some(row) => (StatusCode::OK, Json(row)).into_response(), None => backblaze_error(StatusCode::NOT_FOUND, "bucket not configured") },
+        Err(reason) => backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &reason),
     }
 }
-async fn backblaze_item_post_route(
-    headers: axum::http::HeaderMap,
-    Path(bucket): Path<String>,
-    Json(item): Json<serde_json::Value>,
-) -> Response {
-    backblaze_item_mutate(headers, bucket, item, false).await
+async fn backblaze_bucket_post_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    let bucket = match backblaze_bucket_identifier(&body) { Ok(v) => v.to_owned(), Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
+    let config = match backblaze_config_value() { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &e) };
+    let path = if backblaze_bucket(&config, &bucket).is_some() { format!("{BACKBLAZE_DOOR}/bucket/credentials") } else { format!("{BACKBLAZE_DOOR}/bucket/add") };
+    let key = body.get("keyId").or_else(|| body.get("key_id")).and_then(serde_json::Value::as_str);
+    let secret = body.get("applicationKey").or_else(|| body.get("application_key")).and_then(serde_json::Value::as_str);
+    if key.is_none_or(str::is_empty) || secret.is_none_or(str::is_empty) { return backblaze_error(StatusCode::BAD_REQUEST, "credentials are required"); }
+    let mut receipt = backblaze_act(&headers, &path, serde_json::json!({"bucket":bucket,"keyId":key,"applicationKey":secret}));
+    backblaze_redact_credentials(&mut receipt.body, key.unwrap_or_default(), secret.unwrap_or_default());
+    receipt.first_missing_signal = receipt.first_missing_signal.replace(secret.unwrap_or_default(), "[redacted]").replace(key.unwrap_or_default(), "[redacted]");
+    backblaze_readback_response(receipt)
 }
-async fn backblaze_item_delete_route(
-    headers: axum::http::HeaderMap,
-    Path(bucket): Path<String>,
-    Json(item): Json<serde_json::Value>,
-) -> Response {
-    backblaze_item_mutate(headers, bucket, item, true).await
+async fn backblaze_bucket_verify_route(headers: axum::http::HeaderMap, Path(bucket): Path<String>) -> Response {
+    backblaze_readback_response(backblaze_act(&headers, &format!("{BACKBLAZE_DOOR}/bucket/verify"), serde_json::json!({"bucket":bucket})))
 }
-async fn backblaze_item_mutate(
-    headers: axum::http::HeaderMap,
-    bucket: String,
-    item: serde_json::Value,
-    remove: bool,
-) -> Response {
-    let r = route_translation_debt(
-        &mutation_authority(),
-        &headers,
-        "POST",
-        "/api/backblaze/buckets/:bucket/items",
-        None,
-        None,
-    );
-    if !r.ok {
-        return (
-            mutation_response_status(&r),
-            Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal})),
-        )
-            .into_response();
-    }
-    let c = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    if let Err(error) = validate_backblaze_config_rewrite(&c) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response();
-    }
-    let Some(mut b) = backblaze_bucket(&c, &bucket) else {
-        return (StatusCode::NOT_FOUND, Json(serde_json::json!({"ok": false}))).into_response();
-    };
-    let path = item
-        .get("path")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("");
-    if path.trim() != path || !path.starts_with('/') {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": "path must be absolute"})),
-        )
-            .into_response();
-    }
-    let mut items = match b.get("items").and_then(serde_json::Value::as_array) {
-        Some(items) => items.clone(),
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": "bucket item list is unknown"})),
-            )
-                .into_response()
-        }
-    };
-    items.retain(|i| i.get("path").and_then(serde_json::Value::as_str) != Some(path));
-    if !remove {
-        items.push(serde_json::json!({"path": path}));
-    }
-    b["items"] = serde_json::Value::Array(items);
-    let buckets = match backblaze_bucket_rows(&c) {
-        Ok(buckets) => buckets
-            .iter()
-            .map(|row| {
-                if row.get("bucket").and_then(serde_json::Value::as_str) == Some(bucket.as_str()) {
-                    b.clone()
-                } else {
-                    row.clone()
-                }
-            })
-            .collect::<Vec<_>>(),
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    let mut c = c;
-    c["buckets"] = serde_json::Value::Array(buckets);
-    match save_backblaze_config(c) {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false, "reason": e})),
-        )
-            .into_response(),
-    }
+async fn backblaze_bucket_delete_route(headers: axum::http::HeaderMap, Path(bucket): Path<String>) -> Response {
+    backblaze_readback_response(backblaze_act(&headers, &format!("{BACKBLAZE_DOOR}/bucket/remove"), serde_json::json!({"bucket":bucket})))
 }
-async fn backblaze_toggle_route(
-    headers: axum::http::HeaderMap,
-    Path(bucket): Path<String>,
-    Json(body): Json<serde_json::Value>,
-) -> Response {
-    let r = route_translation_debt(
-        &mutation_authority(),
-        &headers,
-        "POST",
-        "/api/backblaze/buckets/:bucket/toggle",
-        None,
-        None,
-    );
-    if !r.ok {
-        return (
-            mutation_response_status(&r),
-            Json(serde_json::json!({"ok": false})),
-        )
-            .into_response();
-    }
-    let Some(encrypted) = body
-        .get("encrypted")
-        .and_then(serde_json::Value::as_bool)
-    else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": "encrypted must be a boolean"})),
-        )
-            .into_response();
-    };
-    let mut c = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    if let Err(error) = validate_backblaze_config_rewrite(&c) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response();
-    }
-    let mut buckets = match backblaze_bucket_rows(&c) {
-        Ok(buckets) => buckets.to_vec(),
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    for row in &mut buckets {
-        if row.get("bucket").and_then(serde_json::Value::as_str) == Some(bucket.as_str()) {
-            row["encrypted"] = serde_json::json!(encrypted);
-        }
-    }
-    c["buckets"] = serde_json::Value::Array(buckets);
-    match save_backblaze_config(c) {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(),
-        Err(_e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false})),
-        )
-            .into_response(),
-    }
+async fn backblaze_item_post_route(headers: axum::http::HeaderMap, Path(bucket): Path<String>, Json(item): Json<serde_json::Value>) -> Response { backblaze_item_mutate(headers, bucket, item, "add") }
+async fn backblaze_item_delete_route(headers: axum::http::HeaderMap, Path(bucket): Path<String>, Json(item): Json<serde_json::Value>) -> Response { backblaze_item_mutate(headers, bucket, item, "remove") }
+fn backblaze_item_mutate(headers: axum::http::HeaderMap, bucket: String, item: serde_json::Value, op: &str) -> Response {
+    let Some(path) = item.get("path").and_then(serde_json::Value::as_str).filter(|p| p.trim() == *p && p.starts_with('/')) else { return backblaze_error(StatusCode::BAD_REQUEST, "path must be absolute"); };
+    backblaze_readback_response(backblaze_act(&headers, &format!("{BACKBLAZE_DOOR}/bucket/items"), serde_json::json!({"bucket":bucket,"path":path,"op":op})))
 }
-
-fn execute_backblaze_bucket(bucket: String) {
-    let _guard = BACKBLAZE_RUN_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
-    let result = (|| -> Result<(), String> {
-        let config = backblaze_config_value()?;
-        let config = backblaze_bucket(&config, &bucket).ok_or("bucket not configured")?;
-        validate_backblaze_bucket_rewrite(&config)?;
-        let paths = config
-            .get("items")
-            .and_then(serde_json::Value::as_array)
-            .ok_or("bucket item list is unknown")?
-            .iter()
-            .map(|item| {
-                item.get("path")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_owned)
-                    .ok_or_else(|| "bucket item path is unknown".to_string())
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let prefix = config
-            .get("prefix")
-            .and_then(serde_json::Value::as_str)
-            .ok_or("bucket prefix is unknown")?;
-        let encrypted = config
-            .get("encrypted")
-            .and_then(serde_json::Value::as_bool)
-            .ok_or("bucket encryption setting is unknown")?;
-        let credentials = keyman_credentials(&bucket)?;
-        let auth = authorize_and_list(&bucket, &credentials)?;
-        if encrypted {
-            restic_backup(
-                &format!("b2:{}:{}", bucket, prefix),
-                &paths,
-                &credentials,
-            )
-        } else {
-            b2_upload_files(&auth, &paths, prefix).map(|_| ())
+async fn backblaze_config_post_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    let current = match backblaze_config_value() { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &e) };
+    let old_rows = match backblaze_bucket_rows(&current) { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
+    let Some(rows) = body.get("buckets").and_then(serde_json::Value::as_array) else { return backblaze_error(StatusCode::BAD_REQUEST, "buckets must be an array"); };
+    let expected_rows = match body.get("expected") { None | Some(serde_json::Value::Null) => None, Some(value) => match value.as_array() { Some(values) if values.len() == rows.len() => Some(values), _ => return backblaze_error(StatusCode::BAD_REQUEST, "expected bucket state is incomplete") } };
+    let mut changes = Vec::new(); let mut names = std::collections::HashSet::new();
+    for (index, row) in rows.iter().enumerate() {
+        let save = match backblaze_save_body(row) { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
+        let name = save["bucket"].as_str().unwrap_or_default();
+        if !names.insert(name.to_owned()) { return backblaze_error(StatusCode::BAD_REQUEST, "duplicate bucket"); }
+        let Some(old) = old_rows.iter().find(|v| v.get("bucket").and_then(serde_json::Value::as_str) == Some(name)) else { return backblaze_error(StatusCode::BAD_REQUEST, "bucket is not configured"); };
+        let old_save = match backblaze_save_body(old) { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
+        if let Some(expected_rows) = expected_rows {
+            let expected = match backblaze_save_body(&expected_rows[index]) { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::BAD_REQUEST, &e) };
+            if expected != old_save { return backblaze_error(StatusCode::CONFLICT, "bucket changed; refresh before saving"); }
         }
-    })();
-    let mut state = backblaze_state();
-    let entry = state.buckets.entry(bucket).or_default();
-    entry.running = false;
-    entry.last_run_at = Some(now_unix_seconds());
-    entry.last_run_ok = Some(result.is_ok());
-    entry.last_error = result.err();
-    let _ = write_backblaze_state(&state);
+        if save != old_save { changes.push(save); }
+    }
+    let mut last = None; let mut applied: Vec<String> = Vec::new();
+    for body in changes {
+        let name = body.get("bucket").and_then(serde_json::Value::as_str).unwrap_or_default().to_owned();
+        let receipt = backblaze_act(&headers, &format!("{BACKBLAZE_DOOR}/bucket/save"), body);
+        if !receipt.ok {
+            let mut receipt = receipt;
+            if let Some(object) = receipt.body.as_object_mut() { object.insert("appliedBuckets".into(), serde_json::json!(applied)); }
+            return backblaze_readback_response(receipt);
+        }
+        applied.push(name);
+        last = Some(receipt);
+    }
+    match last { Some(receipt) => backblaze_readback_response(receipt), None => (StatusCode::OK, Json(serde_json::json!({"ok":true}))).into_response() }
 }
-async fn backblaze_run_bucket_route(
-    headers: axum::http::HeaderMap,
-    Path(bucket): Path<String>,
-) -> Response {
-    let r = route_translation_debt(
-        &mutation_authority(),
-        &headers,
-        "POST",
-        "/api/backblaze/buckets/:bucket/run",
-        None,
-        None,
-    );
-    if !r.ok {
-        return (
-            mutation_response_status(&r),
-            Json(serde_json::json!({"ok": false})),
-        )
-            .into_response();
-    }
-    let config = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
+async fn backblaze_run_bucket_route(headers: axum::http::HeaderMap, Path(bucket): Path<String>) -> Response {
+    backblaze_readback_response(backblaze_act(&headers, &format!("{BACKBLAZE_DOOR}/bucket/run"), serde_json::json!({"bucket":bucket})))
+}
+async fn backblaze_run_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    let bucket = match body.get("bucket") {
+        Some(value) => match value.as_str() { Some(v) => v.to_owned(), None => return backblaze_error(StatusCode::BAD_REQUEST, "bucket must be a string") },
+        None => match backblaze_config_value().and_then(|v| backblaze_bucket_rows(&v).map(|rows| rows.first().and_then(|r| r.get("bucket")).and_then(serde_json::Value::as_str).map(str::to_owned))) {
+            Ok(Some(v)) => v, Ok(None) => return backblaze_error(StatusCode::BAD_REQUEST, "no bucket configured"), Err(e) => return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &e),
+        },
     };
-    let Some(selected) = backblaze_bucket(&config, &bucket) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"ok": false, "reason": "bucket not configured"})),
-        )
-            .into_response();
-    };
-    if let Err(error) = validate_backblaze_bucket_rewrite(&selected) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response();
+    let (path, payload) = if body.get("plan").and_then(serde_json::Value::as_bool) == Some(true) { ("/api/v1/storage/backup/forgejo/backup-b2".to_owned(), serde_json::json!({"bucket":bucket,"plan":true})) } else { (format!("{BACKBLAZE_DOOR}/bucket/run"), serde_json::json!({"bucket":bucket})) };
+    backblaze_readback_response(backblaze_act(&headers, &path, payload))
+}
+fn backblaze_status_rows() -> Result<Vec<BackblazeStatusRow>, CaduceusHttpReadback> {
+    let mut cache = BACKBLAZE_STATUS_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((time, rows)) = &*cache { if time.elapsed() < BACKBLAZE_CACHE_TTL { return Ok(rows.clone()); } }
+    let receipt = caduceus_http("GET", &format!("{BACKBLAZE_DOOR}/status"));
+    if !receipt.ok { return Err(receipt); }
+    let Some(values) = receipt.body.get("buckets").and_then(serde_json::Value::as_array) else { return Err(CaduceusHttpReadback { ok:false, status:503, path:receipt.path, body:serde_json::json!({"ok":false,"reason":"backup status unavailable"}), first_missing_signal:"backup status unavailable".into() }); };
+    if values.len() > 256 { return Err(CaduceusHttpReadback { ok:false, status:503, path:receipt.path, body:serde_json::json!({"ok":false,"reason":"too many backup status rows"}), first_missing_signal:"too many backup status rows".into() }); }
+    let mut rows = Vec::new();
+    for value in values {
+        let Some(bucket) = value.get("bucket").and_then(serde_json::Value::as_str) else { return Err(CaduceusHttpReadback {ok:false,status:503,path:receipt.path,body:serde_json::json!({"ok":false,"reason":"invalid backup status row"}),first_missing_signal:"invalid backup status row".into()}); };
+        let Some(running) = value.get("running").and_then(serde_json::Value::as_bool) else { return Err(CaduceusHttpReadback {ok:false,status:503,path:receipt.path,body:serde_json::json!({"ok":false,"reason":"invalid backup status row"}),first_missing_signal:"invalid backup status row".into()}); };
+        rows.push(BackblazeStatusRow {bucket:bucket.to_owned(), running, last_run_at:value.get("last_run_at").cloned().filter(|v| v.is_number() || v.is_string()), last_run_ok:value.get("last_run_ok").and_then(serde_json::Value::as_bool), connected:value.get("connected").and_then(serde_json::Value::as_bool)});
     }
-    let _guard = BACKBLAZE_RUN_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut state = backblaze_state();
-    let entry = state.buckets.entry(bucket.clone()).or_default();
-    if entry.running {
-        return (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({"ok": false, "reason": "backup already running"})),
-        )
-            .into_response();
-    }
-    entry.running = true;
-    entry.last_error = None;
-    entry.last_run_at = Some(now_unix_seconds());
-    if let Err(e) = write_backblaze_state(&state) {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"ok": false, "reason": e})),
-        )
-            .into_response();
-    }
-    let forgejo_enabled = selected.get("managers").and_then(|v| v.get("forgejo"))
-        .and_then(|v| v.get("backblazeBackup")).and_then(serde_json::Value::as_bool) == Some(true);
-    let forgejo_bucket = bucket.clone();
-    std::thread::spawn(move || execute_backblaze_bucket(bucket));
-    if forgejo_enabled {
-        let receipt = caduceus_actuate_json(&mutation_authority(), &headers,
-            "/api/v1/storage/backup/forgejo/backup-b2", serde_json::json!({"bucket": forgejo_bucket}));
-        let ok = receipt.ok && receipt.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true);
-        let reason = receipt.body.get("reason").and_then(serde_json::Value::as_str)
-            .unwrap_or(&receipt.first_missing_signal).to_owned();
-        return (StatusCode::ACCEPTED, Json(serde_json::json!({"ok": ok, "status": "queued", "forgejo": receipt.body, "reason": if ok { "" } else { &reason }}))).into_response();
-    }
-    (
-        StatusCode::ACCEPTED,
-        Json(serde_json::json!({"ok": true, "status": "queued"})),
-    )
-        .into_response()
+    *cache = Some((Instant::now(),rows.clone())); Ok(rows)
 }
 async fn backblaze_status_route() -> Response {
-    let config = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    let names = match backblaze_bucket_rows(&config).and_then(|buckets| {
-        buckets
-            .iter()
-            .map(|bucket| backblaze_bucket_identifier(bucket).map(str::to_owned))
-            .collect::<Result<Vec<_>, _>>()
-    }) {
-        Ok(names) => names,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    let public = match backblaze_public(config) {
-        Ok(public) => public,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    let state = backblaze_state();
-    let running = names
-        .iter()
-        .any(|name| state.buckets.get(name).is_some_and(|entry| entry.running));
-    let last = names
-        .iter()
-        .filter_map(|name| state.buckets.get(name))
-        .max_by_key(|entry| entry.last_run_at.unwrap_or(0));
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "buckets": public["buckets"],
-            "running": running,
-            "last_run_at": last.and_then(|entry| entry.last_run_at),
-            "last_run_ok": last.and_then(|entry| entry.last_run_ok)
-        })),
-    )
-        .into_response()
+    let config = match backblaze_config_value() { Ok(v) => v, Err(e) => return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &e) };
+    let statuses = match backblaze_status_rows() { Ok(v) => v, Err(e) => return backblaze_readback_response(e) };
+    let mut buckets = match backblaze_bucket_rows(&config) { Ok(v) => v.to_vec(), Err(e) => return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &e) };
+    for row in &mut buckets {
+        let name = match backblaze_bucket_identifier(row) { Ok(v) => v.to_owned(), Err(e) => return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &e) };
+        let status = statuses.iter().find(|s| s.bucket == name);
+        let Some(status) = status else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "bucket status unavailable"); };
+        row["status"] = serde_json::json!({"running":status.running,"last_run_at":status.last_run_at,"last_run_ok":status.last_run_ok});
+        row["connected"] = status.connected.into();
+    }
+    let running = statuses.iter().any(|s| s.running);
+    let last = statuses.iter().filter(|s| s.last_run_at.is_some()).max_by_key(|s| s.last_run_at.as_ref().and_then(serde_json::Value::as_u64).unwrap_or(0));
+    (StatusCode::OK, Json(serde_json::json!({"ok":true,"buckets":buckets,"running":running,"last_run_at":last.and_then(|s|s.last_run_at.clone()),"last_run_ok":last.and_then(|s|s.last_run_ok)}))).into_response()
 }
-
 #[derive(Debug, Deserialize)]
-struct BackblazeSnapshotsQuery {
-    bucket: Option<String>,
-}
-
-fn backblaze_snapshot(value: &serde_json::Value, bucket: &str) -> serde_json::Value {
-    serde_json::json!({
-        "bucket": bucket,
-        "id": value.get("id").and_then(serde_json::Value::as_str).unwrap_or_default(),
-        "short_id": value.get("short_id").and_then(serde_json::Value::as_str).unwrap_or_default(),
-        "time": value.get("time").and_then(serde_json::Value::as_str).unwrap_or_default(),
-        "paths": value.get("paths").cloned().unwrap_or_else(|| serde_json::json!([])),
-        "hostname": value.get("hostname").and_then(serde_json::Value::as_str).unwrap_or_default(),
-        "summary": value.get("summary").cloned().unwrap_or(serde_json::Value::Null),
-    })
-}
-
+struct BackblazeSnapshotsQuery { bucket: Option<String> }
 async fn backblaze_snapshots_route(Query(query): Query<BackblazeSnapshotsQuery>) -> Response {
-    let config = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(reason) => {
-            return (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": reason})))
-                .into_response()
+    let Some(bucket) = query.bucket.filter(|b| !b.is_empty()) else { return backblaze_error(StatusCode::BAD_REQUEST, "bucket is required"); };
+    let mut cache = BACKBLAZE_SNAPSHOT_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner());
+    let cached = cache.as_ref().filter(|(time,name,_)| *name == bucket && time.elapsed() < BACKBLAZE_CACHE_TTL).map(|(_,_,rows)| rows.clone());
+    let rows = if let Some(rows) = cached { rows } else {
+        let encoded: String = url::form_urlencoded::byte_serialize(bucket.as_bytes()).collect();
+        let receipt = caduceus_http("GET", &format!("{BACKBLAZE_DOOR}/snapshots?bucket={encoded}"));
+        if !receipt.ok { return backblaze_readback_response(receipt); }
+        let Some(values) = receipt.body.get("snapshots").and_then(serde_json::Value::as_array) else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "snapshots unavailable"); };
+        if values.len() > 512 { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "too many snapshots"); }
+        let mut rows = Vec::new();
+        for value in values {
+            let (Some(id), Some(time), Some(paths), Some(tags)) = (value.get("id").and_then(serde_json::Value::as_str), value.get("time").and_then(serde_json::Value::as_str), value.get("paths").and_then(serde_json::Value::as_array), value.get("tags").and_then(serde_json::Value::as_array)) else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot row"); };
+            let Some(paths) = paths.iter().map(|v|v.as_str().map(str::to_owned)).collect::<Option<Vec<_>>>() else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot paths"); };
+            let Some(tags) = tags.iter().map(|v|v.as_str().map(str::to_owned)).collect::<Option<Vec<_>>>() else { return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, "invalid snapshot tags"); };
+            rows.push(BackblazeSnapshot{id:id.to_owned(),time:time.to_owned(),paths,tags});
         }
+        *cache = Some((Instant::now(), bucket.clone(), rows.clone())); rows
     };
-    let buckets = match backblaze_bucket_rows(&config) {
-        Ok(buckets) => buckets.to_vec(),
-        Err(reason) => {
-            return (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": reason})))
-                .into_response()
-        }
-    };
-    let mut selected = Vec::new();
-    for bucket_config in buckets {
-        let bucket = match backblaze_bucket_identifier(&bucket_config) {
-            Ok(bucket) => bucket,
-            Err(reason) => {
-                return (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": reason})))
-                    .into_response()
-            }
-        };
-        if query
-            .bucket
-            .as_deref()
-            .is_some_and(|requested| requested != bucket)
-        {
-            continue;
-        }
-        let encrypted = match bucket_config
-            .get("encrypted")
-            .and_then(serde_json::Value::as_bool)
-        {
-            Some(encrypted) => encrypted,
-            None => {
-                return (
-                    StatusCode::OK,
-                    Json(serde_json::json!({
-                        "ok": false,
-                        "reason": "bucket encryption setting is unknown"
-                    })),
-                )
-                    .into_response()
-            }
-        };
-        if !encrypted {
-            continue;
-        }
-        let prefix = match bucket_config
-            .get("prefix")
-            .and_then(serde_json::Value::as_str)
-        {
-            Some(prefix) => prefix.to_owned(),
-            None => {
-                return (
-                    StatusCode::OK,
-                    Json(serde_json::json!({"ok": false, "reason": "bucket prefix is unknown"})),
-                )
-                    .into_response()
-            }
-        };
-        selected.push((bucket.to_owned(), prefix));
-    }
-
-    let mut snapshots = Vec::new();
-    for (bucket, prefix) in selected {
-        let credentials = match keyman_credentials(&bucket) {
-            Ok(credentials) => credentials,
-            Err(reason) => {
-                return (StatusCode::OK, Json(serde_json::json!({"ok": false, "reason": reason})))
-                    .into_response()
-            }
-        };
-        let repo = format!("b2:{}:{}", bucket, prefix);
-        let output = match Command::new("restic")
-            .args(["--repo", repo.as_str(), "snapshots", "--json"])
-            .env("RESTIC_PASSWORD", restic_password(&credentials.application_key))
-            .env("B2_ACCOUNT_ID", &credentials.key_id)
-            .env("B2_ACCOUNT_KEY", &credentials.application_key)
-            .output()
-        {
-            Ok(output) if output.status.success() => output,
-            Ok(_) => {
-                return (
-                    StatusCode::OK,
-                    Json(serde_json::json!({"ok": false, "reason": "restic could not read snapshots"})),
-                )
-                    .into_response()
-            }
-            Err(_) => {
-                return (
-                    StatusCode::OK,
-                    Json(serde_json::json!({"ok": false, "reason": "restic could not start"})),
-                )
-                    .into_response()
-            }
-        };
-        match serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-            Ok(serde_json::Value::Array(values)) => {
-                snapshots.extend(values.iter().map(|value| backblaze_snapshot(value, &bucket)))
-            }
-            _ => {
-                return (
-                    StatusCode::OK,
-                    Json(serde_json::json!({
-                        "ok": false,
-                        "reason": "restic returned an unreadable snapshots response"
-                    })),
-                )
-                    .into_response()
-            }
-        }
-    }
-    (StatusCode::OK, Json(serde_json::json!({"ok": true, "snapshots": snapshots}))).into_response()
-}
-
-async fn backblaze_config_get_route() -> Response {
-    let config = match backblaze_config_value() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"ok": false, "reason": error})),
-            )
-                .into_response()
-        }
-    };
-    match backblaze_public(config) {
-        Ok(public) => (StatusCode::OK, Json(public)).into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false, "reason": error})),
-        )
-            .into_response(),
-    }
-}
-
-// This endpoint is an explicit whole-config operator submission, not an RMW path.
-async fn backblaze_config_post_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
-    let r = route_translation_debt(
-        &mutation_authority(),
-        &headers,
-        "POST",
-        "/api/backblaze/config",
-        Some("/api/v1/backblaze/config"),
-        None,
-    );
-    if !r.ok { return (mutation_response_status(&r), Json(serde_json::json!({"ok": false, "reason": r.first_missing_signal}))).into_response(); }
-    let current = backblaze_config_value().and_then(|config| {
-        for row in backblaze_bucket_rows(&config)? {
-            if let Some(forgejo) = row.get("managers").and_then(|v| v.get("forgejo")).and_then(serde_json::Value::as_object) {
-                let normalized = forgejo_skip(forgejo.get("skip"))?;
-                if forgejo.get("skip").is_some_and(|original| *original != serde_json::json!(normalized)) {
-                    return Err("forgejo skip entries must be trimmed".into());
-                }
-            }
-        }
-        Ok(())
-    });
-    match current.and_then(|()| normalized_config(body)).and_then(save_backblaze_config) { Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response(), Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "reason": e}))).into_response() }
-}
-
-async fn backblaze_run_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
-    if body.get("plan").and_then(serde_json::Value::as_bool) == Some(true) {
-        let Some(bucket) = body.get("bucket").and_then(serde_json::Value::as_str) else {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "reason": "bucket must be a string"}))).into_response();
-        };
-        let receipt = caduceus_actuate_json(&mutation_authority(), &headers,
-            "/api/v1/storage/backup/forgejo/backup-b2", serde_json::json!({"bucket": bucket, "plan": true}));
-        let status = if receipt.ok { StatusCode::OK } else { mutation_response_status(&receipt) };
-        return (status, Json(receipt.body)).into_response();
-    }
-    let bucket = if let Some(value) = body.get("bucket") {
-        match value.as_str() {
-            Some(bucket) => Some(bucket.to_owned()),
-            None => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"ok": false, "reason": "bucket must be a string"})),
-                )
-                    .into_response()
-            }
-        }
-    } else {
-        let config = match backblaze_config_value() {
-            Ok(config) => config,
-            Err(error) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"ok": false, "reason": error})),
-                )
-                    .into_response()
-            }
-        };
-        match backblaze_bucket_rows(&config) {
-            Ok(buckets) => match buckets.first() {
-                Some(bucket) => match backblaze_bucket_identifier(bucket) {
-                    Ok(bucket) => Some(bucket.to_owned()),
-                    Err(error) => {
-                        return (
-                            StatusCode::BAD_REQUEST,
-                            Json(serde_json::json!({"ok": false, "reason": error})),
-                        )
-                            .into_response()
-                    }
-                },
-                None => None,
-            },
-            Err(error) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"ok": false, "reason": error})),
-                )
-                    .into_response()
-            }
-        }
-    };
-    match bucket {
-        Some(bucket) => backblaze_run_bucket_route(headers, Path(bucket)).await,
-        None => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"ok": false, "reason": "no bucket configured"})),
-        )
-            .into_response(),
-    }
-}
-
-fn now_unix_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    let snapshots: Vec<_> = rows.into_iter().map(|row|serde_json::json!({"id":row.id,"time":row.time,"paths":row.paths,"tags":row.tags})).collect();
+    (StatusCode::OK, Json(serde_json::json!({"ok":true,"snapshots":snapshots}))).into_response()
 }

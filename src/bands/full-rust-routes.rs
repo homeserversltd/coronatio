@@ -134,7 +134,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/backblaze/buckets/:bucket/verify", post(backblaze_bucket_verify_route))
         .route("/api/backblaze/buckets/:bucket/items", get(backblaze_items_get_route).post(backblaze_item_post_route).delete(backblaze_item_delete_route))
 
-        .route("/api/backblaze/buckets/:bucket/toggle", post(backblaze_toggle_route))
+
         .route("/api/backblaze/buckets/:bucket/run", post(backblaze_run_bucket_route))
         .route("/api/nasLinker/browse", get(homeserver_rust_read_route))
         .route("/api/nasLinker/deploy", post(admin_class_generic_mutation_route))
