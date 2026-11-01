@@ -104,15 +104,8 @@ fn backup_schedule_save(headers: &axum::http::HeaderMap, body: &serde_json::Valu
     if is_nas && frequency != "manual" && current.as_ref().and_then(|v|v.get("schedule")).and_then(|v|v.get("enabled")).and_then(serde_json::Value::as_bool) != Some(true) { return backblaze_error(StatusCode::FORBIDDEN, "NAS schedule cannot be re-armed here"); }
     if current.is_none() {
         let Some(timestamp) = body.get("timestamp").and_then(serde_json::Value::as_str) else { return backblaze_error(StatusCode::BAD_REQUEST, "timestamp is required"); };
-        let envelope = serde_json::json!({"schema":"caduceus.pid2.schedule.v1","intent_id":"coronatio-backups","transition":"register","version":"1.0.0","timestamp":timestamp,"schedule":{"schedule_id":id,"calendar":calendar,"job":{"band":"storage/backup/backblaze/bucket-run","action":"run","payload":{"bucket":bucket}}}});
-        let register = backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/register"), envelope);
-        if !register.ok { return backup_schedule_response(register); }
-        if frequency == "manual" {
-            let mut disabled = backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/disable"), backup_command(serde_json::json!({"schedule_id":id}), kernel.as_ref(), "schedule-disable"));
-            if !disabled.ok { if let Some(object) = disabled.body.as_object_mut() { object.insert("reason".into(), "Schedule was registered but could not be disabled; it may run. Retry Manual or disable it through the owner controls.".into()); } }
-            return backup_schedule_response(disabled);
-        }
-        return backup_schedule_response(register);
+        let envelope = serde_json::json!({"schema":"caduceus.pid2.schedule.v1","intent_id":"coronatio-backups","transition":"register","version":"1.0.0","timestamp":timestamp,"schedule":{"schedule_id":id,"enabled":frequency!="manual","calendar":calendar,"job":{"band":"storage/backup/backblaze/bucket-run","action":"run","payload":{"bucket":bucket}}}});
+        return backup_schedule_response(backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/register"), envelope));
     }
     backup_schedule_response(backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/update"), backup_command(serde_json::json!({"schedule_id":id,"calendar":calendar,"enabled":frequency!="manual"}), kernel.as_ref(), "schedule-update")))
 }
