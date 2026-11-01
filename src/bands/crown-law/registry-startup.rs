@@ -46,9 +46,9 @@ fn native_crown_panes() -> Vec<CrownPane> {
         },
         CrownPane {
             id: "backblaze".to_string(),
-            title: "backBlaze".to_string(),
+            title: "Backups".to_string(),
             role: "backup service tab".to_string(),
-            summary: "Two-pane Backblaze B2 bucket and encrypted backup management.".to_string(),
+            summary: "Backup jobs, schedules and recent runs.".to_string(),
             order: 40,
             admin_only: true,
             install_mode: InstallMode::FirstPartyNative,

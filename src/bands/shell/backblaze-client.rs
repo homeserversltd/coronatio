@@ -11,6 +11,18 @@ fn shell_backblaze_client() -> &'static str {
     const current = (binding = state.binding) => Boolean(binding && state.binding === binding && admitted() && scaffoldRegistry.current(binding));
     const canUse = (binding = state.binding) => Boolean(current(binding) && state.statusReady && !state.statusStale && state.data);
     const health = b => !b?.status ? 'UNKNOWN' : b.status.running ? 'RUNNING' : (b.status.last_run_ok === true ? 'GOOD' : (b.status.last_run_ok === false ? 'FAILED' : 'IDLE'));
+    const nasKey = 'nas://sync';
+    const jobKey = job => job.kind === 'nas' ? nasKey : job.bucket;
+    const selectedJob = () => state.data?.jobs?.find(job => jobKey(job) === state.bucket);
+    const when = value => value == null ? 'Unknown' : (typeof value === 'number' ? new Date(value * 1000).toLocaleString() : String(value));
+    const fireText = fire => fire ? `${fire.state || 'Unknown'}${fire.trigger === 'catch-up' ? ' · re-run after a restart or power loss' : fire.trigger ? ` · ${fire.trigger}` : ''}${fire.reason ? ` · ${fire.reason}` : ''}` : 'Last run unknown';
+    const jobFire = job => {
+      if (job?.pid2?.last_fire) return job.pid2.last_fire;
+      if (job?.kind !== 'backblaze' || job?.pid2) return null;
+      const status = state.data?.buckets?.find(row => row.bucket === job.bucket)?.status;
+      if (status?.last_run_at == null) return null;
+      return {state: status.last_run_ok === true ? 'Done' : status.last_run_ok === false ? 'Failed' : 'Unknown', finished_at: status.last_run_at};
+    };
     const isRecord = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
     const forgejo = b => isRecord(b?.managers?.forgejo) ? b.managers.forgejo : null;
     const validSkip = text => typeof text === 'string' && /^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)?$/.test(text);
@@ -82,8 +94,8 @@ fn shell_backblaze_client() -> &'static str {
     function renderBucketList(selector) {
       const host = el(selector); if (!host) return;
       if (!state.statusReady) return;
-      const buckets = Array.isArray(state.data?.buckets) ? state.data.buckets : [];
-      const html = buckets.map(bucket => `<div class="backblaze-bucket-row" data-backblaze-bucket-row="${esc(bucket.bucket)}" data-scaffold-key="backblaze-bucket-${esc(bucket.bucket)}"><button type="button" class="backblaze-bucket-select" data-backblaze-select="${esc(bucket.bucket)}" aria-pressed="${state.bucket === bucket.bucket}" ${canUse() ? '' : 'disabled'}><span>${esc(bucket.bucket)}</span><span class="ui-badge">${health(bucket)}</span></button><button type="button" class="backblaze-bucket-remove" data-backblaze-remove="${esc(bucket.bucket)}" title="Remove ${esc(bucket.bucket)}" ${canRewriteConfig() ? '' : 'disabled'}>×</button></div>`).join('') || '<p class="backblaze-empty" data-backblaze-empty-buckets>No buckets configured.</p>';
+      const jobs = Array.isArray(state.data?.jobs) ? state.data.jobs : [];
+      const html = jobs.map(job => { const key=jobKey(job), row=job.pid2 || {}, fire=jobFire(job); return `<div class="backblaze-bucket-row" data-scaffold-key="backup-job-${esc(key)}"><button type="button" class="backblaze-bucket-select" data-backblaze-select="${esc(key)}" aria-pressed="${state.bucket === key}" ${canUse() ? '' : 'disabled'}><span>${esc(job.kind === 'nas' ? 'NAS to NAS' : job.bucket)}<br><small>${esc(fireText(fire))} · ${esc(when(fire?.finished_at || fire?.started_at))}<br>Next: ${esc(row.next_fire == null ? 'Not scheduled' : when(row.next_fire))}</small></span></button>${job.kind === 'nas' ? '' : `<button type="button" class="backblaze-bucket-remove" data-backblaze-remove="${esc(job.bucket)}" title="Remove ${esc(job.bucket)}" ${canRewriteConfig() ? '' : 'disabled'}>×</button>`}</div>`; }).join('') || '<p class="backblaze-empty" data-backblaze-empty-buckets>No backup jobs configured.</p>';
       morphLivePane(host, html);
     }
     function renderBuckets() { renderBucketList('[data-backblaze-buckets]'); renderBucketList('[data-backblaze-ledger-buckets]'); }
@@ -110,8 +122,17 @@ fn shell_backblaze_client() -> &'static str {
     }
     function renderSelected() {
       const binding = state.binding, bucket = state.data?.buckets?.find(candidate => candidate.bucket === state.bucket);
+      const job = selectedJob(), nas = job?.kind === 'nas', schedule = job?.pid2?.schedule, calendar = schedule?.calendar || schedule;
+      root(binding)?.querySelectorAll('.backblaze-config > .backblaze-section').forEach((section, index) => { section.hidden = Boolean(nas && index !== 3); });
+      const configSave = el('[data-backblaze-save]'); if (configSave) configSave.hidden = Boolean(nas);
+      const frequency = el('[data-backup-frequency]'), time = el('[data-backup-time]'), weekday = el('[data-backup-weekday]'), scheduleSave = el('[data-backup-schedule-save]');
+      if (frequency) { frequency.value = schedule?.enabled ? calendar?.frequency : 'manual'; frequency.querySelectorAll('option').forEach(option => { option.disabled = Boolean(nas && !schedule?.enabled && option.value !== 'manual'); }); frequency.disabled = !job || !canUse(binding); }
+      if (time) { time.value = calendar?.time || '02:00'; time.disabled = !job || !canUse(binding); }
+      if (weekday) { weekday.value = calendar?.weekday || 'Mon'; weekday.disabled = !job || !canUse(binding); }
+      if (scheduleSave) scheduleSave.disabled = !job || !canUse(binding);
       const addBucket = el('[data-backblaze-add]'); if (addBucket) addBucket.disabled = !canRewriteConfig(binding);
       const title = el('[data-backblaze-selected]'), save = el('[data-backblaze-save]'), verify = el('[data-backblaze-verify]'), update = el('[data-backblaze-update]'), run = el('[data-backblaze-run]'), path = el('[data-backblaze-path]'), add = el('[data-backblaze-item-add]');
+      if (nas) { if (title) title.textContent = 'NAS to NAS'; const status = el('[data-backblaze-bucket-status]'); if (status) status.textContent = fireText(job.pid2?.last_fire); if (run) run.disabled = !canUse(binding); return; }
       if (!state.statusReady || !bucket) {
         if (title) title.textContent = state.statusReady ? 'Select a bucket' : 'Loading buckets…';
         const status = el('[data-backblaze-bucket-status]'); if (status) status.textContent = state.statusReady ? 'Select a bucket.' : 'Waiting for current status…';
@@ -153,10 +174,9 @@ fn shell_backblaze_client() -> &'static str {
       let content = host.querySelector(':scope > [data-backblaze-ledger-content]');
       if (!content) { content = document.createElement('div'); content.dataset.backblazeLedgerContent = ''; host.append(content); }
       let html;
-      if (!state.bucket) html = '<p class="backblaze-empty">Select a bucket</p>';
-      else if (state.ledgerBucket !== state.bucket) html = '<p class="backblaze-empty">Loading snapshots…</p>';
-      else if (!state.ledger.length && !state.snapshotsReady) html = '<p class="backblaze-empty">Snapshots unavailable.</p>';
-      else html = state.ledger.map((row, index) => `<div class="backblaze-ledger-row" data-backblaze-snapshot="${esc(row.id || `${state.bucket}-${index}`)}"><time>${esc(row.time || row.status || 'Snapshot')}</time><span>${esc(row.id || '—')}</span></div>`).join('') || '<p class="backblaze-empty" data-backblaze-empty-snapshots>No snapshots available.</p>';
+      const job = selectedJob(), fire = jobFire(job);
+      html = job ? `<div class="backblaze-ledger-row"><span>${esc(fireText(fire))} · ${esc(when(fire?.finished_at || fire?.started_at))}</span><span>${esc(fire?.duration_ms == null ? 'Duration unknown' : `${fire.duration_ms} ms`)}${fire?.first_missing_signal ? ` · ${esc(fire.first_missing_signal)}` : ''}</span></div>` : '<p class="backblaze-empty">Select a backup job</p>';
+      if (job?.kind === 'backblaze') { html += '<button type="button" class="ui-button ui-button--secondary" data-backup-snapshots-refresh>Refresh snapshots</button>'; if (state.ledgerBucket === state.bucket && state.snapshotsReady) html += state.ledger.map(row => `<div class="backblaze-ledger-row"><time>${esc(row.time)}</time><span>${esc(row.id)}</span></div>`).join('') || '<p class="backblaze-empty">No snapshots available.</p>'; }
       if (state.ledgerBucket === state.bucket && state.snapshotsReady) html += state.ledgerErrors.map(row => `<p data-backblaze-snapshot-error>${esc(row.bucket)}: ${esc(row.step)} — ${esc(row.reason)}</p>`).join('');
       morphLivePane(content, html);
     }
@@ -164,13 +184,7 @@ fn shell_backblaze_client() -> &'static str {
       const binding = state.binding; if (!current(binding)) return;
       root(binding).querySelectorAll('[data-backblaze-view]').forEach(button => { const on = button.dataset.backblazeView === view; button.classList.toggle('is-active', on); button.setAttribute('aria-selected', String(on)); });
       root(binding).querySelectorAll('[data-backblaze-panel]').forEach(panel => { panel.hidden = panel.dataset.backblazePanel !== view; });
-      if (view === 'ledger') {
-        if (state.statusReady) void loadSnapshots(binding);
-        else {
-          const ledgerSlot = el('[data-scaffold-slot="backblaze-ledger"]', binding);
-          if (ledgerSlot) scaffoldRegistry.setSlot(binding, ledgerSlot, 'pending');
-        }
-      }
+      if (view === 'ledger') renderLedger(binding);
     }
     function adoptBackblazeBinding() {
       const binding = admitted() ? scaffoldRegistry.capture('backblaze') : null;
@@ -268,7 +282,7 @@ fn shell_backblaze_client() -> &'static str {
         if (!context.current() || !current(binding)) return false;
         const data = projectStatus(body);
         const currentBucket = state.bucket;
-        const nextBucket = data.buckets.some(bucket => bucket.bucket === currentBucket) ? currentBucket : (data.buckets[0]?.bucket || null);
+        const nextBucket = data.jobs?.some(job => jobKey(job) === currentBucket) ? currentBucket : (data.jobs?.length ? jobKey(data.jobs[0]) : null);
         if (nextBucket !== currentBucket) { state.selectionGeneration += 1; state.bucket = nextBucket; state.ledger = []; state.ledgerBucket = null; state.snapshotsReady = false; state.snapshotsStale = false; }
         state.data = data; state.statusReady = true; state.statusStale = false;
         const status = el('[data-backblaze-state]', binding);
@@ -278,7 +292,7 @@ fn shell_backblaze_client() -> &'static str {
         const next = el('[data-backblaze-next]', binding); if (next) next.textContent = 'Not scheduled';
         renderReadStatus('[data-backblaze-ribbon]', '', 'ready'); renderBuckets(); renderSelected();
         statusSlots.forEach(slot => context.ready(slot));
-        if (!el('[data-backblaze-panel="ledger"]', binding)?.hidden) void loadSnapshots(binding);
+        renderLedger(binding);
         return true;
       }, {
         slots: statusSlots, timeoutMs: 8000, slowMs: 750,
@@ -430,14 +444,21 @@ fn shell_backblaze_client() -> &'static str {
       managerDraftBucket = null; managerDraftBeforeOpen = null;
     }
     function selectBucket(bucket, binding = state.binding) {
-      if (!canUse(binding) || !state.data?.buckets?.some(row => row.bucket === bucket)) return;
+      if (!canUse(binding) || !state.data?.jobs?.some(job => jobKey(job) === bucket)) return;
       if (state.bucket !== bucket) { state.bucket = bucket; state.selectionGeneration += 1; state.ledger = []; state.ledgerBucket = null; state.snapshotsReady = false; state.snapshotsStale = false; }
       renderBuckets(); renderSelected(); renderLedger(binding);
-      if (!el('[data-backblaze-panel="ledger"]', binding)?.hidden) void loadSnapshots(binding, { supersede: true });
+
     }
     document.body.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null; if (!target) return;
       const binding = state.binding; if (!binding || !root(binding)?.contains(target)) return;
+      if (target.closest('[data-backup-snapshots-refresh]') && selectedJob()?.kind === 'backblaze') { void loadSnapshots(binding, { supersede: true }); return; }
+      if (target.closest('[data-backup-schedule-save]') && canUse(binding)) {
+        const job = selectedJob(); if (!job) return;
+        const payload = {action:'schedule-save',schedule_id:job.schedule_id,frequency:el('[data-backup-frequency]',binding)?.value,time:el('[data-backup-time]',binding)?.value,weekday:el('[data-backup-weekday]',binding)?.value,timestamp:new Date().toISOString()};
+        const controller=actionController(binding), key=state.bucket;
+        getJson('/api/backblaze/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal},binding).then(body=>{ if (current(binding) && state.bucket===key) { setResult(binding,body.ok===true?'Schedule saved':(body.reason||'Schedule could not be saved')); if (body.ok===true) return hydrateBackblaze(binding); } }).catch(()=>{ if(current(binding)) setResult(binding,'Schedule could not be saved'); }).finally(()=>actions.delete(controller)); return;
+      }
       const view = target.closest('[data-backblaze-view]'); if (view) { setViewEvent(view.dataset.backblazeView); return; }
       const retry = target.closest('[data-backblaze-retry]'); if (retry && current(binding)) { event.preventDefault(); scaffoldRegistry.retry(binding, retry.dataset.backblazeRetry).catch(() => {}); return; }
       const refresh = target.closest('[data-backblaze-refresh-stale]'); if (refresh && current(binding)) { delete state.managerDrafts[refresh.dataset.backblazeRefreshStale]; delete state.managerBaselines[refresh.dataset.backblazeRefreshStale]; setResult(binding, 'Refreshing'); void hydrateBackblaze(binding); return; }
@@ -459,9 +480,9 @@ fn shell_backblaze_client() -> &'static str {
       if (target.closest('[data-backblaze-manager-cancel]')) { closeManager(false, binding); return; }
       if (target.closest('[data-backblaze-manager-close]')) { closeManager(true, binding); return; }
       if (target.closest('[data-backblaze-item-add]')) { const path = el('[data-backblaze-path]', binding)?.value.trim(); if (path) void mutateItem(path, 'POST', binding); return; }
-      if (target.closest('[data-backblaze-run]') && currentAction(binding)) {
-        const bucket = state.bucket, controller = actionController(binding);
-        getJson('/api/backblaze/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket }), signal: controller.signal }, binding).then(body => { if (currentAction(binding, bucket)) { if (body.ok !== true) setResult(binding, body.reason || 'Backup could not be started'); else setResult(binding, 'Backup queued'); return hydrateBackblaze(binding); } }).catch(() => { if (currentAction(binding, bucket)) setResult(binding, 'Backup could not be started'); }).finally(() => actions.delete(controller));
+      if (target.closest('[data-backblaze-run]') && (currentAction(binding) || (selectedJob()?.kind === 'nas' && canUse(binding)))) {
+        const bucket = state.bucket, job=selectedJob(), controller = actionController(binding);
+        getJson('/api/backblaze/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(job?.kind === 'nas' ? {schedule_id:'nas-sync'} : {bucket}), signal: controller.signal }, binding).then(body => { if (current(binding) && state.bucket===bucket) { if (body.ok !== true) setResult(binding, body.reason || 'Backup could not be started'); else setResult(binding, 'Queued'); return hydrateBackblaze(binding); } }).catch(() => { if (current(binding) && state.bucket===bucket) setResult(binding, 'Backup could not be started'); }).finally(() => actions.delete(controller));
       }
     });
     document.body.addEventListener('change', event => {

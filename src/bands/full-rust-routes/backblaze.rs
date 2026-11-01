@@ -10,6 +10,8 @@ struct BackblazeSnapshot { id: String, time: String, paths: Vec<String>, tags: V
 struct BackblazeSnapshotError { bucket: String, step: String, reason: String }
 static BACKBLAZE_STATUS_CACHE: OnceLock<Mutex<Option<(Instant, Vec<BackblazeStatusRow>)>>> = OnceLock::new();
 static BACKBLAZE_SNAPSHOT_CACHE: OnceLock<Mutex<Option<(Instant, String, Vec<BackblazeSnapshot>, Vec<BackblazeSnapshotError>)>>> = OnceLock::new();
+static BACKUP_SCHEDULE_CACHE: OnceLock<Mutex<Vec<(Instant, String, Option<serde_json::Value>, Option<serde_json::Value>)>>> = OnceLock::new();
+const BACKUP_SCHEDULE_DOOR: &str = "/api/v1/pid2/schedule";
 
 fn backblaze_error(status: StatusCode, reason: &str) -> Response {
     (status, Json(serde_json::json!({"ok": false, "reason": reason}))).into_response()
@@ -45,6 +47,74 @@ fn backblaze_redact_credentials(value: &mut serde_json::Value, key: &str, secret
 fn backblaze_invalidate() {
     *BACKBLAZE_STATUS_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = None;
     *BACKBLAZE_SNAPSHOT_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()) = None;
+    BACKUP_SCHEDULE_CACHE.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+fn backup_schedule(id: &str) -> Result<(Option<serde_json::Value>, Option<serde_json::Value>), CaduceusHttpReadback> {
+    let mut cache = BACKUP_SCHEDULE_CACHE.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap_or_else(|e| e.into_inner());
+    cache.retain(|(time,_,_,_)| time.elapsed() < BACKBLAZE_CACHE_TTL);
+    if let Some((_,_,row,kernel)) = cache.iter().find(|(_,name,_,_)|name == id) { return Ok((row.clone(),kernel.clone())); }
+    let encoded: String = url::form_urlencoded::byte_serialize(id.as_bytes()).collect();
+    let receipt = caduceus_http("GET", &format!("{BACKUP_SCHEDULE_DOOR}/status/{encoded}"));
+    if !receipt.ok { return Err(receipt); }
+    let payload = receipt.body.get("receiptPayload").unwrap_or(&receipt.body);
+    let row = if payload.get("schedule") == Some(&serde_json::Value::Null) { None } else if let Some(schedule) = payload.get("schedule").and_then(serde_json::Value::as_object) { let field = |name: &str| schedule.get(name).cloned().unwrap_or(serde_json::Value::Null); let fire = payload.get("last_fire").filter(|v|v.is_object()).map(|v|serde_json::json!({"state":v.get("state"),"trigger":v.get("trigger"),"started_at":v.get("started_at"),"finished_at":v.get("finished_at"),"duration_ms":v.get("duration_ms"),"first_missing_signal":v.get("first_missing_signal"),"reason":v.get("reason")})); Some(serde_json::json!({"schedule":{"enabled":field("enabled"),"frequency":field("frequency"),"time":field("time"),"weekday":field("weekday"),"calendar":field("calendar")},"next_fire":payload.get("next_fire"),"last_fire":fire})) } else { return Err(CaduceusHttpReadback {ok:false,status:503,path:receipt.path,body:serde_json::json!({"ok":false,"reason":"schedule status unavailable"}),first_missing_signal:"schedule status unavailable".into()}); };
+    let kernel = if receipt.body.get("receiptPayload").is_some() { Some(serde_json::json!({"schema":receipt.body.get("schema"),"version":receipt.body.get("version"),"timestamp":receipt.body.get("timestamp")})) } else { None };
+    if cache.len() >= 256 { cache.remove(0); }
+    cache.push((Instant::now(), id.to_owned(), row.clone(), kernel.clone())); Ok((row,kernel))
+}
+fn backup_id(bucket: &str) -> String { format!("backblaze-{bucket}") }
+fn backup_schedule_fresh(id: &str) -> Result<(Option<serde_json::Value>, Option<serde_json::Value>), CaduceusHttpReadback> {
+    BACKUP_SCHEDULE_CACHE.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap_or_else(|e| e.into_inner()).retain(|(_,name,_,_)| name != id);
+    backup_schedule(id)
+}
+fn backup_command(mut body: serde_json::Value, kernel: Option<&serde_json::Value>, transition: &str) -> serde_json::Value {
+    if let (Some(object), Some(kernel)) = (body.as_object_mut(), kernel) {
+        for field in ["schema", "version", "timestamp"] { if let Some(value) = kernel.get(field) { object.insert(field.into(), value.clone()); } }
+        object.insert("intent_id".into(), "coronatio-backups".into());
+        object.insert("transition".into(), transition.into());
+    }
+    body
+}
+fn backup_schedule_response(mut receipt: CaduceusHttpReadback) -> Response {
+    if receipt.ok && receipt.body.get("ok").is_none() {
+        let payload_ok = receipt.body.get("receiptPayload").and_then(|v|v.get("ok")).and_then(serde_json::Value::as_bool).unwrap_or(true);
+        receipt.ok = payload_ok;
+        if let Some(object) = receipt.body.as_object_mut() { object.insert("ok".into(), payload_ok.into()); }
+    }
+    backblaze_readback_response(receipt)
+}
+fn backup_schedule_save(headers: &axum::http::HeaderMap, body: &serde_json::Value) -> Response {
+    let Some(id) = body.get("schedule_id").and_then(serde_json::Value::as_str) else { return backblaze_error(StatusCode::BAD_REQUEST, "schedule id is required"); };
+    let is_nas = id == "nas-sync";
+    let bucket = if is_nas { None } else { id.strip_prefix("backblaze-") };
+    if !is_nas {
+        let Some(name) = bucket else { return backblaze_error(StatusCode::BAD_REQUEST, "unknown backup job"); };
+        let configured = backblaze_config_value().ok().and_then(|config| backblaze_bucket(&config, name)).is_some();
+        if !configured { return backblaze_error(StatusCode::BAD_REQUEST, "bucket not configured"); }
+    }
+    let frequency = body.get("frequency").and_then(serde_json::Value::as_str).unwrap_or("");
+    if !matches!(frequency, "manual" | "daily" | "weekly") { return backblaze_error(StatusCode::BAD_REQUEST, "invalid frequency"); }
+    let time = body.get("time").and_then(serde_json::Value::as_str).unwrap_or("");
+    let bytes = time.as_bytes();
+    if bytes.len()!=5 || bytes[2]!=b':' || !bytes.iter().enumerate().all(|(i,b)| i==2 || b.is_ascii_digit()) || &time[..2]>"23" || &time[3..]>"59" { return backblaze_error(StatusCode::BAD_REQUEST, "invalid time"); }
+    let weekday = if frequency == "weekly" { match body.get("weekday").and_then(serde_json::Value::as_str) { Some(day) if matches!(day, "Mon"|"Tue"|"Wed"|"Thu"|"Fri"|"Sat"|"Sun") => serde_json::json!(day), _ => return backblaze_error(StatusCode::BAD_REQUEST, "invalid weekday") } } else { serde_json::Value::Null };
+    let calendar = serde_json::json!({"frequency":if frequency=="manual" {"daily"} else {frequency}, "time":time,"weekday":weekday});
+    let (current,kernel) = match backup_schedule_fresh(id) { Ok(v) => v, Err(e) => return backblaze_readback_response(e) };
+    if is_nas && current.is_none() { return backblaze_error(StatusCode::NOT_FOUND, "NAS schedule is not registered"); }
+    if is_nas && frequency != "manual" && current.as_ref().and_then(|v|v.get("schedule")).and_then(|v|v.get("enabled")).and_then(serde_json::Value::as_bool) != Some(true) { return backblaze_error(StatusCode::FORBIDDEN, "NAS schedule cannot be re-armed here"); }
+    if current.is_none() {
+        let Some(timestamp) = body.get("timestamp").and_then(serde_json::Value::as_str) else { return backblaze_error(StatusCode::BAD_REQUEST, "timestamp is required"); };
+        let envelope = serde_json::json!({"schema":"caduceus.pid2.schedule.v1","intent_id":"coronatio-backups","transition":"register","version":"1.0.0","timestamp":timestamp,"schedule":{"schedule_id":id,"calendar":calendar,"job":{"band":"storage/backup/backblaze/bucket-run","action":"run","payload":{"bucket":bucket}}}});
+        let register = backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/register"), envelope);
+        if !register.ok { return backup_schedule_response(register); }
+        if frequency == "manual" {
+            let mut disabled = backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/disable"), backup_command(serde_json::json!({"schedule_id":id}), kernel.as_ref(), "schedule-disable"));
+            if !disabled.ok { if let Some(object) = disabled.body.as_object_mut() { object.insert("reason".into(), "Schedule was registered but could not be disabled; it may run. Retry Manual or disable it through the owner controls.".into()); } }
+            return backup_schedule_response(disabled);
+        }
+        return backup_schedule_response(register);
+    }
+    backup_schedule_response(backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/update"), backup_command(serde_json::json!({"schedule_id":id,"calendar":calendar,"enabled":frequency!="manual"}), kernel.as_ref(), "schedule-update")))
 }
 fn backblaze_act(headers: &axum::http::HeaderMap, path: &str, body: serde_json::Value) -> CaduceusHttpReadback {
     let result = caduceus_actuate_json(&mutation_authority(), headers, path, body);
@@ -189,17 +259,26 @@ async fn backblaze_config_post_route(headers: axum::http::HeaderMap, Json(body):
     match last { Some(receipt) => backblaze_readback_response(receipt), None => (StatusCode::OK, Json(serde_json::json!({"ok":true}))).into_response() }
 }
 async fn backblaze_run_bucket_route(headers: axum::http::HeaderMap, Path(bucket): Path<String>) -> Response {
-    backblaze_readback_response(backblaze_act(&headers, &format!("{BACKBLAZE_DOOR}/bucket/run"), serde_json::json!({"bucket":bucket})))
+    backup_run(&headers, &backup_id(&bucket), Some(&bucket))
+}
+fn backup_run(headers: &axum::http::HeaderMap, id: &str, bucket: Option<&str>) -> Response {
+    match backup_schedule_fresh(id) {
+        Ok((Some(_),kernel)) => backup_schedule_response(backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/run"), backup_command(serde_json::json!({"schedule_id":id}), kernel.as_ref(), "schedule-run"))),
+        Ok((None,_)) => match bucket { Some(bucket) => backblaze_readback_response(backblaze_act(headers, &format!("{BACKBLAZE_DOOR}/bucket/run"), serde_json::json!({"bucket":bucket}))), None => backblaze_error(StatusCode::NOT_FOUND, "NAS schedule is not registered") },
+        Err(e) => backblaze_readback_response(e),
+    }
 }
 async fn backblaze_run_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    if body.get("action").and_then(serde_json::Value::as_str) == Some("schedule-save") { return backup_schedule_save(&headers, &body); }
+    if body.get("schedule_id").and_then(serde_json::Value::as_str) == Some("nas-sync") { return backup_run(&headers, "nas-sync", None); }
     let bucket = match body.get("bucket") {
         Some(value) => match value.as_str() { Some(v) => v.to_owned(), None => return backblaze_error(StatusCode::BAD_REQUEST, "bucket must be a string") },
         None => match backblaze_config_value().and_then(|v| backblaze_bucket_rows(&v).map(|rows| rows.first().and_then(|r| r.get("bucket")).and_then(serde_json::Value::as_str).map(str::to_owned))) {
             Ok(Some(v)) => v, Ok(None) => return backblaze_error(StatusCode::BAD_REQUEST, "no bucket configured"), Err(e) => return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, &e),
         },
     };
-    let (path, payload) = if body.get("plan").and_then(serde_json::Value::as_bool) == Some(true) { ("/api/v1/storage/backup/forgejo/backup-b2".to_owned(), serde_json::json!({"bucket":bucket,"plan":true})) } else { (format!("{BACKBLAZE_DOOR}/bucket/run"), serde_json::json!({"bucket":bucket})) };
-    backblaze_readback_response(backblaze_act(&headers, &path, payload))
+    if body.get("plan").and_then(serde_json::Value::as_bool) == Some(true) { return backblaze_readback_response(backblaze_act(&headers, "/api/v1/storage/backup/forgejo/backup-b2", serde_json::json!({"bucket":bucket,"plan":true}))); }
+    backup_run(&headers, &backup_id(&bucket), Some(&bucket))
 }
 fn backblaze_status_rows() -> Result<Vec<BackblazeStatusRow>, CaduceusHttpReadback> {
     let mut cache = BACKBLAZE_STATUS_CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner());
@@ -228,7 +307,17 @@ async fn backblaze_status_route() -> Response {
     }
     let running = statuses.iter().any(|s| s.running);
     let last = statuses.iter().filter(|s| s.last_run_at.as_ref().and_then(serde_json::Value::as_i64).is_some()).max_by_key(|s| s.last_run_at.as_ref().and_then(serde_json::Value::as_i64));
-    (StatusCode::OK, Json(serde_json::json!({"ok":true,"buckets":buckets,"running":running,"last_run_at":last.and_then(|s|s.last_run_at.clone()),"last_run_ok":last.and_then(|s|s.last_run_ok)}))).into_response()
+    let mut jobs = Vec::new();
+    for bucket in &buckets {
+        let name = bucket["bucket"].as_str().unwrap_or_default(); let id = backup_id(name);
+        let row = match backup_schedule(&id) { Ok((row,_)) => row, Err(e) => return backblaze_readback_response(e) };
+        jobs.push(serde_json::json!({"kind":"backblaze","bucket":name,"schedule_id":id,"pid2":row}));
+    }
+    match backup_schedule("nas-sync") {
+        Ok((Some(row),_)) => jobs.push(serde_json::json!({"kind":"nas","bucket":null,"schedule_id":"nas-sync","pid2":row})),
+        Ok((None,_)) => {}, Err(e) => return backblaze_readback_response(e),
+    }
+    (StatusCode::OK, Json(serde_json::json!({"ok":true,"buckets":buckets,"jobs":jobs,"running":running,"last_run_at":last.and_then(|s|s.last_run_at.clone()),"last_run_ok":last.and_then(|s|s.last_run_ok)}))).into_response()
 }
 #[derive(Debug, Deserialize)]
 struct BackblazeSnapshotsQuery { bucket: Option<String> }
