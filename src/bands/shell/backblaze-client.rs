@@ -153,9 +153,11 @@ fn shell_backblaze_client() -> &'static str {
       if (!response.ok && body?.ok !== false) return { ...body, ok: false, reason: body?.reason || `Request failed (${response.status})` };
       return body;
     }
-    function readJson(context, url, body = null) {
-      const init = body === null ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
-      return context.fetchJson(url, init);
+    async function readJson(context, url, body = null) {
+      if (body === null) return context.fetchJson(url);
+      const result = await getJson(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: context.signal }, context.binding);
+      if (!context.current() || !current(context.binding)) throw new DOMException('Read retired', 'AbortError');
+      return result;
     }
     function renderStatusNote(message, binding = state.binding) {
       const ribbon = el('[data-backblaze-ribbon]', binding);
