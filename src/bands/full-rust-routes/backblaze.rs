@@ -13,6 +13,19 @@ static BACKBLAZE_SNAPSHOT_CACHE: OnceLock<Mutex<Option<(Instant, String, Vec<Bac
 static BACKUP_SCHEDULE_CACHE: OnceLock<Mutex<Vec<(Instant, String, Option<serde_json::Value>, Option<serde_json::Value>)>>> = OnceLock::new();
 const BACKUP_SCHEDULE_DOOR: &str = "/api/v1/pid2/schedule";
 
+async fn backups_ledger_route(Json(body): Json<serde_json::Value>) -> Response {
+    backblaze_readback_response(caduceus_http_json("POST", "/api/v1/storage/backup/ledger", body, None))
+}
+async fn backups_drives_route() -> Response {
+    backblaze_readback_response(caduceus_http_json("POST", "/api/v1/storage/nas/drives", serde_json::json!({}), None))
+}
+async fn backups_folders_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    backblaze_readback_response(admin_fragment_caduceus_json_request(&headers, "POST", "/api/v1/storage/nas/list", body))
+}
+async fn backups_skip_check_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    backblaze_readback_response(admin_fragment_caduceus_json_request(&headers, "POST", "/api/v1/storage/backup/forgejo/skip-check", body))
+}
+
 fn backblaze_error(status: StatusCode, reason: &str) -> Response {
     (status, Json(serde_json::json!({"ok": false, "reason": reason}))).into_response()
 }
@@ -101,13 +114,13 @@ fn backup_schedule_save(headers: &axum::http::HeaderMap, body: &serde_json::Valu
     let calendar = serde_json::json!({"frequency":if frequency=="manual" {"daily"} else {frequency}, "time":time,"weekday":weekday});
     let (current,kernel) = match backup_schedule_fresh(id) { Ok(v) => v, Err(e) => return backblaze_readback_response(e) };
     if is_nas && current.is_none() { return backblaze_error(StatusCode::NOT_FOUND, "NAS schedule is not registered"); }
-    if is_nas && frequency != "manual" && current.as_ref().and_then(|v|v.get("schedule")).and_then(|v|v.get("enabled")).and_then(serde_json::Value::as_bool) != Some(true) { return backblaze_error(StatusCode::FORBIDDEN, "NAS schedule cannot be re-armed here"); }
+    let enabled = frequency != "manual" && body.get("enabled").and_then(serde_json::Value::as_bool).unwrap_or(true);
     if current.is_none() {
         let Some(timestamp) = body.get("timestamp").and_then(serde_json::Value::as_str) else { return backblaze_error(StatusCode::BAD_REQUEST, "timestamp is required"); };
-        let envelope = serde_json::json!({"schema":"caduceus.pid2.schedule.v1","intent_id":"coronatio-backups","transition":"register","version":"1.0.0","timestamp":timestamp,"schedule":{"schedule_id":id,"enabled":frequency!="manual","calendar":calendar,"job":{"band":"storage/backup/backblaze/bucket-run","action":"run","payload":{"bucket":bucket}}}});
+        let envelope = serde_json::json!({"schema":"caduceus.pid2.schedule.v1","intent_id":"coronatio-backups","transition":"register","version":"1.0.0","timestamp":timestamp,"schedule":{"schedule_id":id,"enabled":enabled,"calendar":calendar,"job":{"band":"storage/backup/backblaze/bucket-run","action":"run","payload":{"bucket":bucket}}}});
         return backup_schedule_response(backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/register"), envelope));
     }
-    backup_schedule_response(backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/update"), backup_command(serde_json::json!({"schedule_id":id,"calendar":calendar,"enabled":frequency!="manual"}), kernel.as_ref(), "schedule-update")))
+    backup_schedule_response(backblaze_act(headers, &format!("{BACKUP_SCHEDULE_DOOR}/update"), backup_command(serde_json::json!({"schedule_id":id,"calendar":calendar,"enabled":enabled}), kernel.as_ref(), "schedule-update")))
 }
 fn backblaze_act(headers: &axum::http::HeaderMap, path: &str, body: serde_json::Value) -> CaduceusHttpReadback {
     let result = caduceus_actuate_json(&mutation_authority(), headers, path, body);
