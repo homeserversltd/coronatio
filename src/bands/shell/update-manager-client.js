@@ -59,7 +59,10 @@
           const timerStatus = typeof service?.active === 'boolean' ? `Timer ${service.active ? 'active' : 'inactive'}` : 'Timer status unavailable';
           content.innerHTML = `<label>Automatic updates <input type="checkbox" data-update-schedule ${service?.enabled ? 'checked' : ''} ${known ? '' : 'disabled'}></label><p>${known ? timerStatus : 'Automatic updates status unavailable'}</p>${typeof cadence === 'string' && cadence ? `<p>${esc(cadence)}</p>` : ''}`;
         } else if (selected === 'Interactables') {
-          const draw = (items, silenced) => items.map(row => `<article><strong>${esc(row.name || row.id)}</strong>${row.summary || row.description ? `<p>${esc(row.summary || row.description)}</p>` : ''}${silenced ? `<button type="button" data-interactable-action="unsilence" data-interactable-id="${esc(row.id)}">Unsilence</button>` : `<button type="button" data-interactable-action="run" data-interactable-id="${esc(row.id)}">Run</button> <button type="button" data-interactable-action="silence" data-interactable-id="${esc(row.id)}">Silence</button>`}</article>`).join('');
+          const draw = (items, silenced) => items.map(row => {
+            const diff = typeof row.diff === 'string' && row.diff ? `<pre class="ux-readout">${row.diff.split('\n').map(line => `<span${line.startsWith('-') && !line.startsWith('---') ? ' class="error"' : line.startsWith('+') && !line.startsWith('+++') ? ' class="success"' : ''}>${esc(line)}</span>`).join('\n')}</pre>` : '<p>Diff unavailable</p>';
+            return `<article><strong>${esc(row.target_path || row.id)}</strong>${row.slice?.sentence ? `<p>${esc(row.slice.sentence)}</p>` : ''}${diff}${silenced ? `<button type="button" data-interactable-action="unsilence" data-interactable-id="${esc(row.id)}">Unsilence</button>` : `<button type="button" data-interactable-action="run" data-interactable-id="${esc(row.id)}">Run</button> <button type="button" data-interactable-action="silence" data-interactable-id="${esc(row.id)}">Silence</button>`}</article>`;
+          }).join('');
           const pending = rows.filter(row => !row.silenced), muted = rows.filter(row => row.silenced);
           content.innerHTML = draw(pending, false) + (muted.length ? `<p>Silenced</p>${draw(muted, true)}` : '');
         } else {
