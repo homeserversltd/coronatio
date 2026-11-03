@@ -8,7 +8,7 @@
       const close = modal.querySelector('.modal-actions [data-manager-close]');
       if (close) close.textContent = 'Close';
       const content = modal.querySelector('[data-update-content]');
-      const esc = value => escapeDiskHtml(String(value ?? ''));
+      const esc = value => escapeDiskHtml(String(value ?? '')).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       const localTime = value => { const date = new Date(value); return value && !Number.isNaN(date.valueOf()) ? date.toLocaleString() : ''; };
       const read = async path => {
         try {
@@ -41,7 +41,7 @@
           selected === 'Schedule' ? read('update/service/status') : null
         ]);
         if (!modal.isConnected || generation !== current || !headerState.isAdmin) return;
-        const runs = recent(history), rows = list(interactables, 'interactables');
+        const runs = recent(history), rows = list(interactables, 'interactables').filter(row => typeof row?.target_path === 'string' && row.target_path.length > 0);
         if (selected === 'Overview') {
           const latest = runs[0];
           const ready = status?.ok === true && status?.profilePresent === true && status?.statePresent === true && status?.routePresent === true && (Array.isArray(interactables) || Array.isArray(interactables?.interactables)) && history?.ok === true && Array.isArray(history?.runs);
@@ -61,10 +61,10 @@
         } else if (selected === 'Interactables') {
           const draw = (items, silenced) => items.map(row => {
             const diff = typeof row.diff === 'string' && row.diff ? `<pre class="ux-readout">${row.diff.split('\n').map(line => `<span${line.startsWith('-') && !line.startsWith('---') ? ' class="error"' : line.startsWith('+') && !line.startsWith('+++') ? ' class="success"' : ''}>${esc(line)}</span>`).join('\n')}</pre>` : '<p>Diff unavailable</p>';
-            return `<article><strong>${esc(row.target_path || row.id)}</strong>${row.slice?.sentence ? `<p>${esc(row.slice.sentence)}</p>` : ''}${diff}${silenced ? `<button type="button" data-interactable-action="unsilence" data-interactable-id="${esc(row.id)}">Unsilence</button>` : `<button type="button" data-interactable-action="run" data-interactable-id="${esc(row.id)}">Run</button> <button type="button" data-interactable-action="silence" data-interactable-id="${esc(row.id)}">Silence</button>`}</article>`;
+            return `<article><strong>${esc(row.target_path)}</strong>${row.slice?.sentence ? `<p>${esc(row.slice.sentence)}</p>` : ''}${diff}${silenced ? `<button type="button" data-interactable-action="unsilence" data-interactable-id="${esc(row.id)}">Unsilence</button>` : `<button type="button" data-interactable-action="run" data-interactable-id="${esc(row.id)}">Yes</button> <button type="button" data-interactable-action="silence" data-interactable-id="${esc(row.id)}">Silence</button>`}</article>`;
           }).join('');
           const pending = rows.filter(row => !row.silenced), muted = rows.filter(row => row.silenced);
-          content.innerHTML = draw(pending, false) + (muted.length ? `<p>Silenced</p>${draw(muted, true)}` : '');
+          content.innerHTML = !(Array.isArray(interactables) || Array.isArray(interactables?.interactables)) ? '<p>Updates unavailable</p>' : rows.length ? draw(pending, false) + (muted.length ? `<p>Silenced</p>${draw(muted, true)}` : '') : '<p>Nothing waiting</p>';
         } else {
           content.innerHTML = runs.map(run => `<article><p>${esc(localTime(run.finished_at))} · ${esc(run.outcome)} · ${esc(run.duration_ms)} ms · ${esc(run.module_count)} modules · ${esc(run.updated_count)} updated</p>${(Array.isArray(run.failures) ? run.failures : []).map(f => `<p>${esc(f.module)}: ${esc(f.signal)} <button type="button" data-copy-failure="${esc(`${f.module}: ${f.signal}`)}">Copy</button></p>`).join('')}</article>`).join('') || '<p>No update history available.</p>';
         }
