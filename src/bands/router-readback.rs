@@ -899,14 +899,12 @@ fn render_og_pane_fragment(tab_id: &str, session: Session) -> String {
     } else {
         let stats = if tab_id == "stats" { render_stats_elements_fragment(session) } else { String::new() };
         let upload = if tab_id == "upload" { render_upload_tree_placeholder() } else { "" };
-        let test = if tab_id == "test" { render_test_showcase() } else { String::new() };
         let unbound = if tab_id == "unbound" && session == Session::Admin { DNS_PANE } else { "" };
         let shell = shell_document_2()
             .replace("__NAV__", "")
             .replace("__INDICATOR_SPINE__", "")
             .replace("__STATS_ELEMENTS_FRAGMENT__", &stats)
             .replace("__UPLOAD_TREE_FRAGMENT__", upload)
-            .replace("__TEST__", &test)
             .replace("__CARTRIDGE_PANES__", "")
             .replace("__UNBOUND_PANE__", unbound);
         let fragment = extract_pane_inner_html(&shell, tab_id).unwrap_or_else(|| {

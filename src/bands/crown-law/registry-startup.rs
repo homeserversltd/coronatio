@@ -55,17 +55,7 @@ fn native_crown_panes() -> Vec<CrownPane> {
             route: "/#backblaze".to_string(),
             state_route: "/api/panes/backblaze".to_string(),
         },
-        CrownPane {
-            id: "test".to_string(),
-            title: "Test".to_string(),
-            role: "stock UX laboratory".to_string(),
-            summary: "Native stock component showcase and theme truth surface built from composable UX primitives.".to_string(),
-            order: 60,
-            admin_only: false,
-            install_mode: InstallMode::FirstPartyNative,
-            route: "/#test".to_string(),
-            state_route: "/api/panes/test".to_string(),
-        },
+
         CrownPane {
             id: "linker".to_string(),
             title: "Linker".to_string(),

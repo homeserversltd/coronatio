@@ -12,7 +12,7 @@
   --motion-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
 }
-#pane-test [data-animation-lab] * { animation: none !important; }
+[data-tab-scope="test"] [data-animation-lab] * { animation: none !important; }
 .animation-band { margin-block: 1.25rem; padding: 1rem; border: 1px solid var(--border); border-radius: 10px; }
 .animation-band > header { margin-bottom: 1rem; }
 .animation-band > header h3, .animation-specimen h4 { margin: 0 0 .35rem; }
@@ -49,9 +49,9 @@
 .motion-toast.is-running { opacity: 1; transform: translateY(0); }
 .motion-progress { width: 100%; height: 16px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--hiddenTabBackground); }
 .motion-progress span { display: block; width: 65%; height: 100%; background: repeating-linear-gradient(45deg, var(--secondary), var(--secondary) 8px, var(--primaryHover) 8px, var(--primaryHover) 16px); }
-#pane-test [data-animation-lab] .motion-progress.is-running span { animation: indranet-stripes .8s linear infinite !important; }
+[data-tab-scope="test"] [data-animation-lab] .motion-progress.is-running span { animation: indranet-stripes .8s linear infinite !important; }
 .motion-spinner { width: 34px; height: 34px; border: 4px solid var(--border); border-top-color: var(--primary); border-radius: 50%; }
-#pane-test [data-animation-lab] .motion-spinner.is-running { animation: indranet-spin .8s linear infinite !important; }
+[data-tab-scope="test"] [data-animation-lab] .motion-spinner.is-running { animation: indranet-spin .8s linear infinite !important; }
 @keyframes indranet-stripes { to { background-position: 23px 0; } }
 @keyframes indranet-spin { to { transform: rotate(360deg); } }
 .motion-lifecycle { display: grid; gap: 1rem; }

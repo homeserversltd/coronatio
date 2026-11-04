@@ -352,6 +352,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
           try { window.htmx.trigger(tab, 'immortal-floor-admit'); }
           catch (_) { retireAdmissionRequest(record, 'admission-actuator-missing', { structuralFault: true }); }
         });
+        if (id === 'test') renderTestMonthlyCalendar();
         return pane;
       }
       async function seatGuest(id, crossing, epoch, detail = '') {

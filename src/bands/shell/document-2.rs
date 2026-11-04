@@ -134,7 +134,6 @@ fn shell_document_2() -> &'static str {
       <section class="pane" id="pane-linker" data-pane-panel="linker" data-view-panel="linker" data-admin-only-pane="true" role="tabpanel" aria-label="Linker" data-admin-only="true" data-admin-viewport="linker">
         <article class="linker-tablet" data-linker-tablet><p>Linker admission is loaded when this pane is admitted.</p></article>
       </section>
-      __TEST__
       __CARTRIDGE_PANES__
       <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" data-scaffold-root data-guest-id="dhcp" data-scaffold-version="1" role="tabpanel" aria-label="DHCP">
         <div class="dhcp-tablet" data-dhcp-tablet data-admin-viewport="dhcp">

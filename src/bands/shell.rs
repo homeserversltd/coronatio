@@ -14,7 +14,6 @@ include!("shell/unbound-client.rs");
 include!("shell/backblaze-client.rs");
 include!("shell/firewall-client.rs");
 include!("shell/wake-on-lan-client.rs");
-include!("shell/test.rs");
 include!("shell/render.rs");
 include!("shell/stage-gate.rs");
 include!("shell/runtime.rs");

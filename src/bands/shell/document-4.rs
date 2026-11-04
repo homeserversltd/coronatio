@@ -1409,7 +1409,6 @@ fn shell_document_4() -> &'static str {
       if (backdrop && event.target === backdrop) return closeUxModalDemo();
     });
     document.addEventListener('keydown', event => { const current = event.target.closest?.('[data-lan-ip-octet]'); if (!current || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return; const buttons = [...current.closest('[data-lan-ip-grid]').querySelectorAll('[data-lan-ip-octet]:not(:disabled)')]; const index = buttons.indexOf(current); if (index < 0) return; const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : Math.max(0, Math.min(buttons.length - 1, index + ({ ArrowLeft: -1, ArrowRight: 1, ArrowUp: -8, ArrowDown: 8 }[event.key] || 0))); event.preventDefault(); buttons[next]?.focus(); });
-    renderTestMonthlyCalendar();
     document.body.addEventListener('mouseenter', event => {
       const toast = event.target.closest?.('[data-coronatio-toast]'); if (!toast || toast.classList.contains('toast-exit')) return;
       const elapsed = Date.now() - Number(toast.dataset.toastStartedAt || Date.now());

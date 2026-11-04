@@ -3,13 +3,13 @@ const APPLIANCE_CONFIG_JSON: &str = "/etc/appliance/config.json";
 const APPLIANCE_FACTORY_CONFIG_JSON: &str = "/etc/appliance/config.factory";
 const INSTALLED_STATIC_ROOT: &str = "/opt/coronatio/source/static";
 const DEFAULT_STATIC_ROOT: &str = "static";
-const PRIMARY_TABS: [&str; 9] = [
+const PRIMARY_TABS: [&str; 8] = [
     "admin",
     "portals",
     "upload",
     "stats",
     "backblaze",
-    "test",
+
     "dhcp",
     "firewall",
     "unbound",

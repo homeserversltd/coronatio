@@ -762,7 +762,6 @@ fn admin_class_generic_refusal_family(path: &str) -> &'static str {
     else if path.contains("/miner") { "miner" }
     else if path.contains("/nasLinker") { "nasLinker" }
     else if path.contains("/vpn") { "vpn" }
-    else if path.contains("/test") { "test" }
     else { homeserver_route_family(path) }
 }
 

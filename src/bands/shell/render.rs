@@ -168,7 +168,6 @@ fn build_crown_shell_source(session: Session) -> String {
         .replace("__NAV__", &nav)
         .replace("__INDICATOR_SPINE__", &render_indicator_strip(session))
         .replace("__INDICATOR_MODAL_REGISTRY__", &render_indicator_modal_registry(session))
-        .replace("__TEST__", &render_test_showcase())
         .replace("__UPLOAD_TREE_FRAGMENT__", render_upload_tree_placeholder())
         .replace("__STATS_ELEMENTS_FRAGMENT__", &render_stats_elements_fragment(session))
         .replace("__UPDATE_MANAGER_CLIENT__", include_str!("update-manager-client.js"))

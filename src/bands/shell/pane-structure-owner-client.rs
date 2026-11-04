@@ -667,7 +667,6 @@ fn shell_pane_structure_owner_client() -> &'static str {
       upload: { root: '[data-upload-viewport]', required: ['[data-upload-tree]'], held: true },
       stats: { root: '[data-stats-viewport]', required: ['[data-stat-element-id]'], held: true },
       backblaze: { root: '[data-backblaze-tablet]', required: ['[data-backblaze-ribbon]', '[data-backblaze-panel]'], held: true },
-      test: { root: '[data-native-stock-test="true"]', required: ['.ui-tab-group', '.test-tablet-content'], slots: [] },
       linker: {
         root: '#linker-fragment[data-linker-state][data-linker-path]',
         swap: 'outerHTML',
