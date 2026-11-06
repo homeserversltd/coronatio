@@ -594,22 +594,6 @@ fn shell_backblaze_client() -> &'static str {
       }
       return binding;
     }
-    function paneActive() {
-      const pane = document.querySelector('[data-pane-panel="backblaze"]');
-      return Boolean(pane?.classList.contains('active') && admitted());
-    }
-    function observeBackblazeActivity() {
-      const pane = document.querySelector('[data-pane-panel="backblaze"]');
-      if (!(pane instanceof Element)) return;
-      let wasActive = false;
-      const check = () => {
-        const active = paneActive();
-        if (active && !wasActive) void hydrateBackblazeEntry();
-        wasActive = active;
-      };
-      new MutationObserver(check).observe(pane, { attributes: true, attributeFilter: ['class'] });
-      check();
-    }
     window.addEventListener('coronatio:privileged-state-retired', () => {
       if (state.binding) { retireBackblaze(state.binding, true); return; }
       scrubProtectedState(document.querySelector('[data-pane-panel="backblaze"]'));
@@ -623,7 +607,7 @@ fn shell_backblaze_client() -> &'static str {
       scrubProtectedState(pane);
       state.activeModal = null; state.returnFocus = null;
     });
-    async function hydrateBackblazeEntry() {
+    async function hydrateBackblaze() {
       const binding = adoptBackblazeBinding();
       if (!binding || !current(binding)) return false;
       return loadMain(binding);
@@ -1124,6 +1108,5 @@ fn shell_backblaze_client() -> &'static str {
       if (overlay && !overlay.hidden && overlay.dataset.backupsModal !== 'confirm') closeModal(overlay.dataset.backupsModal);
     });
     function scrubBackblazeProtectedState(pane) { scrubProtectedState(pane); }
-    observeBackblazeActivity();
 "####
 }
