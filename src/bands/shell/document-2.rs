@@ -137,27 +137,18 @@ fn shell_document_2() -> &'static str {
       __CARTRIDGE_PANES__
       <section class="pane" id="pane-dhcp" data-pane-panel="dhcp" data-view-panel="dhcp" data-scaffold-root data-guest-id="dhcp" data-scaffold-version="1" role="tabpanel" aria-label="DHCP">
         <div class="dhcp-tablet" data-dhcp-tablet data-admin-viewport="dhcp">
-          <div class="dhcp-info-banner" data-dhcp-info-banner data-scaffold-slot="dhcp-statistics" data-scaffold-placeholder="DHCP statistics" aria-live="polite">
-            <span class="dhcp-info-item">Homeserver: <span class="dhcp-info-value" data-dhcp-homeserver>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
-            <span class="dhcp-info-item">Reservations: <span class="dhcp-info-value" data-dhcp-reservations-count>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
-            <span class="dhcp-info-item">Hosts: <span class="dhcp-info-value" data-dhcp-hosts-count>—</span></span><span class="dhcp-info-separator" aria-hidden="true">|</span>
-            <span class="dhcp-info-item">Leases: <span class="dhcp-info-value" data-dhcp-leases-count>—</span></span>
-          </div>
-          <div class="dhcp-button-row" data-admin-only="true">
-            <button type="button" class="ui-button ui-button--secondary ui-button--small" data-dhcp-refresh>Refresh</button>
-            <label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__switch"><input type="checkbox" class="ui-toggle__input" data-dhcp-anonymize><span class="ui-toggle__slider"></span></span><span class="ui-toggle__label">Anonymize</span></label>
-            <div class="reservation-slider" data-dhcp-boundary-control data-scaffold-slot="dhcp-pool-boundary" data-scaffold-placeholder="DHCP pool boundary">
-              <label for="dhcp-reservation-boundary">Reserved addresses: <strong class="dhcp-boundary-value" data-dhcp-boundary-value>—</strong> <span class="dhcp-boundary-value" data-dhcp-boundary-min>—</span>–<span class="dhcp-boundary-value" data-dhcp-boundary-max>—</span></label>
-              <input id="dhcp-reservation-boundary" class="ui-slider" type="range" min="0" max="249" value="0" data-dhcp-boundary>
-              <button type="button" class="ui-button ui-button--primary ui-button--small" data-dhcp-boundary-save>Apply</button>
-            </div>
+          <div class="dhcp-summary" data-scaffold-slot="dhcp-statistics" data-scaffold-placeholder="DHCP statistics" aria-live="polite">
+            <span><span data-dhcp-reservations-count>—</span> reserved · <span data-dhcp-leases-count>—</span> on a lease · <span data-dhcp-hosts-count>—</span> devices</span>
+            <label class="ui-toggle ui-toggle--medium"><span class="ui-toggle__label">Anonymize</span><span class="ui-toggle__switch"><input type="checkbox" class="ui-toggle__input" data-dhcp-anonymize><span class="ui-toggle__slider"></span></span></label>
           </div>
           <div class="dhcp-tablet-content">
             <div class="dhcp-banner dhcp-banner--error" data-dhcp-error role="alert" hidden></div>
             <div class="dhcp-banner dhcp-banner--loading" data-dhcp-loading aria-live="polite"><span class="loading-spinner medium" role="progressbar" aria-label="Loading devices"></span><span>Loading device identities…</span></div><span hidden data-scaffold-slot="identity-boundary" data-scaffold-placeholder="network DHCP boundary"></span><span hidden data-scaffold-slot="identity-leases" data-scaffold-placeholder="DHCP leases"></span><span hidden data-scaffold-slot="identity-reservations" data-scaffold-placeholder="DHCP reservations"></span><span hidden data-scaffold-slot="identity-dns" data-scaffold-placeholder="DNS records"></span><span hidden data-scaffold-slot="identity-mutation" data-scaffold-placeholder="network change"></span>
-            <section class="identity-roster-host dhcp-device-roster" data-identity-roster-host="dhcp" data-identity-perspective="address"><h3>Device addresses</h3><p class="dhcp-device-roster-hint">Pinned addresses are reserved. Lease-only devices can be pinned in one click.</p><div data-scaffold-slot="identity-roster" data-scaffold-placeholder="network device roster"><div data-identity-roster><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__block"></span></div></div></div></section>
+            <section class="identity-roster-host dhcp-device-roster" data-identity-roster-host="dhcp" data-identity-perspective="address"><h3>Devices</h3><div data-scaffold-slot="identity-roster" data-scaffold-placeholder="network device roster"><div data-identity-roster><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span></div></div></div><p class="dhcp-device-roster-hint">A new reservation takes effect when the device next reconnects.</p></section>
+            <details class="dhcp-range" data-scaffold-slot="dhcp-pool-boundary" data-scaffold-placeholder="DHCP pool boundary"><summary>Address range <span data-dhcp-range-summary>Reading ranges…</span><span data-dhcp-range-warning hidden></span></summary><div class="reservation-slider" data-dhcp-boundary-control><label for="dhcp-reservation-boundary">Reserved addresses: <strong data-dhcp-boundary-value>—</strong> (<span data-dhcp-boundary-min>—</span>–<span data-dhcp-boundary-max>—</span>)</label><input id="dhcp-reservation-boundary" class="ui-slider" type="range" min="0" max="249" value="0" data-dhcp-boundary><button type="button" class="ui-button ui-button--primary ui-button--small" data-dhcp-boundary-save>Apply</button></div></details>
           </div>
         </div>
+        <div class="ui-modal-backdrop" data-dhcp-device-modal aria-hidden="true"><section class="ui-modal" role="dialog" aria-modal="true" aria-label="Device details"><div data-dhcp-device-body></div><div class="ui-modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dhcp-device-close>Close</button></div></section></div>
         <div class="ui-modal-backdrop" data-identity-claim-modal aria-hidden="true">
           <section class="ui-modal" role="dialog" aria-modal="true" aria-labelledby="identity-claim-title">
             <h2 id="identity-claim-title">Claim device</h2><div data-identity-claim-body></div>
