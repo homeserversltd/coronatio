@@ -56,18 +56,20 @@ fn firewall_seated_mutation(
     match authority.authorize(&context) {
         Ok(attendance) => {
             match body {
-                Some(body) => caduceus_http_json_with_attendance_and_document(
+                Some(body) => caduceus_http_json_with_attendance_and_document_timeout(
                     method,
                     caduceus_path,
                     body,
                     Some(&attendance.proof),
                     Some(&attendance.document),
+                    std::time::Duration::from_secs(60),
                 ),
-                None => caduceus_http_with_attendance_and_document(
+                None => caduceus_http_with_attendance_and_document_timeout(
                     method,
                     caduceus_path,
                     Some(&attendance.proof),
                     Some(&attendance.document),
+                    std::time::Duration::from_secs(60),
                 ),
             }
         }

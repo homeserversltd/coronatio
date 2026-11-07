@@ -91,7 +91,7 @@ fn shell_firewall_client() -> &'static str {
       }
       if (children && scaffoldReadProjectionAllowed(children, preserveReadySlots)) morphLivePane(children, firewallState.children.map(row => {
         const mac = firewallMac(row); const name = firewallChildName(mac);
-        const status = [Array.isArray(row.hostnames) ? `${row.hostnames.length} sites allowed` : '', row.enforcement === 'pending-renewal' ? 'pending renewal' : ''].filter(Boolean).join(' · ');
+        const status = [Array.isArray(row.hostnames) ? `${row.hostnames.length} ${row.hostnames.length === 1 ? 'site' : 'sites'} allowed` : '', row.enforcement === 'pending-renewal' ? 'pending renewal' : ''].filter(Boolean).join(' · ');
         return `<li data-scaffold-key="firewall-child:${escapeHtml(mac)}"><button type="button" class="firewall-child" data-firewall-whitelist="${escapeHtml(mac)}"${firewallState.childrenReady ? '' : ' disabled'}><span class="firewall-row-text"><strong>${escapeHtml(name)}</strong>${status ? `<span>${escapeHtml(status)}</span>` : ''}</span><span aria-hidden="true">›</span></button></li>`;
       }).join('') || (firewallState.childrenReady ? '<li data-scaffold-key="firewall-children-empty">Register a device below to give it a website allowlist.</li>' : ''));
       firewallSetControls(binding, preserveReadySlots);
