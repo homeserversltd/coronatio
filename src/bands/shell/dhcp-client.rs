@@ -1,6 +1,6 @@
 fn shell_dhcp_client() -> &'static str {
     r####"    // One active binding owns this bounded last-good projection; reads stay independent.
-    const identityState = { roster: [], boundary: {}, dhcpBoundary: {}, dhcpBoundaryCommitted: null, leases: [], reservations: [], dns: {}, notes: {}, modalMac: null, anonymized: false, reservation: null, binding: null, ready: { roster: false, boundary: false, leases: false, reservations: false, dns: false }, dhcpReady: { statistics: false, pool: false }, statistics: null, writeBusy: false };
+    const identityState = { roster: [], boundary: {}, dhcpBoundary: {}, dhcpBoundaryCommitted: null, dhcpBoundaryChoice: null, leases: [], reservations: [], dns: {}, notes: {}, modalMac: null, anonymized: false, reservation: null, binding: null, ready: { roster: false, boundary: false, leases: false, reservations: false, dns: false }, dhcpReady: { statistics: false, pool: false }, statistics: null, writeBusy: false };
     const identityPerspective = Object.freeze({
       address: Object.freeze({ lead: ['MAC', 'Observed lease', 'Declared reservation'], emphasis: 'address', writable: true }),
       name: Object.freeze({ lead: ['MAC', 'Names', 'Claim state'], emphasis: 'name', writable: true }),
@@ -22,12 +22,13 @@ fn shell_dhcp_client() -> &'static str {
       root.querySelectorAll('[data-dhcp-edit], [data-dhcp-remove]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !reservationReady || identityState.writeBusy; });
       root.querySelectorAll('[data-edit-note-button]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !identityState.ready.roster || identityState.writeBusy; });
       root.querySelectorAll('[data-identity-claim-save], [data-identity-reservation-save]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !addressReady || identityState.writeBusy; });
-      root.querySelectorAll('[data-dhcp-boundary], [data-dhcp-boundary-save]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !identityState.dhcpReady.statistics || !identityState.dhcpReady.pool || identityState.writeBusy; });
+      root.querySelectorAll('[data-dhcp-boundary]').forEach(node => { if (scaffoldReadProjectionAllowed(node, preserveReadySlots)) node.disabled = !current || !identityState.dhcpReady.statistics || !identityState.dhcpReady.pool || identityState.writeBusy; });
+      root.querySelectorAll('[data-dhcp-boundary-save]').forEach(node => { node.disabled = !current || !identityState.dhcpReady.statistics || !identityState.dhcpReady.pool || identityState.writeBusy || identityState.dhcpBoundaryChoice === null; });
     }
     function identityMarkRetired(binding) {
       if (identityState.binding !== binding) return;
       Object.keys(identityState.ready).forEach(key => { identityState.ready[key] = false; });
-      identityState.dhcpReady.statistics = false; identityState.dhcpReady.pool = false;
+      identityState.dhcpReady.statistics = false; identityState.dhcpReady.pool = false; identityState.dhcpBoundaryChoice = null;
       const root = binding.root; if (!(root instanceof Element) || !root.isConnected) return;
       identitySetControls(binding);
     }
@@ -37,7 +38,7 @@ fn shell_dhcp_client() -> &'static str {
       const previous=identityState.binding; if(previous&&previous!==binding)window.scaffoldRegistry?.retire(previous,'Identity binding replaced');
       identityState.binding = binding;
       Object.keys(identityState.ready).forEach(key => { identityState.ready[key] = false; });
-      identityState.dhcpReady.statistics = false; identityState.dhcpReady.pool = false;
+      identityState.dhcpReady.statistics = false; identityState.dhcpReady.pool = false; identityState.dhcpBoundaryChoice = null;
       identityState.writeBusy = false; identityState.modalMac = null; identityState.reservation = null;
       window.scaffoldRegistry.onRetire(binding, () => identityMarkRetired(binding));
       return identityCurrent(binding);
@@ -50,7 +51,7 @@ fn shell_dhcp_client() -> &'static str {
       identityState.leases = []; identityState.reservations = []; identityState.dns = {}; identityState.notes = {};
       identityState.modalMac = null; identityState.anonymized = false; identityState.reservation = null; identityState.writeBusy = false;
       Object.keys(identityState.ready).forEach(key => { identityState.ready[key] = false; });
-      identityState.dhcpReady.statistics = false; identityState.dhcpReady.pool = false; identityState.statistics = null; identityState.binding = null;
+      identityState.dhcpReady.statistics = false; identityState.dhcpReady.pool = false; identityState.dhcpBoundaryChoice = null; identityState.statistics = null; identityState.binding = null;
     });
     function identityRead(binding, key, route, slotName, validate, apply, options = {}) {
       const slot = binding.root.querySelector(`[data-scaffold-slot="${slotName}"]`); if (!slot) return Promise.resolve(false);
@@ -207,16 +208,18 @@ fn shell_dhcp_client() -> &'static str {
     }
     function paintDhcpBoundary(boundary, binding) {
       if (!identityCurrent(binding)) return;
-      const statistics=identityState.statistics || {}; const reservations=dhcpNumber(statistics.reservations_count), leases=dhcpNumber(statistics.leases_count), configured=dhcpNumber(statistics.reservations_total);
+      const statistics=identityState.statistics || {}; const reservations=dhcpNumber(statistics.reservations_count), leases=dhcpNumber(statistics.leases_count), configured=dhcpNumber(statistics.reservations_total), leasesTotal=dhcpNumber(statistics.leases_total);
       if (reservations === null || leases === null || configured === null) { identityState.dhcpReady.pool=false; identitySetControls(binding); return; }
-      const minValue=0; const maxValue=Math.max(configured, 249-leases);
-      const value=configured; identityState.dhcpBoundary=boundary; identityState.dhcpBoundaryCommitted=value;
+      const minValue=reservations; const maxValue=Math.max(reservations, configured, 249-leases);
+      const value=Math.max(reservations,configured); identityState.dhcpBoundary=boundary; identityState.dhcpBoundaryCommitted=value; identityState.dhcpBoundaryChoice=null;
+      dhcpText(binding.root,'[data-dhcp-range-configured]',`Configured range: ${configured}`);
       const warning=binding.root.querySelector('[data-dhcp-range-warning]'); if (warning) { warning.hidden=reservations<=configured; warning.textContent=reservations>configured ? `${reservations} reservations exceed the configured range of ${configured}.` : ''; }
       const pool=Array.isArray(boundary) ? boundary[0] : null;
       const n=ip => String(ip || '').split('.').reduce((a,p)=>a*256+Number(p),0);
       if (pool && /^\d+(\.\d+){3}$/.test(pool.start || '') && /^\d+(\.\d+){3}$/.test(pool.end || '')) {
-        const end=n(pool.end), start=n(pool.start), bits=Number(String(pool.subnet || '').split('/')[1]);
-        if (Number.isInteger(bits) && bits >= 1 && bits <= 30) { const last=(Math.floor(start / 2**(32-bits))+1)*2**(32-bits)-2, short=x=>'.'+(x%256); dhcpText(binding.root,'[data-dhcp-range-summary]',`reserved ${short(start+1)} – ${short(end)} · lease pool ${short(end+1)} – ${short(last)}`); }
+        const end=n(pool.end), start=n(pool.start), short=x=>'.'+(x%256);
+        const poolText=leasesTotal === null ? '' : leasesTotal === 0 ? ' · lease pool empty' : ` · lease pool ${short(end+1)} – ${short(end+leasesTotal)}`;
+        dhcpText(binding.root,'[data-dhcp-range-summary]',`reserved ${short(start+1)} – ${short(end)}${poolText}`);
       }
       dhcpText(binding.root,'[data-dhcp-boundary-min]',minValue); dhcpText(binding.root,'[data-dhcp-boundary-max]',maxValue); dhcpText(binding.root,'[data-dhcp-boundary-value]',value);
       binding.root.querySelectorAll('[data-dhcp-boundary]').forEach(slider => { slider.min=String(minValue); slider.max=String(maxValue); slider.value=String(value); });
@@ -236,18 +239,19 @@ fn shell_dhcp_client() -> &'static str {
     }
     function hydrateDhcpBoundary(options = {}) {
       const binding=scaffoldRegistry.capture('dhcp'); if (!binding || !identityAdopt(binding)) return Promise.resolve(false);
-      const stats=dhcpRead(binding,'dhcp-statistics','/api/dhcp/statistics','dhcp-statistics',body=>{if(!body||typeof body!=='object'||Array.isArray(body))throw new Error('DHCP statistics are unavailable');if(!['homeserver_ip','reservations_count','leases_count','host_count'].some(key=>Object.prototype.hasOwnProperty.call(body,key)))throw new Error('DHCP statistics fields are unavailable');return {homeserver_ip:typeof body.homeserver_ip==='string'?body.homeserver_ip:null,reservations_count:dhcpNumber(body.reservations_count),reservations_total:dhcpNumber(body.reservations_total),leases_count:dhcpNumber(body.leases_count),host_count:dhcpNumber(body.host_count)};},value=>{identityState.statistics=value;paintDhcpStatistics(value,binding);},{supersede:options.supersede});
+      identityState.dhcpBoundaryChoice=null; identitySetControls(binding);
+      const stats=dhcpRead(binding,'dhcp-statistics','/api/dhcp/statistics','dhcp-statistics',body=>{if(!body||typeof body!=='object'||Array.isArray(body))throw new Error('DHCP statistics are unavailable');if(!['homeserver_ip','reservations_count','leases_count','host_count'].some(key=>Object.prototype.hasOwnProperty.call(body,key)))throw new Error('DHCP statistics fields are unavailable');return {homeserver_ip:typeof body.homeserver_ip==='string'?body.homeserver_ip:null,reservations_count:dhcpNumber(body.reservations_count),reservations_total:dhcpNumber(body.reservations_total),leases_count:dhcpNumber(body.leases_count),leases_total:dhcpNumber(body.leases_total),host_count:dhcpNumber(body.host_count)};},value=>{identityState.statistics=value;paintDhcpStatistics(value,binding);},{supersede:options.supersede});
       const pool=dhcpRead(binding,'dhcp-pool-boundary','/api/dhcp/pool-boundary','dhcp-pool-boundary',body=>{if(!Array.isArray(body)||!body.length||!body[0]?.start||!body[0]?.end||!body[0]?.subnet)throw new Error(body?.error || body?.firstMissingSignal || 'DHCP pool boundary is unavailable');return body;},value=>{identityState.dhcpBoundary=value;identityState.dhcpReady.pool=true;if(identityState.dhcpReady.statistics)paintDhcpBoundary(value,binding);else identitySetControls(binding);},{supersede:options.supersede});
       return Promise.all([stats,pool]);
     }
     function hydrateDhcp(options = {}) { const binding=scaffoldRegistry.capture('dhcp'); if (!binding || !identityAdopt(binding)) return Promise.resolve(false); return Promise.all([startIdentityReads(binding,options),hydrateDhcpBoundary(options)]); }
     function hydrateIdentity(options = {}) { const guest=viewportFamilyAdmitted('dhcp')?'dhcp':viewportFamilyAdmitted('unbound')?'unbound':null;const binding=guest && scaffoldRegistry.capture(guest);if(!binding||!identityAdopt(binding))return Promise.resolve(false);return startIdentityReads(binding,options); }
     document.addEventListener('change', event => { const anonymize=event.target.closest?.('[data-dhcp-anonymize]'); if(anonymize&&identityCurrent()&&identityState.binding.root.contains(anonymize)){identityState.anonymized=anonymize.checked;renderIdentityRoster('address',identityState.binding);const mac=identityState.binding.root.querySelector('[data-dhcp-device-modal].open')?.dataset.mac;if(mac)openDhcpDevice(mac);} },true);
-    document.addEventListener('input', event => { const binding=identityState.binding;const slider=event.target.closest?.('[data-dhcp-boundary]');if(slider&&identityCurrent(binding)&&binding.root.contains(slider)&&identityState.dhcpReady.statistics&&identityState.dhcpReady.pool)dhcpText(binding.root,'[data-dhcp-boundary-value]',slider.value); },true);
+    document.addEventListener('input', event => { const binding=identityState.binding;const slider=event.target.closest?.('[data-dhcp-boundary]');if(slider&&!slider.disabled&&identityCurrent(binding)&&binding.root.contains(slider)&&identityState.dhcpReady.statistics&&identityState.dhcpReady.pool&&!identityState.writeBusy){identityState.dhcpBoundaryChoice=dhcpNumber(Number(slider.value));dhcpText(binding.root,'[data-dhcp-boundary-value]',slider.value);identitySetControls(binding);} },true);
     document.addEventListener('click', async event => {
       const binding=identityState.binding; const target=event.target instanceof Element?event.target:null; if(!target)return;
       const saveBoundary=target.closest('[data-dhcp-boundary-save]');
-      if(saveBoundary){if(!binding?.root.contains(saveBoundary)||!identityCurrent(binding)||saveBoundary.disabled||!identityState.dhcpReady.statistics||!identityState.dhcpReady.pool||identityState.writeBusy)return;const slider=binding.root.querySelector('[data-dhcp-boundary]');if(!slider)return;identityState.writeBusy=true;identitySetControls(binding);try{const receipt=await identityWrite(binding,'pool-boundary-save','/api/dhcp/pool-boundary',{method:'POST',body:JSON.stringify({max_reservations:Number(slider.value)})},['dhcp.statistics','dhcp.pool'],value=>value?.success!==false&&value?.ok!==false);if(receipt&&identityCurrent(binding)){await hydrateDhcpBoundary({supersede:true});showCoronatioToast('Reserved-address boundary applied.','success');}}catch(failure){if(identityCurrent(binding)){slider.value=String(identityState.dhcpBoundaryCommitted ?? '');dhcpText(binding.root,'[data-dhcp-boundary-value]',identityState.dhcpBoundaryCommitted ?? '—');showCoronatioToast(failure?.message||'DHCP boundary request failed','error');}}finally{if(identityState.binding===binding){identityState.writeBusy=false;identitySetControls(binding);}}return;}
+      if(saveBoundary){if(!binding?.root.contains(saveBoundary)||!identityCurrent(binding)||saveBoundary.disabled||!identityState.dhcpReady.statistics||!identityState.dhcpReady.pool||identityState.writeBusy)return;const slider=binding.root.querySelector('[data-dhcp-boundary]');if(!slider||identityState.dhcpBoundaryChoice===null||Number(slider.value)!==identityState.dhcpBoundaryChoice)return;const chosen=identityState.dhcpBoundaryChoice;identityState.dhcpBoundaryChoice=null;identityState.writeBusy=true;identitySetControls(binding);try{const receipt=await identityWrite(binding,'pool-boundary-save','/api/dhcp/pool-boundary',{method:'POST',body:JSON.stringify({max_reservations:chosen})},['dhcp.statistics','dhcp.pool'],value=>value?.success!==false&&value?.ok!==false);if(receipt&&identityCurrent(binding)){await hydrateDhcpBoundary({supersede:true});showCoronatioToast('Reserved-address boundary applied.','success');}}catch(failure){if(identityCurrent(binding)){slider.value=String(identityState.dhcpBoundaryCommitted ?? '');dhcpText(binding.root,'[data-dhcp-boundary-value]',identityState.dhcpBoundaryCommitted ?? '—');showCoronatioToast(failure?.message||'DHCP boundary request failed','error');}}finally{if(identityState.binding===binding){identityState.writeBusy=false;identitySetControls(binding);}}return;}
       const pin=target.closest('[data-dhcp-pin]');if(pin){if(binding?.root.contains(pin)&&!pin.disabled)return pinDhcpLease(pin.dataset.dhcpPin);return;}
       const claim=target.closest('[data-identity-claim]');if(claim){if(binding?.root.contains(claim)&&!claim.disabled)return openIdentityClaim(claim.dataset.identityClaim);return;}
       const device=target.closest('[data-dhcp-device]'); if(device){if(binding?.root.contains(device))openDhcpDevice(device.dataset.dhcpDevice);return;}
@@ -260,7 +264,7 @@ fn shell_dhcp_client() -> &'static str {
     },true);
     window.addEventListener('coronatio:privileged-state-retired', () => {
       window.scaffoldRegistry?.retire('dhcp','Admin role retired');
-      identityState.roster=[];identityState.boundary={};identityState.dhcpBoundary={};identityState.dhcpBoundaryCommitted=null;identityState.leases=[];identityState.reservations=[];identityState.dns={};identityState.notes={};identityState.statistics=null;identityState.ready={roster:false,boundary:false,leases:false,reservations:false,dns:false};identityState.dhcpReady={statistics:false,pool:false};identityState.binding=null;identityState.modalMac=null;identityState.reservation=null;identityState.writeBusy=false;
+      identityState.roster=[];identityState.boundary={};identityState.dhcpBoundary={};identityState.dhcpBoundaryCommitted=null;identityState.dhcpBoundaryChoice=null;identityState.leases=[];identityState.reservations=[];identityState.dns={};identityState.notes={};identityState.statistics=null;identityState.ready={roster:false,boundary:false,leases:false,reservations:false,dns:false};identityState.dhcpReady={statistics:false,pool:false};identityState.binding=null;identityState.modalMac=null;identityState.reservation=null;identityState.writeBusy=false;
       document.querySelectorAll('[data-pane-panel="dhcp"] [data-identity-roster]').forEach(node=>node.replaceChildren());
       document.querySelectorAll('[data-pane-panel="dhcp"] [data-dhcp-homeserver], [data-pane-panel="dhcp"] [data-dhcp-reservations-count], [data-pane-panel="dhcp"] [data-dhcp-hosts-count], [data-pane-panel="dhcp"] [data-dhcp-leases-count], [data-pane-panel="dhcp"] [data-dhcp-boundary-min], [data-pane-panel="dhcp"] [data-dhcp-boundary-max], [data-pane-panel="dhcp"] [data-dhcp-boundary-value]').forEach(node=>node.textContent='—');
       document.querySelectorAll('[data-pane-panel="dhcp"] [data-dhcp-boundary]').forEach(node=>{node.disabled=true;});
