@@ -74,10 +74,12 @@ fn shell_unbound_client() -> &'static str {
       if(!rows.length&&!identityState.ready.roster&&!identityState.ready.dns)return;
       const html=rows.length?`<div class="dns-name-list">${rows.map(row=>{
         const key=`${row.name.toLowerCase()}-${row.address.toLowerCase()}`;
-        const device=dnsArray(identityState?.roster).find(item=>(row.mac&&String(item.mac||'').toLowerCase()===String(row.mac).toLowerCase())||dnsAddress(item)===row.address);
+        const targetName = /(?:^|\.)home\.arpa\.?$/i.test(row.address) && row.address.toLowerCase().replace(/\.$/, '') !== row.name.toLowerCase().replace(/\.$/, '') ? row.address : '';
+        const device = !targetName && row.address !== '—' ? dnsArray(identityState?.roster).find(item => dnsAddress(item) === row.address) : null;
+        const deviceLabel = targetName ? `→ ${targetName}` : device ? dnsDeviceLabel(device) : '—';
         const provenance=Array.isArray(row.provenance)?row.provenance.join(', '):String(row.provenance||'observed');
         const marker=row.removable?'':(/legacy/i.test(provenance)?'legacy':'observed');
-        return `<div class="dns-name-row" data-scaffold-key="dns-name:${escapeHtml(key)}"><span>${escapeHtml(dnsValue(row.name))}${marker?` <small>(${marker})</small>`:''}</span><span>${escapeHtml(dnsValue(row.address))}</span><span>${escapeHtml(device?dnsDeviceLabel(device):'Unknown device')}</span>${row.removable?`<button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" aria-label="Remove owned A and PTR records for ${escapeHtml(row.name)}"${!dnsUiState.identityReady||dnsUiState.mutationBusy?' disabled':''}>Remove</button>`:''}</div>`;
+        return `<div class="dns-name-row" data-scaffold-key="dns-name:${escapeHtml(key)}"><span>${escapeHtml(dnsValue(row.name))}${marker?` <small>(${marker})</small>`:''}</span><span>${escapeHtml(dnsValue(row.address))}</span><span>${escapeHtml(deviceLabel === 'Unknown device' ? '—' : deviceLabel)}</span>${row.removable?`<button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" aria-label="Remove owned A and PTR records for ${escapeHtml(row.name)}"${!dnsUiState.identityReady||dnsUiState.mutationBusy?' disabled':''}>Remove</button>`:''}</div>`;
       }).join('')}</div>`:'<p>No LAN names are registered.</p>';
       morphLivePane(target,html);
     }
