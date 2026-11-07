@@ -67,16 +67,20 @@ fn shell_unbound_client() -> &'static str {
       }));
       return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name) || a.address.localeCompare(b.address));
     }
-    function renderDnsNames(preserveReadySlots = false) { const target=dnsUiState.binding?.root?.querySelector('[data-dns-names]');
-        if(!target||!dnsCurrent())return;
-        if(!scaffoldReadProjectionAllowed(target,preserveReadySlots))return;
-        const rows=dnsNameRows();
-        if(!rows.length&&!identityState.ready.roster&&!identityState.ready.dns)return;
-        const html=rows.length?`<table class="ui-table dns-name-table"><thead><tr><th>Name</th><th>Address</th><th>PTR</th><th>Provenance</th><th>Action</th></tr></thead><tbody>${rows.map(row=>{const key=`${row.name.toLowerCase()}-${row.address.toLowerCase()}`;
-          return `<tr data-scaffold-key="dns-name:${escapeHtml(key)}"><td><code>${escapeHtml(dnsValue(row.name))}</code></td><td><code>${escapeHtml(dnsValue(row.address))}</code></td><td><code>${escapeHtml(dnsValue(row.ptr))}</code></td><td>${escapeHtml(Array.isArray(row.provenance)?row.provenance.join(', '):dnsValue(row.provenance))}</td><td>${row.removable?`<button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" aria-label="Remove owned A and PTR records for ${escapeHtml(row.name)}"${!dnsUiState.identityReady||dnsUiState.mutationBusy?' disabled':''}>Remove</button>`:'—'}</td></tr>`;
-          }).join('')}</tbody></table>`:'<p>No LAN names are registered.</p>';
-        morphLivePane(target,html);
-        }
+    function renderDnsNames(preserveReadySlots = false) {
+      const target=dnsUiState.binding?.root?.querySelector('[data-dns-names]');
+      if(!target||!dnsCurrent()||!scaffoldReadProjectionAllowed(target,preserveReadySlots))return;
+      const rows=dnsNameRows();
+      if(!rows.length&&!identityState.ready.roster&&!identityState.ready.dns)return;
+      const html=rows.length?`<div class="dns-name-list">${rows.map(row=>{
+        const key=`${row.name.toLowerCase()}-${row.address.toLowerCase()}`;
+        const device=dnsArray(identityState?.roster).find(item=>(row.mac&&String(item.mac||'').toLowerCase()===String(row.mac).toLowerCase())||dnsAddress(item)===row.address);
+        const provenance=Array.isArray(row.provenance)?row.provenance.join(', '):String(row.provenance||'observed');
+        const marker=row.removable?'':(/legacy/i.test(provenance)?'legacy':'observed');
+        return `<div class="dns-name-row" data-scaffold-key="dns-name:${escapeHtml(key)}"><span>${escapeHtml(dnsValue(row.name))}${marker?` <small>(${marker})</small>`:''}</span><span>${escapeHtml(dnsValue(row.address))}</span><span>${escapeHtml(device?dnsDeviceLabel(device):'Unknown device')}</span>${row.removable?`<button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" aria-label="Remove owned A and PTR records for ${escapeHtml(row.name)}"${!dnsUiState.identityReady||dnsUiState.mutationBusy?' disabled':''}>Remove</button>`:''}</div>`;
+      }).join('')}</div>`:'<p>No LAN names are registered.</p>';
+      morphLivePane(target,html);
+    }
     function dnsDeviceLabel(device) { return String(device?.hostname || device?.name || device?.declared_reservation?.hostname || device?.observed_lease?.hostname || dnsArray(device?.dns_names)[0] || device?.mac || 'Unknown device'); }
     function dnsRosterDevice(mac = dnsUiState.pickedMac) { return dnsArray(identityState?.roster).find(device => String(device?.mac || '') === String(mac || '')) || null; }
     function renderDnsModalRoster() { const target=dnsUiState.binding?.root?.querySelector('[data-dns-device-roster]');
@@ -96,32 +100,36 @@ fn shell_unbound_client() -> &'static str {
     function resolverReceipt(envelope) { const known=['adblockEnabled','upstreams','dnsOverTls','blocklistDomainCount','blocklistLastUpdate','unboundActive'];return dnsFindObject(envelope,node=>known.some(key=>Object.prototype.hasOwnProperty.call(node,key)))||null; }
     function dnsUpstreamBase(address) { return String(address ?? '').trim().split(/[@#]/, 1)[0].trim(); }
     function dnsNormalizeUpstreams(addresses) { return [...new Set(dnsArray(addresses).map(dnsUpstreamBase).filter(Boolean))]; }
-    function dnsSelectedUpstreamAddresses() { const root=dnsUiState.binding?.root;if(!root)return [];const selected=[...root.querySelectorAll('[data-dns-upstream-provider]:checked')].flatMap(input=>dnsProviders[input.value]||[]),customToggle=root.querySelector('[data-dns-upstream-custom-toggle]'),custom=customToggle?.checked?(root.querySelector('[data-dns-upstream-custom-addresses]')?.value||'').split(',').map(dnsUpstreamBase).filter(Boolean):[];return [...new Set([...selected,...custom])]; }
-    function renderDnsUpstreamReadout() { const root=dnsUiState.binding?.root,target=root?.querySelector('[data-dns-upstream-readout]');if(!target||!dnsCurrent())return;const dot=Boolean(root.querySelector('[data-dns-dot]')?.checked),addresses=dnsSelectedUpstreamAddresses().map(address=>dot?`${address}@853`:address);target.textContent=`Upstreams: [${addresses.join(', ')}] · DoT: ${dot?'on':'off'}`; }
+    function dnsResolverChoice(addresses) {
+      const normalized=dnsNormalizeUpstreams(addresses);
+      const preset=Object.keys(dnsProviders).find(name=>dnsProviders[name].length===normalized.length&&dnsProviders[name].every(address=>normalized.includes(address)));
+      return {preset:preset||null, custom:preset?[]:normalized};
+    }
     function renderResolverStatus(status) {
       const root=dnsUiState.binding?.root;
-        if(!root||!dnsCurrent())return;
-        const target=root.querySelector('[data-dns-resolver-status]'),adblock=root.querySelector('[data-dns-adblock]'),dotInput=root.querySelector('[data-dns-dot]'),customToggle=root.querySelector('[data-dns-upstream-custom-toggle]'),customLabel=root.querySelector('[data-dns-upstream-custom]'),customInput=root.querySelector('[data-dns-upstream-custom-addresses]'),readout=root.querySelector('[data-dns-upstream-readout]'),providerInputs=[...root.querySelectorAll('[data-dns-upstream-provider]')];
-
-      if(!status){if(target&&!dnsUiState.resolver)target.textContent='Resolver status not loaded.';if(readout&&!dnsUiState.resolver)readout.textContent='Resolver status unavailable.';dnsSetResolverControls();return;}
-      const hasUpstreams=Array.isArray(status.upstreams),hasDot=typeof status.dnsOverTls==='boolean',upstreams=hasUpstreams?status.upstreams.map(String):[],normalized=dnsNormalizeUpstreams(upstreams);
-      if(adblock&&typeof status.adblockEnabled==='boolean'&&!dnsUiState.resolverDirty.has('adblock'))adblock.checked=status.adblockEnabled;if(dotInput&&hasDot&&!dnsUiState.resolverDirty.has('upstreams'))dotInput.checked=status.dnsOverTls;
-      if(hasUpstreams&&!dnsUiState.resolverDirty.has('upstreams')){const selectedProviders=[];
-          providerInputs.forEach(input=>{const addresses=dnsProviders[input.value]||[],selected=addresses.length>0&&addresses.every(address=>normalized.includes(address));
-            input.checked=selected;
-            if(selected)selectedProviders.push(input.value);
-            });
-          const known=new Set(selectedProviders.flatMap(name=>dnsProviders[name]||[])),custom=normalized.filter(address=>!known.has(address));
-          if(customToggle)customToggle.checked=custom.length>0;
-          if(customLabel)customLabel.hidden=custom.length===0;
-          if(customInput)customInput.value=custom.join(', ');
-          }
-      if(readout){if(hasUpstreams&&hasDot)renderDnsUpstreamReadout();else readout.textContent=`Upstreams: ${hasUpstreams?normalized.join(', ')||'None':'unavailable'} · DoT: ${hasDot?(status.dnsOverTls?'on':'off'):'unavailable'}`;}
-      const updated=status.blocklistLastUpdate===null?'Never':Number.isFinite(status.blocklistLastUpdate)?new Date(status.blocklistLastUpdate*1000).toLocaleString():'Unavailable',count=Number.isFinite(status.blocklistDomainCount)?status.blocklistDomainCount.toLocaleString():'Unavailable',active=typeof status.unboundActive==='boolean'?(status.unboundActive?'Active':'Inactive'):'Unavailable';
-        if(target){const values=[['Upstreams',hasUpstreams?upstreams.join(', ')||'None':'Unavailable'],['Blocklist domains',count],['Last update',updated],['Unbound service',active]];
-          morphLivePane(target,values.map(([label,value])=>`<div class="dns-info-row" data-scaffold-key="resolver:${label}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(dnsValue(value))}</strong></div>`).join(''));
-          }dnsSetResolverControls();
-
+      if(!root||!dnsCurrent())return;
+      if(!status){dnsSetResolverControls();return;}
+      const adblock=root.querySelector('[data-dns-adblock]'),dotInput=root.querySelector('[data-dns-dot]'),customToggle=root.querySelector('[data-dns-upstream-custom-toggle]'),customArea=root.querySelector('[data-dns-upstream-custom]'),customInputs=[...root.querySelectorAll('[data-dns-upstream-custom-addresses]')],providerInputs=[...root.querySelectorAll('[data-dns-upstream-provider]')];
+      const hasUpstreams=Array.isArray(status.upstreams),hasDot=typeof status.dnsOverTls==='boolean',choice=dnsResolverChoice(status.upstreams);
+      if(adblock&&typeof status.adblockEnabled==='boolean'&&!dnsUiState.resolverDirty.has('adblock'))adblock.checked=status.adblockEnabled;
+      if(!dnsUiState.resolverDirty.has('upstreams')){
+        if(dotInput&&hasDot)dotInput.checked=status.dnsOverTls;
+        if(hasUpstreams){
+          providerInputs.forEach(input=>{input.checked=input.value===choice.preset;});
+          if(customToggle)customToggle.checked=!choice.preset;
+          if(customArea)customArea.hidden=Boolean(choice.preset);
+          customInputs.forEach((input,index)=>{input.value=index===0?(choice.custom[0]||''):choice.custom.slice(1).join(', ');});
+        }
+      }
+      const updated=status.blocklistLastUpdate===null?'Never':Number.isFinite(status.blocklistLastUpdate)?new Date(status.blocklistLastUpdate*1000).toLocaleString():'Unavailable';
+      const count=Number.isFinite(status.blocklistDomainCount)?status.blocklistDomainCount.toLocaleString():'Unavailable';
+      const blocklist=root.querySelector('[data-dns-blocklist-status]');
+      if(blocklist)blocklist.textContent=`${count} domains blocked · updated ${updated}`;
+      const active=typeof status.unboundActive==='boolean'?(status.unboundActive?'running':'stopped'):'unavailable';
+      const name=hasUpstreams?(choice.preset?({quad9:'Quad9',cloudflare:'Cloudflare',google:'Google'}[choice.preset]):'Custom'):'unavailable';
+      const service=root.querySelector('[data-dns-service-status]');
+      if(service)service.textContent=`Unbound ${active} · ${name} · encryption ${hasDot?(status.dnsOverTls?'on':'off'):'unavailable'}`;
+      dnsSetResolverControls();
     }
     function dnsCalendarRange() { const boundary = identityState?.boundary?.boundary || identityState?.boundary || {}; const start = dnsOctet(boundary.start || boundary.first || boundary.pool_start || boundary.reservation_start); const end = dnsOctet(boundary.end || boundary.last || boundary.pool_end || boundary.reservation_end); return start !== null && end !== null && start <= end ? { start, end } : null; }
     function dnsHolderMac(row) { return String(row?.mac || row?.macAddress || row?.['hw-address'] || row?.hwAddress || row?.device_mac || row?.clientId || row?.client_id || '').toLowerCase(); }
@@ -198,16 +206,17 @@ fn shell_unbound_client() -> &'static str {
         }
     function dnsMutation(binding,key,route,options) {
       const slot=binding.root.querySelector('[data-scaffold-slot="dns-mutation"]')||binding.root.querySelector('[data-scaffold-slot="identity-dns"]');if(!slot)return Promise.resolve(false);
-      return scaffoldRegistry.run(binding,`dns-write-${key}`,async ctx=>{if(!ctx.current()||!dnsCurrent(binding))return false;
+      let failure=null;
+      return scaffoldRegistry.run(binding,`dns-write-${key}`,async ctx=>{try{if(!ctx.current()||!dnsCurrent(binding))return false;
           const response=await fetch(route,{cache:'no-store',credentials:'same-origin',signal:ctx.signal,headers:options.body?{'content-type':'application/json'}:{},...options});
           const receipt=await response.json().catch(()=>null);
-          if(!response.ok||!receipt)throw new Error(receipt?.first_failing_boundary||receipt?.firstMissingSignal||receipt?.error||`Request failed (${response.status})`);
+          if(!response.ok||!receipt)throw new Error(dnsRefusal(receipt)||receipt?.first_failing_boundary||receipt?.firstMissingSignal||receipt?.error||`Request failed (${response.status})`);
           dnsRequireAccepted(receipt);
           if(!ctx.current()||!dnsCurrent(binding))return false;
           ctx.ready(slot);
           return receipt;
-          },{slots:[slot],retry:false,timeoutMs:15000,onFailure:({current,reason})=>{if(current()&&dnsCurrent(binding))dnsSetState(`DNS change unavailable: ${reason||'Read failed'}`);
-            }});
+          }catch(error){failure=error;throw error;}},{slots:[slot],retry:false,timeoutMs:15000,onFailure:({current,reason})=>{if(current()&&dnsCurrent(binding))dnsSetState(`DNS change unavailable: ${failure?.message||reason||'Read failed'}`);
+            }}).then(result=>{if(!result&&failure)throw failure;return result;});
 
     }
     async function saveDnsName() {
@@ -263,7 +272,7 @@ fn shell_unbound_client() -> &'static str {
           if(receipt&&dnsCurrent(binding)){dnsUiState.resolverDirty.delete('adblock');
             showCoronatioToast(`Ad blocking ${enabled?'enabled':'disabled'}.`,'success');
             await hydrateDns({supersede:true});
-            }}catch(failure){if(dnsCurrent(binding)){showCoronatioToast(failure?.message||'Ad blocking change failed','error');
+            }}catch(failure){if(dnsCurrent(binding)){dnsUiState.resolverDirty.delete('adblock');showCoronatioToast(failure?.message||'Ad blocking change failed','error');
             await hydrateDns({supersede:true});
             }}finally{if(dnsCurrent(binding))dnsSetMutationBusy(false);
           }
@@ -271,18 +280,12 @@ fn shell_unbound_client() -> &'static str {
     async function saveDnsUpstream() {
       const binding=dnsUiState.binding;
         if(!dnsCurrent(binding)||!Array.isArray(dnsUiState.resolver?.upstreams)||typeof dnsUiState.resolver?.dnsOverTls!=='boolean'||dnsUiState.mutationBusy)return;
-        const root=binding.root,
-          providers=[...new Set([...root.querySelectorAll('[data-dns-upstream-provider]:checked')].map(input=>input.value).filter(name=>dnsProviders[name]))],
-          customToggle=root.querySelector('[data-dns-upstream-custom-toggle]'),
-          typedCustom=customToggle?.checked?(root.querySelector('[data-dns-upstream-custom-addresses]')?.value||'').split(',').map(dnsUpstreamBase).filter(Boolean):[],
-          providerAddresses=[...new Set(providers.flatMap(name=>dnsProviders[name]))],
-          custom=[...new Set(typedCustom)].filter(address=>!providerAddresses.includes(address)),
-          addresses=[...new Set([...providerAddresses,...custom])];
-        if(!addresses.length){dnsSetState('Choose at least one upstream resolver.');
-          return;
-          }if(addresses.length>8){dnsSetState('Caduceus accepts at most eight upstream addresses.');
-          return;
-          }const dot=Boolean(root.querySelector('[data-dns-dot]')?.checked),payload=providers.length===1&&custom.length===0?{preset:providers[0],custom:null,dot}:{preset:null,custom:addresses,dot};
+        const root=binding.root, selected=root.querySelector('[data-dns-upstream-provider]:checked'), customToggle=root.querySelector('[data-dns-upstream-custom-toggle]');
+        const addresses=customToggle?.checked?[...new Set([...root.querySelectorAll('[data-dns-upstream-custom-addresses]')].flatMap(input=>input.value.split(',')).map(dnsUpstreamBase).filter(Boolean))]:[];
+        if(!selected&&!customToggle?.checked){dnsSetState('Choose an upstream resolver.');return;}
+        if(customToggle?.checked&&!addresses.length){dnsSetState('Enter at least one upstream address.');return;}
+        if(addresses.length>8){dnsSetState('Caduceus accepts at most eight upstream addresses.');return;}
+        const dot=Boolean(root.querySelector('[data-dns-dot]')?.checked),payload=selected?{preset:selected.value,custom:null,dot}:{preset:null,custom:addresses,dot};
         dnsSetMutationBusy(true);
 
       try{const receipt=await dnsMutation(binding,'upstream','/api/v1/network/dns/upstream',{method:'POST',body:JSON.stringify(payload)});
@@ -397,6 +400,7 @@ fn shell_unbound_client() -> &'static str {
           return;
           }if(target.closest('[data-dns-blocklist-update]'))return updateDnsBlocklist();
         if(target.closest('[data-dns-upstream-save]'))return saveDnsUpstream();
+        if(target.closest('[data-dns-upstream-cancel]')){dnsUiState.resolverDirty.delete('upstreams');renderResolverStatus(dnsUiState.resolver);return;}
         if(target.closest('[data-dns-refresh]'))return hydrateDns({supersede:true});
         },true);
 
@@ -409,7 +413,7 @@ fn shell_unbound_client() -> &'static str {
           }if(target.closest('[data-dns-upstream-provider], [data-dns-upstream-custom-toggle], [data-dns-dot]')){dnsUiState.resolverDirty.add('upstreams');
           const toggle=binding.root.querySelector('[data-dns-upstream-custom-toggle]'),custom=binding.root.querySelector('[data-dns-upstream-custom]');
           if(custom&&toggle)custom.hidden=!toggle.checked;
-          renderDnsUpstreamReadout();
+
           }},true);
 
     document.addEventListener('input',event=>{
@@ -421,7 +425,7 @@ fn shell_unbound_client() -> &'static str {
       }
       if(target.matches('[data-dns-upstream-custom-addresses]')){
         dnsUiState.resolverDirty.add('upstreams');
-        renderDnsUpstreamReadout();
+
       }
     },true);
     document.addEventListener('keydown',event=>{const binding=dnsUiState.binding,current=event.target.closest?.('[data-dns-ip-octet]');
@@ -445,7 +449,7 @@ fn shell_unbound_client() -> &'static str {
         dnsUiState.mutationBusy=false;
         dnsUiState.binding=null;
         dnsUiState.resolverDirty.clear();
-        document.querySelectorAll('[data-pane-panel="unbound"] [data-dns-names], [data-pane-panel="unbound"] [data-dns-device-roster], [data-pane-panel="unbound"] [data-dns-modal-records], [data-pane-panel="unbound"] [data-dns-resolver-status]').forEach(node=>node.replaceChildren());
+        document.querySelectorAll('[data-pane-panel="unbound"] [data-dns-names], [data-pane-panel="unbound"] [data-dns-device-roster], [data-pane-panel="unbound"] [data-dns-modal-records], [data-pane-panel="unbound"] [data-dns-service-status]').forEach(node=>node.replaceChildren());
         document.querySelectorAll('[data-pane-panel="unbound"] [data-dns-new-name], [data-pane-panel="unbound"] [data-dns-upstream-custom-addresses]').forEach(node=>{node.value='';
           });
         document.querySelectorAll('[data-pane-panel="unbound"] [data-dns-adblock], [data-pane-panel="unbound"] [data-dns-dot], [data-pane-panel="unbound"] [data-dns-upstream-provider], [data-pane-panel="unbound"] [data-dns-upstream-custom-toggle], [data-pane-panel="unbound"] [data-dns-resolver-control], [data-pane-panel="unbound"] [data-dns-add-name], [data-pane-panel="unbound"] [data-dns-add-save]').forEach(node=>{if('checked'in node)node.checked=false;
