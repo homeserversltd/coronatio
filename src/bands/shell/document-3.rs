@@ -1838,7 +1838,7 @@ __IMMORTAL_FLOOR_OWNER__
     async function AdminChromeProjection(previousActive) {
       try {
         const selectedGuest = lawfulPaneCandidate(previousActive);
-        const crossed = await showPane(selectedGuest, { refresh: true });
+        const crossed = await showPane(selectedGuest, { refresh: true, retainOnFailure: true });
         return crossed === true && window.getImmortalFloorState?.() === 'Seated' && currentActiveTabId() === selectedGuest;
       } catch (error) {
         console.warn('[coronatio] admin admission projection fault', error?.message || error);

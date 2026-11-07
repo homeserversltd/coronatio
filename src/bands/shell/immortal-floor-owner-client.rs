@@ -181,6 +181,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
           event.detail.shouldSwap = false;
           return;
         }
+        if (owner.timer !== null) window.clearTimeout(owner.timer);
+        owner.timer = null;
         const sourceOwned = Object.prototype.hasOwnProperty.call(nativePaneContracts, owner.id);
         owner.oobToken = null;
         if (sourceOwned && payload.hasOutOfBand) {
@@ -449,6 +451,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
             applyAdminDomState();
             applyTabBarVisibility();
             reconcileViewportStreamFamily();
+            if (options.retainOnFailure && outgoing === selected && healthyStructure(retainedPane, outgoing, retainedPane?.innerHTML)) return true;
           } else {
             fault(error?.message || 'admission-fault');
           }
