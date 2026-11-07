@@ -131,7 +131,9 @@ fn shell_dhcp_client() -> &'static str {
     }
     function identityWrite(binding, key, route, options, dependencies, accept = () => true) {
       const slot = identityMutationSlot(binding); if (!slot) return Promise.resolve(false);
+      let failure = null;
       return scaffoldRegistry.run(binding, `identity-write-${key}`, async ctx => {
+        try {
         if (!ctx.current() || !identityCurrent(binding) || !headerState.isAdmin || !dependencies.every(dep => dep === 'dhcp.statistics' ? identityState.dhcpReady.statistics : dep === 'dhcp.pool' ? identityState.dhcpReady.pool : identityState.ready[dep] === true)) return false;
         const response = await fetch(route, { cache: 'no-store', credentials: 'same-origin', signal: ctx.signal, headers: options.body ? {'content-type':'application/json'} : {}, ...options });
         const receipt = await response.json().catch(() => ({}));
@@ -139,7 +141,8 @@ fn shell_dhcp_client() -> &'static str {
         if (!response.ok || refusal) throw new Error(refusal || receipt.first_failing_boundary || receipt.firstMissingSignal || receipt.error || `Request failed (${response.status})`);
         if (!ctx.current() || !identityCurrent(binding) || !headerState.isAdmin || !accept(receipt)) return false;
         ctx.ready(slot); return receipt;
-      }, { slots: [slot], retry: false, timeoutMs: 15000, onFailure: ({ current, reason }) => { if (!current() || !identityCurrent(binding)) return; const error = binding.root.querySelector('[data-dhcp-error]'); if (error) { error.hidden = false; error.textContent = reason || 'Network identity write failed'; } } });
+        } catch (error) { failure = error; throw error; }
+      }, { slots: [slot], retry: false, timeoutMs: 15000, onFailure: ({ current, reason }) => { if (!current() || !identityCurrent(binding)) return; const error = binding.root.querySelector('[data-dhcp-error]'); if (error) { error.hidden = false; error.textContent = failure?.message || reason || 'Network identity write failed'; } } }).then(result => { if (!result && failure) throw failure; return result; });
     }
     function identityAddressAvailable(binding) { return identityHas(binding, ['roster', 'boundary', 'leases', 'reservations']); }
     function nextFreeIp() {
