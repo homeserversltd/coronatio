@@ -258,10 +258,11 @@
 .dhcp-tablet { max-width: 1040px; margin-inline: auto; }
 .dhcp-summary { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; min-height: 48px; }
 .dhcp-rows { display: grid; }
-.dhcp-row { display: grid; grid-template-columns: minmax(8rem, 2fr) minmax(7rem, 1fr) minmax(7rem, 2fr) auto auto; align-items: center; min-height: 48px; gap: .5rem; border-bottom: 1px solid var(--border); }
+.dhcp-row { display: grid; grid-template-columns: minmax(8rem, 2fr) minmax(7rem, 1fr) minmax(7rem, 2fr) 6rem 44px; align-items: center; min-height: 48px; gap: .5rem; border-bottom: 1px solid var(--border); }
 .dhcp-row--reserved { background: var(--hiddenTabBackground); }
 .dhcp-row-name { min-width: 0; overflow-wrap: anywhere; }
-.dhcp-pin { margin-inline-end: .5rem; }
+.dhcp-row:not(.dhcp-row--reserved) .dhcp-row-name { padding-inline-start: 2rem; }
+.dhcp-pin { display: inline-block; width: 1.5rem; margin-inline-end: .5rem; }
 .dhcp-chevron { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--text); font-size: 1.5rem; cursor: pointer; grid-column: 5; }
 .dhcp-row .ui-button, .dhcp-range .ui-button { min-height: 44px; }
 .dhcp-range { border-top: 1px solid var(--border); }
@@ -271,7 +272,7 @@
 .dhcp-range summary span { color: var(--secondary); }
 .dhcp-range [data-dhcp-range-warning] { color: var(--error); }
 .dhcp-range [hidden] { display: none; }
-@media (max-width: 48rem) { .dhcp-row { grid-template-columns: minmax(6rem, 1fr) auto auto; } .dhcp-row > span:nth-child(3) { grid-column: 1 / 3; } .dhcp-chevron { grid-column: 3; } }
+@media (max-width: 48rem) { .dhcp-row { grid-template-columns: minmax(6rem, 1fr) 6rem 44px; } .dhcp-row > span:nth-child(3) { grid-column: 1; } .dhcp-row .ui-button { grid-column: 2; grid-row: 2; } .dhcp-chevron { grid-column: 3; grid-row: 1 / 3; } }
 
 @media (max-width: 48rem) {
   .dhcp-tablet {
