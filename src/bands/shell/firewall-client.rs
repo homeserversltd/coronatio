@@ -167,7 +167,7 @@ fn shell_firewall_client() -> &'static str {
     }
     function firewallWrite(binding, key, route, options) {
       const slot=binding.root.querySelector('[data-scaffold-slot="firewall-children"]');if(!slot)return Promise.resolve(false);
-      return scaffoldRegistry.run(binding,`firewall-write-${key}`,async ctx=>{if(!ctx.current()||!firewallCurrent(binding)||!firewallState.childrenReady||(key==='register'&&!firewallState.observedReady))return false;const receipt=await firewallMutation(route,{...options,signal:ctx.signal},binding);if(!ctx.current()||!firewallCurrent(binding))return false;ctx.ready(slot);return receipt;},{slots:[slot],retry:false,timeoutMs:75000,onFailure:({current})=>{if(current()&&firewallCurrent(binding)){firewallState.childrenReady=false;renderFirewall(binding);}}});
+      return scaffoldRegistry.run(binding,`firewall-write-${key}`,async ctx=>{if(!ctx.current()||!firewallCurrent(binding)||!firewallState.childrenReady||(key==='register'&&!firewallState.observedReady))return false;const receipt=await firewallMutation(route,{...options,signal:ctx.signal},binding);if(!ctx.current()||!firewallCurrent(binding))return false;ctx.ready(slot);return receipt;},{slots:[slot],retry:false,timeoutMs:30000,onFailure:({current})=>{if(current()&&firewallCurrent(binding)){firewallState.childrenReady=false;renderFirewall(binding);}}});
     }
     document.body.addEventListener('submit', event => {
       const binding = scaffoldRegistry.capture('firewall'); const form = event.target.closest?.('[data-firewall-host-form]');
@@ -225,7 +225,7 @@ fn shell_firewall_client() -> &'static str {
           firewallState.hosts = proposedHosts; firewallState.revision = receipt.revision ?? freshRevision;
           const receiptTarget = pane.querySelector('[data-firewall-receipt]'); if (receiptTarget) receiptTarget.textContent = receipt.message || 'Website whitelist saved.';
           showCoronatioToast(receipt.message || 'Website whitelist saved', 'success'); ctx.ready(slot); closeFirewallModal(); await hydrateFirewall(); return true;
-        }, { slots: [slot], supersede: true, timeoutMs: 75000, onFailure: ({ current, reason }) => { if (!current() || !firewallCurrent(binding) || firewallState.selectedMac !== mac) return; const error = slot.querySelector('[data-firewall-whitelist-error]'); if (error) { error.hidden = false; error.textContent = reason || 'Whitelist could not be saved'; } } });
+        }, { slots: [slot], supersede: true, timeoutMs: 30000, onFailure: ({ current, reason }) => { if (!current() || !firewallCurrent(binding) || firewallState.selectedMac !== mac) return; const error = slot.querySelector('[data-firewall-whitelist-error]'); if (error) { error.hidden = false; error.textContent = reason || 'Whitelist could not be saved'; } } });
         if (readResult === false && firewallCurrent(binding)) { const error = slot.querySelector('[data-firewall-whitelist-error]'); if (error && error.hidden) { error.hidden = false; error.textContent = 'Whitelist could not be saved'; } }
       }
     }, true);

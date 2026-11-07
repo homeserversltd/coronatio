@@ -62,14 +62,14 @@ fn firewall_seated_mutation(
                     body,
                     Some(&attendance.proof),
                     Some(&attendance.document),
-                    std::time::Duration::from_secs(60),
+                    std::time::Duration::from_secs(25),
                 ),
                 None => caduceus_http_with_attendance_and_document_timeout(
                     method,
                     caduceus_path,
                     Some(&attendance.proof),
                     Some(&attendance.document),
-                    std::time::Duration::from_secs(60),
+                    std::time::Duration::from_secs(25),
                 ),
             }
         }
