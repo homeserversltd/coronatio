@@ -451,7 +451,6 @@ fn shell_immortal_floor_owner_client() -> &'static str {
             applyAdminDomState();
             applyTabBarVisibility();
             reconcileViewportStreamFamily();
-            if (options.retainOnFailure && outgoing === selected && healthyStructure(retainedPane, outgoing, retainedPane?.innerHTML)) return true;
           } else {
             fault(error?.message || 'admission-fault');
           }
@@ -513,6 +512,12 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         console.warn('[coronatio] view failed to open', { pane: crossingGuest, guest: crossingGuest, kind });
         crossingGuest = null;
         document.documentElement.dataset.immortalFloorFault = kind;
+      }
+      function hasHealthySeatedGuest(id) {
+        const activePanes = panes.filter(pane => pane.classList.contains('active'));
+        const pane = activePanes.length === 1 ? activePanes[0] : null;
+        return Boolean(state === 'Seated' && activeGuest === id && pane?.dataset.panePanel === id
+          && pane.parentElement === immortalFloorGuestSlot && healthyStructure(pane, id, pane.innerHTML));
       }
       function admissionOwner(xhr) {
         const record = xhr && admissionOwners.get(xhr);
@@ -579,7 +584,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         if (pane) window.nativePaneSkeletonFloor?.register(id, headerState.isAdmin ? 'admin' : 'guest', pane);
       });
       expose('BootFloor');
-      return Object.freeze({ activate, fault, admissionOwner, isAdmissionRequest, failAdmission, adminLost, visibilityChanged, get visibilityEpoch() { return visibilityEpoch; }, get state() { return state; }, get activeGuest() { return activeGuest; } });
+      return Object.freeze({ activate, fault, hasHealthySeatedGuest, admissionOwner, isAdmissionRequest, failAdmission, adminLost, visibilityChanged, get visibilityEpoch() { return visibilityEpoch; }, get state() { return state; }, get activeGuest() { return activeGuest; } });
     })();
     window.immortalFloor = immortalFloor;
     window.getImmortalFloorState = () => immortalFloor.state;

@@ -1836,14 +1836,13 @@ __NATIVE_HTMX_OWNER__
 __IMMORTAL_FLOOR_OWNER__
     __LINKER_CLIENT__
     async function AdminChromeProjection(previousActive) {
+      const selectedGuest = lawfulPaneCandidate(previousActive);
       try {
-        const selectedGuest = lawfulPaneCandidate(previousActive);
-        const crossed = await showPane(selectedGuest, { refresh: true, retainOnFailure: true });
-        return crossed === true && window.getImmortalFloorState?.() === 'Seated' && currentActiveTabId() === selectedGuest;
+        await showPane(selectedGuest, { refresh: true });
       } catch (error) {
         console.warn('[coronatio] admin admission projection fault', error?.message || error);
-        return false;
       }
+      return immortalFloor.hasHealthySeatedGuest(selectedGuest) && currentActiveTabId() === selectedGuest;
     }
     async function runFavoriteLadder({ startAt = 1, useHash = false } = {}) {
       const regular = eligibleRegularTabs().map(tab => tab.dataset.pane).filter(Boolean);
