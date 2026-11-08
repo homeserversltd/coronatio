@@ -5,6 +5,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
       let crossingGuest = null;
       let visibilityEpoch = 0; let pageVisible = document.visibilityState === 'visible';
       let activeIntent = null; let interruptedIntent = null;
+      // The admin admission has the right of way (pali:coronatio-admin-pin-admission-crossing-tablet, 2026-11-08).
+      let adminAdmissionHold = null;
 
       const ready = new Promise(resolve => requestAnimationFrame(() => {
         if (immortalFloorShell && tabBar && panes.length) {
@@ -388,6 +390,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         return true;
       }
       async function activate(requested, options = {}) {
+        // While an accepted PIN is admitted, every other activation bails here, before it touches the floor.
+        if (adminAdmissionHold && options.adminAdmission !== adminAdmissionHold) return false;
         const selected = lawfulPaneCandidate(requested);
         if (document.visibilityState !== 'visible') {
           if (state === 'Seated' && activeGuest === selected && !options.refresh) return true;
@@ -513,6 +517,8 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         crossingGuest = null;
         document.documentElement.dataset.immortalFloorFault = kind;
       }
+      function holdForAdminAdmission() { adminAdmissionHold = Object.freeze({}); return adminAdmissionHold; }
+      function releaseAdminAdmission(hold) { if (hold && adminAdmissionHold === hold) adminAdmissionHold = null; }
       function hasHealthySeatedGuest(id) {
         const activePanes = panes.filter(pane => pane.classList.contains('active'));
         const pane = activePanes.length === 1 ? activePanes[0] : null;
@@ -584,7 +590,7 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         if (pane) window.nativePaneSkeletonFloor?.register(id, headerState.isAdmin ? 'admin' : 'guest', pane);
       });
       expose('BootFloor');
-      return Object.freeze({ activate, fault, hasHealthySeatedGuest, admissionOwner, isAdmissionRequest, failAdmission, adminLost, visibilityChanged, get visibilityEpoch() { return visibilityEpoch; }, get state() { return state; }, get activeGuest() { return activeGuest; } });
+      return Object.freeze({ activate, fault, holdForAdminAdmission, releaseAdminAdmission, get adminAdmissionHeld() { return adminAdmissionHold !== null; }, hasHealthySeatedGuest, admissionOwner, isAdmissionRequest, failAdmission, adminLost, visibilityChanged, get visibilityEpoch() { return visibilityEpoch; }, get state() { return state; }, get activeGuest() { return activeGuest; } });
     })();
     window.immortalFloor = immortalFloor;
     window.getImmortalFloorState = () => immortalFloor.state;

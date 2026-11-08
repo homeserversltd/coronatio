@@ -86,7 +86,7 @@ fn shell_document_3() -> &'static str {
       if (headerState.isAdmin) void upgradeOpenStreams();
       else void downgradeOpenStreams();
       if (options.boot) return Promise.resolve(true);
-      if (headerState.isAdmin && options.admission) return AdminChromeProjection(previousActive);
+      if (headerState.isAdmin && options.admission) return AdminChromeProjection(previousActive, options.hold);
       return refreshTabBar(previousActive).then(selectedTab => {
         refreshElementFragment('stats');
         if (!sessionLawfulTab(selectedTab)) void runFavoriteLadder({ startAt: 1 });
@@ -1376,23 +1376,31 @@ fn shell_document_3() -> &'static str {
         await failAdminAdmission(openedAttendance, admissionDocument);
         return;
       }
+      // His word 2026-11-08: admin-in clobbers every other attempt until it settles.
+      const hold = immortalFloor.holdForAdminAdmission();
+      tabBarDroppedDuringAdmission = false;
+      let admitted = false;
       try {
         if (result?.admin !== true || !openedAttendance
             || typeof result.adminPatch !== 'string' || !result.adminPatch
             || typeof result.adminTabs !== 'string' || !result.adminTabs) throw new Error('attendance admin projection contract missing');
         if (!installAdminDocumentPatch(result.adminPatch, result.adminTabs)) throw new Error('admin document patch was not installed');
+        modalMessage.textContent = '✓ Admin access confirmed. Loading…';
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        admitted = await setAdminMode(true, { admission: true, hold }) === true;
       } catch (_) {
+        admitted = false;
+      } finally {
+        immortalFloor.releaseAdminAdmission(hold);
+      }
+      if (!admitted) {
         await failAdminAdmission(openedAttendance, admissionDocument);
         return;
       }
-      modalMessage.textContent = '✓ Admin access confirmed. Loading…';
-      try {
-        await new Promise(resolve => requestAnimationFrame(resolve));
-        const admitted = await setAdminMode(true, { admission: true });
-        if (admitted !== true) throw new Error('admin chrome projection was not admitted');
-        closePinModal();
-      } catch (_) {
-        await failAdminAdmission(openedAttendance, admissionDocument);
+      closePinModal();
+      if (tabBarDroppedDuringAdmission) {
+        tabBarDroppedDuringAdmission = false;
+        refreshTabBar(currentActiveTabId()).catch(() => {});
       }
     });
     async function enterInactivityHeadless() {
@@ -1562,12 +1570,18 @@ fn shell_document_3() -> &'static str {
       if (effective) paintStarredTab(effective);
       return effective;
     }
+    let tabBarDroppedDuringAdmission = false;
     async function refreshTabBar(activeTabId = currentActiveTabId()) {
       if (!tabBar) return;
+      const requestedAttendance = coronatioAttendanceRuntime.currentAttendance;
       const activeParam = activeTabId ? '?active=' + encodeURIComponent(activeTabId) : '';
       const response = await fetch('/api/tab-bar' + activeParam);
       if (!response.ok) return null;
-      replaceTabBar(await response.text());
+      const html = await response.text();
+      // A tab-bar body paints only under the attendance it was asked under, and never across an admin admission.
+      if (window.immortalFloor?.adminAdmissionHeld) { tabBarDroppedDuringAdmission = true; return null; }
+      if (requestedAttendance !== coronatioAttendanceRuntime.currentAttendance) return null;
+      replaceTabBar(html);
       return currentActiveTabId();
     }
     function reconcileAdmittedPaneHosts() { if (!immortalFloorGuestSlot) return; const declaredPaneIds = new Set(tabs.map(tab => tab.dataset.pane).filter(Boolean));
@@ -1835,10 +1849,10 @@ __NATIVE_HTMX_OWNER__
     }
 __IMMORTAL_FLOOR_OWNER__
     __LINKER_CLIENT__
-    async function AdminChromeProjection(previousActive) {
+    async function AdminChromeProjection(previousActive, hold) {
       const selectedGuest = lawfulPaneCandidate(previousActive);
       try {
-        await showPane(selectedGuest, { refresh: true });
+        await showPane(selectedGuest, { refresh: true, adminAdmission: hold });
       } catch (error) {
         console.warn('[coronatio] admin admission projection fault', error?.message || error);
       }
