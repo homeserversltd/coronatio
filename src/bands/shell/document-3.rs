@@ -1217,6 +1217,7 @@ fn shell_document_3() -> &'static str {
       clearTransmissionSecrets();
       infoTitle.textContent = title;
       infoBody.innerHTML = modalTemplate(kind);
+      infoBackdrop.toggleAttribute('data-modal-sticky', kind === 'openvpn' || kind === 'tailscale');
       if (window.htmx) window.htmx.process(infoBody);
       themeChoiceRow.hidden = kind !== 'theme';
       infoBackdrop.classList.add('open');
@@ -1242,6 +1243,7 @@ fn shell_document_3() -> &'static str {
       }
     }
     function closeInfoModal() {
+      infoBackdrop.removeAttribute('data-modal-sticky');
       if (infoBody.querySelector('[data-modal-kind-body="power-meter"]')) cancelPowerCalibrationEditing();
       infoModalGeneration += 1;
       invalidateWakeOnLanModal();
@@ -1249,13 +1251,7 @@ fn shell_document_3() -> &'static str {
       infoBackdrop.classList.remove('open');
       infoBackdrop.setAttribute('aria-hidden', 'true');
     }
-    function closeModalOnOutsideClick(backdrop, closeModal) {
-      backdrop?.addEventListener('click', event => {
-        if (event.target === event.currentTarget) closeModal();
-      });
-    }
-    closeModalOnOutsideClick(modalBackdrop, closePinModal);
-    closeModalOnOutsideClick(infoBackdrop, closeInfoModal);
+
     document.querySelector('[data-info-modal-close]')?.addEventListener('click', closeInfoModal);
     document.querySelectorAll('[data-indicator]').forEach(button => button.addEventListener('click', () => openInfoModal(button.dataset.modalTitle, button.dataset.modalKind)));
     function cycleTheme() {

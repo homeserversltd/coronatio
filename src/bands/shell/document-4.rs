@@ -342,7 +342,7 @@ fn shell_document_4() -> &'static str {
     document.body.addEventListener('click', async event => { const target = event.target instanceof Element ? event.target : null; if (!target) return;
       const retry = target.closest('[data-upload-read-retry]');
       if (retry) { const binding = uploadBinding(); if (!binding || !uploadCurrent(binding) || !headerState.isAdmin) return; event.preventDefault(); retry.disabled = true; scaffoldRegistry.retry(binding, retry.dataset.uploadReadRetry).finally(() => { if (retry.isConnected) retry.disabled = false; }); return; }
-      const modal = target.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]'); if (modal && target === modal) { closeUploadModal(modal); return; }
+
       const control = target.closest('[data-upload-remove], [data-blacklist-remove], [data-upload-breadcrumb-path], [data-upload-modal-close], [data-upload-pin-cancel], [data-upload-submit], [data-upload-pin-confirm], [data-upload-refresh], [data-upload-force-allow], [data-upload-set-default], [data-upload-history], [data-upload-blacklist], [data-upload-blacklist-add], [data-upload-blacklist-submit], [data-upload-clear-history], [data-upload-pin-toggle]'); if (!control) return;
       const binding = uploadBinding(); if (!binding || !binding.root.contains(control) || !uploadCurrent(binding)) return;
       if (control.matches('[data-upload-remove]')) {
@@ -743,8 +743,8 @@ fn shell_document_4() -> &'static str {
     function canonicalNetworkNoteMac(value) { const raw = String(value ?? ''), match = raw.match(/^([0-9a-f]{2})([:-])(?:[0-9a-f]{2}\2){4}[0-9a-f]{2}$/i); return match ? raw.split(match[2]).map(octet => octet.toUpperCase()).join(':') : null; }
     function ensureNoteModal() {
       let modal = document.querySelector('[data-note-modal]'); if (modal) return modal;
-      modal = document.createElement('div'); modal.className = 'modal-backdrop'; modal.dataset.noteModal = ''; modal.hidden = true; modal.innerHTML = `<div class="modal-window edit-note-modal" role="dialog" aria-modal="true" aria-labelledby="note-modal-title"><h2 id="note-modal-title" data-note-modal-title></h2><textarea class="note-textarea" data-note-textarea rows="4"></textarea><div class="modal-actions"><button type="button" data-note-cancel>Cancel</button><button type="button" data-note-confirm>Confirm</button></div><p class="error-message" data-note-error role="alert" hidden></p></div>`;
-      document.body.appendChild(modal); modal.addEventListener('click', event => { if (event.target === modal || event.target.closest('[data-note-cancel]')) closeNoteModal(); }); modal.querySelector('[data-note-confirm]').addEventListener('click', saveDeviceNote); return modal;
+      modal = document.createElement('div'); modal.className = 'modal-backdrop'; modal.dataset.noteModal = ''; modal.hidden = true; modal.innerHTML = `<div class="modal-window edit-note-modal" role="dialog" aria-modal="true" aria-labelledby="note-modal-title"><h2 id="note-modal-title" data-note-modal-title></h2><textarea class="note-textarea" data-note-textarea rows="4"></textarea><div class="modal-actions"><button type="button" data-note-cancel data-modal-dismiss>Cancel</button><button type="button" data-note-confirm>Confirm</button></div><p class="error-message" data-note-error role="alert" hidden></p></div>`;
+      document.body.appendChild(modal); modal.addEventListener('click', event => { if (event.target.closest('[data-note-cancel]')) closeNoteModal(); }); modal.querySelector('[data-note-confirm]').addEventListener('click', saveDeviceNote); return modal;
     }
     function closeNoteModal() { const modal = document.querySelector('[data-note-modal]'); if (modal) { modal.hidden = true; modal.removeAttribute('data-mac'); } }
     function openNoteModal(mac, note) { const modal = ensureNoteModal(); modal.dataset.mac = mac; modal.querySelector('[data-note-modal-title]').textContent = `Edit Note for ${mac}`; const textarea = modal.querySelector('[data-note-textarea]'); textarea.value = note; modal.querySelector('[data-note-error]').hidden = true; modal.hidden = false; textarea.focus(); }
@@ -1383,12 +1383,10 @@ fn shell_document_4() -> &'static str {
       if (addPortal) { openPortalModal('[data-add-portal-modal]'); return; }
       const addTabModalClose = event.target.closest('[data-add-tab-modal-close]');
       if (addTabModalClose) { closeAddTabModal(); return; }
-      const addTabBackdrop = event.target.closest('[data-add-tab-modal]');
-      if (addTabBackdrop && event.target === addTabBackdrop) { closeAddTabModal(); return; }
+
       const portalModalClose = event.target.closest('[data-portal-modal-close]');
       if (portalModalClose) { closePortalModals(); return; }
-      const portalBackdrop = event.target.closest('[data-add-portal-modal], [data-service-status-modal]');
-      if (portalBackdrop && event.target === portalBackdrop) { closePortalModals(); return; }
+
       const copyStatus = event.target.closest('[data-service-status-copy]');
       if (copyStatus) { navigator.clipboard?.writeText(document.querySelector('[data-service-status-content]')?.textContent || ''); showCoronatioToast('Status copied to clipboard', 'success'); return; }
       const fileButton = event.target.closest('[data-upload-file-button]');
@@ -1405,8 +1403,7 @@ fn shell_document_4() -> &'static str {
       if (modalOpen) return openUxModalDemo(modalOpen.dataset.uxModalOpen, modalOpen);
       const modalClose = event.target.closest('[data-ux-modal-close]');
       if (modalClose) return closeUxModalDemo();
-      const backdrop = event.target.closest('[data-ux-modal-demo-backdrop]');
-      if (backdrop && event.target === backdrop) return closeUxModalDemo();
+
     });
     document.addEventListener('keydown', event => { const current = event.target.closest?.('[data-lan-ip-octet]'); if (!current || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return; const buttons = [...current.closest('[data-lan-ip-grid]').querySelectorAll('[data-lan-ip-octet]:not(:disabled)')]; const index = buttons.indexOf(current); if (index < 0) return; const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : Math.max(0, Math.min(buttons.length - 1, index + ({ ArrowLeft: -1, ArrowRight: 1, ArrowUp: -8, ArrowDown: 8 }[event.key] || 0))); event.preventDefault(); buttons[next]?.focus(); });
     document.body.addEventListener('mouseenter', event => {
@@ -1436,19 +1433,34 @@ fn shell_document_4() -> &'static str {
       const domainFile = event.target.closest('[data-test-domain-file]');
       if (domainFile) { const section = domainFile.closest('[data-test-domain-file-section]'); const names = Array.from(domainFile.files || []).map(file => file.name); const readback = section?.querySelector('[data-test-domain-file-name]'); const submit = section?.querySelector('[data-test-domain-submit]'); if (readback) readback.textContent = names.length ? names.join(', ') : 'No files selected'; if (submit) submit.disabled = names.length === 0; }
     }); let uxModalDemoOpener = null;
-    const coronatioModalBackdrops = '[data-pin-modal-backdrop], [data-info-modal-backdrop], [data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop], [data-dhcp-modal-backdrop], [data-add-portal-modal], [data-add-tab-modal], [data-note-modal], [data-manager-modal], [data-hestia-certificate-modal], [data-ux-modal-demo-backdrop]';
-    const coronatioModalCloseControls = '[data-pin-cancel], [data-info-modal-close], [data-upload-modal-close], [data-upload-pin-cancel], [data-dhcp-modal-cancel], [data-portal-modal-close], [data-add-tab-modal-close], [data-note-cancel], [data-manager-close], [data-hestia-certificate-close], [data-ux-modal-close]';
     const coronatioModalConfirmControls = '[data-pin-confirm-button], [data-upload-pin-confirm], [data-dhcp-modal-confirm], [data-note-confirm], [data-manager-confirm]';
+    const modalFamily = '.modal-backdrop, .ui-modal-backdrop, .ux-modal-backdrop, .modal-overlay, .portal-modal-overlay, .backup-overlay, .manager-modal-backdrop';
     function openCoronatioModal() {
-      return [...document.querySelectorAll(coronatioModalBackdrops)].filter(modal => !modal.hidden && modal.getAttribute('aria-hidden') !== 'true' && getComputedStyle(modal).display !== 'none').at(-1);
+      // The hit-test order reflects stacking contexts as well as z-index and DOM order.
+      return document.elementsFromPoint(innerWidth / 2, innerHeight / 2)
+        .map(element => element.closest(modalFamily))
+        .find(modal => modal && modal.getClientRects().length && !modal.closest('[hidden], [aria-hidden="true"]'));
     }
+    function dismissCoronatioModal(modal) {
+      modal?.querySelector('[data-modal-dismiss]')?.click();
+    }
+    let modalPointerPress = null;
+    document.addEventListener('pointerdown', event => {
+      const modal = openCoronatioModal();
+      modalPointerPress = event.isPrimary && event.button === 0 && event.target === modal ? { modal, pointerId: event.pointerId } : null;
+    }, true);
+    document.addEventListener('pointercancel', () => { modalPointerPress = null; }, true);
+    document.addEventListener('pointerup', event => {
+      const press = modalPointerPress; modalPointerPress = null;
+      const modal = openCoronatioModal();
+      if (press && event.isPrimary && event.button === 0 && press.pointerId === event.pointerId && press.modal === modal && event.target === modal && !modal.hasAttribute('data-modal-sticky')) dismissCoronatioModal(modal);
+    }, true);
     document.addEventListener('keydown', event => {
       const modal = openCoronatioModal();
       if (!modal) return;
       const target = event.target instanceof Element ? event.target : null;
       if (event.key === 'Escape') {
-        const close = modal.querySelector(coronatioModalCloseControls);
-        if (close) { event.preventDefault(); close.click(); }
+        event.preventDefault(); dismissCoronatioModal(modal);
         return;
       }
       if (event.key !== 'Enter' || !target || target.closest('textarea, button, a')) return;

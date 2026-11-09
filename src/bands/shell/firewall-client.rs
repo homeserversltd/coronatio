@@ -182,7 +182,7 @@ fn shell_firewall_client() -> &'static str {
       if (!pane || !pane.contains(event.target)) return;
       const control = selector => { const match = event.target.closest?.(selector); return match && pane.contains(match) ? match : null; };
       const modal = firewallModalElement();
-      if (event.target === modal || control('[data-firewall-modal-cancel]')) return closeFirewallModal();
+      if (control('[data-firewall-modal-cancel]')) return closeFirewallModal();
       if (control('[data-firewall-refresh]')) { const button = control('[data-firewall-refresh]'); if (!firewallCurrent(binding) || button.disabled) return; return hydrateFirewall({ supersede: true }); }
       const register = control('[data-firewall-register]');
       if (register) {

@@ -1098,15 +1098,10 @@ fn shell_backblaze_client() -> &'static str {
       const target = event.target instanceof Element ? event.target : null;
       const binding = state.binding;
       if (!target || !binding || !root(binding)?.contains(target)) return;
-      if (event.key === 'Escape' && state.activeModal) { event.preventDefault(); closeModal(state.activeModal, binding); return; }
+
       if (event.key === 'Enter' && target.matches('[data-skip-input]')) { event.preventDefault(); void saveSkipNames(binding); }
     });
-    document.body.addEventListener('click', event => {
-      const target = event.target instanceof Element ? event.target : null;
-      if (!target || !state.binding || !root()?.contains(target)) return;
-      const overlay = target.matches('[data-backups-modal]') ? target : null;
-      if (overlay && !overlay.hidden && overlay.dataset.backupsModal !== 'confirm') closeModal(overlay.dataset.backupsModal);
-    });
+
     function scrubBackblazeProtectedState(pane) { scrubProtectedState(pane); }
 "####
 }
