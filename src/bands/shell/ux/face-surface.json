@@ -157,7 +157,7 @@
     },
     "setting-row": {
       "path": "src/bands/shell/ux/showcase/setting-row.html",
-      "sha256": "81902a4c054f901aeca74f6de17ae084ea8972fcb498d913351fb159900507e9"
+      "sha256": "c239f92331e5d37a665af7786d95ae0fa7bbc81d94fe9c2b563c369c7fd72326"
     },
     "skeleton": {
       "path": "src/bands/shell/ux/showcase/skeleton.html",
