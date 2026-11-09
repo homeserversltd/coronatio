@@ -22,6 +22,7 @@
     "progress-bar",
     "row-info-tile",
     "select",
+    "setting-row",
     "skeleton",
     "slider",
     "slot",
@@ -153,6 +154,10 @@
     "select": {
       "path": "src/bands/shell/ux/showcase/select.html",
       "sha256": "c6f30243d7e9f06a5d690d42ef3ccf1ecc08bdac73da224b4f4ffc834e0cb2c9"
+    },
+    "setting-row": {
+      "path": "src/bands/shell/ux/showcase/setting-row.html",
+      "sha256": "81902a4c054f901aeca74f6de17ae084ea8972fcb498d913351fb159900507e9"
     },
     "skeleton": {
       "path": "src/bands/shell/ux/showcase/skeleton.html",

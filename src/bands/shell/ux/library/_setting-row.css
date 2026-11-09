@@ -1,0 +1,21 @@
+/* LIBRARY band: setting rows, TEST-TRANCH-10 (pali:workflow-coronatio-test-tab-indra-ux-bedrock-tablet). */
+.ui-setting-rows { list-style: none; margin: 0; padding: 0; }
+.ui-setting-rows__item + .ui-setting-rows__item {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.ui-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; }
+.ui-setting-row__text { min-width: 0; }
+.ui-setting-row__label { color: var(--text); font-size: 14px; font-weight: 500; line-height: 20px; }
+.ui-setting-row__status, .ui-setting-row__feedback { margin: 0; color: var(--secondary); font-size: 13px; line-height: 18px; }
+.ui-setting-row__feedback:empty { display: none; }
+.ui-setting-row[data-state="error"] .ui-setting-row__status { color: var(--status-down); }
+.ui-setting-row[data-state="saving"] .ui-setting-row__status { opacity: .6; }
+.ui-setting-row__control { display: flex; align-items: center; gap: 8px; }
+.ui-setting-row__field { min-width: 16rem; }
+@media (max-width: 639px) {
+  .ui-setting-row { align-items: stretch; flex-direction: column; }
+  .ui-setting-row__control { width: 100%; }
+  .ui-setting-row__field { flex: 1 1 auto; min-width: 0; }
+}
