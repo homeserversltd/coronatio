@@ -89,14 +89,14 @@ fn shell_unbound_client() -> &'static str {
         if(!target||!dnsCurrent()||!identityState.ready.roster)return;
         const devices=dnsArray(identityState?.roster);
         const html=`<table class="identity-roster"><thead><tr><th>Device</th><th>Address</th><th>Names</th><th>Pick</th></tr></thead><tbody>${devices.map(device=>{const mac=String(device?.mac||''),selected=mac===dnsUiState.pickedMac;
-          return `<tr data-device-mac="${escapeHtml(mac)}" data-scaffold-key="dns-device:${escapeHtml(mac)}"><td><code>${escapeHtml(dnsValue(dnsDeviceLabel(device)))}</code><br><small>${escapeHtml(dnsValue(mac))}</small></td><td><code>${escapeHtml(dnsValue(dnsAddress(device)))}</code></td><td>${escapeHtml(dnsArray(device?.dns_names).join(', ')||'—')}</td><td><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-device-pick="${escapeHtml(mac)}" aria-pressed="${selected}"${!dnsUiState.identityReady||dnsUiState.mutationBusy?' disabled':''}>${selected?'Selected':'Pick'}</button></td></tr>`;
-          }).join('')||'<tr data-scaffold-key="dns-devices-empty"><td colspan="4">No devices reported.</td></tr>'}</tbody></table>`;
+          return `<tr data-device-mac="${escapeHtml(mac)}" data-scaffold-key="dns-device:${escapeHtml(mac)}"><td data-label="Device"><code>${escapeHtml(dnsValue(dnsDeviceLabel(device)))}</code><br><small>${escapeHtml(dnsValue(mac))}</small></td><td data-label="Address"><code>${escapeHtml(dnsValue(dnsAddress(device)))}</code></td><td data-label="Names">${escapeHtml(dnsArray(device?.dns_names).join(', ')||'—')}</td><td data-label="Pick"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-device-pick="${escapeHtml(mac)}" aria-pressed="${selected}"${!dnsUiState.identityReady||dnsUiState.mutationBusy?' disabled':''}>${selected?'Selected':'Pick'}</button></td></tr>`;
+          }).join('')||'<tr data-scaffold-key="dns-devices-empty"><td data-label="Devices" colspan="4">No devices reported.</td></tr>'}</tbody></table>`;
         morphLivePane(target,html);
         }
     function renderDnsModalRecords() { const target=dnsUiState.binding?.root?.querySelector('[data-dns-modal-records]');
         if(!target||!dnsCurrent()||!identityState.ready.roster&&!identityState.ready.dns)return;
         const rows=dnsNameRows();
-        const html=`<h3>Records</h3><table class="ui-table"><thead><tr><th>Name</th><th>Address</th><th>PTR</th><th>Provenance</th></tr></thead><tbody>${rows.map(row=>`<tr data-scaffold-key="dns-modal-record:${escapeHtml(`${row.name.toLowerCase()}-${row.address.toLowerCase()}`)}"><td><code>${escapeHtml(dnsValue(row.name))}</code></td><td><code>${escapeHtml(dnsValue(row.address))}</code></td><td><code>${escapeHtml(dnsValue(row.ptr))}</code></td><td>${escapeHtml(Array.isArray(row.provenance)?row.provenance.join(', '):dnsValue(row.provenance))}</td></tr>`).join('')||'<tr data-scaffold-key="dns-modal-records-empty"><td colspan="4">No records reported.</td></tr>'}</tbody></table>`;
+        const html=`<h3>Records</h3><div class="dns-table-scroll" data-dns-records-scroll><table class="ui-table"><thead><tr><th>Name</th><th>Address</th><th>PTR</th><th>Provenance</th></tr></thead><tbody>${rows.map(row=>`<tr data-scaffold-key="dns-modal-record:${escapeHtml(`${row.name.toLowerCase()}-${row.address.toLowerCase()}`)}"><td data-label="Name"><code>${escapeHtml(dnsValue(row.name))}</code></td><td data-label="Address"><code>${escapeHtml(dnsValue(row.address))}</code></td><td data-label="PTR"><code>${escapeHtml(dnsValue(row.ptr))}</code></td><td data-label="Provenance">${escapeHtml(Array.isArray(row.provenance)?row.provenance.join(', '):dnsValue(row.provenance))}</td></tr>`).join('')||'<tr data-scaffold-key="dns-modal-records-empty"><td data-label="Records" colspan="4">No records reported.</td></tr>'}</tbody></table></div>`;
         morphLivePane(target,html);
         }
     function resolverReceipt(envelope) { const known=['adblockEnabled','upstreams','dnsOverTls','blocklistDomainCount','blocklistLastUpdate','unboundActive'];return dnsFindObject(envelope,node=>known.some(key=>Object.prototype.hasOwnProperty.call(node,key)))||null; }
@@ -185,9 +185,9 @@ fn shell_unbound_client() -> &'static str {
         renderDnsIpCalendar();
         dnsUpdateAddSave();
         }
-      function openDnsModal() { if(!dnsIdentityCurrent()||dnsUiState.mutationBusy)return;const modal=dnsUiState.binding.root.querySelector('[data-dns-add-modal]');if(!modal)return;modal.hidden=false;renderDnsModalRoster();renderDnsModalRecords();if(dnsUiState.pickedMac)renderDnsIpCalendar();dnsUiState.binding.root.querySelector('[data-dns-new-name]')?.focus(); }
-    function closeDnsModal() { const root=dnsUiState.binding?.root,modal=root?.querySelector('[data-dns-add-modal]');
-        if(modal)modal.hidden=true;
+      function openDnsModal(opener) { if(!dnsIdentityCurrent()||dnsUiState.mutationBusy)return;const modal=dnsUiState.binding.root.querySelector('[data-dns-add-modal]');if(!modal)return;renderDnsModalRoster();renderDnsModalRecords();if(dnsUiState.pickedMac)renderDnsIpCalendar();openCrownDialog(modal,opener);modal.querySelector('[data-dns-new-name]')?.focus(); }
+    function closeDnsModal() { const root=dnsUiState.binding?.root,modal=root?.querySelector('[data-dns-add-modal]') || document.querySelector('[data-dns-add-modal]');
+        if(modal)closeCrownDialog(modal);
         dnsUiState.pickedMac=null;
         dnsUiState.selectedOctet=null;
         dnsUiState.nameDefault='';
@@ -381,7 +381,7 @@ fn shell_unbound_client() -> &'static str {
     });
     document.addEventListener('click',async event=>{const binding=dnsUiState.binding,target=event.target instanceof Element?event.target:null;
         if(!target||!dnsCurrent(binding)||!binding.root.contains(target))return;
-        if(target.closest('[data-dns-add-name]'))return openDnsModal();
+        if(target.closest('[data-dns-add-name]'))return openDnsModal(target.closest('[data-dns-add-name]'));
         if(target.closest('[data-dns-add-close]'))return closeDnsModal();
         if(target.closest('[data-dns-add-save]'))return saveDnsName();
         const pick=target.closest('[data-dns-device-pick]');
@@ -457,8 +457,7 @@ fn shell_unbound_client() -> &'static str {
         document.querySelectorAll('[data-pane-panel="unbound"] [data-dns-adblock], [data-pane-panel="unbound"] [data-dns-dot], [data-pane-panel="unbound"] [data-dns-upstream-provider], [data-pane-panel="unbound"] [data-dns-upstream-custom-toggle], [data-pane-panel="unbound"] [data-dns-resolver-control], [data-pane-panel="unbound"] [data-dns-add-name], [data-pane-panel="unbound"] [data-dns-add-save]').forEach(node=>{if('checked'in node)node.checked=false;
           node.disabled=true;
           });
-        document.querySelectorAll('[data-pane-panel="unbound"] [data-dns-add-modal]').forEach(node=>{node.hidden=true;
-          });
+        document.querySelectorAll('[data-pane-panel="unbound"] [data-dns-add-modal]').forEach(node=>closeCrownDialog(node));
         document.querySelectorAll('[data-pane-panel="unbound"] [data-dns-ip-calendar]').forEach(node=>{node.hidden=true;
           node.querySelector('[data-dns-ip-grid]')?.replaceChildren();
           });

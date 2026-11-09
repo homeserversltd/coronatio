@@ -340,3 +340,22 @@
 .modal.small { max-width: min(360px, 95vw); }
 .modal.medium { max-width: min(600px, 95vw); }
 .modal.fullscreen { width: 95vw; max-width: 95vw; height: 90vh; }
+
+/* Native Crown dialog: one sized, top-layer frame for migrated modals. */
+dialog.crown-dialog { box-sizing: border-box; max-width: none; max-height: calc(100svh - 2rem); margin: auto; padding: var(--theme-card-padding, 1rem); color: var(--text); background: var(--theme-gradient-surface, var(--background)); border: 1px solid var(--theme-outline, var(--border)); border-radius: var(--theme-modal-radius, 8px); box-shadow: var(--theme-elevation-3, 0 16px 40px rgba(0,0,0,.45)); overflow: visible; }
+dialog.crown-dialog[open] { display: flex; flex-direction: column; }
+dialog.crown-dialog::backdrop { background: rgba(0,0,0,.55); }
+dialog.crown-dialog[data-size="small"] { width: min(400px, calc(100vw - 2rem)); }
+dialog.crown-dialog[data-size="medium"] { width: min(640px, calc(100vw - 2rem)); }
+dialog.crown-dialog[data-size="large"] { width: min(960px, calc(100vw - 2rem)); }
+dialog.crown-dialog[data-size="full"] { width: calc(100vw - 2rem); height: calc(100svh - 2rem); }
+.crown-dialog__title { flex: none; margin: 0 2rem .75rem 0; }
+.crown-dialog__close { position: absolute; inset-block-start: 1rem; inset-inline-end: 1rem; border: 0; background: transparent; color: inherit; font-size: 1.5rem; cursor: pointer; }
+.crown-dialog__body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; }
+.crown-dialog__actions { flex: none; display: flex; justify-content: flex-end; gap: .75rem; padding-top: 1rem; }
+body.crown-dialog-open { overflow: hidden; }
+@media (max-width: 640px) {
+  dialog.crown-dialog[data-size] { width: 100vw; height: 100svh; max-height: 100svh; margin: 0; border-radius: 0; padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+  .crown-dialog__actions { flex-direction: column; }
+  .crown-dialog__actions button { width: 100%; }
+}

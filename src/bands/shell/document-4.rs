@@ -1433,9 +1433,32 @@ fn shell_document_4() -> &'static str {
       const domainFile = event.target.closest('[data-test-domain-file]');
       if (domainFile) { const section = domainFile.closest('[data-test-domain-file-section]'); const names = Array.from(domainFile.files || []).map(file => file.name); const readback = section?.querySelector('[data-test-domain-file-name]'); const submit = section?.querySelector('[data-test-domain-submit]'); if (readback) readback.textContent = names.length ? names.join(', ') : 'No files selected'; if (submit) submit.disabled = names.length === 0; }
     }); let uxModalDemoOpener = null;
+    const crownDialogOpeners = new WeakMap();
+    function openCrownDialog(dialog, opener = document.activeElement) {
+      if (!(dialog instanceof HTMLDialogElement) || dialog.open) return;
+      crownDialogOpeners.set(dialog, opener);
+      dialog.showModal();
+      document.body.classList.add('crown-dialog-open');
+    }
+    function closeCrownDialog(dialog) {
+      if (!(dialog instanceof HTMLDialogElement)) return;
+      if (dialog.open) dialog.close();
+      if (!document.querySelector('dialog.crown-dialog:modal')) document.body.classList.remove('crown-dialog-open');
+      const opener = crownDialogOpeners.get(dialog); crownDialogOpeners.delete(dialog);
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    }
+    window.openCrownDialog = openCrownDialog;
+    window.closeCrownDialog = closeCrownDialog;
+    document.addEventListener('cancel', event => {
+      const dialog = event.target;
+      if (!(dialog instanceof HTMLDialogElement) || !dialog.matches('.crown-dialog')) return;
+      event.preventDefault();
+    }, true);
     const coronatioModalConfirmControls = '[data-pin-confirm-button], [data-upload-pin-confirm], [data-dhcp-modal-confirm], [data-note-confirm], [data-manager-confirm]';
     const modalFamily = '.modal-backdrop, .ui-modal-backdrop, .ux-modal-backdrop, .modal-overlay, .portal-modal-overlay, .backup-overlay, .manager-modal-backdrop';
     function openCoronatioModal() {
+      const dialogs = document.querySelectorAll('dialog.crown-dialog:modal');
+      if (dialogs.length) return dialogs[dialogs.length - 1];
       // The hit-test order reflects stacking contexts as well as z-index and DOM order.
       return document.elementsFromPoint(innerWidth / 2, innerHeight / 2)
         .map(element => element.closest(modalFamily))
@@ -1444,16 +1467,22 @@ fn shell_document_4() -> &'static str {
     function dismissCoronatioModal(modal) {
       modal?.querySelector('[data-modal-dismiss]')?.click();
     }
+    function modalBackdropHit(event, modal) {
+      if (event.target !== modal) return false;
+      if (!(modal instanceof HTMLDialogElement)) return true;
+      const rect = modal.getBoundingClientRect();
+      return event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
+    }
     let modalPointerPress = null;
     document.addEventListener('pointerdown', event => {
       const modal = openCoronatioModal();
-      modalPointerPress = event.isPrimary && event.button === 0 && event.target === modal ? { modal, pointerId: event.pointerId } : null;
+      modalPointerPress = event.isPrimary && event.button === 0 && modalBackdropHit(event, modal) ? { modal, pointerId: event.pointerId } : null;
     }, true);
     document.addEventListener('pointercancel', () => { modalPointerPress = null; }, true);
     document.addEventListener('pointerup', event => {
       const press = modalPointerPress; modalPointerPress = null;
       const modal = openCoronatioModal();
-      if (press && event.isPrimary && event.button === 0 && press.pointerId === event.pointerId && press.modal === modal && event.target === modal && !modal.hasAttribute('data-modal-sticky')) dismissCoronatioModal(modal);
+      if (press && event.isPrimary && event.button === 0 && press.pointerId === event.pointerId && press.modal === modal && modalBackdropHit(event, modal) && !modal.hasAttribute('data-modal-sticky')) dismissCoronatioModal(modal);
     }, true);
     document.addEventListener('keydown', event => {
       const modal = openCoronatioModal();
