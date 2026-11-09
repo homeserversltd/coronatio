@@ -1,0 +1,14 @@
+/* LIBRARY band: empty state, TEST-TRANCH-09 (pali:workflow-coronatio-test-tab-indra-ux-bedrock-tablet).
+ * What is missing, why, and the next step, in appliance language. */
+.ui-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 32px 16px;
+  text-align: center;
+}
+.ui-empty-state__title { margin: 0; color: var(--text); font-size: 16px; font-weight: 500; line-height: 22px; }
+.ui-empty-state__why,
+.ui-empty-state__next { max-width: 36rem; margin: 0; color: var(--secondary); font-size: 14px; line-height: 20px; }
+.ui-empty-state__action { margin-top: 12px; }

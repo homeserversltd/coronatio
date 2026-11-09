@@ -1,0 +1,91 @@
+/* LIBRARY band: stat tile, TEST-TRANCH-09 (pali:workflow-coronatio-test-tab-indra-ux-bedrock-tablet).
+ * A reading as a tile: label, 28px tabular value, a 4px native meter, optional detail.
+ * Colour only past the meter's high mark, and the flag word shows with it.
+ * Author-face names only, so every guest and the mirror twin may wear it. */
+.ui-stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.5rem), 1fr));
+  gap: 12px;
+  width: 100%;
+}
+.ui-stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-soft) 55%, var(--background));
+  color: var(--text);
+}
+.ui-stat-tile__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.ui-stat-tile__label {
+  overflow: hidden;
+  color: var(--secondary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-stat-tile__flag {
+  display: none;
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.ui-stat-tile[data-state="warning"] .ui-stat-tile__flag { display: inline; }
+.ui-stat-tile__reading {
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 34px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ui-stat-tile[data-state="warning"] .ui-stat-tile__reading { color: var(--warning); }
+.ui-stat-tile__meter {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  border: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  overflow: hidden;
+}
+.ui-stat-tile__meter::-webkit-meter-inner-element { display: block; height: 4px; }
+.ui-stat-tile__meter::-webkit-meter-bar {
+  height: 4px;
+  border: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.ui-stat-tile__meter::-webkit-meter-optimum-value { border-radius: 2px; background: var(--secondary); }
+.ui-stat-tile__meter::-webkit-meter-suboptimum-value,
+.ui-stat-tile__meter::-webkit-meter-even-less-good-value { border-radius: 2px; background: var(--warning); }
+.ui-stat-tile__meter::-moz-meter-bar { border-radius: 2px; background: var(--secondary); }
+.ui-stat-tile__meter:-moz-meter-sub-optimum::-moz-meter-bar,
+.ui-stat-tile__meter:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--warning); }
+.ui-stat-tile__detail {
+  overflow: hidden;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-stat-tile__detail:empty { display: none; }

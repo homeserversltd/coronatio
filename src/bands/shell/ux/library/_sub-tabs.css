@@ -1,0 +1,54 @@
+/* LIBRARY band: in-place sub-tabs, TEST-TRANCH-09 (pali:workflow-coronatio-test-tab-indra-ux-bedrock-tablet).
+ * An underline group over the library .ui-tab; the nearest data-tab-scope owns its
+ * buttons and panels, so groups nest. Panels show only while .active. */
+.ui-sub-tabs { display: flex; flex-direction: column; min-width: 0; }
+.ui-tab-group.ui-tab-group--underline {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 4px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.ui-tab-group--underline .ui-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: auto;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0 0 -1px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--secondary);
+  font-size: 14px;
+  font-weight: 500;
+  transform: none;
+}
+.ui-tab-group--underline .ui-tab:hover:not(:disabled):not(.ui-tab--active) { transform: none; color: var(--text); }
+.ui-tab-group--underline .ui-tab.ui-tab--active {
+  border-bottom-color: var(--accent);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+}
+.ui-tab-group--underline .ui-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 4px; }
+.ui-tab-group--underline .ui-tab[hidden] { display: none; }
+.ui-tab-group--underline .ui-tab__content { gap: 8px; }
+.ui-tab-group--underline .ui-tab__label { padding: 0; }
+.ui-tab-group--underline .ui-badge { font-variant-numeric: tabular-nums; }
+.ui-sub-tabs__panel { display: none; min-width: 0; }
+.ui-sub-tabs__panel.active { display: block; }
+@media (max-width: 768px) {
+  .ui-tab-group.ui-tab-group--underline { flex-direction: row; align-items: stretch; gap: 0; }
+  .ui-tab-group--underline .ui-tab { width: auto; margin: 0 0 -1px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
+  .ui-tab-group--underline .ui-tab.ui-tab--active { border-top: 0; border-bottom-color: var(--accent); }
+}
