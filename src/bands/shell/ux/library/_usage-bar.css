@@ -12,8 +12,8 @@
 .ui-usage-bar__meter::-webkit-meter-bar { height: 8px; border: 0; border-radius: 4px; background: color-mix(in srgb, var(--text) 10%, transparent); }
 .ui-usage-bar__meter::-webkit-meter-optimum-value, .ui-usage-bar__meter::-webkit-meter-suboptimum-value, .ui-usage-bar__meter::-webkit-meter-even-less-good-value { border-radius: 4px; background: var(--accent); }
 .ui-usage-bar__meter::-moz-meter-bar { border-radius: 4px; background: var(--accent); }
-.ui-usage-bar[data-state="total"] .ui-usage-bar__meter::-webkit-meter-optimum-value, .ui-usage-bar[data-state="total"] .ui-usage-bar__meter::-webkit-meter-suboptimum-value, .ui-usage-bar[data-state="total"] .ui-usage-bar__meter::-webkit-meter-even-less-good-value { background: var(--primary); }
-.ui-usage-bar[data-state="total"] .ui-usage-bar__meter::-moz-meter-bar { background: var(--primary); }
+.ui-usage-bar[data-state="total"] .ui-usage-bar__meter::-webkit-meter-optimum-value, .ui-usage-bar[data-state="total"] .ui-usage-bar__meter::-webkit-meter-suboptimum-value, .ui-usage-bar[data-state="total"] .ui-usage-bar__meter::-webkit-meter-even-less-good-value { background: var(--text-secondary); }
+.ui-usage-bar[data-state="total"] .ui-usage-bar__meter::-moz-meter-bar { background: var(--text-secondary); }
 .ui-usage-bar__detail { color: var(--text-muted); font-size: 12px; }
 .ui-usage-bar__detail:empty { display: none; }
 @media (max-width: 639px) { .ui-usage-bar > .ui-button { grid-column: 2; justify-self: start; } }
