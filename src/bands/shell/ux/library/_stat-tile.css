@@ -47,6 +47,7 @@
 .ui-stat-tile[data-state="warning"] .ui-stat-tile__flag { display: inline; }
 .ui-stat-tile__reading {
   color: var(--text);
+  font-family: system-ui, sans-serif;
   font-size: 28px;
   font-weight: 500;
   line-height: 34px;

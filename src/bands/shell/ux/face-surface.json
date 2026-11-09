@@ -11,6 +11,7 @@
     "checkbox",
     "collapsible",
     "editable-field",
+    "empty-state",
     "file-input",
     "icon-button",
     "input",
@@ -24,6 +25,9 @@
     "skeleton",
     "slider",
     "slot",
+    "stat-tile",
+    "sub-tabs",
+    "switch",
     "table",
     "tabs",
     "text-box",
@@ -106,6 +110,10 @@
       "path": "src/bands/shell/ux/showcase/editable-field.html",
       "sha256": "f38fe42c0acd1385c0db6f3fa659cbc7b06871c56e0be6a6226b85c939bb10cf"
     },
+    "empty-state": {
+      "path": "src/bands/shell/ux/showcase/empty-state.html",
+      "sha256": "4ac443d20422cf50a4645d57c176d6f0b07c7ed011c0f3736382cf3ac0b20c26"
+    },
     "file-input": {
       "path": "src/bands/shell/ux/showcase/file-input.html",
       "sha256": "bb5c849f6479e5c525fa97fe54ffa3cd29a4d6be0d3d1fdd53bd18d3e80bbeb8"
@@ -158,6 +166,18 @@
       "path": "src/bands/shell/ux/showcase/slot.html",
       "sha256": "85b4f463cca939be53806af707c0810092a63b9467460004e5cfe88fc673a528"
     },
+    "stat-tile": {
+      "path": "src/bands/shell/ux/showcase/stat-tile.html",
+      "sha256": "bd9c51f960d5e69d809dd5522aef7d7641ce33fc606f241c0d7b0abf18d19dba"
+    },
+    "sub-tabs": {
+      "path": "src/bands/shell/ux/showcase/sub-tabs.html",
+      "sha256": "48ae0603a642f1bab5cde3c490fa69ffb601bbefd22f401da5ba05dfb4a6539c"
+    },
+    "switch": {
+      "path": "src/bands/shell/ux/showcase/switch.html",
+      "sha256": "6eb1679f09558683550fd24048f8dba865eda79e5682cdfa364b2e7b4877c18c"
+    },
     "table": {
       "path": "src/bands/shell/ux/showcase/table.html",
       "sha256": "8af101e3f164c1dbb819edc1beedfecbfd27216957fca9fb1e400f670d3b7a7c"
@@ -204,7 +224,6 @@
       "cartridges/remove",
       "cert/bundle/download",
       "config/set",
-
       "doors",
       "exousia/change-pin",
       "exousia/invalidate",
