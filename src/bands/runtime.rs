@@ -187,7 +187,6 @@ fn app(state: AppState) -> Router {
         .route("/admit/admin/service/:toggle_id", get(admin_service_card_fragment_route))
         .route("/admit/admin/toggle/:toggle_id", post(admin_toggle_fragment_route))
         .route("/admit/admin/action/view-logs", get(admin_logs_fragment_route))
-        .route("/admit/admin/action/view-logs-clear", post(admin_logs_clear_fragment_route))
         .route("/admit/admin/action/:action_id", post(admin_action_fragment_route).get(admin_action_fragment_route))
         .route("/admit/upload/tree", get(upload_tree_fragment_route))
         .route(CROWN_HTMX_SCRIPT_PATH, get(crown_htmx_script_route))

@@ -250,7 +250,6 @@
       "linker/hardlink-scan",
       "linker/mkdir",
       "linker/rename",
-      "log/clear",
       "log/read",
       "log/receipts",
       "log/reflect",

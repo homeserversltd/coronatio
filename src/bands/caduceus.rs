@@ -879,7 +879,7 @@ fn admin_logs_modal_fragment(readback: &CaduceusHttpReadback, offset: usize, lim
     };
     let notice = notice.map(|value| format!(r#"<p class="success" data-admin-log-notice>{}</p>"#, html_escape(value))).unwrap_or_default();
     format!(
-        r#"<section class="modal modal-window admin-log-modal" data-admin-log-modal data-admin-action-result-fragment="view-logs" data-admin-action-route="/api/admin/logs/homeserver" role="dialog" aria-label="Appliance logs"><h2>Appliance Logs</h2>{notice}<div class="modal-toolbar"><span>Newest first · {returned} shown of {total}</span></div><div class="modal-body">{content}</div><div class="modal-pager"><button type="button" class="secondary" hx-get="/admit/admin/action/view-logs?offset={previous}&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML"{previous_disabled}>Previous</button><button type="button" class="secondary" hx-get="/admit/admin/action/view-logs?offset={next}&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML"{next_disabled}>Next</button><button type="button" class="ui-button ui-button--danger" hx-post="/admit/admin/action/view-logs-clear?offset=0&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML" hx-confirm="Clear the appliance log now?">Clear</button></div></section>"#,
+        r#"<section class="modal modal-window admin-log-modal" data-admin-log-modal data-admin-action-result-fragment="view-logs" data-admin-action-route="/api/admin/logs/homeserver" role="dialog" aria-label="Appliance logs"><h2>Appliance Logs</h2>{notice}<div class="modal-toolbar"><span>Newest first · {returned} shown of {total}</span></div><div class="modal-body">{content}</div><div class="modal-pager"><button type="button" class="secondary" hx-get="/admit/admin/action/view-logs?offset={previous}&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML"{previous_disabled}>Previous</button><button type="button" class="secondary" hx-get="/admit/admin/action/view-logs?offset={next}&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML"{next_disabled}>Next</button></div></section>"#,
     )
 }
 
@@ -890,20 +890,6 @@ async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> 
     log_admin_action_admission(&headers, "/admit/admin/action/view-logs", &readback, StatusCode::OK);
     admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&readback, offset, limit, None))
 }
-
-async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
-    let (_, limit) = admin_log_pagination(&uri);
-    let clear = admin_fragment_caduceus_json_request(&headers, "POST", "/api/v1/log/clear", serde_json::json!({}));
-    if !clear.ok {
-        log_admin_action_admission(&headers, "/admit/admin/action/view-logs-clear", &clear, StatusCode::OK);
-        return admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&clear, 0, limit, None));
-    }
-    let path = format!("/api/v1/log/read?offset=0&limit={limit}");
-    let readback = admin_fragment_caduceus_request(&headers, "GET", &path);
-    log_admin_action_admission(&headers, "/admit/admin/action/view-logs-clear", &readback, StatusCode::OK);
-    admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&readback, 0, limit, Some("Appliance logs cleared.")))
-}
-
 
 async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {
     if let Some(refusal) = admin_fragment_context_refusal(&headers) {
