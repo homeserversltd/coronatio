@@ -213,11 +213,11 @@
     },
     "update-card": {
       "path": "src/bands/shell/ux/showcase/update-card.html",
-      "sha256": "b321996252064b3d076847dde97d417bfd8b88f71a190f16dee8d46d34786dc1"
+      "sha256": "22cd9f4d0fbe1a2f3a25b6f3f5fc8ee5021b16f9d1f66cfcb1b0923f8f826f68"
     },
     "usage-bar": {
       "path": "src/bands/shell/ux/showcase/usage-bar.html",
-      "sha256": "d24097a0ae026d52f2860d3b9a8f7ae18f1ba42396e90af4aafde9654420b9e6"
+      "sha256": "bb4b0c29cda0bdb4b1030ec593494070a6c24b24354ad543284b9836623962c2"
     },
     "visibility-toggle": {
       "path": "src/bands/shell/ux/showcase/visibility-toggle.html",
