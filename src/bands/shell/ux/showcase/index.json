@@ -32,6 +32,8 @@
     "time-picker.html",
     "toast.html",
     "toggle.html",
+    "update-card.html",
+    "usage-bar.html",
     "visibility-toggle.html"
   ],
   "authority": "Source-rendered primitive specimens in production order; see tools/face-surface/README.md."

@@ -1,0 +1,14 @@
+/* LIBRARY band: update cards, TEST-TRANCH-11. */
+.ui-update-cards, .ui-update-cards__item, .ui-update-card { min-width: 0; }
+.ui-update-cards__list { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; min-width: 0; }
+.ui-update-cards__group { margin: 16px 0 12px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.ui-update-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.ui-update-card__path { margin: 0; color: var(--text); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.ui-update-card[data-state="silenced"] .ui-update-card__path { color: var(--text-secondary); }
+.ui-update-card__sentence, .ui-update-card__diff-missing, .ui-update-card__feedback { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.ui-update-card__feedback:empty { display: none; }
+.ui-update-card__diff { box-sizing: border-box; width: 100%; min-width: 0; margin: 0; padding: 12px; border-radius: 8px; overflow-x: auto; background: color-mix(in srgb, var(--background) 92%, var(--text)); font-family: var(--monoFont); font-size: 12px; line-height: 1.5; }
+.ui-update-card__line { display: block; }
+.ui-update-card__line--added { color: var(--status-up); background: color-mix(in srgb, var(--status-up) 12%, transparent); }
+.ui-update-card__line--removed { color: var(--status-down); background: color-mix(in srgb, var(--status-down) 12%, transparent); }
+.ui-update-card__actions { display: flex; justify-content: flex-end; gap: 8px; }

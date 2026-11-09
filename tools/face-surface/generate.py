@@ -49,6 +49,8 @@ SELECTORS = {
     "text-box": ("textbox", {"ui-text-box"}),
     "time-picker": ("calendar-time", {"time-picker"}),
     "toggle": ("toggles", {"ui-toggle"}),
+    "update-card": ("update-cards", {"ui-update-cards"}),
+    "usage-bar": ("usage-bars", {"ui-usage-bars"}),
     "visibility-toggle": ("visibility-system", {"ui-visibility-toggle"}),
 }
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",

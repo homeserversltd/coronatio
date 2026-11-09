@@ -35,6 +35,8 @@
     "time-picker",
     "toast",
     "toggle",
+    "update-card",
+    "usage-bar",
     "visibility-toggle"
   ],
   "author_face": [
@@ -208,6 +210,14 @@
     "toggle": {
       "path": "src/bands/shell/ux/showcase/toggle.html",
       "sha256": "fb0122b20c1a00169911481e3f96607952a9fb3e0c5081fd0d62a4a37119971c"
+    },
+    "update-card": {
+      "path": "src/bands/shell/ux/showcase/update-card.html",
+      "sha256": "b321996252064b3d076847dde97d417bfd8b88f71a190f16dee8d46d34786dc1"
+    },
+    "usage-bar": {
+      "path": "src/bands/shell/ux/showcase/usage-bar.html",
+      "sha256": "d24097a0ae026d52f2860d3b9a8f7ae18f1ba42396e90af4aafde9654420b9e6"
     },
     "visibility-toggle": {
       "path": "src/bands/shell/ux/showcase/visibility-toggle.html",
