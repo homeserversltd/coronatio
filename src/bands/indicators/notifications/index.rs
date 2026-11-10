@@ -213,8 +213,9 @@ async fn notifications_action_route(
     } else {
         url::form_urlencoded::parse(&body).filter(|(key, _)| key == "names").map(|(_, value)| value.into_owned()).collect::<Vec<_>>()
     };
+    let forwarded_names: Vec<&str> = names.iter().map(|name| name.trim()).filter(|name| !name.is_empty()).collect();
     let path = format!("{NOTIFICATIONS_PATH}/{}/{action}", notification_segment(&id));
-    let request_body = if action == "accept" { serde_json::json!({"names":names}) } else { serde_json::json!({}) };
+    let request_body = if action == "accept" { serde_json::json!({"names":forwarded_names}) } else { serde_json::json!({}) };
     let request_headers = headers.clone();
     let request_path = path.clone();
     let readback = tokio::task::spawn_blocking(move || {
