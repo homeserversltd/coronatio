@@ -130,6 +130,7 @@ fn app(state: AppState) -> Router {
         .route("/api/v1/exousia/agent/service", post(caduceus_agent_service_route))
         .route("/api/v1/exousia/agent/posture", get(caduceus_agent_posture_route))
         .route("/api/caduceus/status", get(caduceus_status_route))
+        .route("/api/caduceus/appliance/stats", get(update_manager_appliance_stats))
         .route(
             "/api/caduceus/update/check",
             post(caduceus_update_check_route),

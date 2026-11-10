@@ -52,6 +52,10 @@ async fn health_route() -> impl IntoResponse {
     (status, Json(payload))
 }
 
+async fn update_manager_appliance_stats(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    update_manager_read(&headers, "/api/v1/appliance/stats")
+}
+
 async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
     Json(CoronatioRoot {
         schema: "coronatio.api.root.v1".to_string(),
@@ -70,6 +74,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/fallback".to_string(),
             "/api/attendance".to_string(),
             "/api/caduceus/status".to_string(),
+            "/api/caduceus/appliance/stats".to_string(),
             "/api/caduceus/update/check".to_string(),
             "/api/caduceus/update/now".to_string(),
             "/api/caduceus/update/service/status".to_string(),
