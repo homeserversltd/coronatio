@@ -610,7 +610,14 @@ fn shell_document_4_tail() -> &'static str {
       return negative || failure || failedStep;
     }
     function nasReceiptSucceeded(result, responseOk) {
-      return responseOk && result?.schema === 'caduceus.nas.setup.v1' && (result.ok === true || result.success === true) && !nasReceiptHasFailure(result);
+      if (!responseOk) return false;
+      let projection = result;
+      if (result?.schema === 'caduceus.chord.receipt.v1') {
+        const failure = result.failure !== undefined && result.failure !== null && result.failure !== false && result.failure !== '';
+        if (result.routine_id !== 'storage/nas/setup' || result.ok !== true || result.success === false || result.converged === false || result.rolledBack === true || failure || (typeof result.failedStage === 'string' && result.failedStage !== '')) return false;
+        projection = result.face;
+      }
+      return projection?.schema === 'caduceus.nas.setup.v1' && (projection.ok === true || projection.success === true) && !nasReceiptHasFailure(projection);
     }
     function receiptFieldText(value) {
       if (value === undefined) return 'not reported';
