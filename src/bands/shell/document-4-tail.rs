@@ -614,7 +614,7 @@ fn shell_document_4_tail() -> &'static str {
       let projection = result;
       if (result?.schema === 'caduceus.chord.receipt.v1') {
         const failure = result.failure !== undefined && result.failure !== null && result.failure !== false && result.failure !== '';
-        if (result.routine_id !== 'storage/nas/setup' || result.ok !== true || result.success === false || result.converged === false || result.rolledBack === true || failure || (typeof result.failedStage === 'string' && result.failedStage !== '')) return false;
+        if (result.routine_id !== 'storage/nas/setup' || result.ok !== true || result.success === false || result.converged === false || result.rolledBack === true || failure || (result.failedStage != null && result.failedStage !== '')) return false;
         projection = result.face;
       }
       return projection?.schema === 'caduceus.nas.setup.v1' && (projection.ok === true || projection.success === true) && !nasReceiptHasFailure(projection);

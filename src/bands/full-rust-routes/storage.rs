@@ -161,7 +161,11 @@ fn storage_nas_receipt_ok(body: &serde_json::Value) -> bool {
             if body.get("routine_id").and_then(serde_json::Value::as_str) != Some("storage/nas/setup")
                 || body.get("ok").and_then(serde_json::Value::as_bool) != Some(true)
                 || storage_receipt_has_failure(body)
-                || body.get("failedStage").and_then(serde_json::Value::as_str).is_some_and(|stage| !stage.is_empty())
+                || match body.get("failedStage") {
+                    None | Some(serde_json::Value::Null) => false,
+                    Some(serde_json::Value::String(stage)) => !stage.is_empty(),
+                    Some(_) => true,
+                }
             {
                 return false;
             }
