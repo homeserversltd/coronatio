@@ -73,7 +73,20 @@ async fn dns_caduceus_mutation_route(
     if let Some(refusal) = mutation_context_refusal(&headers) {
         return dns_refusal(path, mutation_refusal_readback("/api/v1/network/dns", refusal));
     }
-    let readback = if path == "/api/v1/network/dns/blocklist/update" {
+    let timeout = match path {
+        "/api/v1/network/identity/device/add" => Some(std::time::Duration::from_secs(95)),
+        "/api/v1/network/dns/device-name/create" => Some(std::time::Duration::from_secs(30)),
+        _ => None,
+    };
+    let readback = if let Some(timeout) = timeout {
+        let target = path.to_owned();
+        let body = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
+        tokio::task::spawn_blocking(move || {
+            caduceus_actuate_json_with_timeout(&mutation_authority(), &headers, &target, body, timeout)
+        })
+        .await
+        .unwrap_or_else(|_| mutation_task_failure_readback(path))
+    } else if path == "/api/v1/network/dns/blocklist/update" {
         caduceus_actuate(&mutation_authority(), &headers, path)
     } else {
         caduceus_actuate_json(
