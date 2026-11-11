@@ -146,12 +146,14 @@ fn shell_dhcp_client() -> &'static str {
     }
     function identityAddressAvailable(binding) { return identityHas(binding, ['roster', 'boundary', 'leases', 'reservations']); }
     function nextFreeIp() {
-      if (!identityAddressAvailable()) return '';
+      if (!identityAddressAvailable() || !identityState.ready.dns) return '';
       const used = new Set([...identityState.leases, ...identityState.reservations].map(row => String(row.ip || row['ip-address'] || row.ipAddress || '')));
+      const dnsRoot = identityState.dns || {};
+      (dnsRoot.devices || []).forEach(device => (device.a_records || device.a || []).forEach(record => used.add(String(typeof record === 'string' ? record : record.address || record.ip || record.target || ''))));
       const boundary = identityState.boundary?.boundary || identityState.boundary || {}; const start = String(boundary.start || boundary.first || boundary.pool_start || ''); const end = String(boundary.end || boundary.last || boundary.pool_end || '');
       const n = ip => ip.split('.').reduce((acc, part) => acc * 256 + Number(part), 0); const dotted = value => [24,16,8,0].map(shift => (value >>> shift) & 255).join('.');
       if (!/^\d+(\.\d+){3}$/.test(start) || !/^\d+(\.\d+){3}$/.test(end)) return '';
-      for (let value=n(start); value<=n(end); value++) { const ip=dotted(value); if (!used.has(ip)) return ip; } return '';
+      for (let value=n(start); value<=n(end); value++) { const ip=dotted(value); if ((value & 255) > 1 && !used.has(ip)) return ip; } return '';
     }
     function openIdentityClaim(mac) {
       const binding = identityState.binding; if (!identityCurrent(binding) || !identityAddressAvailable(binding)) return;

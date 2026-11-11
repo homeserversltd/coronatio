@@ -1,5 +1,5 @@
 fn shell_unbound_client() -> &'static str {
-    r####"    const dnsUiState = { resolver: null, resolverReady: false, identityReady: false, pickedMac: null, selectedOctet: null, calendarStart: null, calendarEnd: null, calendarPage: 0, nameDefault: '', mutationBusy: false, binding: null, resolverDirty: new Set() };
+    r####"    const dnsUiState = { resolver: null, resolverReady: false, identityReady: false, pickedMac: null, selectedOctet: null, calendarStart: null, calendarEnd: null, calendarPage: 0, nameDefault: '', moveConfirmation: '', mutationBusy: false, binding: null, resolverDirty: new Set() };
     function dnsCurrent(binding = dnsUiState.binding) { return Boolean(binding && dnsUiState.binding === binding && headerState.isAdmin && binding.guest === 'unbound' && window.scaffoldRegistry?.current(binding)); }
     function dnsIdentityCurrent(binding = dnsUiState.binding) { return dnsCurrent(binding) && identityState.binding === binding && ['roster','boundary','leases','reservations','dns'].every(key => identityState.ready[key] === true); }
     const dnsArray = value => Array.isArray(value) ? value : [];
@@ -7,6 +7,9 @@ fn shell_unbound_client() -> &'static str {
     const dnsAddress = row => row?.address || row?.ip || row?.target || row?.value || row?.declared_reservation?.ip || row?.declared_reservation?.['ip-address'] || row?.observed_lease?.ip || '—';
     const dnsProviders = Object.freeze({ quad9: ['9.9.9.9', '149.112.112.112'], cloudflare: ['1.1.1.1', '1.0.0.1'], google: ['8.8.8.8', '8.8.4.4'] });
     function dnsEnvelopeNodes(value, depth = 0) { if (!value || typeof value !== 'object' || depth > 6) return []; if (Array.isArray(value)) return value.flatMap(item => dnsEnvelopeNodes(item, depth + 1)); const nodes = [value]; for (const key of ['payload', 'result', 'data', 'receipt', 'readback', 'caduceus']) nodes.push(...dnsEnvelopeNodes(value[key], depth + 1)); return nodes; }
+    function dnsChordNodes(value, depth = 0) { if (!value || typeof value !== 'object' || depth > 20) return []; if (Array.isArray(value)) return value.flatMap(item => dnsChordNodes(item, depth + 1)); return [value, ...Object.values(value).flatMap(item => dnsChordNodes(item, depth + 1))]; }
+    function dnsChordStage(value, stageId) { return dnsChordNodes(value).find(node => node.stage_id === stageId) || null; }
+    function dnsChordFailure(value) { return dnsChordNodes(value).reverse().find(node => node.failedStage && node.firstMissingSignal && node.firstMissingSignal !== 'none') || null; }
     function dnsFindObject(value, predicate) { return dnsEnvelopeNodes(value).find(node => predicate(node)) || null; }
     function dnsRefusal(value) { for (const node of dnsEnvelopeNodes(value)) { if (node.ok === false || node.success === false) return node.firstMissingSignal || node.first_failing_boundary || node.first_missing_signal || node.error || 'dns-caduceus-refused'; } return null; }
     function dnsRequireAccepted(value) { const refusal = dnsRefusal(value); if (refusal) throw new Error(refusal); if (!dnsFindObject(value, node => node.ok === true || node.success === true || node.accepted === true)) throw new Error('dns-mutation-receipt-missing-success'); return value; }
@@ -23,7 +26,7 @@ fn shell_unbound_client() -> &'static str {
     function dnsSetIdentityControls(preserveReadySlots = false) { const binding=dnsUiState.binding;dnsUiState.identityReady=dnsIdentityCurrent(binding);const root=binding?.root;if(!root)return;root.querySelectorAll('[data-dns-add-name], [data-dns-device-pick], [data-dns-name-remove], [data-dns-add-save]').forEach(node=>{if(scaffoldReadProjectionAllowed(node,preserveReadySlots))node.disabled=!dnsUiState.identityReady||dnsUiState.mutationBusy;});dnsUpdateAddSave(); }
     function dnsSetMutationBusy(busy) { const binding=dnsUiState.binding;if(!dnsCurrent(binding))return;dnsUiState.mutationBusy=Boolean(busy);dnsSetResolverControls();dnsSetIdentityControls();renderDnsNames();renderDnsModalRoster();renderDnsModalRecords();if(dnsUiState.pickedMac)renderDnsIpCalendar(); }
     function dnsProvenanceHas(value, wanted) { const values = Array.isArray(value) ? value : [value]; return values.some(item => String(item || '').toLowerCase() === wanted); }
-    function dnsOctet(value) { const match = String(value || '').match(/^192\.168\.123\.(\d{1,3})$/); if (!match) return null; const octet = Number(match[1]); return Number.isInteger(octet) && octet >= 1 && octet <= 254 ? octet : null; }
+    function dnsOctet(value) { const match = String(value || '').match(/^192\.168\.123\.(\d{1,3})$/); if (!match) return null; const octet = Number(match[1]); return Number.isInteger(octet) && octet >= 2 && octet <= 254 ? octet : null; }
     function dnsReversePtr(address) { const parts = String(address || '').split('.'); return parts.length === 4 && parts.every(part => /^\d{1,3}$/.test(part)) ? `${parts.reverse().join('.')}.in-addr.arpa` : ''; }
     function dnsReadRoot(value) { return dnsFindObject(value, node => Array.isArray(node.devices)) || {}; }
     function dnsNameRows() {
@@ -34,9 +37,9 @@ fn shell_unbound_client() -> &'static str {
         const address = String(row?.address || row?.ip || row?.target || row?.cname || '—');
         const key = `${name.toLowerCase()}\u0000${address.toLowerCase()}`;
         const existing = rows.get(key);
-        if (existing) { if (!existing.mac && row.mac) existing.mac = row.mac; if (!existing.ptr && row.ptr) existing.ptr = row.ptr; if (source === 'dns-owned-pair' && row.removable === true) { existing.provenance = row.provenance; existing.removable = true; if (row.ptr) existing.ptr = row.ptr; if (row.mac) existing.mac = row.mac; } return; }
+        if (existing) { if (!existing.mac && row.mac) existing.mac = row.mac; if (!existing.ptr && row.ptr) existing.ptr = row.ptr; if (!existing.where && row.where) existing.where = row.where; existing.owned ||= row.owned === true; existing.adoptable ||= row.adoptable === true; if (source === 'dns-owned-pair' && row.removable === true) { existing.provenance = row.provenance; existing.removable = true; if (row.ptr) existing.ptr = row.ptr; if (row.mac) existing.mac = row.mac; } return; }
         const provenance = row?.provenance ?? (source === 'alias' ? 'alias (read-only)' : source === 'roster' ? 'device projection' : 'observed');
-        rows.set(key, { name, address, ptr: row?.ptr || '', mac: row?.mac || '', provenance, removable: source === 'dns-owned-pair' && row?.removable === true });
+        rows.set(key, { name, address, ptr: row?.ptr || '', mac: row?.mac || '', where: row?.where || '', owned: row?.owned === true || dnsProvenanceHas(provenance, 'owned'), adoptable: row?.adoptable === true, provenance, removable: source === 'dns-owned-pair' && row?.removable === true });
       };
       const root = dnsReadRoot(identityState?.dns || {});
       dnsArray(root.devices).forEach(device => {
@@ -51,7 +54,7 @@ fn shell_unbound_client() -> &'static str {
           const aOwned = dnsProvenanceHas(record?.provenance, 'owned');
           const ptrOwned = Boolean(ptrRecord) && dnsProvenanceHas(ptrRecord?.provenance, 'owned');
           const provenance = record?.provenance ?? 'observed';
-          add({ name, address, ptr: ptrRecord?.name || '', provenance: aOwned && ptrOwned ? 'owned A/PTR pair' : provenance, removable: aOwned && ptrOwned && Boolean(dnsNormalizeBareLabel(name).label) }, aOwned && ptrOwned ? 'dns-owned-pair' : 'dns-device');
+          add({ name, address, ptr: ptrRecord?.name || '', where: record?.where, owned: aOwned, adoptable: device?.adoptable === true, provenance: aOwned && ptrOwned ? 'owned A/PTR pair' : provenance, removable: aOwned && ptrOwned && Boolean(dnsNormalizeBareLabel(name).label) }, aOwned && ptrOwned ? 'dns-owned-pair' : 'dns-device');
         });
       });
       dnsEnvelopeNodes(identityState?.dns || {}).forEach(node => {
@@ -72,14 +75,15 @@ fn shell_unbound_client() -> &'static str {
       if(!target||!dnsCurrent()||!scaffoldReadProjectionAllowed(target,preserveReadySlots))return;
       const rows=dnsNameRows();
       if(!rows.length&&!identityState.ready.roster&&!identityState.ready.dns)return;
-      const html=rows.length?`<div class="dns-name-list">${rows.map(row=>{
+      const html=rows.length?`<div class="dns-name-list"><div class="dns-name-row dns-name-heading"><span>Name</span><span>Address</span><span>Device</span><span>Action</span></div>${rows.map(row=>{
         const key=`${row.name.toLowerCase()}-${row.address.toLowerCase()}`;
         const targetName = /(?:^|\.)home\.arpa\.?$/i.test(row.address) && row.address.toLowerCase().replace(/\.$/, '') !== row.name.toLowerCase().replace(/\.$/, '') ? row.address : '';
         const device = !targetName && row.address !== '—' ? dnsArray(identityState?.roster).find(item => dnsAddress(item) === row.address) : null;
         const deviceLabel = targetName ? `→ ${targetName}` : device ? dnsDeviceLabel(device) : '—';
         const provenance=Array.isArray(row.provenance)?row.provenance.join(', '):String(row.provenance||'observed');
-        const marker=row.removable?'':(/legacy/i.test(provenance)?'legacy':'observed');
-        return `<div class="dns-name-row" data-scaffold-key="dns-name:${escapeHtml(key)}"><span>${escapeHtml(dnsValue(row.name))}${marker?` <small>(${marker})</small>`:''}</span><span>${escapeHtml(dnsValue(row.address))}</span><span>${escapeHtml(deviceLabel === 'Unknown device' ? '—' : deviceLabel)}</span>${row.removable?`<button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" aria-label="Remove owned A and PTR records for ${escapeHtml(row.name)}"${!dnsUiState.identityReady||dnsUiState.mutationBusy?' disabled':''}>Remove</button>`:''}</div>`;
+        const marker=({'owned':'yours','alias':'alias','known-good':'known good','old-staff-file':'old staff file','hand-written':'hand-written'})[row.where] ?? (row.removable?'':(/legacy/i.test(provenance)?'legacy':'observed'));
+        const action=row.adoptable?`<button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-name-adopt="${escapeHtml(row.name)}" ${!dnsUiState.identityReady||dnsUiState.mutationBusy?'disabled':''}>Adopt</button>`:row.removable?`<button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" ${!dnsUiState.identityReady||dnsUiState.mutationBusy?'disabled':''}>Remove</button>`:'';
+        return `<div class="dns-name-row" data-scaffold-key="dns-name:${escapeHtml(key)}"><span>${escapeHtml(dnsValue(row.name))}${marker?` <small>(${escapeHtml(marker)})</small>`:''}</span><span>${escapeHtml(dnsValue(row.address))}</span><span>${escapeHtml(deviceLabel === 'Unknown device' ? '—' : deviceLabel)}</span><span>${action}</span></div>`;
       }).join('')}</div>`:'<p>No LAN names are registered.</p>';
       morphLivePane(target,html);
     }
@@ -133,16 +137,16 @@ fn shell_unbound_client() -> &'static str {
       if(service)service.textContent=`Unbound ${active} · ${name} · encryption ${hasDot?(status.dnsOverTls?'on':'off'):'unavailable'}`;
       dnsSetResolverControls();
     }
-    function dnsCalendarRange() { const boundary = identityState?.boundary?.boundary || identityState?.boundary || {}; const start = dnsOctet(boundary.start || boundary.first || boundary.pool_start || boundary.reservation_start); const end = dnsOctet(boundary.end || boundary.last || boundary.pool_end || boundary.reservation_end); return start !== null && end !== null && start <= end ? { start, end } : null; }
+    function dnsCalendarRange() { const boundary = identityState?.boundary?.boundary || identityState?.boundary || {}; const rawStart = boundary.start || boundary.first || boundary.pool_start || boundary.reservation_start; const start = String(rawStart) === '192.168.123.1' ? 2 : dnsOctet(rawStart); const end = dnsOctet(boundary.end || boundary.last || boundary.pool_end || boundary.reservation_end); return start !== null && end !== null && start <= end ? { start, end } : null; }
     function dnsHolderMac(row) { return String(row?.mac || row?.macAddress || row?.['hw-address'] || row?.hwAddress || row?.device_mac || row?.clientId || row?.client_id || '').toLowerCase(); }
     function dnsNormalizeHolderLabel(value) { return String(value).toLowerCase().replace(/\.$/, '').replace(/\.home\.arpa$/, ''); }
     function dnsHolderLabels(row) { return [row?.hostname, row?.hostName, row?.device_name, row?.name, row?.client_name].filter(Boolean).map(dnsNormalizeHolderLabel); }
     function dnsDeviceLabels(device) { return [device?.hostname, device?.name, device?.declared_reservation?.hostname, device?.observed_lease?.hostname, ...dnsArray(device?.dns_names)].filter(Boolean).map(dnsNormalizeHolderLabel); }
     function dnsHolderBelongsToDevice(row, device, address) { const heldMac = dnsHolderMac(row); const deviceMac = String(device?.mac || '').toLowerCase(); if (heldMac && deviceMac) return heldMac === deviceMac; const holderLabels = dnsHolderLabels(row); const deviceLabels = dnsDeviceLabels(device); if (holderLabels.length && deviceLabels.some(label => holderLabels.includes(label))) return true; return !heldMac && !holderLabels.length && dnsAddress(device) === address; }
     function dnsAddressHolders(address) { return [...dnsArray(identityState?.leases), ...dnsArray(identityState?.reservations)].filter(row => String(row?.ip || row?.['ip-address'] || row?.ipAddress || row?.address || '') === address); }
-    function dnsIpAvailability(address, device) { const holders = dnsAddressHolders(address); const foreign = holders.filter(row => !dnsHolderBelongsToDevice(row, device, address)); const names = [...new Set(holders.map(row => String(row?.hostname || row?.hostName || row?.device_name || row?.name || row?.mac || row?.device_mac || 'DHCP holder')))]; return { available: foreign.length === 0, heldByPicked: holders.length > 0 && foreign.length === 0, holder: names.join(', ') }; }
+    function dnsIpAvailability(address, device) { const holders = dnsAddressHolders(address); const foreign = holders.filter(row => !dnsHolderBelongsToDevice(row, device, address)); const dnsHeld=dnsArray(dnsReadRoot(identityState?.dns).devices).some(device=>dnsArray(device?.a_records?.length?device.a_records:device?.a).some(row=>String(typeof row==='string'?row:row?.address||row?.ip||row?.target||'')===address)); const names = [...new Set(holders.map(row => String(row?.hostname || row?.hostName || row?.device_name || row?.name || row?.mac || row?.device_mac || 'DHCP holder')))]; if(dnsHeld)names.push('DNS name'); return { available: dnsOctet(address)!==null && !dnsHeld && foreign.length === 0, heldByPicked: !dnsHeld && holders.length > 0 && foreign.length === 0, holder: names.join(', ') }; }
     function dnsSelectedIp() { const device = dnsRosterDevice(); const octet = dnsUiState.selectedOctet; const range = dnsCalendarRange(); if (!device || !range || !Number.isInteger(octet) || octet < range.start || octet > range.end) return ''; const address = `192.168.123.${octet}`; return dnsIpAvailability(address, device).available ? address : ''; }
-    function dnsUpdateAddSave() { const root=dnsUiState.binding?.root,save=root?.querySelector('[data-dns-add-save]');if(!save)return;const name=root.querySelector('[data-dns-new-name]')?.value.trim();save.disabled=!dnsIdentityCurrent()||!dnsUiState.pickedMac||!dnsSelectedIp()||!name||dnsUiState.mutationBusy; }
+    function dnsUpdateAddSave() { const root=dnsUiState.binding?.root,save=root?.querySelector('[data-dns-add-save]');if(!save)return;const name=root.querySelector('[data-dns-new-name]')?.value.trim();save.disabled=!dnsIdentityCurrent()||!dnsUiState.pickedMac||!name||dnsUiState.mutationBusy; }
     function renderDnsIpCalendar() {
       const root=dnsUiState.binding?.root,calendar=root?.querySelector('[data-dns-ip-calendar]'),grid=calendar?.querySelector('[data-dns-ip-grid]'),rangeLabel=calendar?.querySelector('[data-dns-ip-range]'),readout=calendar?.querySelector('[data-dns-ip-readout]');if(!calendar||!grid||!dnsCurrent())return;const device=dnsRosterDevice();calendar.hidden=!device;if(!device){morphLivePane(grid,'');if(readout)readout.textContent='Pick a device to load available addresses.';dnsUpdateAddSave();return;}
       const range=dnsCalendarRange();if(!range||!dnsUiState.identityReady){morphLivePane(grid,'');if(rangeLabel)rangeLabel.textContent='Unavailable';if(readout)readout.textContent='DHCP boundary, leases, and reservations must be available before selecting an address.';calendar.querySelector('[data-dns-ip-prev]')?.setAttribute('disabled','');calendar.querySelector('[data-dns-ip-next]')?.setAttribute('disabled','');dnsUpdateAddSave();return;}
@@ -161,13 +165,13 @@ fn shell_unbound_client() -> &'static str {
           }).join('');
         morphLivePane(grid,buttons);
         const selected=dnsSelectedIp(),selectedStatus=selected?dnsIpAvailability(selected,device):null;
-        if(readout)readout.textContent=selected?`Selected address: ${selected}${selectedStatus?.heldByPicked?` (held by ${dnsDeviceLabel(device)})`:''}`:'Select an available address. Addresses held by other devices are unavailable.';
+        if(readout)readout.textContent=selected?`Selected address: ${selected}${selectedStatus?.heldByPicked?` (held by ${dnsDeviceLabel(device)})`:''}. Select it again to let staff choose.`:'No address selected; staff will choose the next free address.';
         dnsUpdateAddSave();
 
     }
     function selectDnsDevice(mac) { const device=dnsRosterDevice(mac);
         if(!device||!dnsIdentityCurrent()||dnsUiState.mutationBusy)return;
-        dnsUiState.pickedMac=String(device.mac||'');
+        dnsUiState.pickedMac=String(device.mac||''); dnsUiState.moveConfirmation='';
         const range=dnsCalendarRange(),ownOctet=dnsOctet(dnsAddress(device));
         let selected=ownOctet!==null&&range&&ownOctet>=range.start&&ownOctet<=range.end&&dnsIpAvailability(`192.168.123.${ownOctet}`,device).available?ownOctet:null;
         if(selected===null&&range)for(let octet=range.start;
@@ -190,7 +194,7 @@ fn shell_unbound_client() -> &'static str {
         if(modal)closeCrownDialog(modal);
         dnsUiState.pickedMac=null;
         dnsUiState.selectedOctet=null;
-        dnsUiState.nameDefault='';
+        dnsUiState.nameDefault=''; dnsUiState.moveConfirmation='';
         const input=root?.querySelector('[data-dns-new-name]');
         if(input)input.value='';
         const picked=root?.querySelector('[data-dns-picked-device]');
@@ -212,12 +216,12 @@ fn shell_unbound_client() -> &'static str {
       return scaffoldRegistry.run(binding,`dns-write-${key}`,async ctx=>{try{if(!ctx.current()||!dnsCurrent(binding))return false;
           const response=await fetch(route,{cache:'no-store',credentials:'same-origin',signal:ctx.signal,headers:options.body?{'content-type':'application/json'}:{},...options});
           const receipt=await response.json().catch(()=>null);
-          if(!response.ok||!receipt)throw new Error(dnsRefusal(receipt)||receipt?.first_failing_boundary||receipt?.firstMissingSignal||receipt?.error||`Request failed (${response.status})`);
+          if(!response.ok||!receipt||dnsRefusal(receipt)){const failure=new Error(dnsRefusal(receipt)||receipt?.first_failing_boundary||receipt?.firstMissingSignal||receipt?.error||`Request failed (${response.status})`);failure.receipt=receipt;throw failure;}
           dnsRequireAccepted(receipt);
           if(!ctx.current()||!dnsCurrent(binding))return false;
           ctx.ready(slot);
           return receipt;
-          }catch(error){failure=error;throw error;}},{slots:[slot],retry:false,timeoutMs:15000,onFailure:({current,reason})=>{if(current()&&dnsCurrent(binding))dnsSetState(`DNS change unavailable: ${failure?.message||reason||'Read failed'}`);
+          }catch(error){failure=error;throw error;}},{slots:[slot],retry:false,timeoutMs:100000,onFailure:({current,reason})=>{if(current()&&dnsCurrent(binding))dnsSetState(`DNS change unavailable: ${failure?.message||reason||'Read failed'}`);
             }}).then(result=>{if(!result&&failure)throw failure;return result;});
 
     }
@@ -227,21 +231,36 @@ fn shell_unbound_client() -> &'static str {
         if(normalized.error){if(result)result.textContent=normalized.error;
           return;
           }const hostname=normalized.label,device=dnsRosterDevice(),address=dnsSelectedIp();
-        if(!device||!address){if(result)result.textContent='Choose a device and available DHCP address.';
-          return;
-          }if(result)result.textContent='Adding name…';
+        if(!device){if(result)result.textContent='Choose a device.';return;}
+        if(dnsUiState.selectedOctet!==null&&!address){if(result)result.textContent='That address is no longer available.';return;}
+        const matches=dnsNameRows().filter(row=>dnsNormalizeBareLabel(row.name).label===hostname);
+        if(matches.some(row=>row.where==='known-good'||row.where==='hand-written')){dnsUiState.moveConfirmation='';if(result)result.textContent='This name already exists. Adopt it first if available.';return;}
+        const owned=matches.filter(row=>(row.where==='owned'||(!row.where&&row.owned)) && (!address || row.address!==address));
+        const confirmation=JSON.stringify([hostname,device.mac,address,owned.map(row=>row.address).sort()]);
+        const move=owned.length>0;
+        if(move&&dnsUiState.moveConfirmation!==confirmation){dnsUiState.moveConfirmation=confirmation;if(result)result.textContent=`This name belongs to ${owned.map(row=>row.address).join(', ')}. Select Save again to confirm moving it.`;return;}
+        dnsUiState.moveConfirmation=''; if(result)result.textContent='Adding name…';
         dnsSetMutationBusy(true);
 
-      try{const receipt=await dnsMutation(binding,'name-create','/api/v1/network/dns/device-name/create',{method:'POST',body:JSON.stringify({hostname,ip:address})});
+      try{const receipt=await dnsMutation(binding,'name-create','/api/v1/network/identity/device/add',{method:'POST',body:JSON.stringify({mac:dnsUiState.pickedMac,hostname,ip:address||null,move})});
           if(!receipt||!dnsCurrent(binding))return;
-          showCoronatioToast('LAN name added.','success');
+          const reserved=dnsChordStage(receipt,'reserve')?.receipt?.result?.['ip-address']||address||'address unavailable';
+          showCoronatioToast(`${hostname}.home.arpa reserved at ${reserved}.`,'success');
           closeDnsModal();
           await hydrateDns({supersede:true});
-          }catch(failure){if(dnsCurrent(binding)){if(result)result.textContent=`Unable to add name: ${failure.message}`;
+          }catch(failure){if(dnsCurrent(binding)){const chord=dnsChordFailure(failure.receipt)||failure.receipt||{};const removed=dnsChordStage(failure.receipt,'remove')?.outcome==='stage-completed';const detail=`${chord.failedStage?`Stage ${chord.failedStage}: `:''}${chord.firstMissingSignal||failure.message}${removed?'. The reservation was removed.':''}`;if(result)result.textContent=`Unable to add name: ${detail}`;
             showCoronatioToast(failure?.message||'DNS request failed','error');
             await hydrateDns({supersede:true});
             }}finally{if(dnsCurrent(binding))dnsSetMutationBusy(false);
           }
+    }
+    async function adoptDnsName(button) {
+      const binding=dnsUiState.binding,row=dnsNameRows().find(item=>item.name===button?.dataset?.dnsNameAdopt&&item.adoptable),hostname=dnsNormalizeBareLabel(row?.name).label;
+      if(!dnsIdentityCurrent()||dnsUiState.mutationBusy||!hostname)return;
+      dnsSetMutationBusy(true);
+      try { const receipt=await dnsMutation(binding,'adopt','/api/v1/network/dns/device-name/create',{method:'POST',body:JSON.stringify({hostname,adopt:true})}); if(receipt&&dnsCurrent(binding)){showCoronatioToast('Name adopted.','success');await hydrateDns({supersede:true});} }
+      catch(error){if(dnsCurrent(binding)){const messages={'dns-adopt-not-adoptable':'This name cannot be adopted.','dns-adopt-not-cleanly-squared':'This name cannot be cleanly adopted.','dns-adopt-source-moved':'The source changed; refresh and try again.'};showCoronatioToast(messages[error.message]||error.message,'error');await hydrateDns({supersede:true});}}
+      finally{if(dnsCurrent(binding))dnsSetMutationBusy(false);}
     }
     async function removeDnsName(button) {
       const binding=dnsUiState.binding,name=button?.dataset?.dnsNameRemove,address=button?.dataset?.dnsIp,row=dnsNameRows().find(item=>item.name===name&&item.address===address&&item.removable),normalized=dnsNormalizeBareLabel(row?.name);if(!dnsIdentityCurrent()||dnsUiState.mutationBusy||!row?.removable||!normalized.label)return;dnsSetMutationBusy(true);
@@ -388,7 +407,7 @@ fn shell_unbound_client() -> &'static str {
         if(pick){if(!pick.disabled)return selectDnsDevice(pick.dataset.dnsDevicePick);
           return;
           }const octet=target.closest('[data-dns-ip-octet]');
-        if(octet&&!octet.disabled){dnsUiState.selectedOctet=Number(octet.dataset.dnsIpOctet);
+        if(octet&&!octet.disabled){const selected=Number(octet.dataset.dnsIpOctet);dnsUiState.selectedOctet=dnsUiState.selectedOctet===selected?null:selected;dnsUiState.moveConfirmation='';
           renderDnsIpCalendar();
           return;
           }if(target.closest('[data-dns-ip-prev]')){dnsUiState.calendarPage=Math.max(0,dnsUiState.calendarPage-1);
@@ -397,7 +416,7 @@ fn shell_unbound_client() -> &'static str {
           }if(target.closest('[data-dns-ip-next]')){dnsUiState.calendarPage+=1;
           renderDnsIpCalendar();
           return;
-          }const remove=target.closest('[data-dns-name-remove]');
+          }const adopt=target.closest('[data-dns-name-adopt]');if(adopt){if(!adopt.disabled)return adoptDnsName(adopt);return;}const remove=target.closest('[data-dns-name-remove]');
         if(remove){if(!remove.disabled)return removeDnsName(remove);
           return;
           }if(target.closest('[data-dns-blocklist-update]'))return updateDnsBlocklist();
@@ -422,6 +441,7 @@ fn shell_unbound_client() -> &'static str {
       const binding=dnsUiState.binding,target=event.target instanceof Element?event.target:null;
       if(!target||!dnsCurrent(binding)||!binding.root.contains(target))return;
       if(target.matches('[data-dns-new-name]')){
+        dnsUiState.moveConfirmation='';
         if(target.value.trim()!==dnsUiState.nameDefault)dnsUiState.nameDefault='';
         dnsUpdateAddSave();
       }
