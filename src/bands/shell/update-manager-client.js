@@ -62,10 +62,11 @@
         } else if (selected === 'Modules') {
           content.innerHTML = list(modules, 'modules').map(m => `<article><strong>${esc(m.title || String(m.id || '').replace(/[-_]+/g, ' '))}</strong>${m.summary ? `<p>${esc(m.summary)}</p>` : ''}<label>Enabled <input type="checkbox" data-update-module="${esc(m.id)}" ${m.enabled === true ? 'checked' : ''} ${typeof m.enabled === 'boolean' ? '' : 'disabled'}></label></article>`).join('') || '<p>No modules available.</p>';
         } else if (selected === 'Schedule') {
-          const known = typeof service?.enabled === 'boolean';
+          const enabled = typeof service?.enabledBool === 'boolean' ? service.enabledBool : typeof service?.enabled === 'boolean' ? service.enabled : null;
+          const known = typeof enabled === 'boolean';
           const cadence = status?.cadence ?? status?.schedule;
           const timerStatus = typeof service?.active === 'boolean' ? `Timer ${service.active ? 'active' : 'inactive'}` : 'Timer status unavailable';
-          content.innerHTML = `<label>Automatic updates <input type="checkbox" data-update-schedule ${service?.enabled ? 'checked' : ''} ${known ? '' : 'disabled'}></label><p>${known ? timerStatus : 'Automatic updates status unavailable'}</p>${typeof cadence === 'string' && cadence ? `<p>${esc(cadence)}</p>` : ''}`;
+          content.innerHTML = `<label>Automatic updates <input type="checkbox" data-update-schedule ${enabled === true ? 'checked' : ''} ${known ? '' : 'disabled'}></label><p>${known ? timerStatus : 'Automatic updates status unavailable'}</p>${typeof cadence === 'string' && cadence ? `<p>${esc(cadence)}</p>` : ''}`;
         } else if (selected === 'Interactables') {
           const draw = (items, silenced) => items.map(row => {
             const diff = typeof row.diff === 'string' && row.diff ? `<pre class="ux-readout">${row.diff.split('\n').map(line => `<span${line.startsWith('-') && !line.startsWith('---') ? ' class="error"' : line.startsWith('+') && !line.startsWith('+++') ? ' class="success"' : ''}>${esc(line)}</span>`).join('\n')}</pre>` : '<p>Diff unavailable</p>';
