@@ -1015,6 +1015,8 @@ fn attendance_failure_status(call: &crate::caduceus_access::AttendanceCall) -> S
         | "caduceus-stale-incarnation"
         | "caduceus-attendance-stale-incarnation"
         | "caduceus-attendance-pin-wrong"
+        | "exousia-pin-required"
+        | "exousia-pin-wrong"
         | "caduceus-attendance-stale-document"
         | "caduceus-attendance-incarnation-stale" => StatusCode::UNAUTHORIZED,
         "caduceus-attendance-unbound"
@@ -1055,7 +1057,7 @@ async fn caduceus_attendance_open_route(headers: axum::http::HeaderMap, body: ax
         return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-request-invalid"), None);
     };
     let Some(pin) = body.get("pin").and_then(serde_json::Value::as_str).filter(|pin| !pin.is_empty() && pin.len() <= 256) else {
-        return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-access-pin-required"), None);
+        return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("exousia-pin-required"), None);
     };
     let Some(document) = crate::caduceus_access::document_incarnation_from_headers(&headers) else { return attendance_projection_response(&headers, ROUTE, StatusCode::BAD_REQUEST, guest_session_projection("caduceus-attendance-document-required"), None); };
     let call = crate::caduceus_access::CaduceusAccessClient::default().attendance_open_async(pin.to_string(), document.clone()).await;
@@ -1214,7 +1216,7 @@ async fn caduceus_agent_service_route(
         .and_then(serde_json::Value::as_str)
         .filter(|pin| !pin.is_empty() && pin.len() <= 256)
     else {
-        return agent_service_refusal(StatusCode::BAD_REQUEST, "caduceus-agent-pin-required", None, None, None);
+        return agent_service_refusal(StatusCode::BAD_REQUEST, "exousia-pin-required", None, None, None);
     };
     let _pin_is_process_memory_only = pin;
     let Some(target) = object.get("target").and_then(serde_json::Value::as_object) else {

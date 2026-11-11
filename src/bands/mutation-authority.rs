@@ -113,6 +113,8 @@ fn mutation_response_status(readback: &CaduceusHttpReadback) -> axum::http::Stat
             | "caduceus-stale-incarnation"
             | "caduceus-attendance-stale-incarnation"
             | "caduceus-attendance-pin-wrong"
+            | "exousia-pin-required"
+            | "exousia-pin-wrong"
             | "caduceus-attendance-stale-document"
             | "caduceus-attendance-incarnation-stale"
     ) {

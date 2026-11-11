@@ -168,7 +168,9 @@ fn notifications_message(signal: &str) -> &'static str {
         "link-up-name-invalid" => "Choose a valid name ending in .home.arpa, such as noesis.home.arpa",
         "link-up-admin-required" => "Enter Admin Mode to manage this request",
         "link-up-accept-on-homeserver" => "Accept this request on your HomeServer",
-        signal if signal.starts_with("caduceus-attendance-") || signal == "caduceus-access-refused" => "Enter Admin Mode to manage this request",
+        signal if signal.starts_with("caduceus-attendance-") || signal == "caduceus-access-refused"
+            || signal == "exousia-pin-required"
+            || signal == "exousia-pin-wrong" => "Enter Admin Mode to manage this request",
         _ => "This request could not be completed. Please try again.",
     }
 }

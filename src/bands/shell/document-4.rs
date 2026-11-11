@@ -1021,7 +1021,7 @@ fn shell_document_4() -> &'static str {
     function closeAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); }
     function portalServiceFailureMessage(result, fallback = 'Service action failed') {
       const signal = result?.firstMissingSignal || result?.first_missing_signal;
-      const expiredAttendanceSignals = new Set(['caduceus-attendance-refused', 'caduceus-attendance-pin-refused', 'caduceus-attendance-not-current', 'caduceus-attendance-invalid', 'caduceus-attendance-required', 'caduceus-stale-incarnation', 'caduceus-attendance-stale-incarnation']);
+      const expiredAttendanceSignals = new Set(['caduceus-attendance-refused', 'caduceus-attendance-pin-refused', 'exousia-pin-required', 'exousia-pin-wrong', 'caduceus-attendance-not-current', 'caduceus-attendance-invalid', 'caduceus-attendance-required', 'caduceus-stale-incarnation', 'caduceus-attendance-stale-incarnation']);
       const unreachableSignals = new Set(['caduceus-unreachable', 'caduceus-upstream-failed', 'caduceus-attendance-connect-refused', 'caduceus-attendance-connect-failed', 'caduceus-attendance-timeout', 'caduceus-attendance-socket-config-failed', 'caduceus-attendance-write-failed', 'caduceus-attendance-task-failed']);
       if (expiredAttendanceSignals.has(signal)) return 'Admin session expired. Enter the PIN again.';
       if (unreachableSignals.has(signal)) return 'The appliance service controller is unreachable.';
