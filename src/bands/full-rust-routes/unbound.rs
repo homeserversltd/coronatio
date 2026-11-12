@@ -75,7 +75,7 @@ async fn dns_caduceus_mutation_route(
     }
     let timeout = match path {
         "/api/v1/network/identity/device/add" => Some(std::time::Duration::from_secs(95)),
-        "/api/v1/network/dns/device-name/create" => Some(std::time::Duration::from_secs(30)),
+        "/api/v1/network/dns/device-name/create" | "/api/v1/network/dns/device-name/remove" | "/api/v1/network/identity/device/plan" => Some(std::time::Duration::from_secs(30)),
         _ => None,
     };
     let readback = if let Some(timeout) = timeout {

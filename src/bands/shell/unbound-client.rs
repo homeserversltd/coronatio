@@ -1,5 +1,5 @@
 fn shell_unbound_client() -> &'static str {
-    r####"    const dnsUiState = { resolver: null, resolverReady: false, identityReady: false, pickedMac: null, selectedOctet: null, calendarStart: null, calendarEnd: null, calendarPage: 0, nameDefault: '', moveConfirmation: '', mutationBusy: false, binding: null, resolverDirty: new Set() };
+    r####"    const dnsUiState = { resolver: null, resolverReady: false, identityReady: false, pickedMac: null, selectedOctet: null, calendarStart: null, calendarEnd: null, calendarPage: 0, nameDefault: '', moveConfirmation: '', mutationBusy: false, binding: null, resolverDirty: new Set(), planReady: false, planText: '', plannedIp: '', planSequence: 0, planTimer: null };
     function dnsCurrent(binding = dnsUiState.binding) { return Boolean(binding && dnsUiState.binding === binding && headerState.isAdmin && binding.guest === 'unbound' && window.scaffoldRegistry?.current(binding)); }
     function dnsIdentityCurrent(binding = dnsUiState.binding) { return dnsCurrent(binding) && identityState.binding === binding && ['roster','boundary','leases','reservations','dns'].every(key => identityState.ready[key] === true); }
     const dnsArray = value => Array.isArray(value) ? value : [];
@@ -146,7 +146,23 @@ fn shell_unbound_client() -> &'static str {
     function dnsAddressHolders(address) { return [...dnsArray(identityState?.leases), ...dnsArray(identityState?.reservations)].filter(row => String(row?.ip || row?.['ip-address'] || row?.ipAddress || row?.address || '') === address); }
     function dnsIpAvailability(address, device) { const holders = dnsAddressHolders(address); const foreign = holders.filter(row => !dnsHolderBelongsToDevice(row, device, address)); const dnsHeld=dnsArray(dnsReadRoot(identityState?.dns).devices).some(device=>dnsArray(device?.a_records?.length?device.a_records:device?.a).some(row=>String(typeof row==='string'?row:row?.address||row?.ip||row?.target||'')===address)); const names = [...new Set(holders.map(row => String(row?.hostname || row?.hostName || row?.device_name || row?.name || row?.mac || row?.device_mac || 'DHCP holder')))]; if(dnsHeld)names.push('DNS name'); return { available: dnsOctet(address)!==null && !dnsHeld && foreign.length === 0, heldByPicked: !dnsHeld && holders.length > 0 && foreign.length === 0, holder: names.join(', ') }; }
     function dnsSelectedIp() { const device = dnsRosterDevice(); const octet = dnsUiState.selectedOctet; const range = dnsCalendarRange(); if (!device || !range || !Number.isInteger(octet) || octet < range.start || octet > range.end) return ''; const address = `192.168.123.${octet}`; return dnsIpAvailability(address, device).available ? address : ''; }
-    function dnsUpdateAddSave() { const root=dnsUiState.binding?.root,save=root?.querySelector('[data-dns-add-save]');if(!save)return;const name=root.querySelector('[data-dns-new-name]')?.value.trim();save.disabled=!dnsIdentityCurrent()||!dnsUiState.pickedMac||!name||dnsUiState.mutationBusy; }
+    function dnsUpdateAddSave() { const root=dnsUiState.binding?.root,save=root?.querySelector('[data-dns-add-save]');if(!save)return;const name=root.querySelector('[data-dns-new-name]')?.value.trim();save.disabled=!dnsIdentityCurrent()||!dnsUiState.pickedMac||!name||!dnsUiState.planReady||dnsUiState.mutationBusy; }
+    function dnsSchedulePlan(delay=0) {
+      clearTimeout(dnsUiState.planTimer);const sequence=++dnsUiState.planSequence,binding=dnsUiState.binding,device=dnsRosterDevice();
+      dnsUiState.planReady=false;dnsUiState.plannedIp='';dnsUiState.planText=device?'Staff plan: loading…':'';renderDnsIpCalendar();
+      if(!device||!dnsIdentityCurrent())return;
+      const hostname=binding.root.querySelector('[data-dns-new-name]')?.value.trim()||dnsDeviceLabel(device),ip=dnsUiState.selectedOctet===null?null:dnsSelectedIp();
+      if(dnsUiState.selectedOctet!==null&&!ip){dnsUiState.planText='Staff plan: selected address is unavailable';renderDnsIpCalendar();return;}
+      dnsUiState.planTimer=setTimeout(async()=>{try{
+        const response=await fetch('/api/v1/network/identity/device/plan',{method:'POST',cache:'no-store',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({mac:device.mac,hostname,ip,move:false,settle:false})});
+        const receipt=await response.json().catch(()=>null);if(sequence!==dnsUiState.planSequence||!dnsCurrent(binding))return;
+        const plan=dnsFindObject(receipt,node=>node.plan&&typeof node.plan==='object')?.plan;
+        const signal=plan?.signal&&plan.signal!=='none'?plan.signal:dnsRefusal(receipt);
+        if(!response.ok||signal||!plan?.ip||!plan?.reason){dnsUiState.planText=`Staff plan: ${signal||'plan unavailable'}`;dnsUiState.planReady=ip===null&&Boolean(signal&&String(signal).endsWith('name-elsewhere')&&dnsNameRows().some(row=>dnsNormalizeBareLabel(row.name).label===dnsNormalizeBareLabel(hostname).label&&(row.where==='owned'||(!row.where&&row.owned))));}
+        else{dnsUiState.planText=`Staff plan: ${plan.ip} (${plan.reason})`;dnsUiState.plannedIp=plan.ip;dnsUiState.planReady=true;}
+      }catch(error){if(sequence!==dnsUiState.planSequence||!dnsCurrent(binding))return;dnsUiState.planText=`Staff plan: ${error.message||'unavailable'}`;dnsUiState.planReady=false;}
+      renderDnsIpCalendar();},delay);
+    }
     function renderDnsIpCalendar() {
       const root=dnsUiState.binding?.root,calendar=root?.querySelector('[data-dns-ip-calendar]'),grid=calendar?.querySelector('[data-dns-ip-grid]'),rangeLabel=calendar?.querySelector('[data-dns-ip-range]'),readout=calendar?.querySelector('[data-dns-ip-readout]');if(!calendar||!grid||!dnsCurrent())return;const device=dnsRosterDevice();calendar.hidden=!device;if(!device){morphLivePane(grid,'');if(readout)readout.textContent='Pick a device to load available addresses.';dnsUpdateAddSave();return;}
       const range=dnsCalendarRange();if(!range||!dnsUiState.identityReady){morphLivePane(grid,'');if(rangeLabel)rangeLabel.textContent='Unavailable';if(readout)readout.textContent='DHCP boundary, leases, and reservations must be available before selecting an address.';calendar.querySelector('[data-dns-ip-prev]')?.setAttribute('disabled','');calendar.querySelector('[data-dns-ip-next]')?.setAttribute('disabled','');dnsUpdateAddSave();return;}
@@ -165,21 +181,15 @@ fn shell_unbound_client() -> &'static str {
           }).join('');
         morphLivePane(grid,buttons);
         const selected=dnsSelectedIp(),selectedStatus=selected?dnsIpAvailability(selected,device):null;
-        if(readout)readout.textContent=selected?`Selected address: ${selected}${selectedStatus?.heldByPicked?` (held by ${dnsDeviceLabel(device)})`:''}. Select it again to let staff choose.`:'No address selected; staff will choose the next free address.';
+        if(readout)readout.textContent=dnsUiState.planText || (selected?`Selected address: ${selected}${selectedStatus?.heldByPicked?` (held by ${dnsDeviceLabel(device)})`:''}. Select it again to let staff choose.`:'No address selected; staff will choose.');
         dnsUpdateAddSave();
 
     }
     function selectDnsDevice(mac) { const device=dnsRosterDevice(mac);
         if(!device||!dnsIdentityCurrent()||dnsUiState.mutationBusy)return;
         dnsUiState.pickedMac=String(device.mac||''); dnsUiState.moveConfirmation='';
-        const range=dnsCalendarRange(),ownOctet=dnsOctet(dnsAddress(device));
-        let selected=ownOctet!==null&&range&&ownOctet>=range.start&&ownOctet<=range.end&&dnsIpAvailability(`192.168.123.${ownOctet}`,device).available?ownOctet:null;
-        if(selected===null&&range)for(let octet=range.start;
-        octet<=range.end;
-        octet+=1)if(dnsIpAvailability(`192.168.123.${octet}`,device).available){selected=octet;
-          break;
-          }dnsUiState.selectedOctet=selected;
-        dnsUiState.calendarPage=selected!==null&&range?Math.floor((selected-range.start)/32):0;
+        dnsUiState.selectedOctet=null;
+        dnsUiState.calendarPage=0;
         const root=dnsUiState.binding.root,node=root.querySelector('[data-dns-picked-device]');
         if(node)node.textContent=`Selected device: ${dnsDeviceLabel(device)} (${dnsValue(device.mac)}) · current address ${dnsValue(dnsAddress(device))}`;
         const nameInput=root.querySelector('[data-dns-new-name]'),suggestion=String(dnsArray(device.dns_names)[0]||device.declared_reservation?.hostname||device.observed_lease?.hostname||device.hostname||device.name||'').replace(/\.home\.arpa\.?$/i,'');
@@ -187,12 +197,12 @@ fn shell_unbound_client() -> &'static str {
           dnsUiState.nameDefault=suggestion;
           }renderDnsModalRoster();
         renderDnsIpCalendar();
-        dnsUpdateAddSave();
+        dnsSchedulePlan();
         }
-      function openDnsModal(opener) { if(!dnsIdentityCurrent()||dnsUiState.mutationBusy)return;const modal=dnsUiState.binding.root.querySelector('[data-dns-add-modal]');if(!modal)return;renderDnsModalRoster();renderDnsModalRecords();if(dnsUiState.pickedMac)renderDnsIpCalendar();openCrownDialog(modal,opener);modal.querySelector('[data-dns-new-name]')?.focus(); }
+      function openDnsModal(opener) { if(!dnsIdentityCurrent()||dnsUiState.mutationBusy)return;const modal=dnsUiState.binding.root.querySelector('[data-dns-add-modal]');if(!modal)return;const result=modal.querySelector('[data-dns-add-result]');if(result)result.textContent='';renderDnsModalRoster();renderDnsModalRecords();if(dnsUiState.pickedMac)renderDnsIpCalendar();openCrownDialog(modal,opener);modal.querySelector('[data-dns-new-name]')?.focus(); }
     function closeDnsModal() { const root=dnsUiState.binding?.root,modal=root?.querySelector('[data-dns-add-modal]') || document.querySelector('[data-dns-add-modal]');
         if(modal)closeCrownDialog(modal);
-        dnsUiState.pickedMac=null;
+        clearTimeout(dnsUiState.planTimer);dnsUiState.planSequence++;dnsUiState.planReady=false;dnsUiState.planText='';dnsUiState.pickedMac=null;
         dnsUiState.selectedOctet=null;
         dnsUiState.nameDefault=''; dnsUiState.moveConfirmation='';
         const input=root?.querySelector('[data-dns-new-name]');
@@ -227,7 +237,7 @@ fn shell_unbound_client() -> &'static str {
     }
     async function saveDnsName() {
       const binding=dnsUiState.binding,root=binding?.root,input=root?.querySelector('[data-dns-new-name]'),result=root?.querySelector('[data-dns-add-result]'),normalized=dnsNormalizeBareLabel(input?.value);
-        if(!dnsIdentityCurrent()||dnsUiState.mutationBusy)return;
+        if(!dnsIdentityCurrent()||dnsUiState.mutationBusy||!dnsUiState.planReady)return;
         if(normalized.error){if(result)result.textContent=normalized.error;
           return;
           }const hostname=normalized.label,device=dnsRosterDevice(),address=dnsSelectedIp();
@@ -235,10 +245,11 @@ fn shell_unbound_client() -> &'static str {
         if(dnsUiState.selectedOctet!==null&&!address){if(result)result.textContent='That address is no longer available.';return;}
         const matches=dnsNameRows().filter(row=>dnsNormalizeBareLabel(row.name).label===hostname);
         if(matches.some(row=>row.where==='known-good'||row.where==='hand-written')){dnsUiState.moveConfirmation='';if(result)result.textContent='This name already exists. Adopt it first if available.';return;}
-        const owned=matches.filter(row=>(row.where==='owned'||(!row.where&&row.owned)) && (!address || row.address!==address));
+        const plannedAddress=address||dnsUiState.plannedIp;
+        const owned=matches.filter(row=>(row.where==='owned'||(!row.where&&row.owned)) && (!plannedAddress || row.address!==plannedAddress));
         const confirmation=JSON.stringify([hostname,device.mac,address,owned.map(row=>row.address).sort()]);
         const move=owned.length>0;
-        if(move&&dnsUiState.moveConfirmation!==confirmation){dnsUiState.moveConfirmation=confirmation;if(result)result.textContent=`This name belongs to ${owned.map(row=>row.address).join(', ')}. Select Save again to confirm moving it.`;return;}
+        if(move&&dnsUiState.moveConfirmation!==confirmation){dnsUiState.moveConfirmation=confirmation;if(result)result.textContent=`This name belongs to ${owned.map(row=>row.address).join(', ')}. Select Add name again to confirm moving it.`;return;}
         dnsUiState.moveConfirmation=''; if(result)result.textContent='Adding name…';
         dnsSetMutationBusy(true);
 
@@ -409,6 +420,7 @@ fn shell_unbound_client() -> &'static str {
           }const octet=target.closest('[data-dns-ip-octet]');
         if(octet&&!octet.disabled){const selected=Number(octet.dataset.dnsIpOctet);dnsUiState.selectedOctet=dnsUiState.selectedOctet===selected?null:selected;dnsUiState.moveConfirmation='';
           renderDnsIpCalendar();
+          dnsSchedulePlan();
           return;
           }if(target.closest('[data-dns-ip-prev]')){dnsUiState.calendarPage=Math.max(0,dnsUiState.calendarPage-1);
           renderDnsIpCalendar();
@@ -443,7 +455,7 @@ fn shell_unbound_client() -> &'static str {
       if(target.matches('[data-dns-new-name]')){
         dnsUiState.moveConfirmation='';
         if(target.value.trim()!==dnsUiState.nameDefault)dnsUiState.nameDefault='';
-        dnsUpdateAddSave();
+        dnsSchedulePlan(300);
       }
       if(target.matches('[data-dns-upstream-custom-addresses]')){
         dnsUiState.resolverDirty.add('upstreams');
