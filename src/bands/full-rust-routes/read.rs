@@ -183,9 +183,13 @@ async fn tailscale_mutation_route(headers: axum::http::HeaderMap, uri: Uri, body
                 Ok(value) => value,
                 Err(_) => return tailscale_mutation_refusal("tailscale-tailnet-payload-invalid"),
             };
-            let name = payload.get("tailnetName").or_else(|| payload.get("name")).and_then(serde_json::Value::as_str);
-            let Some(name) = name.filter(|value| !value.trim().is_empty()) else { return tailscale_mutation_refusal("tailscale-tailnet-name-required"); };
-            ("update-tailnet", "/api/v1/network/tailscale/tailnet", Some(serde_json::json!({"name":name})))
+            let name = payload.get("tailnetName").and_then(serde_json::Value::as_str).filter(|value| !value.trim().is_empty())
+                .or_else(|| payload.get("name").and_then(serde_json::Value::as_str).filter(|value| !value.trim().is_empty()));
+            let request = match name {
+                Some(name) => serde_json::json!({"name":name}),
+                None => serde_json::json!({}),
+            };
+            ("update-tailnet", "/api/v1/network/tailscale/tailnet", Some(request))
         }
         _ => return tailscale_mutation_refusal("coronatio-tailscale-mutation-route-unknown"),
     };

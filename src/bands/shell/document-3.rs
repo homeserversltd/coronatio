@@ -999,7 +999,7 @@ fn shell_document_3() -> &'static str {
     }
     function modalRequestBody(button) {
       const route = button.dataset.modalFetch || '';
-      if (route.endsWith('/update-tailnet')) return JSON.stringify({ name: infoBody.querySelector('[data-tailnet-input]')?.value || '' });
+      if (route.endsWith('/update-tailnet')) return JSON.stringify({});
       if (route.endsWith('/authkey')) {
         const input = infoBody.querySelector('[data-authkey-input]');
         const key = input?.value || '';
@@ -1039,7 +1039,7 @@ fn shell_document_3() -> &'static str {
           if (!modalResponseIsCurrent(generation, expectedModal, expectedAdmin) || !infoBody.contains(node)) return;
           const servicesRoute = kind === 'services' && route === '/api/status/services';
           const tailscaleStatusRoute = kind === 'tailscale' && route === '/api/status/tailscale';
-          const tailscaleConfigRoute = kind === 'tailscale' && route === '/api/status/tailscale/config';
+
           const transmissionRoute = kind === 'openvpn' && (route === '/api/status/vpn/pia' || route === '/api/status/vpn/transmission');
           const powerRoute = kind === 'power-meter' && route === '/api/status/power/usage';
           const failed = routeReadWasRefused(response, data);
@@ -1052,10 +1052,7 @@ fn shell_document_3() -> &'static str {
             setPowerUsage(powerData);
             renderPowerModal();
           }
-          if (tailscaleConfigRoute) {
-            const input = expectedModal?.querySelector('[data-tailnet-input]');
-            if (!failed && data?.ok === true && typeof data.tailnet === 'string' && input && !input.dataset.userEdited) input.value = data.tailnet;
-          }
+
           const labelData = powerRoute ? powerData : readData;
           const label = routeReadLabel(route, labelData);
           if (servicesRoute) {}
@@ -1224,10 +1221,7 @@ fn shell_document_3() -> &'static str {
       infoBackdrop.setAttribute('aria-hidden', 'false');
       wireModalFetches();
       hydrateModalRouteReads(kind);
-      if (kind === 'tailscale') {
-        const tailnetInput = infoBody.querySelector('[data-tailnet-input]');
-        tailnetInput?.addEventListener('input', () => { tailnetInput.dataset.userEdited = 'true'; });
-      }
+
       if (kind === 'openvpn' && headerState.isAdmin) {
         const transmissionModal = infoBody.querySelector('[data-modal-kind-body="openvpn"]');
         void hydrateTransmissionAdminReads(infoModalGeneration, transmissionModal);
