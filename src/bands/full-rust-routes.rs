@@ -121,6 +121,8 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/v1/network/identity/device/plan", post(dns_caduceus_mutation_route))
         .route("/api/v1/network/dns/device-name/remove", post(dns_caduceus_mutation_route))
         .route("/api/v1/network/dns/blocklist/update", post(dns_caduceus_mutation_route))
+        .route("/api/v1/network/dns/blocklist/source/add", post(dns_caduceus_mutation_route))
+        .route("/api/v1/network/dns/blocklist/source/remove", post(dns_caduceus_mutation_route))
         .route("/api/v1/network/dns/adblock", post(dns_caduceus_mutation_route))
         .route("/api/v1/network/dns/upstream", post(dns_caduceus_mutation_route))
         .route("/api/firewall/observed", get(firewall_observed_route))

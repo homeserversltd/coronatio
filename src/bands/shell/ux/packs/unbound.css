@@ -28,6 +28,11 @@
 }
 .dns-group-heading, .dns-encryption { justify-content: space-between; min-height: 48px; }
 .dns-detail-line { flex-wrap: wrap; }
+.dns-blocklist-sources { display: grid; }
+.dns-blocklist-source { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-width: 0; border-top: 1px solid var(--border); }
+.dns-blocklist-source span { min-width: 0; overflow-wrap: anywhere; }
+.dns-blocklist-presets, .dns-blocklist-add { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.dns-blocklist-add input { flex: 1 1 16rem; min-width: 0; }
 .dns-actions { justify-content: flex-end; }
 .dns-tablet button, .dns-tablet .ui-toggle { min-height: 44px; }
 .dns-tablet .ui-toggle { min-width: 44px; }

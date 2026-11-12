@@ -64,6 +64,8 @@ async fn dns_caduceus_read_route(uri: axum::http::Uri) -> Response {
     dns_response(path, readback)
 }
 
+const DNS_BLOCKLIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
 async fn dns_caduceus_mutation_route(
     headers: axum::http::HeaderMap,
     uri: axum::http::Uri,
@@ -76,18 +78,21 @@ async fn dns_caduceus_mutation_route(
     let timeout = match path {
         "/api/v1/network/identity/device/add" => Some(std::time::Duration::from_secs(95)),
         "/api/v1/network/dns/device-name/create" | "/api/v1/network/dns/device-name/remove" | "/api/v1/network/identity/device/plan" => Some(std::time::Duration::from_secs(30)),
+        "/api/v1/network/dns/blocklist/update" | "/api/v1/network/dns/blocklist/source/add" | "/api/v1/network/dns/blocklist/source/remove" => Some(DNS_BLOCKLIST_TIMEOUT),
         _ => None,
     };
     let readback = if let Some(timeout) = timeout {
         let target = path.to_owned();
-        let body = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
         tokio::task::spawn_blocking(move || {
-            caduceus_actuate_json_with_timeout(&mutation_authority(), &headers, &target, body, timeout)
+            if target == "/api/v1/network/dns/blocklist/update" {
+                caduceus_actuate_with_timeout(&mutation_authority(), &headers, &target, timeout)
+            } else {
+                let body = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
+                caduceus_actuate_json_with_timeout(&mutation_authority(), &headers, &target, body, timeout)
+            }
         })
         .await
         .unwrap_or_else(|_| mutation_task_failure_readback(path))
-    } else if path == "/api/v1/network/dns/blocklist/update" {
-        caduceus_actuate(&mutation_authority(), &headers, path)
     } else {
         caduceus_actuate_json(
             &mutation_authority(),

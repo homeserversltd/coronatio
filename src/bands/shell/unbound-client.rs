@@ -6,6 +6,12 @@ fn shell_unbound_client() -> &'static str {
     const dnsValue = (value, fallback = '—') => value === undefined || value === null || value === '' ? fallback : String(value);
     const dnsAddress = row => row?.address || row?.ip || row?.target || row?.value || row?.declared_reservation?.ip || row?.declared_reservation?.['ip-address'] || row?.observed_lease?.ip || '—';
     const dnsProviders = Object.freeze({ quad9: ['9.9.9.9', '149.112.112.112'], cloudflare: ['1.1.1.1', '1.0.0.1'], google: ['8.8.8.8', '8.8.4.4'] });
+    const dnsBlocklistTimeoutMs = 300000;
+    const dnsBlocklistPresets = Object.freeze([
+      ['StevenBlack unified', 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts'],
+      ['HaGeZi Multi normal', 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/multi-onlydomains.txt'],
+      ['OISD big', 'https://big.oisd.nl/domainswild2']
+    ]);
     function dnsEnvelopeNodes(value, depth = 0) { if (!value || typeof value !== 'object' || depth > 6) return []; if (Array.isArray(value)) return value.flatMap(item => dnsEnvelopeNodes(item, depth + 1)); const nodes = [value]; for (const key of ['payload', 'result', 'data', 'receipt', 'readback', 'caduceus']) nodes.push(...dnsEnvelopeNodes(value[key], depth + 1)); return nodes; }
     function dnsChordNodes(value, depth = 0) { if (!value || typeof value !== 'object' || depth > 20) return []; if (Array.isArray(value)) return value.flatMap(item => dnsChordNodes(item, depth + 1)); return [value, ...Object.values(value).flatMap(item => dnsChordNodes(item, depth + 1))]; }
     function dnsChordStage(value, stageId) { return dnsChordNodes(value).find(node => node.stage_id === stageId) || null; }
@@ -19,6 +25,7 @@ fn shell_unbound_client() -> &'static str {
         if(!root)return;
         root.querySelectorAll('[data-dns-resolver-control], [data-dns-upstream-save]').forEach(node=>{if(!scaffoldReadProjectionAllowed(node,preserveReadySlots))return;let available=dnsCurrent(binding)&&dnsUiState.resolverReady;
           if(node.matches('[data-dns-adblock]'))available=available&&typeof status?.adblockEnabled==='boolean';
+          else if(node.matches('[data-dns-blocklist-source-remove], [data-dns-blocklist-preset], [data-dns-blocklist-url], [data-dns-blocklist-add]'))available=available&&Array.isArray(status?.blocklistSources);
           else if(node.matches('[data-dns-dot], [data-dns-upstream-provider], [data-dns-upstream-custom-toggle], [data-dns-upstream-custom-addresses], [data-dns-upstream-save]'))available=available&&Array.isArray(status?.upstreams)&&typeof status?.dnsOverTls==='boolean';
           node.disabled=!available||dnsUiState.mutationBusy;
           });
@@ -103,7 +110,15 @@ fn shell_unbound_client() -> &'static str {
         const html=`<h3>Records</h3><div class="dns-table-scroll" data-dns-records-scroll><table class="ui-table"><thead><tr><th>Name</th><th>Address</th><th>PTR</th><th>Provenance</th></tr></thead><tbody>${rows.map(row=>`<tr data-scaffold-key="dns-modal-record:${escapeHtml(`${row.name.toLowerCase()}-${row.address.toLowerCase()}`)}"><td data-label="Name"><code>${escapeHtml(dnsValue(row.name))}</code></td><td data-label="Address"><code>${escapeHtml(dnsValue(row.address))}</code></td><td data-label="PTR"><code>${escapeHtml(dnsValue(row.ptr))}</code></td><td data-label="Provenance">${escapeHtml(Array.isArray(row.provenance)?row.provenance.join(', '):dnsValue(row.provenance))}</td></tr>`).join('')||'<tr data-scaffold-key="dns-modal-records-empty"><td data-label="Records" colspan="4">No records reported.</td></tr>'}</tbody></table></div>`;
         morphLivePane(target,html);
         }
-    function resolverReceipt(envelope) { const known=['adblockEnabled','upstreams','dnsOverTls','blocklistDomainCount','blocklistLastUpdate','unboundActive'];return dnsFindObject(envelope,node=>known.some(key=>Object.prototype.hasOwnProperty.call(node,key)))||null; }
+    function resolverReceipt(envelope) { const known=['adblockEnabled','upstreams','dnsOverTls','blocklistDomainCount','blocklistLastUpdate','blocklistCheckedAt','blocklistSources','unboundActive'];return dnsFindObject(envelope,node=>known.some(key=>Object.prototype.hasOwnProperty.call(node,key)))||null; }
+    function renderDnsBlocklistSources(status) {
+      const root=dnsUiState.binding?.root, list=root?.querySelector('[data-dns-blocklist-sources]'), presets=root?.querySelector('[data-dns-blocklist-presets]');
+      if(!list||!presets||!Array.isArray(status?.blocklistSources))return;
+      const sources=status.blocklistSources.filter(row=>typeof row?.url==='string');
+      const disabled=!dnsUiState.resolverReady||dnsUiState.mutationBusy?' disabled':'';
+      list.innerHTML=sources.map(row=>{let host=row.url;try{host=new URL(row.url).hostname||row.url;}catch(_){}const url=escapeHtml(row.url),label=escapeHtml(host);return `<div class="dns-blocklist-source"><span title="${url}">${label}</span><button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-blocklist-source-remove="${url}" data-dns-resolver-control${disabled}>Remove</button></div>`;}).join('');
+      presets.innerHTML=dnsBlocklistPresets.filter(([,url])=>!sources.some(source=>source.url===url)).map(([name,url])=>`<button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-blocklist-preset="${escapeHtml(url)}" data-dns-resolver-control${disabled}>+ ${escapeHtml(name)}</button>`).join('');
+    }
     function dnsUpstreamBase(address) { return String(address ?? '').trim().split(/[@#]/, 1)[0].trim(); }
     function dnsNormalizeUpstreams(addresses) { return [...new Set(dnsArray(addresses).map(dnsUpstreamBase).filter(Boolean))]; }
     function dnsResolverChoice(addresses) {
@@ -131,6 +146,7 @@ fn shell_unbound_client() -> &'static str {
       const count=Number.isFinite(status.blocklistDomainCount)?status.blocklistDomainCount.toLocaleString():'Unavailable';
       const blocklist=root.querySelector('[data-dns-blocklist-status]');
       if(blocklist)blocklist.textContent=`${count} domains blocked · updated ${updated}`;
+      renderDnsBlocklistSources(status);
       const active=typeof status.unboundActive==='boolean'?(status.unboundActive?'running':'stopped'):'unavailable';
       const name=hasUpstreams?(choice.preset?({quad9:'Quad9',cloudflare:'Cloudflare',google:'Google'}[choice.preset]):'Custom'):'unavailable';
       const service=root.querySelector('[data-dns-service-status]');
@@ -231,7 +247,7 @@ fn shell_unbound_client() -> &'static str {
           if(!ctx.current()||!dnsCurrent(binding))return false;
           ctx.ready(slot);
           return receipt;
-          }catch(error){failure=error;throw error;}},{slots:[slot],retry:false,timeoutMs:100000,onFailure:({current,reason})=>{if(current()&&dnsCurrent(binding))dnsSetState(`DNS change unavailable: ${failure?.message||reason||'Read failed'}`);
+          }catch(error){failure=error;throw error;}},{slots:[slot],retry:false,timeoutMs:route.startsWith('/api/v1/network/dns/blocklist/')?dnsBlocklistTimeoutMs:100000,onFailure:({current,reason})=>{if(current()&&dnsCurrent(binding))dnsSetState(`DNS change unavailable: ${failure?.message||reason||'Read failed'}`);
             }}).then(result=>{if(!result&&failure)throw failure;return result;});
 
     }
@@ -284,13 +300,41 @@ fn shell_unbound_client() -> &'static str {
             }}finally{if(dnsCurrent(binding))dnsSetMutationBusy(false);
           }
     }
+    function dnsBlocklistOutcome(receipt) {
+      const result=dnsFindObject(receipt,node=>typeof node.outcome==='string');
+      if(result?.outcome==='held')dnsSetState(`kept the last list: ${result.firstFailingSource||'source'} unreachable`);
+      else if(result?.outcome==='unchanged')dnsSetState('already current');
+      else if(result?.outcome==='failed')dnsSetState(`DNS change unavailable: ${result.firstMissingSignal||'Blocklist update failed'}`);
+    }
+    async function changeDnsBlocklistSource(action,url) {
+      const binding=dnsUiState.binding,input=binding?.root?.querySelector('[data-dns-blocklist-url]');
+      if(!dnsCurrent(binding)||!dnsUiState.resolverReady||!Array.isArray(dnsUiState.resolver?.blocklistSources)||dnsUiState.mutationBusy)return;
+      if(action==='add') {
+        let parsed;
+        try { if(!/^https:\/\//i.test(url))throw new Error(); parsed=new URL(url); if(parsed.protocol!=='https:')throw new Error(); }
+        catch(_) { dnsSetState('Enter a valid HTTPS URL.'); return; }
+        if(parsed.username||parsed.password) { dnsSetState('Use a URL without a username or password.'); return; }
+      }
+      dnsSetMutationBusy(true);
+      try {
+        const body={url};
+        const receipt=await dnsMutation(binding,`blocklist-source-${action}`,`/api/v1/network/dns/blocklist/source/${action}`,{method:'POST',body:JSON.stringify(body)});
+        if(!receipt||!dnsCurrent(binding))return;
+        const result=dnsFindObject(receipt,node=>typeof node.outcome==='string');
+        if(action==='add'&&['applied','held','unchanged'].includes(result?.outcome)&&input&&input.value.trim()===url)input.value='';
+        await hydrateDns({supersede:true});
+        dnsBlocklistOutcome(receipt);
+      } catch(failure) { if(dnsCurrent(binding)) { await hydrateDns({supersede:true}); dnsSetState(`DNS change unavailable: ${failure?.message||'Blocklist change failed'}`); } }
+      finally { if(dnsCurrent(binding))dnsSetMutationBusy(false); }
+    }
     async function updateDnsBlocklist() {
       const binding=dnsUiState.binding;
         if(!dnsCurrent(binding)||!dnsUiState.resolverReady||dnsUiState.mutationBusy)return;
         dnsSetMutationBusy(true);
         try{const receipt=await dnsMutation(binding,'blocklist','/api/v1/network/dns/blocklist/update',{method:'POST'});
-          if(receipt&&dnsCurrent(binding)){showCoronatioToast('Blocklist update accepted.','success');
+          if(receipt&&dnsCurrent(binding)){
             await hydrateDns({supersede:true});
+            dnsBlocklistOutcome(receipt);
             }}catch(failure){if(dnsCurrent(binding)){showCoronatioToast(failure?.message||'Blocklist update failed','error');
             await hydrateDns({supersede:true});
             }}finally{if(dnsCurrent(binding))dnsSetMutationBusy(false);
@@ -341,7 +385,7 @@ fn shell_unbound_client() -> &'static str {
           if(!envelope||envelope.ok!==true||!envelope.payload||envelope.payload.ok!==true)throw new Error(dnsRefusal(envelope)||'Resolver response is incomplete');
           const source=resolverReceipt(envelope);
           if(!source)throw new Error('Resolver status fields are unavailable');
-          const status=Object.fromEntries(['adblockEnabled','upstreams','dnsOverTls','blocklistDomainCount','blocklistLastUpdate','unboundActive'].filter(key=>Object.prototype.hasOwnProperty.call(source,key)).map(key=>[key,source[key]]));
+          const status=Object.fromEntries(['adblockEnabled','upstreams','dnsOverTls','blocklistDomainCount','blocklistLastUpdate','blocklistCheckedAt','blocklistSources','unboundActive'].filter(key=>Object.prototype.hasOwnProperty.call(source,key)).map(key=>[key,source[key]]));
           if(!ctx.current()||!dnsCurrent(binding))return false;
           dnsUiState.resolver=status;
           dnsUiState.resolverReady=true;
@@ -431,7 +475,12 @@ fn shell_unbound_client() -> &'static str {
           }const adopt=target.closest('[data-dns-name-adopt]');if(adopt){if(!adopt.disabled)return adoptDnsName(adopt);return;}const remove=target.closest('[data-dns-name-remove]');
         if(remove){if(!remove.disabled)return removeDnsName(remove);
           return;
-          }if(target.closest('[data-dns-blocklist-update]'))return updateDnsBlocklist();
+          }const sourceRemove=target.closest('[data-dns-blocklist-source-remove]');
+        if(sourceRemove&&!sourceRemove.disabled)return changeDnsBlocklistSource('remove',sourceRemove.dataset.dnsBlocklistSourceRemove);
+        const preset=target.closest('[data-dns-blocklist-preset]');
+        if(preset&&!preset.disabled)return changeDnsBlocklistSource('add',preset.dataset.dnsBlocklistPreset);
+        if(target.closest('[data-dns-blocklist-add]'))return changeDnsBlocklistSource('add',binding.root.querySelector('[data-dns-blocklist-url]')?.value.trim()||'');
+        if(target.closest('[data-dns-blocklist-update]'))return updateDnsBlocklist();
         if(target.closest('[data-dns-upstream-save]'))return saveDnsUpstream();
         if(target.closest('[data-dns-upstream-cancel]')){dnsUiState.resolverDirty.delete('upstreams');renderResolverStatus(dnsUiState.resolver);return;}
         if(target.closest('[data-dns-refresh]'))return hydrateDns({supersede:true});
@@ -462,7 +511,9 @@ fn shell_unbound_client() -> &'static str {
 
       }
     },true);
-    document.addEventListener('keydown',event=>{const binding=dnsUiState.binding,current=event.target.closest?.('[data-dns-ip-octet]');
+    document.addEventListener('keydown',event=>{const binding=dnsUiState.binding;
+        if(event.key==='Enter'&&event.target.matches?.('[data-dns-blocklist-url]')&&dnsCurrent(binding)&&binding.root.contains(event.target)&&!event.target.disabled){event.preventDefault();void changeDnsBlocklistSource('add',event.target.value.trim());return;}
+        const current=event.target.closest?.('[data-dns-ip-octet]');
         if(!current||!dnsCurrent(binding)||!binding.root.contains(current)||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return;
         const buttons=[...current.closest('[data-dns-ip-grid]').querySelectorAll('[data-dns-ip-octet]:not(:disabled)')],index=buttons.indexOf(current);
         if(index<0)return;
