@@ -666,17 +666,21 @@ fn parse_caduceus_response(path: &str, response: &str, io_duration: Duration, di
         .get("ok")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(status_valid && status < 400);
+    let ok = status_valid && status < 400 && body_ok;
     let first_missing_signal = if !status_valid {
         "caduceus-http-status-invalid".to_owned()
     } else {
-        body
-            .get("firstMissingSignal")
-            .or_else(|| body.get("first_missing_signal"))
-            .and_then(serde_json::Value::as_str)
+        let door_signal = (!ok)
+            .then(|| body.get("doorSignal").and_then(serde_json::Value::as_str))
+            .flatten()
+            .filter(|signal| *signal != "none");
+        door_signal
+            .or_else(|| body.get("firstMissingSignal")
+                .or_else(|| body.get("first_missing_signal"))
+                .and_then(serde_json::Value::as_str))
             .unwrap_or(if status < 400 && body_ok { "none" } else { "caduceus-http-not-ok" })
             .to_string()
     };
-    let ok = status_valid && status < 400 && body_ok;
     load_trace::record_provider_response(
         &dispatch,
         provider,
