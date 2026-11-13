@@ -507,7 +507,15 @@ fn forward_tab_mutation(route: &str, body: serde_json::Value, attendance: &Mutat
        Err(CartridgeRouteFailure::Unmapped) => return mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
        Err(CartridgeRouteFailure::Unavailable) => return mutation_refusal_readback(route, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 }),
    };
-   caduceus_http_json_with_attendance_and_document(&door.method, &door.path, body, Some(&attendance.proof), Some(&attendance.document))
+   let timeout = match door.path.as_str() {
+       "/api/v1/xenia/validate" => Some(Duration::from_secs(60)),
+       "/api/v1/xenia/admit" | "/api/v1/xenia/remove" => Some(Duration::from_secs(330)),
+       _ => None,
+   };
+   match timeout {
+       Some(timeout) => caduceus_http_json_with_attendance_and_document_timeout(&door.method, &door.path, body, Some(&attendance.proof), Some(&attendance.document), timeout),
+       None => caduceus_http_json_with_attendance_and_document(&door.method, &door.path, body, Some(&attendance.proof), Some(&attendance.document)),
+   }
 }
 
 fn xenia_tab_response(readback: CaduceusHttpReadback) -> Response {
