@@ -720,12 +720,12 @@ fn shell_document_4_tail() -> &'static str {
       target.appendChild(details);
     }
 
-    function openNasSetupConfirmation(owner, name) {
-      closeDriveModal();
+    function openNasSetupConfirmation(owner, name, requestedRole = null) {
       if (!adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name))) return;
       const device = owner.devices.find(item => diskCensusDeviceName(item) === name);
       if (!device || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || owner.protectedParents.has(diskIdentity(name)) || !diskNameCanNormalize(name)) return;
-      const role = owner.primaryNasExists ? 'backup' : 'primary';
+      const role = requestedRole || (owner.primaryNasExists ? 'backup' : 'primary');
+      closeDriveModal();
       const foreignFilesystem = typeof device.foreign === 'string' && device.foreign ? ` (${escapeDiskHtml(device.foreign)})` : '';
       const body = `<p>This will erase all data on <code>${escapeDiskHtml(name)}</code>${foreignFilesystem} and prepare it as the ${role} NAS.</p><p>Type the displayed device name exactly to confirm erasure.</p><label for="nas-setup-confirmation">Confirm device name<input id="nas-setup-confirmation" class="ui-input ui-input--medium" type="text" autocomplete="off" data-nas-setup-confirmation></label><p data-nas-setup-state aria-live="polite">Waiting for exact confirmation.</p>`;
       const modal = managerModal('nas-setup', 'Make this my NAS', body, 'Erase and set up NAS');
@@ -808,10 +808,13 @@ fn shell_document_4_tail() -> &'static str {
         const address = typeof value === 'string' ? value : '—';
         const text = document.createElement('span');
         text.textContent = address;
-        const copy = document.createElement('button');
-        copy.type = 'button'; copy.dataset.driveCopy = ''; copy.textContent = 'Copy';
-        copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(address); } catch (_) {} });
-        line.append(text, document.createTextNode(' '), copy);
+        line.appendChild(text);
+        if (typeof value === 'string' && value) {
+          const copy = document.createElement('button');
+          copy.type = 'button'; copy.dataset.driveCopy = ''; copy.textContent = 'Copy';
+          copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(address); } catch (_) {} });
+          line.append(document.createTextNode(' '), copy);
+        }
         container.appendChild(line);
       }
       if (body?.viewer?.state === 'opened') {
@@ -821,13 +824,13 @@ fn shell_document_4_tail() -> &'static str {
       }
     }
     async function driveSubmit(modal, key, name, row, mode) {
-      if (driveRequestInFlight) return;
+      if (driveRequestInFlight) { modal.querySelector('[data-drive-result]').textContent = 'Working…'; return; }
       const role = driveKindOf(row) === 'nas-primary' ? 'primary' : 'backup';
       const actions = {
-        'open': ['/api/v1/storage/drive/open', { device: '/dev/' + name }],
-        'copy-nas': ['/api/v1/storage/nas/import', { device: '/dev/' + name }],
+        'open': ['/api/v1/storage/drive/add', { device: '/dev/' + name }],
+        'copy-nas': ['/api/v1/storage/nas-import/run', { device: '/dev/' + name }],
         'test': ['/api/v1/storage/disk/test', { device: '/dev/' + name, mode }],
-        'eject-drive': ['/api/v1/storage/drive/eject', { device: '/dev/' + name }],
+        'eject-drive': ['/api/v1/storage/drive/remove', { device: '/dev/' + name }],
         'eject-nas': ['/api/v1/storage/nas/detach', { role }],
         'try-again': ['/api/v1/storage/nas/attach', { role }]
       };
@@ -844,7 +847,10 @@ fn shell_document_4_tail() -> &'static str {
         result.textContent = driveReceiptLine(response.status, body);
         driveShowReceipt(modal, body);
         if (body?.ok === true && key === 'open') driveShowShare(modal, body);
-        if (body?.ok === true && ['open', 'eject-drive', 'eject-nas', 'try-again'].includes(key)) refreshAdminDiskCensus();
+        if (body?.ok === true && ['open', 'eject-drive', 'eject-nas', 'try-again'].includes(key)) {
+          if (key !== 'open' && document.querySelector('[data-drive-modal]') === modal) closeDriveModal();
+          refreshAdminDiskCensus();
+        }
       } catch (_) { result.textContent = driveReceiptLine(0, null); }
       finally { driveRequestInFlight = false; }
     }
@@ -872,8 +878,8 @@ fn shell_document_4_tail() -> &'static str {
         button.type = 'button'; button.className = 'ui-button ui-button--secondary ui-button--small';
         button.dataset.driveOption = key; button.textContent = labels[key];
         button.addEventListener('click', () => {
-          if (driveRequestInFlight) return;
-          if (key === 'make-nas' || key === 'make-backup') { closeDriveModal(); openNasSetupConfirmation(owner, name); return; }
+          if (driveRequestInFlight) { modal.querySelector('[data-drive-result]').textContent = 'Working…'; return; }
+          if (key === 'make-nas' || key === 'make-backup') { openNasSetupConfirmation(owner, name, key === 'make-nas' ? 'primary' : 'backup'); return; }
           if (key === 'test') {
             const target = modal.querySelector('[data-drive-test]');
             target.innerHTML = '<label>Test type<select data-drive-test-mode><option value="quick">Quick</option><option value="full">Full</option></select></label><button type="button" data-drive-test-start>Start test</button>';
