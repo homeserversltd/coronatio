@@ -2,6 +2,7 @@
   "schema": "coronatio.shell.ux.index.v1",
   "children": [
     "shell/base-and-chrome.css",
+    "shell/explain.css",
     "library/_badge.css",
     "library/_breadcrumbs.css",
     "library/_button.css",

@@ -9,6 +9,7 @@ include!("shell/immortal-floor-owner-client.rs");
 include!("shell/linker-client.rs");
 include!("shell/document-4.rs");
 include!("shell/document-4-tail.rs");
+include!("shell/explain-client.rs");
 include!("shell/dhcp-client.rs");
 include!("shell/unbound-client.rs");
 include!("shell/backblaze-client.rs");

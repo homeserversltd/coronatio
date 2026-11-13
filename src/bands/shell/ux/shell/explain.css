@@ -1,0 +1,30 @@
+[data-explain-scope] [data-explain] { display: none; }
+[data-explain-scope][data-explain-on="true"] [data-explain] { display: block; }
+
+@media (hover: hover) and (pointer: fine) {
+  [data-explain-hint] { position: relative; }
+  [data-explain-hint]:hover, [data-explain-hint]:focus-visible, [data-explain-hint]:has(:focus-visible) { z-index: 10; }
+  [data-explain-hint]::after {
+    content: attr(data-explain-hint);
+    position: absolute;
+    left: 0;
+    bottom: 100%;
+    z-index: 10;
+    width: max-content;
+    max-width: min(20rem, 80vw);
+    padding: .5rem .7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius, 6px);
+    background: var(--primary);
+    color: var(--text);
+    font-size: .875rem;
+    font-weight: normal;
+    line-height: 1.35;
+    text-align: left;
+    white-space: normal;
+    pointer-events: none;
+    visibility: hidden;
+  }
+  [data-explain-hint-align="end"]::after { left: auto; right: 0; }
+  [data-explain-hint]:hover::after, [data-explain-hint]:focus-visible::after, [data-explain-hint]:has(:focus-visible)::after { visibility: visible; }
+}

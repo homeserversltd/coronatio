@@ -272,6 +272,12 @@
 .dhcp-range summary span { color: var(--secondary); }
 .dhcp-range [data-dhcp-range-warning] { color: var(--error); }
 .dhcp-range [hidden] { display: none; }
+.dhcp-summary-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.dhcp-explanation, .dhcp-sheet-explanation { color: var(--secondary); font-size: .9rem; }
+.dhcp-explanation p { margin: .25rem 0; }
+@media (hover: hover) and (pointer: fine) {
+  .dhcp-row:has([data-explain-hint]:hover), .dhcp-row:has([data-explain-hint]:focus-visible) { position: relative; z-index: 10; }
+}
 @media (max-width: 48rem) { .dhcp-row { grid-template-columns: minmax(6rem, 1fr) 6rem 44px; } .dhcp-row > span:nth-child(3) { grid-column: 1; } .dhcp-row .ui-button { grid-column: 2; grid-row: 2; } .dhcp-chevron { grid-column: 3; grid-row: 1 / 3; } }
 
 @media (max-width: 48rem) {
