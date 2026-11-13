@@ -146,10 +146,7 @@ fn render_admin_document_patch() -> String {
 }
 
 fn assemble_admin_document_patch(privileged_panes: Vec<String>, role_templates: String) -> String {
-    let mut admin = shell_admin_document_patch().replace(
-        "__ADMIN_MOUNT_DESTINATIONS__",
-        r#"<div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--medium"></span><span class="ui-skeleton__block"></span></div>"#,
-    );
+    let mut admin = shell_admin_document_patch().to_string();
     let _ = mark_patch_owned_pane(&mut admin, "admin");
     format!(
         "<div data-admin-document-patch=\"true\"></div>{}{}",

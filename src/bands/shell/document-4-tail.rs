@@ -445,11 +445,6 @@ fn shell_document_4_tail() -> &'static str {
         status.textContent = 'Admin access ended; disk observations were cleared.';
         host.appendChild(status);
       });
-      pane?.querySelectorAll('[data-admin-mounts-readback]').forEach(node => {
-        node.replaceChildren();
-        node.dataset.state = 'unavailable';
-        node.textContent = 'Admin access ended; mount observations were cleared.';
-      });
       pane?.querySelectorAll('[data-admin-nas-status]').forEach(node => {
         node.textContent = 'Admin access ended; NAS status is unavailable.';
         node.dataset.state = 'unknown';
@@ -730,38 +725,6 @@ fn shell_document_4_tail() -> &'static str {
       });
       input.focus();
     }
-    function hardDriveTestModal() {
-      const modal = managerModal('hard-drive-test', 'Hard Drive Test', '<p>Choose a NAS drive and the test depth.</p><label>Device<select class="ui-input ui-input--medium" data-hard-drive-test-device><option value="">Reading available devices…</option></select></label><label>Test type<select class="ui-input ui-input--medium" data-hard-drive-test-type><option value="quick">Quick</option><option value="full">Full</option><option value="ultimate">Ultimate</option></select></label><p data-hard-drive-test-state aria-live="polite">Choose a device to begin.</p>', 'Start Test');
-      const device = modal.querySelector('[data-hard-drive-test-device]'), type = modal.querySelector('[data-hard-drive-test-type]'), state = modal.querySelector('[data-hard-drive-test-state]'), confirm = modal.querySelector('[data-manager-confirm]');
-      const census = hydrateDiskCensus(), censusOwner = adminDiskSnapshotOwner;
-      const ready = () => { confirm.disabled = !device.value || !adminDiskSnapshotCurrent(censusOwner) || !censusOwner.dataReady || censusOwner.stale; };
-      census.then(() => {
-        if (!modal.isConnected || !adminDiskSnapshotCurrent(censusOwner)) return;
-        const devices = censusOwner.dataReady && !censusOwner.stale ? censusOwner.devices : [];
-        const message = censusOwner.error || (devices.length ? 'Choose a NAS drive' : censusOwner.dataReady ? 'No NAS drives available' : 'Current disk status is unavailable');
-        device.innerHTML = `<option value="">${escapeDiskHtml(message)}</option>${devices.map(item => `<option value="${escapeDiskHtml(diskCensusDeviceName(item))}">${escapeDiskHtml(diskCensusDeviceName(item))}</option>`).join('')}`;
-        if (censusOwner.error || !devices.length) state.textContent = message;
-        ready();
-      });
-      device.addEventListener('change', ready);
-      confirm.addEventListener('click', async () => {
-        if (!adminDiskSnapshotCurrent(censusOwner) || !censusOwner.dataReady || censusOwner.stale || !device.value) { ready(); return; }
-        confirm.disabled = true; state.textContent = 'Starting drive test…';
-        try {
-          const response = await fetch('/api/admin/hard-drive-test/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: device.value, testType: type.value }) });
-          if (!response.ok) throw new Error('start-refused');
-          state.textContent = 'Drive test started. Reading progress…';
-          const timer = window.setInterval(async () => {
-            try {
-              const progress = await fetch('/api/admin/hard-drive-test/progress', { cache: 'no-store' }).then(result => result.json());
-              const results = await fetch('/api/admin/hard-drive-test/results', { cache: 'no-store' }).then(result => result.json());
-              state.textContent = String(progress?.message || progress?.status || results?.message || results?.status || 'Running');
-              if (progress?.complete || progress?.done || results?.complete || results?.done) { window.clearInterval(timer); ready(); }
-            } catch (_) {}
-          }, 1000);
-        } catch (_) { state.textContent = 'Hard Drive Test could not be started.'; ready(); }
-      });
-    }
     document.body.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null;
       const nasButton = target?.closest('[data-nas-setup-open]');
@@ -777,7 +740,6 @@ fn shell_document_4_tail() -> &'static str {
       }
       const manager = target?.closest('[data-manager-open]');
       if (manager) { const kind = manager.dataset.managerOpen; if (kind === 'key-guide') managerGuideModal(); else managerKeyModal(kind); return; }
-      if (target?.closest('[data-hard-drive-test-open]')) { hardDriveTestModal(); return; }
     });
     __UPDATE_MANAGER_CLIENT__
     __EXPLAIN_CLIENT__

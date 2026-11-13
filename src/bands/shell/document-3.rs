@@ -37,7 +37,6 @@ fn shell_document_3() -> &'static str {
     let adminDiskSnapshotOwner = null;
     let adminDiskSnapshotLastGood = null;
     let adminDiskPageHidden = false;
-    const adminMountDestinationBindings = new WeakSet();
     function applyAdminDomState() {
       if (adminButton) {
         adminButton.dataset.adminState = headerState.isAdmin ? 'logged-in' : 'logged-out';
@@ -1666,63 +1665,6 @@ __NATIVE_HTMX_OWNER__
         }
       }
     }
-    function adminMountDestinationRows(payload) {
-      const rows = payload?.adminRuntime?.mountDestinations;
-      if (!Array.isArray(rows)) throw new Error('Read failed');
-      const expectedPaths = ['/mnt/nas', '/mnt/nas_backup'];
-      const byPath = new Map();
-      rows.forEach(row => {
-        if (!row || typeof row !== 'object' || Array.isArray(row) || !expectedPaths.includes(row.path)) return;
-        if (byPath.has(row.path) || typeof row.role !== 'string' || !row.role.trim() || typeof row.inUse !== 'boolean') throw new Error('Read failed');
-        byPath.set(row.path, row);
-      });
-      if (expectedPaths.some(path => !byPath.has(path))) throw new Error('Read failed');
-      return expectedPaths.map(path => byPath.get(path));
-    }
-    function renderAdminMountDestinations(rows) {
-      return rows.map(destination => {
-        const mounted = destination.inUse;
-        const device = typeof destination.device === 'string' && destination.device.trim() ? destination.device : 'unknown';
-        const freeBytes = destination.freeBytes, totalBytes = destination.totalBytes;
-        const space = typeof freeBytes === 'number' && Number.isFinite(freeBytes) && freeBytes >= 0
-          && typeof totalBytes === 'number' && Number.isFinite(totalBytes) && totalBytes >= 0
-          ? diskSpaceDisplayValue({ availableBytes: freeBytes, sizeBytes: totalBytes })
-          : 'Space unavailable';
-        const mount = mounted
-          ? `<div class="disk-mount-info">Device: <span class="device-label">${escapeHtml(device)}</span><div class="disk-space-usage"><strong>Space:</strong> ${escapeHtml(space)}</div></div>`
-          : '';
-        return `<div class="disk-item${mounted ? ' mounted locked' : ''}"><span class="disk-icon">▦</span><div class="disk-info"><div class="disk-name">${escapeHtml(destination.role)}</div><div class="disk-details">${escapeHtml(destination.path)}</div>${mount}</div></div>`;
-      }).join('');
-    }
-    function adminMountDestinationCurrent(binding, context, host) {
-      return Boolean(headerState.isAdmin && coronatioAttendanceRuntime.currentAttendance && context.current()
-        && viewportFamilyAdmitted('admin') && host?.isConnected && binding.root?.contains(host)
-        && host.closest('[data-pane-panel="admin"]') === binding.root);
-    }
-    function readAdminMountDestinations(binding) {
-      const host = binding?.root?.querySelector('[data-admin-mounts-readback]');
-      const readKey = 'admin-mount-destinations';
-      if (!binding || binding.guest !== 'admin' || !host || host.getAttribute('data-admin-mounts-readback') !== '/api/services/data'
-          || !headerState.isAdmin || !coronatioAttendanceRuntime.currentAttendance || !viewportFamilyAdmitted('admin')
-          || !scaffoldRegistry.current(binding)) return Promise.resolve(false);
-      if (adminMountDestinationBindings.has(binding)) return binding.runs.get(readKey)?.promise || Promise.resolve(true);
-      if (host.dataset.scaffoldState === 'ready') {
-        adminMountDestinationBindings.add(binding);
-        return Promise.resolve(true);
-      }
-      adminMountDestinationBindings.add(binding);
-      return scaffoldRegistry.run(binding, readKey, async context => {
-        if (!adminMountDestinationCurrent(binding, context, host)) return false;
-        const payload = await context.fetchJson('/api/services/data');
-        if (!adminMountDestinationCurrent(binding, context, host)) return false;
-        const rows = adminMountDestinationRows(payload);
-        const markup = renderAdminMountDestinations(rows);
-        if (!adminMountDestinationCurrent(binding, context, host)) return false;
-        host.innerHTML = markup;
-        context.setSlot(host, 'ready');
-        return true;
-      }, { slots: [host], timeoutMs: 8000, slowMs: 750 });
-    }
     function reconcileViewportStreamFamily() {
       closeViewportStreamFamily(true);
       stopPortalCurrentnessCadence();
@@ -1750,7 +1692,6 @@ __NATIVE_HTMX_OWNER__
       if (active === 'portals') { startPortalCurrentnessCadence(); connectPulseStream(); }
       if (active === 'admin') {
         if (adminDocumentPatchPendingHydration && window.htmx) adminDocumentPatchPendingHydration = false;
-        if (binding) void readAdminMountDestinations(binding);
         reconcileAdminDiskSnapshot();
       }
     }
