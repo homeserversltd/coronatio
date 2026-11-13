@@ -33,7 +33,7 @@ fn shell_unbound_client() -> &'static str {
           node.disabled=!available||dnsUiState.mutationBusy;
           });
         }
-    function dnsSetIdentityControls(preserveReadySlots = false) { const binding=dnsUiState.binding;dnsUiState.identityReady=dnsIdentityCurrent(binding);const root=binding?.root;if(!root)return;root.querySelectorAll('[data-dns-add-name], [data-dns-device-pick], [data-dns-name-remove], [data-dns-add-save]').forEach(node=>{if(scaffoldReadProjectionAllowed(node,preserveReadySlots))node.disabled=!dnsUiState.identityReady||dnsUiState.mutationBusy;});dnsUpdateAddSave(); }
+    function dnsSetIdentityControls(preserveReadySlots = false) { const binding=dnsUiState.binding;dnsUiState.identityReady=dnsIdentityCurrent(binding);const root=binding?.root;if(!root)return;root.querySelectorAll('[data-dns-add-name], [data-dns-device-pick], [data-dns-name-remove], [data-dns-name-adopt], [data-dns-name-another], [data-dns-add-save]').forEach(node=>{if(scaffoldReadProjectionAllowed(node,preserveReadySlots))node.disabled=!dnsUiState.identityReady||dnsUiState.mutationBusy;});dnsUpdateAddSave(); }
     function dnsSetMutationBusy(busy) { const binding=dnsUiState.binding;if(!dnsCurrent(binding))return;dnsUiState.mutationBusy=Boolean(busy);dnsSetResolverControls();dnsSetIdentityControls();renderDnsNames();renderDnsModalRoster();renderDnsModalRecords();if(dnsUiState.pickedMac)renderDnsIpCalendar(); }
     function dnsProvenanceHas(value, wanted) { const values = Array.isArray(value) ? value : [value]; return values.some(item => String(item || '').toLowerCase() === wanted); }
     function dnsOctet(value) { const match = String(value || '').match(/^192\.168\.123\.(\d{1,3})$/); if (!match) return null; const octet = Number(match[1]); return Number.isInteger(octet) && octet >= 2 && octet <= 254 ? octet : null; }
@@ -98,7 +98,7 @@ fn shell_unbound_client() -> &'static str {
         const deviceLabel = deviceLabelFor(row);
         const provenance=Array.isArray(row.provenance)?row.provenance.join(', '):String(row.provenance||'observed');
         const marker=({'owned':'yours','alias':'alias','known-good':'known good','old-staff-file':'old staff file','hand-written':'hand-written'})[row.where] ?? (row.removable?'':(/legacy/i.test(provenance)?'legacy':'observed'));
-        const action=row.adoptable?`<button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-name-adopt="${escapeHtml(row.name)}" ${!dnsUiState.identityReady||dnsUiState.mutationBusy?'disabled':''}>Adopt</button>`:row.removable?`<button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" ${!dnsUiState.identityReady||dnsUiState.mutationBusy?'disabled':''}>Remove</button>`:'';
+        const action=`<button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-name-manage="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" title="What this name does and what you can change">Manage</button>`;
         return `<div class="dns-name-row" data-scaffold-key="dns-name:${escapeHtml(key)}"><span>${escapeHtml(dnsValue(row.name))}${marker?` <small>(${escapeHtml(marker)})</small>`:''}</span><span>${escapeHtml(dnsValue(row.address))}</span><span>${escapeHtml(deviceLabel)}</span><span>${action}</span></div>`;
       }).join('')}</div>`:'<p>No LAN names are registered.</p>';
       morphLivePane(target,html);
@@ -290,11 +290,31 @@ fn shell_unbound_client() -> &'static str {
             }}finally{if(dnsCurrent(binding))dnsSetMutationBusy(false);
           }
     }
+    function dnsServerAddresses() { return new Set(dnsNameRows().filter(row => row.where === 'known-good' && dnsIpKey(row.address) !== null).map(row => row.address)); }
+    function dnsRowDevice(row) { const roster = dnsArray(identityState?.roster); return (row?.mac && roster.find(device => String(device?.mac || '') === String(row.mac))) || (row && row.address !== '—' ? roster.find(device => dnsAddress(device) === row.address) : null) || null; }
+    function openDnsNameModal(button) {
+      const root=dnsUiState.binding?.root,modal=root?.querySelector('[data-dns-name-modal]'),body=modal?.querySelector('[data-dns-name-modal-body]');
+      const row=dnsNameRows().find(item=>item.name===button?.dataset?.dnsNameManage&&item.address===button?.dataset?.dnsIp);
+      if(!modal||!body||!row||!dnsCurrent())return;
+      const name=dnsValue(row.name),address=dnsValue(row.address),device=dnsRowDevice(row),busy=!dnsUiState.identityReady||dnsUiState.mutationBusy;
+      const alias=/[a-z]/i.test(row.address)&&row.address!=='—';
+      const serviceLikely=row.where==='known-good'||dnsServerAddresses().has(row.address);
+      const kind=({'known-good':'Built in: your HomeServer set this name up for one of its own apps.','alias':`Nickname: this name is another way of saying ${address}.`,'old-staff-file':'Older name: written by an earlier version of the HomeServer. You can adopt it so it is managed here like the names you add.','hand-written':'Written by hand into the HomeServer’s settings.','owned':'Yours: you added this name here.'})[row.where]||(row.removable?'Yours: you added this name here.':'Seen on your network: a device announced this name itself.');
+      const warn=serviceLikely?`<div class="dns-name-warning" role="note"><strong>Heads up: this name most likely opens an app.</strong><p>Your HomeServer has a front door (a reverse proxy) that looks at which name you typed and sends you to the matching app. <code>${escapeHtml(name)}</code> points at the HomeServer, so it is probably wired to one of those apps. If you change or remove it, that app will likely stop opening by this name, along with any bookmarks or devices that use it.</p></div>`:'';
+      const actions=[];
+      if(row.adoptable)actions.push(`<button type="button" class="ui-button ui-button--primary" data-dns-name-adopt="${escapeHtml(row.name)}"${busy?' disabled':''}>Adopt this name</button>`);
+      if(device)actions.push(`<button type="button" class="ui-button ui-button--secondary" data-dns-name-another="${escapeHtml(String(device.mac||''))}"${busy?' disabled':''}>Add another name or move to a different address</button>`);
+      if(row.removable)actions.push(`<button type="button" class="ui-button ui-button--danger" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}"${busy?' disabled':''}>Remove this name</button>`);
+      const locked=row.where==='known-good'?'<p>Built-in names are kept by the HomeServer itself and are not changed from here, so its apps keep working.</p>':alias?'<p>Nicknames follow the name they point to; change that name instead.</p>':'';
+      body.innerHTML=`<dl class="dns-name-facts"><dt>Name</dt><dd><code>${escapeHtml(name)}</code></dd><dt>Points to</dt><dd><code>${escapeHtml(address)}</code></dd><dt>Device</dt><dd>${escapeHtml(device?dnsDeviceLabel(device):alias?`→ ${address}`:'—')}</dd><dt>Kind</dt><dd>${escapeHtml(kind)}</dd></dl>${warn}<h3>How local names work</h3><p>A local name is an easy-to-remember label for something on your home network. When any phone, TV or computer here asks for <code>${escapeHtml(name)}</code>, your HomeServer answers with <code>${escapeHtml(address)}</code>, and the device goes there.</p><p>One address can have as many names as you like. That is how a single HomeServer serves many apps: every app gets its own name, all pointing at the same address, and the front door sorts them out.</p><h3>What you can do</h3><ul class="dns-name-help"><li><strong>Give a device a new name:</strong> add the new name, check it works, then remove the old one.</li><li><strong>Move a device to a different address:</strong> pick the device and choose a free number on the address grid.</li><li><strong>Give a device several names:</strong> add each one; they all lead to the same place.</li></ul>${locked}${actions.length?`<div class="dns-name-modal-actions">${actions.join('')}</div>`:''}`;
+      openCrownDialog(modal,button);
+    }
+    function closeDnsNameModal() { const modal=dnsUiState.binding?.root?.querySelector('[data-dns-name-modal]')||document.querySelector('[data-dns-name-modal]'); if(modal)closeCrownDialog(modal); }
     async function adoptDnsName(button) {
       const binding=dnsUiState.binding,row=dnsNameRows().find(item=>item.name===button?.dataset?.dnsNameAdopt&&item.adoptable),hostname=dnsNormalizeBareLabel(row?.name).label;
       if(!dnsIdentityCurrent()||dnsUiState.mutationBusy||!hostname)return;
       dnsSetMutationBusy(true);
-      try { const receipt=await dnsMutation(binding,'adopt','/api/v1/network/dns/device-name/create',{method:'POST',body:JSON.stringify({hostname,adopt:true})}); if(receipt&&dnsCurrent(binding)){showCoronatioToast('Name adopted.','success');await hydrateDns({supersede:true});} }
+      try { const receipt=await dnsMutation(binding,'adopt','/api/v1/network/dns/device-name/create',{method:'POST',body:JSON.stringify({hostname,adopt:true})}); if(receipt&&dnsCurrent(binding)){closeDnsNameModal();showCoronatioToast('Name adopted.','success');await hydrateDns({supersede:true});} }
       catch(error){if(dnsCurrent(binding)){const messages={'dns-adopt-not-adoptable':'This name cannot be adopted.','dns-adopt-not-cleanly-squared':'This name cannot be cleanly adopted.','dns-adopt-source-moved':'The source changed; refresh and try again.'};showCoronatioToast(messages[error.message]||error.message,'error');await hydrateDns({supersede:true});}}
       finally{if(dnsCurrent(binding))dnsSetMutationBusy(false);}
     }
@@ -302,7 +322,7 @@ fn shell_unbound_client() -> &'static str {
       const binding=dnsUiState.binding,name=button?.dataset?.dnsNameRemove,address=button?.dataset?.dnsIp,row=dnsNameRows().find(item=>item.name===name&&item.address===address&&item.removable),normalized=dnsNormalizeBareLabel(row?.name);if(!dnsIdentityCurrent()||dnsUiState.mutationBusy||!row?.removable||!normalized.label)return;dnsSetMutationBusy(true);
       try{const receipt=await dnsMutation(binding,'name-remove','/api/v1/network/dns/device-name/remove',{method:'POST',body:JSON.stringify({hostname:normalized.label,ip:row.address})});
           if(!receipt||!dnsCurrent(binding))return;
-          showCoronatioToast('Owned A and PTR records removed.','success');
+          closeDnsNameModal();showCoronatioToast('Name removed.','success');
           await hydrateDns({supersede:true});
           }catch(failure){if(dnsCurrent(binding)){showCoronatioToast(failure?.message||'Unable to remove DNS name','error');
             await hydrateDns({supersede:true});
@@ -466,6 +486,11 @@ fn shell_unbound_client() -> &'static str {
         if(!target||!dnsCurrent(binding)||!binding.root.contains(target))return;
         const sortButton=target.closest('[data-dns-names-sort]');
         if(sortButton){const key=sortButton.dataset.dnsNamesSort,current=dnsUiState.namesSort;dnsUiState.namesSort={key,dir:current.key===key?-current.dir:1};renderDnsNames();return;}
+        const manage=target.closest('[data-dns-name-manage]');
+        if(manage)return openDnsNameModal(manage);
+        if(target.closest('[data-dns-name-close]'))return closeDnsNameModal();
+        const another=target.closest('[data-dns-name-another]');
+        if(another){if(another.disabled)return;const mac=another.dataset.dnsNameAnother;closeDnsNameModal();const opener=binding.root.querySelector('[data-dns-add-name]');openDnsModal(opener);if(dnsRosterDevice(mac))selectDnsDevice(mac);return;}
         if(target.closest('[data-dns-add-name]'))return openDnsModal(target.closest('[data-dns-add-name]'));
         if(target.closest('[data-dns-add-close]'))return closeDnsModal();
         if(target.closest('[data-dns-add-save]'))return saveDnsName();

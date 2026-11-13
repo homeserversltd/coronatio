@@ -70,3 +70,13 @@
   .dns-tablet { padding: 1rem; }
   .dns-name-row { grid-template-columns: 1fr 1fr; }
 }
+.dns-name-facts { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; margin: 0 0 1rem; }
+.dns-name-facts dt { font-weight: 600; color: var(--secondary); }
+.dns-name-facts dd { margin: 0; overflow-wrap: anywhere; }
+.dns-name-warning { padding: .75rem 1rem; margin-bottom: 1rem; border: 1px solid var(--warning, #c98a00); border-left-width: 4px; border-radius: var(--border-radius, 6px); background: color-mix(in srgb, var(--warning, #c98a00) 10%, transparent); }
+.dns-name-warning p { margin: .35rem 0 0; }
+[data-dns-name-modal] h3 { margin: 1rem 0 .35rem; }
+[data-dns-name-modal] p { margin: .35rem 0; }
+.dns-name-help { margin: .25rem 0 .75rem; padding-left: 1.2rem; display: grid; gap: .3rem; }
+.dns-name-modal-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.dns-name-modal-actions button { min-height: 44px; }
