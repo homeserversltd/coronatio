@@ -471,6 +471,101 @@ struct CartridgeMutationRequest {
     _extra: BTreeMap<String, serde_json::Value>,
 }
 
+#[derive(Debug, Deserialize)]
+struct XeniaTabRepoRequest { repo: String }
+
+#[derive(Debug, Deserialize)]
+struct XeniaTabRemoveRequest { id: String }
+
+fn cartridge_name_slug(name: &str) -> String {
+   let mut slug = String::new();
+   let mut separator = false;
+   for ch in name.chars().flat_map(char::to_lowercase) {
+       if ch.is_ascii_lowercase() || ch.is_ascii_digit() {
+           if separator && !slug.is_empty() && slug.len() < 64 { slug.push('-'); }
+           if slug.len() < 64 { slug.push(ch); }
+           separator = false;
+           if slug.len() == 64 { break; }
+       } else {
+           separator = true;
+       }
+   }
+   slug.trim_end_matches('-').to_string()
+}
+
+fn admin_tab_attendance(headers: &axum::http::HeaderMap, route: &str) -> Result<MutationAttendance, CaduceusHttpReadback> {
+   if session_from_headers(headers) != Session::Admin {
+       return Err(mutation_refusal_readback(route, MutationRefusal { code: "caduceus-attendance-required".to_string(), status: 401 }));
+   }
+   mutation_authority().authorize(&MutationRequestContext::from_headers(headers))
+       .map_err(|refusal| mutation_refusal_readback(route, refusal))
+}
+
+fn forward_tab_mutation(route: &str, body: serde_json::Value, attendance: &MutationAttendance) -> CaduceusHttpReadback {
+   let door = match resolve_cartridge_door("POST", route) {
+       Ok(door) => door,
+       Err(CartridgeRouteFailure::Unmapped) => return mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 }),
+       Err(CartridgeRouteFailure::Unavailable) => return mutation_refusal_readback(route, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 }),
+   };
+   caduceus_http_json_with_attendance_and_document(&door.method, &door.path, body, Some(&attendance.proof), Some(&attendance.document))
+}
+
+fn xenia_tab_response(readback: CaduceusHttpReadback) -> Response {
+   let status = StatusCode::from_u16(readback.status).ok().filter(|status| status.is_success() || status.is_client_error() || status.is_server_error())
+       .unwrap_or_else(|| mutation_response_status(&readback));
+   (status, Json(readback.body)).into_response()
+}
+
+fn xenia_tab_refusal(readback: CaduceusHttpReadback) -> Response {
+   let status = StatusCode::from_u16(readback.status).unwrap_or_else(|_| mutation_response_status(&readback));
+   (status, Json(serde_json::json!({"ok": false, "firstMissingSignal": readback.first_missing_signal}))).into_response()
+}
+
+fn valid_xenia_repo(repo: &str) -> bool {
+   let mut parts = repo.split('/');
+   let valid_part = |part: &str| !part.is_empty() && part.bytes().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, b'.' | b'_' | b'-'));
+   matches!((parts.next(), parts.next(), parts.next()), (Some(owner), Some(name), None) if valid_part(owner) && valid_part(name))
+}
+
+async fn xenia_tabs_list_route(headers: axum::http::HeaderMap) -> Response {
+   if let Err(refusal) = admin_tab_attendance(&headers, "/api/v1/xenia-tabs") { return xenia_tab_refusal(refusal); }
+   let tabs: Vec<_> = build_tab_contracts(&registry_config_value(), &xenia_status(true)).into_iter()
+       .filter(|tab| tab.xenia_entry.is_some())
+       .map(|tab| serde_json::json!({"id": tab.id, "displayName": tab.display_name})).collect();
+   (StatusCode::OK, Json(serde_json::json!({"tabs": tabs}))).into_response()
+}
+
+async fn xenia_tabs_validate_route(headers: axum::http::HeaderMap, Json(request): Json<XeniaTabRepoRequest>) -> Response {
+   xenia_repo_mutation(headers, request, "/api/v1/xenia/validate", false)
+}
+
+async fn xenia_tabs_admit_route(headers: axum::http::HeaderMap, Json(request): Json<XeniaTabRepoRequest>) -> Response {
+   xenia_repo_mutation(headers, request, "/api/v1/xenia/admit", true)
+}
+
+fn xenia_repo_mutation(headers: axum::http::HeaderMap, request: XeniaTabRepoRequest, route: &str, poke: bool) -> Response {
+   let attendance = match admin_tab_attendance(&headers, route) { Ok(attendance) => attendance, Err(refusal) => return xenia_tab_refusal(refusal) };
+   if !valid_xenia_repo(&request.repo) {
+       return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "firstMissingSignal": "xenia-tab-repo-invalid"}))).into_response();
+   }
+   let readback = forward_tab_mutation(route, serde_json::json!({"source": {"release_repo": request.repo, "ref": "main"}}), &attendance);
+   if poke && readback.ok { pulse::poke(pulse::PokeTopic::TabsChanged); }
+   if readback.status == 0 { return xenia_tab_refusal(readback); }
+   xenia_tab_response(readback)
+}
+
+async fn xenia_tabs_remove_route(headers: axum::http::HeaderMap, Json(request): Json<XeniaTabRemoveRequest>) -> Response {
+   let route = "/api/v1/xenia/remove";
+   let attendance = match admin_tab_attendance(&headers, route) { Ok(attendance) => attendance, Err(refusal) => return xenia_tab_refusal(refusal) };
+   if !is_safe_tab_id(&request.id) {
+       return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "firstMissingSignal": "xenia-tab-id-invalid"}))).into_response();
+   }
+   let readback = forward_tab_mutation(route, serde_json::json!({"id": request.id}), &attendance);
+   if readback.ok { pulse::poke(pulse::PokeTopic::TabsChanged); }
+   if readback.status == 0 { return xenia_tab_refusal(readback); }
+   xenia_tab_response(readback)
+}
+
 fn cartridge_proxy_response(readback: CaduceusHttpReadback) -> Response {
     let status = if readback.ok { StatusCode::OK } else { mutation_response_status(&readback) };
     (status, Json(serde_json::json!({"ok": readback.ok, "cartridges": readback.body, "firstMissingSignal": readback.first_missing_signal}))).into_response()
@@ -495,6 +590,9 @@ fn resolve_cartridge_door(method: &str, route: &str) -> Result<CartridgeResolved
         ("GET", "/api/v1/cartridges") => "/api/v1/cartridges/list",
         ("POST", "/api/v1/cartridges/admit") => "/api/v1/cartridges/admit",
         ("POST", "/api/v1/cartridges/remove") => "/api/v1/cartridges/remove",
+        ("POST", "/api/v1/xenia/validate") => "/api/v1/xenia/validate",
+        ("POST", "/api/v1/xenia/admit") => "/api/v1/xenia/admit",
+        ("POST", "/api/v1/xenia/remove") => "/api/v1/xenia/remove",
         _ => return Err(CartridgeRouteFailure::Unmapped),
     };
     let readback = caduceus_http("GET", "/api/v1/doors");
@@ -536,10 +634,14 @@ async fn cartridges_remove_proxy_route(headers: axum::http::HeaderMap, Json(requ
 }
 
 fn cartridge_mutation_proxy_response(headers: axum::http::HeaderMap, route: &str, request: CartridgeMutationRequest, admitting: bool) -> Response {
-    if session_from_headers(&headers) != Session::Admin {
-        return cartridge_proxy_response(mutation_refusal_readback(route, MutationRefusal { code: "caduceus-attendance-required".to_string(), status: 401 }));
+    let attendance = match admin_tab_attendance(&headers, route) {
+        Ok(attendance) => attendance,
+        Err(refusal) => return cartridge_proxy_response(refusal),
+    };
+    let id = if admitting { cartridge_name_slug(&request.title) } else { normalize_tab_id(&request.id) };
+    if admitting && id.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "firstMissingSignal": "cartridge-name-has-no-letters"}))).into_response();
     }
-    let id = if admitting { normalize_tab_id(&request.title) } else { normalize_tab_id(&request.id) };
     let valid = is_safe_tab_id(&id) && (!admitting || (!request.title.trim().is_empty() && safe_cartridge_url(&request.url).is_some() && request.guest_class == "iframe"));
     if !valid {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "firstMissingSignal": "invalid-cartridge-request"}))).into_response();
@@ -554,24 +656,8 @@ fn cartridge_mutation_proxy_response(headers: axum::http::HeaderMap, route: &str
         body["guest_class"] = serde_json::json!("iframe");
         body["admin_only"] = serde_json::json!(request.admin_only);
     }
-    let context = MutationRequestContext::from_headers(&headers);
-    let authority = mutation_authority();
-    let attendance = match authority.authorize(&context) {
-        Ok(attendance) => attendance,
-        Err(refusal) => return cartridge_proxy_response(mutation_refusal_readback(route, refusal)),
-    };
-    let door = match resolve_cartridge_door("POST", route) {
-        Ok(door) => door,
-        Err(CartridgeRouteFailure::Unmapped) => return cartridge_proxy_response(mutation_refusal_readback(route, MutationRefusal { code: "coronatio-caduceus-door-unmapped".to_string(), status: 0 })),
-        Err(CartridgeRouteFailure::Unavailable) => return cartridge_proxy_response(mutation_refusal_readback(route, MutationRefusal { code: "caduceus-doors-unavailable".to_string(), status: 0 })),
-    };
-    let readback = caduceus_http_json_with_attendance_and_document(
-        &door.method,
-        &door.path,
-        body,
-        Some(&attendance.proof),
-        Some(&attendance.document),
-    );
+    let readback = forward_tab_mutation(route, body, &attendance);
+    if readback.ok { pulse::poke(pulse::PokeTopic::TabsChanged); }
     cartridge_proxy_response(readback)
 }
 
