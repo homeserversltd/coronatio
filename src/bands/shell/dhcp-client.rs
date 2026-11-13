@@ -122,7 +122,7 @@ fn shell_dhcp_client() -> &'static str {
       targets.forEach(target => {
         if (!scaffoldReadProjectionAllowed(target, preserveReadySlots)) return;
         const cfg = identityPerspective[perspective]; if (!cfg) return;
-        if (perspective === 'address') { morphLivePane(target, `<div class="dhcp-rows">${identityState.roster.map(dhcpDeviceRow).join('') || (identityState.ready.roster ? 'No devices reported.' : 'Reading device identities…')}</div>`); return; }
+        if (perspective === 'address') { const ordered=dhcpOrderedRoster(); const pinnedRows=ordered.pinned.map(dhcpDeviceRow).join(''), unpinnedRows=ordered.unpinned.map(dhcpDeviceRow).join(''); const tail=!identityState.ready.roster || !identityState.roster.length ? '' : unpinnedRows ? `<p class="dhcp-group-label">Not pinned yet</p>${unpinnedRows}` : '<p class="dhcp-all-pinned">Every device on your network right now is pinned.</p>'; morphLivePane(target, `<div class="dhcp-rows">${pinnedRows}${tail}${identityState.roster.length ? '' : (identityState.ready.roster ? 'No devices reported.' : 'Reading device identities…')}</div>`); dhcpPaintRangeNote(binding); return; }
         const isDhcpAddress = perspective === 'address';
         const headings = isDhcpAddress ? '<th>MAC</th><th>Observed lease</th><th>Declared reservation</th><th>DNS names</th><th>Status</th><th>Action</th>' : cfg.writable ? `<th>${cfg.lead[0]}</th><th>${cfg.lead[1]}</th><th>Observed lease</th><th>Declared reservation</th><th>DNS names</th><th>${cfg.lead[2]}</th><th>Mismatches</th><th>Action</th>` : `<th>${cfg.lead[0]}</th><th>${cfg.lead[1]}</th><th>${cfg.lead[2]}</th><th>Names</th><th>Note</th><th>Claim state</th><th>Mismatches</th>`;
         const columns = isDhcpAddress ? 6 : cfg.writable ? 8 : 7; const tableClass = isDhcpAddress ? 'identity-roster dhcp-device-table' : 'identity-roster';
@@ -216,6 +216,20 @@ fn shell_dhcp_client() -> &'static str {
       if (identityState.dhcpReady.statistics) { if (error) error.hidden=true; if (identityState.dhcpBoundary && identityState.dhcpReady.pool) paintDhcpBoundary(identityState.dhcpBoundary,binding); }
       identitySetControls(binding);
     }
+    function dhcpIpNumber(ip) { const m=/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(ip || '').trim()); return m ? m.slice(1).reduce((a,p)=>a*256+Number(p),0) : null; }
+    function dhcpPaintRangeNote(binding) {
+      const note=binding?.root?.querySelector('[data-dhcp-range-warning]'); if (!note) return;
+      const pool=Array.isArray(identityState.dhcpBoundary) ? identityState.dhcpBoundary[0] : null; const start=dhcpIpNumber(pool?.start), end=dhcpIpNumber(pool?.end);
+      if (start === null || end === null || !identityState.ready.roster) { note.hidden=true; note.textContent=''; return; }
+      const outside=identityState.roster.map(row => dhcpIpNumber(identityReservation(row)?.ip)).filter(ip => ip !== null && (ip < start || ip > end)).length;
+      note.hidden=outside === 0;
+      note.textContent=outside === 0 ? '' : outside === 1 ? "1 pinned device uses a number outside the reserved block. That's fine: it still keeps its number." : `${outside} pinned devices use numbers outside the reserved block. That's fine: they still keep their numbers.`;
+    }
+    function dhcpOrderedRoster() {
+      const keyed=identityState.roster.map(row => { const reservation=identityReservation(row); return { row, pinned: !!reservation, ip: dhcpIpNumber(reservation?.ip || identityIp(row, 'observed_lease')) }; });
+      const byIp=(a,b)=>(a.ip ?? Infinity)-(b.ip ?? Infinity);
+      return { pinned: keyed.filter(item => item.pinned).sort(byIp).map(item => item.row), unpinned: keyed.filter(item => !item.pinned).sort(byIp).map(item => item.row) };
+    }
     function paintDhcpBoundary(boundary, binding) {
       if (!identityCurrent(binding)) return;
       const statistics=identityState.statistics || {}; const reservations=dhcpNumber(statistics.reservations_count), leases=dhcpNumber(statistics.leases_count), configured=dhcpNumber(statistics.reservations_total), leasesTotal=dhcpNumber(statistics.leases_total);
@@ -223,13 +237,13 @@ fn shell_dhcp_client() -> &'static str {
       const minValue=reservations; const maxValue=Math.max(reservations, configured, 249-leases);
       const value=Math.max(reservations,configured); identityState.dhcpBoundary=boundary; identityState.dhcpBoundaryCommitted=value; identityState.dhcpBoundaryChoice=null;
       dhcpText(binding.root,'[data-dhcp-range-configured]',`Configured range: ${configured}`);
-      const warning=binding.root.querySelector('[data-dhcp-range-warning]'); if (warning) { warning.hidden=reservations<=configured; warning.textContent=reservations>configured ? `${reservations} reservations exceed the configured range of ${configured}.` : ''; }
+      dhcpPaintRangeNote(binding);
       const pool=Array.isArray(boundary) ? boundary[0] : null;
       const n=ip => String(ip || '').split('.').reduce((a,p)=>a*256+Number(p),0);
       if (pool && /^\d+(\.\d+){3}$/.test(pool.start || '') && /^\d+(\.\d+){3}$/.test(pool.end || '')) {
         const end=n(pool.end), start=n(pool.start), short=x=>'.'+(x%256);
         const poolText=leasesTotal === null ? '' : leasesTotal === 0 ? ' · lease pool empty' : ` · lease pool ${short(end+1)} – ${short(end+leasesTotal)}`;
-        dhcpText(binding.root,'[data-dhcp-range-summary]',`reserved ${short(start+1)} – ${short(end)}${poolText}`);
+        dhcpText(binding.root,'[data-dhcp-range-summary]',`reserved ${short(start)} – ${short(end)}${poolText}`);
       }
       dhcpText(binding.root,'[data-dhcp-boundary-min]',minValue); dhcpText(binding.root,'[data-dhcp-boundary-max]',maxValue); dhcpText(binding.root,'[data-dhcp-boundary-value]',value);
       binding.root.querySelectorAll('[data-dhcp-boundary]').forEach(slider => { slider.min=String(minValue); slider.max=String(maxValue); slider.value=String(value); });

@@ -270,7 +270,9 @@
 .dhcp-range summary::before { content: '▸'; }
 .dhcp-range[open] summary::before { content: '▾'; }
 .dhcp-range summary span { color: var(--secondary); }
-.dhcp-range [data-dhcp-range-warning] { color: var(--error); }
+.dhcp-range [data-dhcp-range-warning] { color: var(--secondary); }
+.dhcp-group-label { margin: .75rem 0 .25rem; color: var(--secondary); font-size: .9rem; }
+.dhcp-all-pinned { margin: .5rem 0 0; color: var(--secondary); font-size: .9rem; }
 .dhcp-range [hidden] { display: none; }
 .dhcp-summary-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
 .dhcp-explanation, .dhcp-sheet-explanation { color: var(--secondary); font-size: .9rem; }
