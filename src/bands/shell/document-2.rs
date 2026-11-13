@@ -199,19 +199,33 @@ fn shell_document_2() -> &'static str {
     </div>
   </div>
   <div class="modal-overlay" data-add-tab-modal aria-hidden="true" hidden>
-    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="add-tab-modal-title">
+    <section class="modal" role="dialog" aria-modal="true" aria-label="Add a tab">
       <button type="button" class="modal-close" data-add-tab-modal-close data-modal-dismiss aria-label="Close Add tab modal">×</button>
-      <h2 class="modal-title" id="add-tab-modal-title">Add tab</h2>
       <div class="modal-content">
-        <p>Loadable cartridges are the extension lane.</p>
-        <form class="portal-form" data-cartridge-add-form>
-          <div class="form-group"><label for="cartridge-choice">Cartridge</label><select id="cartridge-choice" name="cartridgeChoice"><option value="custom">Custom cartridge</option></select></div>
-          <div class="form-group"><label for="cartridge-title">Title *</label><input id="cartridge-title" name="title" type="text" required maxlength="80" placeholder="e.g., Jellyfin"></div>
-          <div class="form-group"><label for="cartridge-url">URL *</label><input id="cartridge-url" name="url" type="url" required placeholder="http://jellyfin.home.arpa:8096"></div>
-          <div class="form-group"><label><input name="adminOnly" type="checkbox"> Admin only</label></div>
-          <div class="modal-actions"><button type="button" class="secondary" data-add-tab-modal-close data-modal-dismiss>Cancel</button><button type="submit" class="submit-button">Add tab</button></div>
-        </form>
-        <section data-cartridge-management><h3>Loadable cartridges</h3><ul data-cartridge-management-list></ul></section>
+        <div class="ui-tab-group" role="tablist" aria-label="Ways to add a tab">
+          <button type="button" class="ui-tab ui-tab--active active" role="tab" aria-selected="true" data-add-tab-road="make"><span class="ui-tab__content"><span class="ui-tab__label">Make one</span></span></button>
+          <button type="button" class="ui-tab" role="tab" aria-selected="false" data-add-tab-road="show"><span class="ui-tab__content"><span class="ui-tab__label">Show something running</span></span></button>
+        </div>
+        <div data-add-tab-body="make">
+          <p>Your assistant can make a tab for you. Tell it what you want to see, and it builds the tab in your HomeServer's look. Every time it changes the tab, your HomeServer rebuilds it and keeps it up to date.</p>
+          <div class="form-group"><label for="tab-request">Request for your assistant</label><input id="tab-request" data-tab-request type="text" readonly value="Make me a HomeServer tab that shows ________. Follow the HomeServer guide &quot;Your own tab&quot; and tell me when its first Release is ready."><button type="button" class="ui-button ui-button--secondary ui-button--small" data-tab-copy>Copy</button> <a href="https://docs.home.arpa/services/your-own-tab/" target="_blank" rel="noopener noreferrer">Read the guide</a></div>
+          <p>Already built one?</p>
+          <form class="portal-form" data-made-tab-form>
+            <div class="form-group"><label for="tab-repo">Its repository</label><input id="tab-repo" name="repo" type="text" required placeholder="you/cartridge-weather"></div>
+            <div data-tab-refusals aria-live="polite"></div>
+            <div class="modal-actions"><button type="button" class="ui-button ui-button--secondary" data-tab-check>Check</button><button type="submit" class="ui-button ui-button--primary">Add tab</button></div>
+          </form>
+        </div>
+        <div data-add-tab-body="show" hidden>
+          <p>Already running something with its own web page, like Jellyfin? Give it a name and its address and it shows up as a tab. The page still lives where it runs.</p>
+          <form class="portal-form" data-cartridge-add-form>
+            <div class="form-group"><label for="tab-title">Name</label><input id="tab-title" name="title" type="text" required maxlength="80" placeholder="Media Server"></div>
+            <div class="form-group"><label for="tab-url">Address</label><input id="tab-url" name="url" type="url" required placeholder="http://home.arpa:8096/web/"></div>
+            <label class="ui-switch"><span class="ui-switch__text"><span class="ui-switch__label">Only admins see it</span></span><span class="ui-switch__control"><input class="ui-switch__input" name="adminOnly" type="checkbox" role="switch"><span class="ui-switch__track"></span></span></label>
+            <div class="modal-actions"><button type="submit" class="ui-button ui-button--primary">Add tab</button></div>
+          </form>
+        </div>
+        <section aria-label="Loaded tabs"><ul data-cartridge-management-list aria-label="Loaded tabs"></ul><p data-tab-list-status role="status" aria-live="polite" hidden></p></section>
       </div>
     </section>
   </div>

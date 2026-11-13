@@ -1007,17 +1007,50 @@ fn shell_document_4() -> &'static str {
     function closePortalModals() { document.querySelectorAll('[data-add-portal-modal], [data-service-status-modal]').forEach(modal => { modal.hidden = true; }); }
     function cartridgeIdFromTitle(title) { return String(title || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
     function cartridgeRows(payload) { const body = payload?.cartridges ?? payload ?? {}; return Array.isArray(body) ? body : (body.cartridges || body.rows || []); }
-    async function loadCartridgeManagement() { const list = document.querySelector('[data-cartridge-management-list]'); if (!list) return;
-      try { const response = await fetch('/api/v1/cartridges', { cache: 'no-store' }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.firstMissingSignal || 'Cartridges unavailable'); const rows = cartridgeRows(payload); list.innerHTML = rows.length ? rows.map(row => `<li data-cartridge-row="${escapeHtml(row.id)}"><span>${escapeHtml(row.title || row.id)}</span><button type="button" class="secondary" data-cartridge-remove="${escapeHtml(row.id)}">Remove</button></li>`).join('') : '<li>No loadable cartridges admitted.</li>'; }
-      catch (error) { list.textContent = error.message || 'Cartridges unavailable'; } }
+    async function loadCartridgeManagement() {
+      const list = document.querySelector('[data-cartridge-management-list]'), status = document.querySelector('[data-tab-list-status]'); if (!list || !status) return;
+      const read = async path => { const response = await fetch(path, { cache: 'no-store' }); if (!response.ok) throw new Error('unavailable'); return response.json(); };
+      const [legacy, made] = await Promise.allSettled([read('/api/v1/cartridges'), read('/api/v1/xenia-tabs')]);
+      const rows = [];
+      if (legacy.status === 'fulfilled') cartridgeRows(legacy.value).forEach(row => rows.push({ id: row.id, name: row.title || row.id, lane: 'web', source: 'web page' }));
+      if (made.status === 'fulfilled' && Array.isArray(made.value.tabs)) made.value.tabs.forEach(row => rows.push({ id: row.id, name: row.displayName || row.id, lane: 'made', source: 'made for you' }));
+      list.innerHTML = rows.length ? rows.map(row => `<li data-tab-lane="${row.lane}"><span>${escapeHtml(row.name)}</span> <small>${row.source}</small><button type="button" class="secondary" data-cartridge-remove="${escapeHtml(row.id)}">Remove</button></li>`).join('') : (legacy.status === 'fulfilled' && made.status === 'fulfilled' ? '<li class="ui-empty-state">No tabs added yet.</li>' : '');
+      const failures = []; if (legacy.status === 'rejected') failures.push('Web page tabs could not be read.'); if (made.status === 'rejected' || (made.status === 'fulfilled' && !Array.isArray(made.value.tabs))) failures.push('Made-for-you tabs could not be read.');
+      status.textContent = failures.join(' '); status.hidden = !failures.length;
+    }
     async function refreshCartridgeTabs() { const active = currentActiveTabId(); const selected = await refreshTabBar(active); if (selected) showPane(selected); }
+    function selectAddTabRoad(road) {
+      const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return;
+      modal.querySelectorAll('[data-add-tab-road]').forEach(button => { const selected = button.dataset.addTabRoad === road; button.classList.toggle('ui-tab--active', selected); button.classList.toggle('active', selected); button.setAttribute('aria-selected', String(selected)); });
+      modal.querySelectorAll('[data-add-tab-body]').forEach(body => { body.hidden = body.dataset.addTabBody !== road; });
+    }
+    async function copyTabRequest() { const input = document.querySelector('[data-tab-request]'); if (!input) return; try { if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable'); await navigator.clipboard.writeText(input.value); showCoronatioToast('Copied', 'success'); } catch (_) { input.focus(); input.select(); } }
+    function showTabVerdict(payload, fallback) {
+      const output = document.querySelector('[data-tab-refusals]'); if (!output) return;
+      const rows = Array.isArray(payload?.refusals) ? payload.refusals : (Array.isArray(payload?.errors) ? payload.errors : (payload?.check || payload?.field || payload?.message ? [payload] : []));
+      output.innerHTML = rows.length ? rows.map(row => `<div><span>${escapeHtml(row.message || fallback)}</span>${row.suggestion ? ` <span>${escapeHtml(row.suggestion)}</span>` : ''} <small>${escapeHtml([row.check, row.field].filter(Boolean).join(' · '))}</small></div>`).join('') : `<div>${escapeHtml(fallback)}</div>`;
+    }
+    async function postMadeTab(path, repo) { const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo }) }); const payload = await response.json().catch(() => ({})); return { response, payload }; }
+    async function checkMadeTab(repo) {
+      const result = await postMadeTab('/api/v1/xenia-tabs/validate', repo);
+      if (!result.response.ok || result.payload.admissible !== true) { showTabVerdict(result.payload, 'Could not check this tab.'); return false; }
+      const output = document.querySelector('[data-tab-refusals]'); if (output) output.textContent = 'Ready to add.'; return true;
+    }
+    async function checkMadeTabForm() { const form = document.querySelector('[data-made-tab-form]'); if (!form || !form.reportValidity()) return; const button = form.querySelector('[data-tab-check]'); button.disabled = true; try { await checkMadeTab(form.elements.repo.value.trim()); } catch (_) { showTabVerdict({}, 'Could not check this tab.'); } finally { button.disabled = false; } }
+    async function submitMadeTabForm(event) {
+      event.preventDefault(); const form = event.currentTarget, repo = form.elements.repo.value.trim(), button = form.querySelector('[type="submit"]'); if (!repo || button.disabled) return; button.disabled = true;
+      try { if (!await checkMadeTab(repo)) return; if (form.elements.repo.value.trim() !== repo) { showTabVerdict({}, 'The repository changed. Check it again.'); return; }
+        const result = await postMadeTab('/api/v1/xenia-tabs/admit', repo); if (!result.response.ok || result.payload.admissible === false || result.payload.ok === false) { showTabVerdict(result.payload, 'Could not add tab.'); return; }
+        showCoronatioToast('Added. It appears once it answers.', 'success'); await loadCartridgeManagement();
+      } catch (_) { showTabVerdict({}, 'Could not add tab.'); } finally { button.disabled = false; }
+    }
     async function submitCartridgeForm(event) { event.preventDefault(); const form = event.currentTarget; const title = form.elements.title.value.trim(), url = form.elements.url.value.trim(), id = cartridgeIdFromTitle(title); if (!id || !url) { showCoronatioToast('Title and URL are required', 'error'); return; } const submit = form.querySelector('[type="submit"]'); if (submit) submit.disabled = true;
       try { const response = await fetch('/api/v1/cartridges/admit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, title, url, guest_class: 'iframe', admin_only: Boolean(form.elements.adminOnly.checked) }) }); const payload = await response.json().catch(() => ({})); if (!response.ok || payload.ok === false) throw new Error(payload.firstMissingSignal || 'Could not add tab'); form.reset(); closeAddTabModal(); showCoronatioToast(`Added ${title}`, 'success'); await refreshCartridgeTabs(); }
       catch (error) { showCoronatioToast(error.message || 'Could not add tab', 'error'); } finally { if (submit) submit.disabled = false; } }
-    async function removeCartridge(id) { if (!id) return;
-      try { const response = await fetch('/api/v1/cartridges/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); const payload = await response.json().catch(() => ({})); if (!response.ok || payload.ok === false) throw new Error(payload.firstMissingSignal || 'Could not remove tab'); showCoronatioToast(`Removed ${id}`, 'success'); await loadCartridgeManagement(); await refreshCartridgeTabs(); }
+    async function removeCartridge(id, lane) { if (!id || !['web', 'made'].includes(lane)) return;
+      try { const response = await fetch(lane === 'made' ? '/api/v1/xenia-tabs/remove' : '/api/v1/cartridges/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); const payload = await response.json().catch(() => ({})); if (!response.ok || payload.ok === false) throw new Error(payload.firstMissingSignal || 'Could not remove tab'); showCoronatioToast(`Removed ${id}`, 'success'); await loadCartridgeManagement(); await refreshCartridgeTabs(); }
       catch (error) { showCoronatioToast(error.message || 'Could not remove tab', 'error'); } }
-    function openAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); void loadCartridgeManagement(); requestAnimationFrame(() => modal.querySelector('[name="title"]')?.focus()); }
+    function openAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); selectAddTabRoad('make'); void loadCartridgeManagement(); requestAnimationFrame(() => modal.querySelector('[data-add-tab-road="make"]')?.focus()); }
     function closeAddTabModal() { const modal = document.querySelector('[data-add-tab-modal]'); if (!modal) return; modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); }
     function portalServiceFailureMessage(result, fallback = 'Service action failed') {
       const signal = result?.firstMissingSignal || result?.first_missing_signal;
@@ -1377,8 +1410,11 @@ fn shell_document_4() -> &'static str {
       if (statEye) { event.preventDefault(); event.stopPropagation(); toggleElementVisibility('stats', statEye.dataset.statVisibilityToggle, statEye.dataset.visible !== 'true'); return; }
       const addTab = event.target.closest('[data-add-tab-button]');
       if (addTab) { openAddTabModal(); return; }
+      const road = event.target.closest('[data-add-tab-road]'); if (road) { selectAddTabRoad(road.dataset.addTabRoad); return; }
+      const tabCopy = event.target.closest('[data-tab-copy]'); if (tabCopy) { void copyTabRequest(); return; }
+      const tabCheck = event.target.closest('[data-tab-check]'); if (tabCheck) { void checkMadeTabForm(); return; }
       const removeCartridgeButton = event.target.closest('[data-cartridge-remove]');
-      if (removeCartridgeButton) { removeCartridge(removeCartridgeButton.dataset.cartridgeRemove); return; }
+      if (removeCartridgeButton) { removeCartridge(removeCartridgeButton.dataset.cartridgeRemove, removeCartridgeButton.closest('[data-tab-lane]')?.dataset.tabLane); return; }
       const addPortal = event.target.closest('[data-add-portal-open], [data-test-add-portal]');
       if (addPortal) { openPortalModal('[data-add-portal-modal]'); return; }
       const addTabModalClose = event.target.closest('[data-add-tab-modal-close]');
@@ -1418,7 +1454,7 @@ fn shell_document_4() -> &'static str {
     }, true); document.body.addEventListener('animationend', event => {
       const toast = event.target.closest?.('[data-coronatio-toast]');
       if (toast && toast.classList.contains('toast-exit') && event.animationName === 'toast-slide-out') toast.remove();
-    }); document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm); document.querySelector('[data-cartridge-add-form]')?.addEventListener('submit', submitCartridgeForm);
+    }); document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm); document.querySelector('[data-cartridge-add-form]')?.addEventListener('submit', submitCartridgeForm); document.querySelector('[data-made-tab-form]')?.addEventListener('submit', submitMadeTabForm);
     document.body.addEventListener('input', event => {
       const slider = event.target.closest('[data-ui-slider]');
       if (slider) { const item = slider.closest('.showcase-item'); const out = item?.querySelector('[data-slider-value]'); if (out) out.textContent = slider.value; const min = Number(slider.min); const max = Number(slider.max); const value = Number(slider.value); const percent = max > min ? ((value - min) / (max - min)) * 100 : 0; const fill = slider.closest('.ui-slider__container')?.querySelector('.ui-slider__fill'); if (fill) fill.style.width = `${Math.max(0, Math.min(100, percent))}%`; if (slider.matches('[data-dhcp-example-boundary]')) { const reservedEnd = value + 1; const poolStart = reservedEnd + 1; const reservedOut = item?.querySelector('[data-dhcp-example-reserved-end]'); const poolOut = item?.querySelector('[data-dhcp-example-pool-start]'); if (reservedOut) reservedOut.textContent = String(reservedEnd); if (poolOut) poolOut.textContent = String(poolStart); } return; }
