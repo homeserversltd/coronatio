@@ -341,22 +341,22 @@ async fn storage_forward_staff_door(
     }
 }
 
-async fn storage_drive_open_route(headers: axum::http::HeaderMap, request: Result<Json<StorageDeviceRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+async fn storage_drive_add_route(headers: axum::http::HeaderMap, request: Result<Json<StorageDeviceRequest>, axum::extract::rejection::JsonRejection>) -> Response {
     let Ok(Json(request)) = request else { return storage_drive_refusal("drive-request-invalid"); };
     let Some(device) = normalized_storage_device(&request.device) else { return storage_drive_refusal("drive-device-name-invalid"); };
-    storage_forward_staff_door(headers, "/api/v1/storage/drive/open", serde_json::json!({"device": device}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+    storage_forward_staff_door(headers, "/api/v1/storage/drive/add", serde_json::json!({"device": device}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
 }
 
-async fn storage_drive_eject_route(headers: axum::http::HeaderMap, request: Result<Json<StorageDeviceRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+async fn storage_drive_remove_route(headers: axum::http::HeaderMap, request: Result<Json<StorageDeviceRequest>, axum::extract::rejection::JsonRejection>) -> Response {
     let Ok(Json(request)) = request else { return storage_drive_refusal("drive-request-invalid"); };
     let Some(device) = normalized_storage_device(&request.device) else { return storage_drive_refusal("drive-device-name-invalid"); };
-    storage_forward_staff_door(headers, "/api/v1/storage/drive/eject", serde_json::json!({"device": device}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+    storage_forward_staff_door(headers, "/api/v1/storage/drive/remove", serde_json::json!({"device": device}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
 }
 
-async fn storage_nas_import_route(headers: axum::http::HeaderMap, request: Result<Json<StorageDeviceRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+async fn storage_nas_import_run_route(headers: axum::http::HeaderMap, request: Result<Json<StorageDeviceRequest>, axum::extract::rejection::JsonRejection>) -> Response {
     let Ok(Json(request)) = request else { return storage_drive_refusal("drive-request-invalid"); };
     let Some(device) = normalized_storage_device(&request.device) else { return storage_drive_refusal("drive-device-name-invalid"); };
-    storage_forward_staff_door(headers, "/api/v1/storage/nas/import", serde_json::json!({"device": device}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+    storage_forward_staff_door(headers, "/api/v1/storage/nas-import/run", serde_json::json!({"device": device}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
 }
 
 async fn storage_disk_test_route(headers: axum::http::HeaderMap, request: Result<Json<StorageDiskTestRequest>, axum::extract::rejection::JsonRejection>) -> Response {
@@ -366,9 +366,9 @@ async fn storage_disk_test_route(headers: axum::http::HeaderMap, request: Result
     storage_forward_staff_door(headers, "/api/v1/storage/disk/test", serde_json::json!({"device": device, "mode": request.mode}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
 }
 
-async fn storage_drive_shares_rebuild_route(headers: axum::http::HeaderMap, request: Result<Json<StorageRebuildRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+async fn storage_shares_converge_route(headers: axum::http::HeaderMap, request: Result<Json<StorageRebuildRequest>, axum::extract::rejection::JsonRejection>) -> Response {
     let Ok(Json(_request)) = request else { return storage_drive_refusal("drive-request-invalid"); };
-    storage_forward_staff_door(headers, "/api/v1/storage/drive/shares/rebuild", serde_json::json!({}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+    storage_forward_staff_door(headers, "/api/v1/storage/shares/converge", serde_json::json!({}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
 }
 
 async fn storage_nas_attach_route(headers: axum::http::HeaderMap, request: Result<Json<StorageRoleRequest>, axum::extract::rejection::JsonRejection>) -> Response {

@@ -9,11 +9,11 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/v1/storage/disk/census", get(storage_disk_census_route))
         .route("/api/v1/storage/vault/unlock", post(storage_vault_unlock_route))
         .route("/api/v1/storage/nas/setup", post(storage_nas_setup_route))
-        .route("/api/v1/storage/drive/open", post(storage_drive_open_route))
-        .route("/api/v1/storage/drive/eject", post(storage_drive_eject_route))
-        .route("/api/v1/storage/nas/import", post(storage_nas_import_route))
+        .route("/api/v1/storage/drive/add", post(storage_drive_add_route))
+        .route("/api/v1/storage/drive/remove", post(storage_drive_remove_route))
+        .route("/api/v1/storage/nas-import/run", post(storage_nas_import_run_route))
         .route("/api/v1/storage/disk/test", post(storage_disk_test_route))
-        .route("/api/v1/storage/drive/shares/rebuild", post(storage_drive_shares_rebuild_route))
+        .route("/api/v1/storage/shares/converge", post(storage_shares_converge_route))
         .route("/api/v1/storage/nas/attach", post(storage_nas_attach_route))
         .route("/api/v1/storage/nas/detach", post(storage_nas_detach_route))
         .route("/api/system/log", post(admin_class_generic_mutation_route))
@@ -854,11 +854,11 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/v1/storage/disk/census", &["get"]),
         ("/api/v1/storage/vault/unlock", &["post"]),
         ("/api/v1/storage/nas/setup", &["post"]),
-        ("/api/v1/storage/drive/open", &["post"]),
-        ("/api/v1/storage/drive/eject", &["post"]),
-        ("/api/v1/storage/nas/import", &["post"]),
+        ("/api/v1/storage/drive/add", &["post"]),
+        ("/api/v1/storage/drive/remove", &["post"]),
+        ("/api/v1/storage/nas-import/run", &["post"]),
         ("/api/v1/storage/disk/test", &["post"]),
-        ("/api/v1/storage/drive/shares/rebuild", &["post"]),
+        ("/api/v1/storage/shares/converge", &["post"]),
         ("/api/v1/storage/nas/attach", &["post"]),
         ("/api/v1/storage/nas/detach", &["post"]),
         ("/api/themes", &["get"]),
