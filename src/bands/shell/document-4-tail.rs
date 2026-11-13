@@ -346,29 +346,30 @@ fn shell_document_4_tail() -> &'static str {
     function driveOptionsFor(row, census) {
       const kind = driveKindOf(row);
       const mounted = diskRowMounted(row);
+      const diskMounted = row?.diskMounted === true;
       const disk = diskIdentity(diskCensusDeviceName(row));
       const siblingMounted = census.some(other => other !== row && diskIdentity(diskCensusDeviceName(other)) === disk && diskRowMounted(other));
       const mapper = row?.encryption?.mapper;
       const make = makeRoleFor(census);
-      const eraseAllowed = !mounted && !(typeof mapper === 'string' && mapper.trim().length > 0)
+      const eraseAllowed = !mounted && !diskMounted && !(typeof mapper === 'string' && mapper.trim().length > 0)
         && !diskMetadataProtected(row) && !protectedDiskParents(census).has(disk) && diskNameCanNormalize(diskCensusDeviceName(row)) && make !== null;
       const options = [];
       if (kind === 'nas-primary' || kind === 'nas-backup') {
         const role = kind === 'nas-primary' ? 'primary' : 'backup';
         if (attachedAt(row, role)) return ['eject-nas'];
         options.push('try-again');
-        if (!mounted && !siblingMounted) options.push('test');
+        if (!mounted && !diskMounted && !siblingMounted) options.push('test');
       } else if (kind === 'blank') {
         if (eraseAllowed) options.push(make.key);
-        if (!mounted && !siblingMounted) options.push('test');
+        if (!mounted && !diskMounted && !siblingMounted) options.push('test');
       } else if (kind === 'data') {
         options.push('open');
         if (primaryAttached(census) && !mounted) options.push('copy-nas');
         if (eraseAllowed) options.push(make.key);
-        if (!mounted && !siblingMounted) options.push('test');
+        if (!mounted && !diskMounted && !siblingMounted) options.push('test');
         if (mounted && typeof row?.mountpoint === 'string' && row.mountpoint.startsWith('/mnt/') && row.mountpoint !== '/mnt/nas' && row.mountpoint !== '/mnt/nas_backup') options.push('eject-drive');
       } else {
-        if (!mounted && !siblingMounted) options.push('test');
+        if (!mounted && !diskMounted && !siblingMounted) options.push('test');
         if (eraseAllowed) options.push(make.key);
       }
       return options;
@@ -547,7 +548,7 @@ fn shell_document_4_tail() -> &'static str {
           foreign: diskCensusScalar(device.foreign), fstype: diskCensusScalar(device.fstype), sizeBytes: diskCensusScalar(device.sizeBytes),
           blank: diskCensusScalar(device.blank), model: diskCensusScalar(device.model), transport: diskCensusScalar(device.transport),
           serial: diskCensusScalar(device.serial), sizeHuman: diskCensusScalar(device.sizeHuman),
-          mountpoint: diskCensusScalar(device.mountpoint), mounted: device.mounted === true, isMounted: device.isMounted === true,
+          mountpoint: diskCensusScalar(device.mountpoint), mounted: device.mounted === true, isMounted: device.isMounted === true, diskMounted: device.diskMounted === true,
           encryption: { state: diskCensusScalar(encryption.state), mapper: diskCensusScalar(encryption.mapper) },
           space: space ? { availableBytes: diskCensusScalar(space.availableBytes), sizeBytes: diskCensusScalar(space.sizeBytes) } : diskCensusScalar(device.space),
           device: typeof device.device === 'string' ? device.device : diskCensusMetadata(device.device),
