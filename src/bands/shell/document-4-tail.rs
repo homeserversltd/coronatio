@@ -428,6 +428,7 @@ fn shell_document_4_tail() -> &'static str {
       return Boolean(owner && adminDiskSnapshotOwner === owner && owner.binding && (!context || context.current()) && scaffoldRegistry.current(owner.binding) && owner.binding.root?.contains(owner.host) && owner.host.isConnected && admittedAdminDiskHost() === owner.host && owner.attendance === coronatioAttendanceRuntime.currentAttendance);
     }
     function retireAdminDiskSnapshot() {
+      closeDriveModal();
       const owner = adminDiskSnapshotOwner;
       adminDiskSnapshotOwner = null; // Revoke write ownership before any old response can settle.
       if (!headerState.isAdmin || !coronatioAttendanceRuntime.currentAttendance || (adminDiskSnapshotLastGood && adminDiskSnapshotLastGood.attendance !== coronatioAttendanceRuntime.currentAttendance)) adminDiskSnapshotLastGood = null;
@@ -460,6 +461,7 @@ fn shell_document_4_tail() -> &'static str {
       owner.onFailure = null;
     }
     function scrubAdminDiskSnapshot() {
+      closeDriveModal();
       const owner = adminDiskSnapshotOwner;
       const retainedHost = owner?.host;
       adminDiskSnapshotOwner = null;
@@ -719,6 +721,7 @@ fn shell_document_4_tail() -> &'static str {
     }
 
     function openNasSetupConfirmation(owner, name) {
+      closeDriveModal();
       if (!adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name))) return;
       const device = owner.devices.find(item => diskCensusDeviceName(item) === name);
       if (!device || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || owner.protectedParents.has(diskIdentity(name)) || !diskNameCanNormalize(name)) return;
@@ -743,7 +746,7 @@ fn shell_document_4_tail() -> &'static str {
         let responseOk = false;
         let responseStatus = 0;
         try {
-          const response = await fetch('/api/v1/storage/nas/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: name, role, confirmation: input.value }) });
+          const response = await fetch('/api/v1/storage/nas/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: '/dev/' + name, role, confirmation: '/dev/' + input.value }) });
           responseStatus = response.status;
           responseOk = response.ok;
           result = await response.json().catch(() => null);
@@ -768,6 +771,120 @@ fn shell_document_4_tail() -> &'static str {
         }
       });
       input.focus();
+    }
+    let driveRequestInFlight = false;
+    function closeDriveModal() {
+      document.querySelector('[data-drive-modal]')?.remove();
+    }
+    function driveReceiptLine(status, body) {
+      try {
+        if (status === 0) return 'The drive action did not reach the crown.';
+        if (status === 501 && body?.firstMissingSignal === 'coronatio-caduceus-route-translation-required') return 'This drive action is not available yet.';
+        if (body?.ok === true && body?.started === true) return typeof body.unit === 'string' ? `Started as ${body.unit}.` : 'Started.';
+        if (body?.ok === true) return 'Done.';
+        const signal = typeof body?.firstMissingSignal === 'string' && body.firstMissingSignal ? ` Refused: ${body.firstMissingSignal}.` : '';
+        return `The drive did not answer ok; the receipt is below.${signal}`;
+      } catch (_) { return 'The drive action did not reach the crown.'; }
+    }
+    function driveShowReceipt(modal, body) {
+      const container = modal.querySelector('[data-drive-receipt]');
+      container.replaceChildren();
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Receipt details';
+      const raw = document.createElement('pre');
+      raw.textContent = JSON.stringify(body, null, 2);
+      details.append(summary, raw);
+      container.appendChild(details);
+    }
+    function driveShowShare(modal, body) {
+      const container = modal.querySelector('[data-drive-share]');
+      container.replaceChildren();
+      const title = document.createElement('p');
+      title.textContent = 'Share address';
+      container.appendChild(title);
+      for (const value of [body?.uri, body?.unc]) {
+        const line = document.createElement('p');
+        const address = typeof value === 'string' ? value : '—';
+        const text = document.createElement('span');
+        text.textContent = address;
+        const copy = document.createElement('button');
+        copy.type = 'button'; copy.dataset.driveCopy = ''; copy.textContent = 'Copy';
+        copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(address); } catch (_) {} });
+        line.append(text, document.createTextNode(' '), copy);
+        container.appendChild(line);
+      }
+      if (body?.viewer?.state === 'opened') {
+        const screen = document.createElement('p');
+        screen.textContent = 'Opening on this screen…';
+        container.appendChild(screen);
+      }
+    }
+    async function driveSubmit(modal, key, name, row, mode) {
+      if (driveRequestInFlight) return;
+      const role = driveKindOf(row) === 'nas-primary' ? 'primary' : 'backup';
+      const actions = {
+        'open': ['/api/v1/storage/drive/open', { device: '/dev/' + name }],
+        'copy-nas': ['/api/v1/storage/nas/import', { device: '/dev/' + name }],
+        'test': ['/api/v1/storage/disk/test', { device: '/dev/' + name, mode }],
+        'eject-drive': ['/api/v1/storage/drive/eject', { device: '/dev/' + name }],
+        'eject-nas': ['/api/v1/storage/nas/detach', { role }],
+        'try-again': ['/api/v1/storage/nas/attach', { role }]
+      };
+      const action = actions[key];
+      if (!action) return;
+      driveRequestInFlight = true;
+      const result = modal.querySelector('[data-drive-result]');
+      result.textContent = 'Working…';
+      modal.querySelector('[data-drive-share]').replaceChildren();
+      modal.querySelector('[data-drive-receipt]').replaceChildren();
+      try {
+        const response = await fetch(action[0], { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(action[1]) });
+        const body = await response.json();
+        result.textContent = driveReceiptLine(response.status, body);
+        driveShowReceipt(modal, body);
+        if (body?.ok === true && key === 'open') driveShowShare(modal, body);
+        if (body?.ok === true && ['open', 'eject-drive', 'eject-nas', 'try-again'].includes(key)) refreshAdminDiskCensus();
+      } catch (_) { result.textContent = driveReceiptLine(0, null); }
+      finally { driveRequestInFlight = false; }
+    }
+    function openDriveModal(owner, name) {
+      const row = owner?.devices?.find(item => diskCensusDeviceName(item) === name);
+      if (!row) return;
+      closeDriveModal();
+      const modal = document.createElement('div');
+      modal.className = 'modal-backdrop manager-modal-backdrop';
+      modal.dataset.driveModal = ''; modal.dataset.driveDevice = name;
+      const filesystem = typeof row.foreign === 'string' && row.foreign ? `${row.foreign} (will be erased)` : diskDisplayValue(row.fstype);
+      const facts = [
+        ['Device', name], ['Partition', diskDisplayValue(row.partition)], ['Model', diskDisplayValue(row.model)],
+        ['Connection', diskDisplayValue(driveConnectionWord(row))], ['Serial', diskDisplayValue(row.serial)],
+        ['Size', driveSizeText(row)], ['Filesystem', filesystem], ['Encryption', diskDisplayValue(row.encryption?.state)],
+        ['Mount', diskDisplayValue(row.mountpoint)], ['Space', diskSpaceDisplayValue(row.space)], ['Health', 'not known yet']
+      ];
+      const labels = { 'open': 'Open', 'copy-nas': 'Copy into NAS', 'test': 'Test drive', 'eject-drive': 'Eject safely', 'eject-nas': 'Eject safely', 'try-again': 'Try again', 'make-nas': 'Make this my NAS', 'make-backup': 'Make this my backup' };
+      const fullscreen = window.matchMedia('(max-width: 768px)').matches ? ' fullscreen' : '';
+      modal.innerHTML = `<section class="modal modal-window manager-modal${fullscreen}" role="dialog" aria-modal="true" aria-labelledby="drive-modal-title"><button type="button" data-manager-close data-modal-dismiss>Close</button><h2 id="drive-modal-title">Drive details</h2><div class="modal-body"><div class="disk-census-fields">${facts.map(([label, value]) => `<p><strong>${escapeDiskHtml(label)}:</strong> ${escapeDiskHtml(value)}</p>`).join('')}</div><div data-drive-options></div><div data-drive-test></div><p role="status" aria-live="polite" data-drive-result></p><div data-drive-share></div><div data-drive-receipt></div></div></section>`;
+      modal.querySelector('[data-manager-close]').addEventListener('click', closeDriveModal);
+      const options = modal.querySelector('[data-drive-options]');
+      for (const key of driveOptionsFor(row, owner.devices)) {
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'ui-button ui-button--secondary ui-button--small';
+        button.dataset.driveOption = key; button.textContent = labels[key];
+        button.addEventListener('click', () => {
+          if (driveRequestInFlight) return;
+          if (key === 'make-nas' || key === 'make-backup') { closeDriveModal(); openNasSetupConfirmation(owner, name); return; }
+          if (key === 'test') {
+            const target = modal.querySelector('[data-drive-test]');
+            target.innerHTML = '<label>Test type<select data-drive-test-mode><option value="quick">Quick</option><option value="full">Full</option></select></label><button type="button" data-drive-test-start>Start test</button>';
+            target.querySelector('[data-drive-test-start]').addEventListener('click', () => driveSubmit(modal, key, name, row, target.querySelector('[data-drive-test-mode]').value));
+            return;
+          }
+          driveSubmit(modal, key, name, row);
+        });
+        options.appendChild(button);
+      }
+      document.body.appendChild(modal);
     }
     document.body.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null;
