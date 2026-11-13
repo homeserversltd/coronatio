@@ -13,6 +13,7 @@ fn shell_explain_client() -> &'static str {
       const scopes = [];
       if (root instanceof Element && root.matches('[data-explain-scope]')) scopes.push(root);
       root.querySelectorAll?.('[data-explain-scope]').forEach(scope => scopes.push(scope));
+      if (!scopes.length) return;
       const memory = explainMemory();
       scopes.forEach(scope => { if (!scope.hasAttribute('data-explain-on')) explainApply(scope, memory[scope.dataset.explainScope] === true); });
     }
