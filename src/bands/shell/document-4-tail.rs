@@ -287,7 +287,7 @@ fn shell_document_4_tail() -> &'static str {
       const mapper = device?.encryption?.mapper;
       return typeof mapper === 'string' && mapper.trim().length > 0;
     }
-    function protectedDiskParents(devices, owner) {
+    function protectedDiskParents(devices) {
       const protectedParents = new Set();
       for (const device of devices) {
         const name = diskCensusDeviceName(device);
@@ -346,27 +346,29 @@ fn shell_document_4_tail() -> &'static str {
     function driveOptionsFor(row, census) {
       const kind = driveKindOf(row);
       const mounted = diskRowMounted(row);
+      const disk = diskIdentity(diskCensusDeviceName(row));
+      const siblingMounted = census.some(other => other !== row && diskIdentity(diskCensusDeviceName(other)) === disk && diskRowMounted(other));
       const mapper = row?.encryption?.mapper;
       const make = makeRoleFor(census);
       const eraseAllowed = !mounted && !(typeof mapper === 'string' && mapper.trim().length > 0)
-        && !diskMetadataProtected(row) && diskNameCanNormalize(diskCensusDeviceName(row)) && make !== null;
+        && !diskMetadataProtected(row) && !protectedDiskParents(census).has(disk) && diskNameCanNormalize(diskCensusDeviceName(row)) && make !== null;
       const options = [];
       if (kind === 'nas-primary' || kind === 'nas-backup') {
         const role = kind === 'nas-primary' ? 'primary' : 'backup';
         if (attachedAt(row, role)) return ['eject-nas'];
         options.push('try-again');
-        if (!mounted) options.push('test');
+        if (!mounted && !siblingMounted) options.push('test');
       } else if (kind === 'blank') {
         if (eraseAllowed) options.push(make.key);
-        if (!mounted) options.push('test');
+        if (!mounted && !siblingMounted) options.push('test');
       } else if (kind === 'data') {
         options.push('open');
         if (primaryAttached(census) && !mounted) options.push('copy-nas');
         if (eraseAllowed) options.push(make.key);
-        if (!mounted) options.push('test');
+        if (!mounted && !siblingMounted) options.push('test');
         if (mounted && typeof row?.mountpoint === 'string' && row.mountpoint.startsWith('/mnt/') && row.mountpoint !== '/mnt/nas' && row.mountpoint !== '/mnt/nas_backup') options.push('eject-drive');
       } else {
-        if (!mounted) options.push('test');
+        if (!mounted && !siblingMounted) options.push('test');
         if (eraseAllowed) options.push(make.key);
       }
       return options;
@@ -590,7 +592,7 @@ fn shell_document_4_tail() -> &'static str {
         if (payload?.schema !== 'caduceus.disk.census.v1') throw new Error('Available devices could not be read: unexpected response schema.');
         const devices = diskCensusDevices(payload);
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
-        owner.devices = devices; owner.protectedParents = protectedDiskParents(devices, owner);
+        owner.devices = devices; owner.protectedParents = protectedDiskParents(devices);
         owner.dataReady = true; owner.stale = false; owner.hasSnapshot = true; owner.error = ''; owner.nasSetupStateUnknown = false;
         owner.observedAt = Date.now();
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
