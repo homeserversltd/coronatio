@@ -1033,15 +1033,15 @@ fn shell_document_4() -> &'static str {
     async function postMadeTab(path, repo) { const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo }) }); const payload = await response.json().catch(() => ({})); return { response, payload }; }
     async function checkMadeTab(repo) {
       const result = await postMadeTab('/api/v1/xenia-tabs/validate', repo);
-      if (!result.response.ok || result.payload.admissible !== true) { showTabVerdict(result.payload, 'Could not check this tab.'); return false; }
+      if (!result.response.ok || result.payload.ok !== true || result.payload.verdict !== 'admissible') { showTabVerdict(result.payload, 'Could not check this tab.'); return false; }
       const output = document.querySelector('[data-tab-refusals]'); if (output) output.textContent = 'Ready to add.'; return true;
     }
     async function checkMadeTabForm() { const form = document.querySelector('[data-made-tab-form]'); if (!form || !form.reportValidity()) return; const button = form.querySelector('[data-tab-check]'); button.disabled = true; try { await checkMadeTab(form.elements.repo.value.trim()); } catch (_) { showTabVerdict({}, 'Could not check this tab.'); } finally { button.disabled = false; } }
     async function submitMadeTabForm(event) {
       event.preventDefault(); const form = event.currentTarget, repo = form.elements.repo.value.trim(), button = form.querySelector('[type="submit"]'); if (!repo || button.disabled) return; button.disabled = true;
       try { if (!await checkMadeTab(repo)) return; if (form.elements.repo.value.trim() !== repo) { showTabVerdict({}, 'The repository changed. Check it again.'); return; }
-        const result = await postMadeTab('/api/v1/xenia-tabs/admit', repo); if (!result.response.ok || result.payload.admissible === false || result.payload.ok === false) { showTabVerdict(result.payload, 'Could not add tab.'); return; }
-        showCoronatioToast('Added. It appears once it answers.', 'success'); await loadCartridgeManagement();
+        const result = await postMadeTab('/api/v1/xenia-tabs/admit', repo); if (!result.response.ok || result.payload.ok !== true || result.payload.verdict !== 'admitted') { showTabVerdict(result.payload, 'Could not add tab.'); return; }
+        showCoronatioToast('Added. It appears once it answers.', 'success'); await loadCartridgeManagement(); await refreshCartridgeTabs();
       } catch (_) { showTabVerdict({}, 'Could not add tab.'); } finally { button.disabled = false; }
     }
     async function submitCartridgeForm(event) { event.preventDefault(); const form = event.currentTarget; const title = form.elements.title.value.trim(), url = form.elements.url.value.trim(), id = cartridgeIdFromTitle(title); if (!id || !url) { showCoronatioToast('Title and URL are required', 'error'); return; } const submit = form.querySelector('[type="submit"]'); if (submit) submit.disabled = true;
