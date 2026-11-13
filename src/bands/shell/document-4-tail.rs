@@ -240,6 +240,16 @@ fn shell_document_4_tail() -> &'static str {
     let adminNasSetupInFlight = false;
     function diskCensusDeviceName(device) { return typeof device?.name === 'string' ? device.name : ''; }
     function diskDisplayValue(value) { if (value === null || value === undefined || value === '') return '—'; return typeof value === 'object' ? JSON.stringify(value) : String(value); }
+    function diskFormatBytes(bytes) {
+      const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+      let scaled = bytes;
+      let unit = 0;
+      while (scaled >= 1024 && unit < units.length - 1) {
+        scaled /= 1024;
+        unit += 1;
+      }
+      return `${scaled.toFixed(1)} ${units[unit]}`;
+    }
     function diskSpaceDisplayValue(value) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return diskDisplayValue(value);
       const availableBytes = value.availableBytes;
@@ -248,17 +258,7 @@ fn shell_document_4_tail() -> &'static str {
           || typeof sizeBytes !== 'number' || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
         return diskDisplayValue(value);
       }
-      const formatBytes = bytes => {
-        const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-        let scaled = bytes;
-        let unit = 0;
-        while (scaled >= 1024 && unit < units.length - 1) {
-          scaled /= 1024;
-          unit += 1;
-        }
-        return `${scaled.toFixed(1)} ${units[unit]}`;
-      };
-      return `${formatBytes(availableBytes)} free of ${formatBytes(sizeBytes)}`;
+      return `${diskFormatBytes(availableBytes)} free of ${diskFormatBytes(sizeBytes)}`;
     }
     function diskNameCanNormalize(name) { const bare = name.startsWith('/dev/') ? name.slice(5) : name; return bare !== '.' && bare !== '..' && /^[A-Za-z0-9_.-]+$/.test(bare); }
     function diskRowMounted(device) { return (typeof device?.mountpoint === 'string' && device.mountpoint.length > 0) || device?.mounted === true || device?.isMounted === true; }
@@ -300,28 +300,78 @@ fn shell_document_4_tail() -> &'static str {
           }
         }
       }
-      const pane = owner?.host?.closest('[data-pane-panel="admin"]');
-      const mountedNames = [...(pane?.querySelectorAll('[data-admin-mounts-readback] .disk-item.mounted .device-label') || [])].map(node => node.textContent.trim()).filter(Boolean);
-      for (const device of devices) {
-        if (mountedNames.some(mounted => mountedNameSharesParent(mounted, device))) protectedParents.add(diskIdentity(diskCensusDeviceName(device)));
-      }
       return protectedParents;
     }
     function mountedNasDestinations(owner) {
-      const pane = owner?.host?.closest('[data-pane-panel="admin"]');
-      const destinations = [...owner.devices].map(device => device?.mountpoint).filter(value => typeof value === 'string' && value.length > 0);
-      for (const item of pane?.querySelectorAll('[data-admin-mounts-readback] .disk-item.mounted') || []) {
-        const text = item.querySelector('.disk-details')?.textContent || '';
-        for (const destination of ['/mnt/nas', '/mnt/nas_backup']) {
-          const offset = text.indexOf(destination);
-          if (offset >= 0 && !/[a-z0-9_]/i.test(text[offset + destination.length] || '')) destinations.push(destination);
-        }
+      return [...new Set(owner.devices.map(device => device?.mountpoint).filter(value => value === '/mnt/nas' || value === '/mnt/nas_backup'))];
+    }
+    function driveKindOf(row) {
+      const label = String(row?.label || '').toLowerCase();
+      if (label.includes('homeserver-primary-nas') || row?.mountpoint === '/mnt/nas') return 'nas-primary';
+      if (label.includes('homeserver-backup-nas') || row?.mountpoint === '/mnt/nas_backup') return 'nas-backup';
+      if (row?.encryption?.state === 'locked') return 'locked-foreign';
+      if (row?.blank === true) return 'blank';
+      return 'data';
+    }
+    function driveRoleHeld(census, role) { return census.some(row => driveKindOf(row) === 'nas-' + role); }
+    function primaryAttached(census) { return census.some(row => row?.mountpoint === '/mnt/nas'); }
+    function attachedAt(row, role) { return row?.mountpoint === (role === 'primary' ? '/mnt/nas' : '/mnt/nas_backup'); }
+    function makeRoleFor(census) {
+      if (!driveRoleHeld(census, 'primary')) return { key: 'make-nas', role: 'primary' };
+      if (!driveRoleHeld(census, 'backup')) return { key: 'make-backup', role: 'backup' };
+      return null;
+    }
+    function driveConnectionWord(row) {
+      const transport = typeof row?.transport === 'string' ? row.transport.toLowerCase() : '';
+      return transport === 'usb' ? 'USB' : transport ? 'internal' : '';
+    }
+    function driveSizeText(row) {
+      if (typeof row?.sizeHuman === 'string' && row.sizeHuman.length > 0) return row.sizeHuman;
+      if (typeof row?.sizeBytes === 'number' && Number.isFinite(row.sizeBytes) && row.sizeBytes >= 0) return diskFormatBytes(row.sizeBytes);
+      return '—';
+    }
+    function driveStatusLine(row) {
+      const kind = driveKindOf(row);
+      if (kind === 'nas-primary') return attachedAt(row, 'primary') ? 'Your NAS. Ready at /mnt/nas.' : 'Your NAS. Not mounted.';
+      if (kind === 'nas-backup') return attachedAt(row, 'backup') ? 'Your backup NAS. Ready at /mnt/nas_backup.' : 'Your backup NAS. Not mounted.';
+      if (kind === 'blank') return 'Empty. Nothing on it yet.';
+      if (kind === 'locked-foreign') return 'Encrypted and locked. Not a HomeServer drive.';
+      return diskRowMounted(row) ? `Mounted at ${row.mountpoint}.` : 'Has data. Not mounted.';
+    }
+    function driveHintLine(row, census) {
+      if (driveKindOf(row) !== 'blank') return '';
+      const role = makeRoleFor(census)?.role;
+      return role === 'primary' ? 'Tap to set up as your NAS' : role === 'backup' ? 'Tap to set up as your backup' : '';
+    }
+    function driveOptionsFor(row, census) {
+      const kind = driveKindOf(row);
+      const mounted = diskRowMounted(row);
+      const mapper = row?.encryption?.mapper;
+      const make = makeRoleFor(census);
+      const eraseAllowed = !mounted && !(typeof mapper === 'string' && mapper.trim().length > 0)
+        && !diskMetadataProtected(row) && diskNameCanNormalize(diskCensusDeviceName(row)) && make !== null;
+      const options = [];
+      if (kind === 'nas-primary' || kind === 'nas-backup') {
+        const role = kind === 'nas-primary' ? 'primary' : 'backup';
+        if (attachedAt(row, role)) return ['eject-nas'];
+        options.push('try-again');
+        if (!mounted) options.push('test');
+      } else if (kind === 'blank') {
+        if (eraseAllowed) options.push(make.key);
+        if (!mounted) options.push('test');
+      } else if (kind === 'data') {
+        options.push('open');
+        if (primaryAttached(census) && !mounted) options.push('copy-nas');
+        if (eraseAllowed) options.push(make.key);
+        if (!mounted) options.push('test');
+        if (mounted && typeof row?.mountpoint === 'string' && row.mountpoint.startsWith('/mnt/') && row.mountpoint !== '/mnt/nas' && row.mountpoint !== '/mnt/nas_backup') options.push('eject-drive');
+      } else {
+        if (!mounted) options.push('test');
+        if (eraseAllowed) options.push(make.key);
       }
-      return [...new Set(destinations)];
+      return options;
     }
-    function censusHasPrimaryNas(devices) {
-      return devices.some(device => String(device?.label || '').toLowerCase().includes('homeserver-primary-nas') || device?.mountpoint === '/mnt/nas');
-    }
+    function censusHasPrimaryNas(devices) { return driveRoleHeld(devices, 'primary'); }
     function censusHasMountedNas(devices) {
       return devices.some(device => diskRowMounted(device) && (device?.mountpoint === '/mnt/nas' || device?.mountpoint === '/mnt/nas_backup' || /homeserver-(primary|backup)-nas/.test(String(device?.label || '').toLowerCase())));
     }
@@ -493,6 +543,8 @@ fn shell_document_4_tail() -> &'static str {
           name: typeof device.name === 'string' ? device.name : '', label: diskCensusScalar(device.label),
           partition: typeof device.partition === 'string' ? device.partition : diskCensusMetadata(device.partition),
           foreign: diskCensusScalar(device.foreign), fstype: diskCensusScalar(device.fstype), sizeBytes: diskCensusScalar(device.sizeBytes),
+          blank: diskCensusScalar(device.blank), model: diskCensusScalar(device.model), transport: diskCensusScalar(device.transport),
+          serial: diskCensusScalar(device.serial), sizeHuman: diskCensusScalar(device.sizeHuman),
           mountpoint: diskCensusScalar(device.mountpoint), mounted: device.mounted === true, isMounted: device.isMounted === true,
           encryption: { state: diskCensusScalar(encryption.state), mapper: diskCensusScalar(encryption.mapper) },
           space: space ? { availableBytes: diskCensusScalar(space.availableBytes), sizeBytes: diskCensusScalar(space.sizeBytes) } : diskCensusScalar(device.space),
