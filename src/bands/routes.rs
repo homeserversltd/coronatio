@@ -543,12 +543,21 @@ async fn xenia_tabs_list_route(headers: axum::http::HeaderMap) -> Response {
    (StatusCode::OK, Json(serde_json::json!({"tabs": tabs}))).into_response()
 }
 
+async fn xenia_tab_blocking<F>(action: F) -> Response
+where
+   F: FnOnce() -> Response + Send + 'static,
+{
+   tokio::task::spawn_blocking(action).await.unwrap_or_else(|_| {
+       (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"ok": false, "firstMissingSignal": "caduceus-forward-task-failed"}))).into_response()
+   })
+}
+
 async fn xenia_tabs_validate_route(headers: axum::http::HeaderMap, Json(request): Json<XeniaTabRepoRequest>) -> Response {
-   xenia_repo_mutation(headers, request, "/api/v1/xenia/validate", false)
+   xenia_tab_blocking(move || xenia_repo_mutation(headers, request, "/api/v1/xenia/validate", false)).await
 }
 
 async fn xenia_tabs_admit_route(headers: axum::http::HeaderMap, Json(request): Json<XeniaTabRepoRequest>) -> Response {
-   xenia_repo_mutation(headers, request, "/api/v1/xenia/admit", true)
+   xenia_tab_blocking(move || xenia_repo_mutation(headers, request, "/api/v1/xenia/admit", true)).await
 }
 
 fn xenia_repo_mutation(headers: axum::http::HeaderMap, request: XeniaTabRepoRequest, route: &str, poke: bool) -> Response {
@@ -563,6 +572,10 @@ fn xenia_repo_mutation(headers: axum::http::HeaderMap, request: XeniaTabRepoRequ
 }
 
 async fn xenia_tabs_remove_route(headers: axum::http::HeaderMap, Json(request): Json<XeniaTabRemoveRequest>) -> Response {
+   xenia_tab_blocking(move || xenia_remove_mutation(headers, request)).await
+}
+
+fn xenia_remove_mutation(headers: axum::http::HeaderMap, request: XeniaTabRemoveRequest) -> Response {
    let route = "/api/v1/xenia/remove";
    let attendance = match admin_tab_attendance(&headers, route) { Ok(attendance) => attendance, Err(refusal) => return xenia_tab_refusal(refusal) };
    if !is_safe_tab_id(&request.id) {
