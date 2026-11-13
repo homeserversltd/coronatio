@@ -511,8 +511,8 @@ fn forward_tab_mutation(route: &str, body: serde_json::Value, attendance: &Mutat
 }
 
 fn xenia_tab_response(readback: CaduceusHttpReadback) -> Response {
-   let status = StatusCode::from_u16(readback.status).ok().filter(|status| status.is_success() || status.is_client_error() || status.is_server_error())
-       .unwrap_or_else(|| mutation_response_status(&readback));
+   let status = StatusCode::from_u16(readback.status)
+       .unwrap_or_else(|_| mutation_response_status(&readback));
    (status, Json(readback.body)).into_response()
 }
 
