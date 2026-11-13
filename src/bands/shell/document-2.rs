@@ -203,10 +203,10 @@ fn shell_document_2() -> &'static str {
       <button type="button" class="modal-close" data-add-tab-modal-close data-modal-dismiss aria-label="Close Add tab modal">×</button>
       <div class="modal-content">
         <div class="ui-tab-group" role="tablist" aria-label="Ways to add a tab">
-          <button type="button" class="ui-tab ui-tab--active active" role="tab" aria-selected="true" data-add-tab-road="make"><span class="ui-tab__content"><span class="ui-tab__label">Make one</span></span></button>
-          <button type="button" class="ui-tab" role="tab" aria-selected="false" data-add-tab-road="show"><span class="ui-tab__content"><span class="ui-tab__label">Show something running</span></span></button>
+          <button type="button" class="ui-tab ui-tab--active active" id="add-tab-make" role="tab" aria-selected="true" aria-controls="add-tab-make-panel" data-add-tab-road="make"><span class="ui-tab__content"><span class="ui-tab__label">Make one</span></span></button>
+          <button type="button" class="ui-tab" id="add-tab-show" role="tab" aria-selected="false" aria-controls="add-tab-show-panel" data-add-tab-road="show"><span class="ui-tab__content"><span class="ui-tab__label">Show something running</span></span></button>
         </div>
-        <div data-add-tab-body="make">
+        <div id="add-tab-make-panel" role="tabpanel" aria-labelledby="add-tab-make" data-add-tab-body="make">
           <p>Your assistant can make a tab for you. Tell it what you want to see, and it builds the tab in your HomeServer's look. Every time it changes the tab, your HomeServer rebuilds it and keeps it up to date.</p>
           <div class="form-group"><label for="tab-request">Request for your assistant</label><input id="tab-request" data-tab-request type="text" readonly value="Make me a HomeServer tab that shows ________. Follow the HomeServer guide &quot;Your own tab&quot; and tell me when its first Release is ready."><button type="button" class="ui-button ui-button--secondary ui-button--small" data-tab-copy>Copy</button> <a href="https://docs.home.arpa/services/your-own-tab/" target="_blank" rel="noopener noreferrer">Read the guide</a></div>
           <p>Already built one?</p>
@@ -216,7 +216,7 @@ fn shell_document_2() -> &'static str {
             <div class="modal-actions"><button type="button" class="ui-button ui-button--secondary" data-tab-check>Check</button><button type="submit" class="ui-button ui-button--primary">Add tab</button></div>
           </form>
         </div>
-        <div data-add-tab-body="show" hidden>
+        <div id="add-tab-show-panel" role="tabpanel" aria-labelledby="add-tab-show" data-add-tab-body="show" hidden>
           <p>Already running something with its own web page, like Jellyfin? Give it a name and its address and it shows up as a tab. The page still lives where it runs.</p>
           <form class="portal-form" data-cartridge-add-form>
             <div class="form-group"><label for="tab-title">Name</label><input id="tab-title" name="title" type="text" required maxlength="80" placeholder="Media Server"></div>
