@@ -1,5 +1,22 @@
 const NAS_SETUP_UPSTREAM_TIMEOUT: Duration = Duration::from_secs(600);
 const VAULT_UNLOCK_UPSTREAM_TIMEOUT: Duration = Duration::from_secs(600);
+const DRIVE_STAFF_UPSTREAM_TIMEOUT: Duration = Duration::from_secs(600);
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageDeviceRequest { device: String }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageDiskTestRequest { device: String, mode: String }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageRoleRequest { role: String }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageRebuildRequest {}
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -280,4 +297,81 @@ async fn storage_nas_setup_route(
         )
             .into_response(),
     }
+}
+
+fn storage_drive_refusal(signal: &str) -> Response {
+    (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+        "schema": "coronatio.storage.drive.refusal.v1",
+        "ok": false,
+        "firstMissingSignal": signal
+    }))).into_response()
+}
+
+async fn storage_forward_staff_door(
+    headers: axum::http::HeaderMap,
+    path: &'static str,
+    body: serde_json::Value,
+    timeout: Duration,
+) -> Response {
+    let result = tokio::task::spawn_blocking(move || {
+        storage_actuate_json_timeout(&mutation_authority(), &headers, path, body, timeout)
+    }).await;
+    match result {
+        Ok(readback) if matches!(readback.status, 404 | 405) => (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(serde_json::json!({
+                "schema": "coronatio.storage.drive.unavailable.v1",
+                "ok": false,
+                "firstMissingSignal": "coronatio-caduceus-route-translation-required",
+                "path": path
+            })),
+        ).into_response(),
+        Ok(readback) => {
+            let receipt_ok = readback.ok
+                && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
+                && matches!(readback.first_missing_signal.as_str(), "" | "none")
+                && !storage_receipt_has_failure(&readback.body);
+            storage_operation_response(readback, receipt_ok, false)
+        }
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+            "schema": "coronatio.storage.drive.error.v1",
+            "ok": false,
+            "firstMissingSignal": "drive-worker-failed"
+        }))).into_response(),
+    }
+}
+
+async fn storage_drive_open_route(headers: axum::http::HeaderMap, Json(request): Json<StorageDeviceRequest>) -> Response {
+    let Some(device) = normalized_storage_device(&request.device) else { return storage_drive_refusal("drive-device-name-invalid"); };
+    storage_forward_staff_door(headers, "/api/v1/storage/drive/open", serde_json::json!({"device": device}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+}
+
+async fn storage_drive_eject_route(headers: axum::http::HeaderMap, Json(request): Json<StorageDeviceRequest>) -> Response {
+    let Some(device) = normalized_storage_device(&request.device) else { return storage_drive_refusal("drive-device-name-invalid"); };
+    storage_forward_staff_door(headers, "/api/v1/storage/drive/eject", serde_json::json!({"device": device}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+}
+
+async fn storage_nas_import_route(headers: axum::http::HeaderMap, Json(request): Json<StorageDeviceRequest>) -> Response {
+    let Some(device) = normalized_storage_device(&request.device) else { return storage_drive_refusal("drive-device-name-invalid"); };
+    storage_forward_staff_door(headers, "/api/v1/storage/nas/import", serde_json::json!({"device": device}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+}
+
+async fn storage_disk_test_route(headers: axum::http::HeaderMap, Json(request): Json<StorageDiskTestRequest>) -> Response {
+    let Some(device) = normalized_storage_device(&request.device) else { return storage_drive_refusal("drive-device-name-invalid"); };
+    if !matches!(request.mode.as_str(), "quick" | "full") { return storage_drive_refusal("drive-mode-invalid"); }
+    storage_forward_staff_door(headers, "/api/v1/storage/disk/test", serde_json::json!({"device": device, "mode": request.mode}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+}
+
+async fn storage_drive_shares_rebuild_route(headers: axum::http::HeaderMap, Json(_request): Json<StorageRebuildRequest>) -> Response {
+    storage_forward_staff_door(headers, "/api/v1/storage/drive/shares/rebuild", serde_json::json!({}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+}
+
+async fn storage_nas_attach_route(headers: axum::http::HeaderMap, Json(request): Json<StorageRoleRequest>) -> Response {
+    if !matches!(request.role.as_str(), "primary" | "backup") { return storage_drive_refusal("drive-role-invalid"); }
+    storage_forward_staff_door(headers, "/api/v1/storage/nas/attach", serde_json::json!({"role": request.role}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+}
+
+async fn storage_nas_detach_route(headers: axum::http::HeaderMap, Json(request): Json<StorageRoleRequest>) -> Response {
+    if !matches!(request.role.as_str(), "primary" | "backup") { return storage_drive_refusal("drive-role-invalid"); }
+    storage_forward_staff_door(headers, "/api/v1/storage/nas/detach", serde_json::json!({"role": request.role}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
 }
