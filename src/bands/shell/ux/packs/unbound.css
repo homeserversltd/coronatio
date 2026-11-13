@@ -31,6 +31,14 @@
 .dns-blocklist-sources { display: grid; }
 .dns-blocklist-source { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-width: 0; border-top: 1px solid var(--border); }
 .dns-blocklist-source span { min-width: 0; overflow-wrap: anywhere; }
+.dns-blocklist-source__text { display: grid; gap: .1rem; padding-block: .4rem; }
+.dns-blocklist-source__text small { color: var(--secondary); font-size: 12px; }
+.dns-blocklist-source__url { opacity: .75; }
+.dns-help-heading { cursor: help; }
+.dns-help-icon { color: var(--secondary); font-size: .9em; font-weight: normal; }
+.dns-help-text { color: var(--secondary); }
+.dns-sort-button { all: unset; cursor: pointer; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+.dns-sort-button:hover, .dns-sort-button:focus-visible { text-decoration: underline; }
 .dns-blocklist-presets, .dns-blocklist-add { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .dns-blocklist-add input { flex: 1 1 16rem; min-width: 0; }
 .dns-actions { justify-content: flex-end; }

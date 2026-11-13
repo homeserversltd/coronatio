@@ -1,5 +1,5 @@
 fn shell_unbound_client() -> &'static str {
-    r####"    const dnsUiState = { resolver: null, resolverReady: false, identityReady: false, pickedMac: null, selectedOctet: null, calendarStart: null, calendarEnd: null, calendarPage: 0, nameDefault: '', moveConfirmation: '', mutationBusy: false, binding: null, resolverDirty: new Set(), planReady: false, planText: '', plannedIp: '', planSequence: 0, planTimer: null };
+    r####"    const dnsUiState = { resolver: null, resolverReady: false, identityReady: false, pickedMac: null, selectedOctet: null, calendarStart: null, calendarEnd: null, calendarPage: 0, nameDefault: '', moveConfirmation: '', mutationBusy: false, binding: null, resolverDirty: new Set(), planReady: false, planText: '', plannedIp: '', planSequence: 0, planTimer: null, namesSort: { key: 'address', dir: 1 } };
     function dnsCurrent(binding = dnsUiState.binding) { return Boolean(binding && dnsUiState.binding === binding && headerState.isAdmin && binding.guest === 'unbound' && window.scaffoldRegistry?.current(binding)); }
     function dnsIdentityCurrent(binding = dnsUiState.binding) { return dnsCurrent(binding) && identityState.binding === binding && ['roster','boundary','leases','reservations','dns'].every(key => identityState.ready[key] === true); }
     const dnsArray = value => Array.isArray(value) ? value : [];
@@ -8,10 +8,13 @@ fn shell_unbound_client() -> &'static str {
     const dnsProviders = Object.freeze({ quad9: ['9.9.9.9', '149.112.112.112'], cloudflare: ['1.1.1.1', '1.0.0.1'], google: ['8.8.8.8', '8.8.4.4'] });
     const dnsBlocklistTimeoutMs = 300000;
     const dnsBlocklistPresets = Object.freeze([
-      ['StevenBlack unified', 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts'],
-      ['HaGeZi Multi normal', 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/multi-onlydomains.txt'],
-      ['OISD big', 'https://big.oisd.nl/domainswild2']
+      ['StevenBlack unified', 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', 'A long-running community list of ad, tracking and malware sites. Safe default; rarely breaks anything.'],
+      ['HaGeZi Multi normal', 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/multi-onlydomains.txt', 'Blocks ads, trackers, telemetry and scam sites. Balanced: broader than StevenBlack without breaking common sites.'],
+      ['OISD big', 'https://big.oisd.nl/domainswild2', 'A large combined list built from many other lists. Blocks the most; may occasionally block a site you want.']
     ]);
+    function dnsBlocklistLabel(url) { const preset = dnsBlocklistPresets.find(([, presetUrl]) => presetUrl === url); if (preset) return { name: preset[0], detail: preset[2] }; let host = url; try { host = new URL(url).hostname || url; } catch (_) {} return { name: `Custom list (${host})`, detail: 'A list you added by its web address.' }; }
+    function dnsIpKey(value) { const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(value ?? '').trim()); return match ? match.slice(1).reduce((sum, octet) => sum * 256 + Number(octet), 0) : null; }
+    function dnsCompareAddress(a, b) { const left = dnsIpKey(a), right = dnsIpKey(b); if (left !== null && right !== null) return left - right; if (left !== null) return -1; if (right !== null) return 1; const blankA = a === '—' || !a, blankB = b === '—' || !b; if (blankA !== blankB) return blankA ? 1 : -1; return String(a ?? '').localeCompare(String(b ?? '')); }
     function dnsEnvelopeNodes(value, depth = 0) { if (!value || typeof value !== 'object' || depth > 6) return []; if (Array.isArray(value)) return value.flatMap(item => dnsEnvelopeNodes(item, depth + 1)); const nodes = [value]; for (const key of ['payload', 'result', 'data', 'receipt', 'readback', 'caduceus']) nodes.push(...dnsEnvelopeNodes(value[key], depth + 1)); return nodes; }
     function dnsChordNodes(value, depth = 0) { if (!value || typeof value !== 'object' || depth > 20) return []; if (Array.isArray(value)) return value.flatMap(item => dnsChordNodes(item, depth + 1)); return [value, ...Object.values(value).flatMap(item => dnsChordNodes(item, depth + 1))]; }
     function dnsChordStage(value, stageId) { return dnsChordNodes(value).find(node => node.stage_id === stageId) || null; }
@@ -75,22 +78,28 @@ fn shell_unbound_client() -> &'static str {
         if (address === '—' && dnsNames.has(dnsNameKey(name))) return;
         add({ name, address, mac: device?.mac || '' }, 'roster');
       }));
-      return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name) || a.address.localeCompare(b.address));
+      return [...rows.values()].sort((a, b) => dnsCompareAddress(a.address, b.address) || a.name.localeCompare(b.name));
     }
     function renderDnsNames(preserveReadySlots = false) {
       const target=dnsUiState.binding?.root?.querySelector('[data-dns-names]');
       if(!target||!dnsCurrent()||!scaffoldReadProjectionAllowed(target,preserveReadySlots))return;
-      const rows=dnsNameRows();
-      if(!rows.length&&!identityState.ready.roster&&!identityState.ready.dns)return;
-      const html=rows.length?`<div class="dns-name-list"><div class="dns-name-row dns-name-heading"><span>Name</span><span>Address</span><span>Device</span><span>Action</span></div>${rows.map(row=>{
-        const key=`${row.name.toLowerCase()}-${row.address.toLowerCase()}`;
-        const targetName = /(?:^|\.)home\.arpa\.?$/i.test(row.address) && row.address.toLowerCase().replace(/\.$/, '') !== row.name.toLowerCase().replace(/\.$/, '') ? row.address : '';
+      const deviceLabelFor=row=>{const targetName = /(?:^|\.)home\.arpa\.?$/i.test(row.address) && row.address.toLowerCase().replace(/\.$/, '') !== row.name.toLowerCase().replace(/\.$/, '') ? row.address : '';
         const device = !targetName && row.address !== '—' ? dnsArray(identityState?.roster).find(item => dnsAddress(item) === row.address) : null;
-        const deviceLabel = targetName ? `→ ${targetName}` : device ? dnsDeviceLabel(device) : '—';
+        const label = targetName ? `→ ${targetName}` : device ? dnsDeviceLabel(device) : '—';return label === 'Unknown device' ? '—' : label;};
+      const sort=dnsUiState.namesSort,blank=value=>!value||value==='—';
+      const sortValue=row=>sort.key==='device'?deviceLabelFor(row):sort.key==='name'?row.name:row.address;
+      const rows=dnsNameRows().sort((a,b)=>{const va=sortValue(a),vb=sortValue(b);if(blank(va)!==blank(vb))return blank(va)?1:-1;
+        const order=sort.key==='address'?dnsCompareAddress(va,vb):String(va).localeCompare(String(vb));
+        return sort.dir*order||dnsCompareAddress(a.address,b.address)||a.name.localeCompare(b.name);});
+      if(!rows.length&&!identityState.ready.roster&&!identityState.ready.dns)return;
+      const heading=(key,label)=>{const active=sort.key===key,arrow=active?(sort.dir>0?' ▲':' ▼'):'';return `<button type="button" class="dns-sort-button" data-dns-names-sort="${key}" aria-sort="${active?(sort.dir>0?'ascending':'descending'):'none'}" title="Sort by ${label.toLowerCase()}">${label}${arrow}</button>`;};
+      const html=rows.length?`<div class="dns-name-list"><div class="dns-name-row dns-name-heading">${heading('name','Name')}${heading('address','Address')}${heading('device','Device')}<span>Action</span></div>${rows.map(row=>{
+        const key=`${row.name.toLowerCase()}-${row.address.toLowerCase()}`;
+        const deviceLabel = deviceLabelFor(row);
         const provenance=Array.isArray(row.provenance)?row.provenance.join(', '):String(row.provenance||'observed');
         const marker=({'owned':'yours','alias':'alias','known-good':'known good','old-staff-file':'old staff file','hand-written':'hand-written'})[row.where] ?? (row.removable?'':(/legacy/i.test(provenance)?'legacy':'observed'));
         const action=row.adoptable?`<button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-name-adopt="${escapeHtml(row.name)}" ${!dnsUiState.identityReady||dnsUiState.mutationBusy?'disabled':''}>Adopt</button>`:row.removable?`<button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-name-remove="${escapeHtml(row.name)}" data-dns-ip="${escapeHtml(row.address)}" ${!dnsUiState.identityReady||dnsUiState.mutationBusy?'disabled':''}>Remove</button>`:'';
-        return `<div class="dns-name-row" data-scaffold-key="dns-name:${escapeHtml(key)}"><span>${escapeHtml(dnsValue(row.name))}${marker?` <small>(${escapeHtml(marker)})</small>`:''}</span><span>${escapeHtml(dnsValue(row.address))}</span><span>${escapeHtml(deviceLabel === 'Unknown device' ? '—' : deviceLabel)}</span><span>${action}</span></div>`;
+        return `<div class="dns-name-row" data-scaffold-key="dns-name:${escapeHtml(key)}"><span>${escapeHtml(dnsValue(row.name))}${marker?` <small>(${escapeHtml(marker)})</small>`:''}</span><span>${escapeHtml(dnsValue(row.address))}</span><span>${escapeHtml(deviceLabel)}</span><span>${action}</span></div>`;
       }).join('')}</div>`:'<p>No LAN names are registered.</p>';
       morphLivePane(target,html);
     }
@@ -98,7 +107,7 @@ fn shell_unbound_client() -> &'static str {
     function dnsRosterDevice(mac = dnsUiState.pickedMac) { return dnsArray(identityState?.roster).find(device => String(device?.mac || '') === String(mac || '')) || null; }
     function renderDnsModalRoster() { const target=dnsUiState.binding?.root?.querySelector('[data-dns-device-roster]');
         if(!target||!dnsCurrent()||!identityState.ready.roster)return;
-        const devices=dnsArray(identityState?.roster);
+        const devices=[...dnsArray(identityState?.roster)].sort((a,b)=>dnsCompareAddress(dnsAddress(a),dnsAddress(b))||dnsDeviceLabel(a).localeCompare(dnsDeviceLabel(b)));
         const html=`<table class="identity-roster"><thead><tr><th>Device</th><th>Address</th><th>Names</th><th>Pick</th></tr></thead><tbody>${devices.map(device=>{const mac=String(device?.mac||''),selected=mac===dnsUiState.pickedMac;
           return `<tr data-device-mac="${escapeHtml(mac)}" data-scaffold-key="dns-device:${escapeHtml(mac)}"><td data-label="Device"><code>${escapeHtml(dnsValue(dnsDeviceLabel(device)))}</code><br><small>${escapeHtml(dnsValue(mac))}</small></td><td data-label="Address"><code>${escapeHtml(dnsValue(dnsAddress(device)))}</code></td><td data-label="Names">${escapeHtml(dnsArray(device?.dns_names).join(', ')||'—')}</td><td data-label="Pick"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-device-pick="${escapeHtml(mac)}" aria-pressed="${selected}"${!dnsUiState.identityReady||dnsUiState.mutationBusy?' disabled':''}>${selected?'Selected':'Pick'}</button></td></tr>`;
           }).join('')||'<tr data-scaffold-key="dns-devices-empty"><td data-label="Devices" colspan="4">No devices reported.</td></tr>'}</tbody></table>`;
@@ -116,8 +125,8 @@ fn shell_unbound_client() -> &'static str {
       if(!list||!presets||!Array.isArray(status?.blocklistSources))return;
       const sources=status.blocklistSources.filter(row=>typeof row?.url==='string');
       const disabled=!dnsUiState.resolverReady||dnsUiState.mutationBusy?' disabled':'';
-      list.innerHTML=sources.map(row=>{let host=row.url;try{host=new URL(row.url).hostname||row.url;}catch(_){}const url=escapeHtml(row.url),label=escapeHtml(host);return `<div class="dns-blocklist-source"><span title="${url}">${label}</span><button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-blocklist-source-remove="${url}" data-dns-resolver-control${disabled}>Remove</button></div>`;}).join('');
-      presets.innerHTML=dnsBlocklistPresets.filter(([,url])=>!sources.some(source=>source.url===url)).map(([name,url])=>`<button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-blocklist-preset="${escapeHtml(url)}" data-dns-resolver-control${disabled}>+ ${escapeHtml(name)}</button>`).join('');
+      list.innerHTML=sources.map(row=>{const info=dnsBlocklistLabel(row.url),url=escapeHtml(row.url);return `<div class="dns-blocklist-source"><span class="dns-blocklist-source__text" title="${escapeHtml(info.detail)}"><strong>${escapeHtml(info.name)}</strong><small>${escapeHtml(info.detail)}</small><small class="dns-blocklist-source__url">${url}</small></span><button type="button" class="ui-button ui-button--danger ui-button--small" data-dns-blocklist-source-remove="${url}" data-dns-resolver-control${disabled}>Remove</button></div>`;}).join('');
+      presets.innerHTML=dnsBlocklistPresets.filter(([,url])=>!sources.some(source=>source.url===url)).map(([name,url,detail])=>`<button type="button" class="ui-button ui-button--secondary ui-button--small" data-dns-blocklist-preset="${escapeHtml(url)}" title="${escapeHtml(`Add ${name}: ${detail}`)}" data-dns-resolver-control${disabled}>+ ${escapeHtml(name)}</button>`).join('');
     }
     function dnsUpstreamBase(address) { return String(address ?? '').trim().split(/[@#]/, 1)[0].trim(); }
     function dnsNormalizeUpstreams(addresses) { return [...new Set(dnsArray(addresses).map(dnsUpstreamBase).filter(Boolean))]; }
@@ -455,6 +464,8 @@ fn shell_unbound_client() -> &'static str {
     });
     document.addEventListener('click',async event=>{const binding=dnsUiState.binding,target=event.target instanceof Element?event.target:null;
         if(!target||!dnsCurrent(binding)||!binding.root.contains(target))return;
+        const sortButton=target.closest('[data-dns-names-sort]');
+        if(sortButton){const key=sortButton.dataset.dnsNamesSort,current=dnsUiState.namesSort;dnsUiState.namesSort={key,dir:current.key===key?-current.dir:1};renderDnsNames();return;}
         if(target.closest('[data-dns-add-name]'))return openDnsModal(target.closest('[data-dns-add-name]'));
         if(target.closest('[data-dns-add-close]'))return closeDnsModal();
         if(target.closest('[data-dns-add-save]'))return saveDnsName();
