@@ -107,23 +107,9 @@ steps:
     when:
       - event: push
         branch: main
-    environment:
-      FORGEJO_TOKEN:
-        from_secret: FORGEJO_TOKEN
     commands:
       - |
         set -eu
-        # Fetch the house CA and let cargo authenticate to the house forge.
-        curl --fail --silent --show-error \
-          http://192.168.123.1:7100/v1/trust/ca-bundle \
-          > /tmp/house-ca.pem
-        test -s /tmp/house-ca.pem
-        export SSL_CERT_FILE=/tmp/house-ca.pem
-        export GIT_SSL_CAINFO=/tmp/house-ca.pem
-        cat > "$${HOME}/.gitconfig" <<'GITCONFIG'
-        [credential "https://git.home.arpa"]
-          helper = "!f() { if [ \"$$1\" = get ]; then printf \"username=x-token\\npassword=%s\\n\" \"$${FORGEJO_TOKEN}\"; fi; }; f"
-        GITCONFIG
         rustc_vv="$$(rustc -Vv)"
         rustc_version="$$(printf '%s\n' "$${rustc_vv}" | awk '$$1 == "release:" { count++; value=$$2 } END { if (count == 1) print value; else exit 1 }')"
         printf '%s\n' "$${rustc_version}" | awk -F. 'NF == 3 && ($$1 == "0" || $$1 ~ /^[1-9][0-9]*$/) && ($$2 == "0" || $$2 ~ /^[1-9][0-9]*$/) && ($$3 == "0" || $$3 ~ /^[1-9][0-9]*$/) { valid=1 } END { exit !valid }'
