@@ -25,7 +25,7 @@ Avoid names such as `blue-card` or `dark-border`: they describe one theme rather
 
 ## Add or change a token
 
-1. Add the key to every theme in `src/bands/theme/catalog.json`.
+1. Add the key to every theme in `src/bands/theme/catalog.json`. A `component-*` key may instead be declared by only some themes when its consumer supplies a fallback; portal `component-keycap-*` keys are one example.
 2. Keep values as JSON strings, including numbers represented for CSS such as `".12"`.
 3. Consume the projected `--theme-<key>` variable in the owning CSS surface.
 4. Demonstrate a new visual primitive in the Test pane before spreading it across production panes when the primitive is genuinely new.

@@ -70,29 +70,33 @@
   position: relative;
 }
 
-/* The face rides a four-pixel lip; the status socket and hit area stay put. */
+/* Optional theme depth keeps the original shadow keycap as its fallback. */
 .portal-element:not([data-visible="false"]) > .portal-card[data-portal-card] > .portal-card-face {
-  --portal-card-hover-background: color-mix(in srgb, var(--background) 94%, white);
-  --portal-keycap-lip: color-mix(in srgb, var(--background) 55%, var(--text));
-  --portal-keycap-edge: color-mix(in srgb, var(--background) 60%, color-mix(in srgb, white 99%, var(--text)));
+  --portal-card-hover-background: var(--theme-component-keycap-hover-color, color-mix(in srgb, var(--background) 94%, white));
+  --portal-keycap-lip-base: var(--theme-component-keycap-lip-base, color-mix(in srgb, var(--background) 55%, var(--text)));
+  --portal-keycap-lip: color-mix(in srgb, var(--portal-card-status, var(--portal-keycap-lip-base)) var(--theme-component-keycap-status-share, 0%), var(--portal-keycap-lip-base));
+  --portal-keycap-edge: var(--theme-component-keycap-edge, color-mix(in srgb, var(--background) 60%, color-mix(in srgb, white 99%, var(--text))));
+  --portal-keycap-depth: var(--theme-component-keycap-depth, 4px);
+  background-image: var(--theme-component-keycap-face, none);
   box-shadow: inset 0 1px 0 var(--portal-keycap-edge),
-              0 4px 0 var(--portal-keycap-lip),
-              0 7px 9px color-mix(in srgb, var(--text) 22%, transparent);
+              0 var(--portal-keycap-depth) 0 var(--portal-keycap-lip),
+              var(--theme-component-keycap-shadow, 0 7px 9px color-mix(in srgb, var(--text) 22%, transparent));
   transition-property: background-color, box-shadow, transform;
 }
 
 .portal-element:not([data-visible="false"]) > .portal-card[data-portal-card]:is(:hover, :focus-within) > .portal-card-face {
+  background-image: var(--theme-component-keycap-hover-face, var(--theme-component-keycap-face, none));
   box-shadow: inset 0 1px 0 var(--portal-keycap-edge),
-              0 4px 0 var(--portal-keycap-lip),
-              0 9px 14px color-mix(in srgb, var(--text) 30%, transparent);
+              0 var(--portal-keycap-depth) 0 var(--portal-keycap-lip),
+              var(--theme-component-keycap-hover-shadow, 0 9px 14px color-mix(in srgb, var(--text) 30%, transparent));
 }
 
 /* Active descendants propagate :active to the card, so explicitly exclude controls. */
 .portal-element:not([data-visible="false"]) > .portal-card[data-portal-card]:active:not(:has(:is(button, a, input, select, textarea):active)) > .portal-card-face {
-  transform: translateY(4px);
+  transform: translateY(var(--portal-keycap-depth));
   box-shadow: inset 0 1px 0 var(--portal-keycap-edge),
               0 0 0 var(--portal-keycap-lip),
-              0 3px 5px color-mix(in srgb, var(--text) 22%, transparent);
+              var(--theme-component-keycap-pressed-shadow, 0 3px 5px color-mix(in srgb, var(--text) 22%, transparent));
 }
 
 .portal-element[data-visible="false"] > .portal-card[data-portal-card] > .portal-card-face {
