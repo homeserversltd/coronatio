@@ -31,6 +31,19 @@ const CROWN_STAGE_LOADER_JS: &str = r###"(function () {
     return detail ? `Vault unlock failed: ${detail}` : 'Vault unlock failed.';
   }
 
+  function loadFaceTheme() {
+    if (window.CrownTheme) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = '/static/crown/theme.js';
+      script.async = false;
+      script.dataset.crownTheme = 'stage-loader';
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('face-theme-unavailable'));
+      document.head.appendChild(script);
+    });
+  }
+
   function loadFaceChrome() {
     if (typeof window.initializeCoronatioFace === 'function') {
       window.initializeCoronatioFace();
@@ -66,6 +79,7 @@ const CROWN_STAGE_LOADER_JS: &str = r###"(function () {
     }
     root.innerHTML = markup;
     window.htmx.process(root);
+    await loadFaceTheme();
     await loadFaceChrome();
   }
 
@@ -311,6 +325,13 @@ fn render_crown_face_fragment() -> String {
         &format!(
             "<script defer src=\"{}\" data-htmx-organ=\"2.0.10\"></script>",
             CROWN_HTMX_SCRIPT_PATH
+        ),
+        "",
+    )
+    .replace(
+        &format!(
+            "<script defer src=\"{}\" data-crown-theme></script>",
+            CROWN_THEME_SCRIPT_PATH
         ),
         "",
     )

@@ -8,7 +8,7 @@ The catalog lives at xenia-kit `style/theme/catalog.json`. It currently contains
 
 ## How a token travels
 
-A catalog key such as `surface-1` becomes the CSS variable `--theme-surface-1`. Rust serves the selected map through the theme route, and the browser projects it through the existing `style[data-theme-styles]` membrane and `<html data-theme>` state.
+A catalog key such as `surface-1` becomes the CSS variable `--theme-surface-1`. Rust serves the catalog, and xenia-kit's shared theme script projects it through an adopted stylesheet (or `style[data-theme-styles]` fallback) and `<html data-theme>` state.
 
 The flat string map is intentional. Colors, dimensions, shadows, gradients, opacities, and feature flags can travel through the same validated route without a parallel schema per CSS value type.
 

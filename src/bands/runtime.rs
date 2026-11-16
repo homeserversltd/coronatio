@@ -196,6 +196,7 @@ fn app(state: AppState) -> Router {
         .route("/admit/upload/tree", get(upload_tree_fragment_route))
         .route(CROWN_HTMX_SCRIPT_PATH, get(crown_htmx_script_route))
         .route(CROWN_CHROME_SCRIPT_PATH, get(crown_chrome_script_route))
+        .route(CROWN_THEME_SCRIPT_PATH, get(crown_theme_script_route))
         .route("/api/tabs", get(tabs_route))
         .route("/api/tabs/:tab_id/manifest", get(tab_manifest_route))
         .route("/api/tabs/:tab_id", any(xenia_proxy_default_route))

@@ -425,20 +425,7 @@ fn shell_document_2() -> &'static str {
     };
     const saveTabState = state => localStorage.setItem(storageKey, JSON.stringify(state));
     const tabState = Object.assign({ starredTab: 'stats' }, loadTabState());
-    const headerStateKey = 'coronatio.flask-react-header.v1';
-    const preferredThemeKey = 'preferred-theme';
-    const themeDataKey = 'themeData';
-    let themeCatalog = { default: 'dark', themes: {} };
-    let themes = [];
-    const savedHeaderState = (() => { try { return JSON.parse(localStorage.getItem(headerStateKey) || '{}'); } catch (_) { return {}; } })();
-    const savedPreferredTheme = localStorage.getItem(preferredThemeKey);
-    const headerState = { theme: savedPreferredTheme || savedHeaderState.theme || themeCatalog.default, isAdmin: false };
-    const saveHeaderState = () => {
-      localStorage.setItem(headerStateKey, JSON.stringify({ theme: headerState.theme }));
-      localStorage.setItem(preferredThemeKey, headerState.theme);
-      localStorage.setItem(themeDataKey, JSON.stringify({ name: headerState.theme, values: themeCatalog.themes[headerState.theme] || {} }));
-    };
-    const themeButton = document.querySelector('[data-theme-button]');
+    const headerState = { isAdmin: false };
     const adminButton = document.querySelector('[data-admin-button]');
     const changePinButton = document.querySelector('[data-change-pin-button]');
     const modalBackdrop = document.querySelector('[data-pin-modal-backdrop]');
@@ -455,32 +442,10 @@ fn shell_document_2() -> &'static str {
     const internetIndicator = document.querySelector('[data-internet-status-indicator]');
     const internetState = { status: 'loading', publicIp: undefined, speedTestResults: null, speedTestError: null, isSpeedTesting: false };
     let modalMode = 'enter';
-    function themeToCss(theme) {
-      if (!theme) return '';
-      const lines = [];
-      Object.entries(theme).forEach(([key, value]) => {
-        lines.push('  --theme-' + key + ': ' + value + ';');
-      });
-      const hexToRgb = value => {
-        const match = /^#([0-9a-f]{6})$/i.exec(String(value || '').trim());
-        if (!match) return null;
-        const number = Number.parseInt(match[1], 16);
-        return [(number >> 16) & 255, (number >> 8) & 255, number & 255].join(', ');
-      };
-      const primaryRgb = hexToRgb(theme.primary);
-      const backgroundRgb = hexToRgb(theme.background);
-      lines.push('  --theme-accent-soft: color-mix(in srgb, var(--theme-accent) 16%, transparent);');
-      if (primaryRgb) lines.push('  --theme-primary-rgb: ' + primaryRgb + ';');
-      if (backgroundRgb) lines.push('  --theme-background-rgb: ' + backgroundRgb + ';');
-      return ':root {\n' + lines.join('\n') + '\n}';
-    }
-    function themeLabel(name) {
-      return name;
-    }
     function renderThemeChoices() {
       if (!themeChoiceRow) return;
       themeChoiceRow.innerHTML = '';
-      themes.forEach(name => {
+      (window.CrownTheme?.names() || []).forEach(name => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'theme-choice';

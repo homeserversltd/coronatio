@@ -1,38 +1,14 @@
 fn shell_document_3() -> &'static str {
     r####"        button.dataset.themeChoice = name;
-        button.textContent = themeLabel(name);
+        button.textContent = name;
+        button.setAttribute('aria-pressed', String(name === window.CrownTheme?.current()));
         button.addEventListener('click', () => {
-          headerState.theme = name;
-          saveHeaderState();
-          applyTheme();
-          closeInfoModal();
+          if (window.CrownTheme?.set(name)) closeInfoModal();
         });
         themeChoiceRow.appendChild(button);
       });
     }
-    function ensureThemeStyleElement() {
-      let style = document.querySelector('style[data-theme-styles]');
-      if (!style) {
-        style = document.createElement('style');
-        style.setAttribute('data-theme-styles', '');
-        document.head.appendChild(style);
-      }
-      return style;
-    }
-    function applyTheme() {
-      if (!themes.includes(headerState.theme)) headerState.theme = themeCatalog.default || themes[0] || 'light';
-      const theme = themeCatalog.themes[headerState.theme];
-      document.documentElement.dataset.theme = headerState.theme;
-      ensureThemeStyleElement().textContent = themeToCss(theme);
-      saveHeaderState();
-      if (themeButton) {
-        const label = themeLabel(headerState.theme);
-        themeButton.querySelector('span').textContent = label;
-        themeButton.title = 'Current theme: ' + label + '. Click to switch theme.';
-      }
-      document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === headerState.theme)));
-      if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]') && powerChartState.chart) renderPowerModal();
-    }
+
     const adminDiskSnapshotFamily = Object.freeze({ paneId: 'admin', topics: [], snapshotRoutes: ['/api/v1/storage/disk/census'], authClass: 'admin', timeoutMs: 15000 });
     let adminDiskSnapshotOwner = null;
     let adminDiskSnapshotLastGood = null;
@@ -71,7 +47,6 @@ fn shell_document_3() -> &'static str {
           internetState.publicIp = undefined;
         }
       }
-      saveHeaderState();
       applyAdminDomState();
       if (previousAdmin && !headerState.isAdmin) setInternetIndicatorState({ status: internetState.status });
       const currentIndicatorKind = infoBody.querySelector('[data-modal-kind-body]')?.dataset.modalKindBody;
@@ -192,7 +167,7 @@ fn shell_document_3() -> &'static str {
       const indicator = indicatorModalTemplate(kind);
       if (indicator) return indicator;
       if (kind === 'wake-on-lan') return wakeOnLanModalTemplate();
-      if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${headerState.theme}.</p><p>Theme selection comes from homeserver.json global.theme.name through /api/themes.</p></div>`;
+      if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${window.CrownTheme?.current() || 'unavailable'}.</p><p>Theme selection comes from homeserver.json global.theme.name.</p></div>`;
       return '';
     }
     function internetStatusModalText() {
@@ -1247,29 +1222,13 @@ fn shell_document_3() -> &'static str {
 
     document.querySelector('[data-info-modal-close]')?.addEventListener('click', closeInfoModal);
     document.querySelectorAll('[data-indicator]').forEach(button => button.addEventListener('click', () => openInfoModal(button.dataset.modalTitle, button.dataset.modalKind)));
-    function cycleTheme() {
-      if (!themes.length) return;
-      const currentIndex = Math.max(0, themes.indexOf(headerState.theme));
-      headerState.theme = themes[(currentIndex + 1) % themes.length];
-      saveHeaderState();
-      applyTheme();
-    }
-    themeButton?.addEventListener('click', cycleTheme);
-    async function loadThemeCatalog() {
-      try {
-        const catalog = await fetch('/api/themes').then(response => response.json());
-        if (!catalog.themes || Object.keys(catalog.themes).length === 0) throw new Error('empty theme catalog');
-        themeCatalog = catalog;
-        themes = Object.keys(catalog.themes);
-        renderThemeChoices();
-        applyTheme();
-      } catch (error) {
-        console.error('theme catalog load failed', error);
-        themes = [];
-        ensureThemeStyleElement().textContent = '';
-        if (themeButton) themeButton.title = 'Theme catalog unavailable: ' + error;
-      }
-    }
+    document.addEventListener('crown-theme-change', () => {
+      renderThemeChoices();
+      const currentThemeLine = infoBody.querySelector('.theme-modal p');
+      if (currentThemeLine) currentThemeLine.textContent = `Current theme: ${window.CrownTheme?.current() || 'unavailable'}.`;
+      if (infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="power-meter"]') && powerChartState.chart) renderPowerModal();
+    });
+    renderThemeChoices();
     adminButton?.addEventListener('click', async () => {
       if (headerState.isAdmin) await clearAdminMode();
       else openPinModal('enter');
@@ -1400,7 +1359,7 @@ fn shell_document_3() -> &'static str {
       } catch (_) { /* Browser projection still becomes guest when invalidation is unavailable. */ }
       coronatioAttendanceRuntime.currentAttendance = null;
       removeAdminDocumentPatch();
-      if (headerState.isAdmin) { headerState.isAdmin = false; saveHeaderState(); applyAdminDomState(); }
+      if (headerState.isAdmin) { headerState.isAdmin = false; applyAdminDomState(); }
       [pulseStream, coreStream].forEach(stream => { try { stream?.close(); } catch (_) {} });
       pulseStream = null; pulseStreamId = null; coreStream = null; coreStreamId = null;
       document.documentElement.dataset.connectionState = 'headless';
@@ -1507,7 +1466,6 @@ fn shell_document_3() -> &'static str {
         window.setTimeout(connectCoreStream, delayMs);
       });
     }
-    loadThemeCatalog();
     bootstrapAdminMode();
     connectCoreStream();
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }

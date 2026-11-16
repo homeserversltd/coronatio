@@ -22,6 +22,10 @@ async fn crown_chrome_script_route() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "application/javascript; charset=utf-8")], crown_chrome_js())
 }
 
+async fn crown_theme_script_route() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "application/javascript; charset=utf-8")], xenia_kit::style::THEME_SCRIPT)
+}
+
 const CORONATIO_SOURCE_SHA: &str = match option_env!("CORONATIO_SOURCE_SHA") {
     Some(value) => value,
     None => "",
@@ -116,6 +120,7 @@ async fn api_root_route(State(state): State<AppState>) -> impl IntoResponse {
             "/api/tabs/:tab_id/manifest".to_string(),
             "/static/vendor/htmx.min.js".to_string(),
             "/static/crown/chrome.js".to_string(),
+            "/static/crown/theme.js".to_string(),
             "/static/vendor/chart.umd.min.js".to_string(),
             "/static/vendor/chartjs-plugin-datalabels.min.js".to_string(),
             "/tabs/<tab-id>/static/...".to_string(),

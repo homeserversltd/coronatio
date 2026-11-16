@@ -17,6 +17,6 @@ style[data-theme-styles]
 legacy aliases: --background, --text, --primary, --primaryHover, --hiddenTabBackground, --hiddenTabText
 ```
 
-The Theme Net is the sole paint speech: `themeToCss` emits every catalog key as `--theme-*`; legacy names are pure CSS `var(--theme-…)` rebinds in the shell, never a copied JavaScript value map. The catalog includes color, status, spacing, sizing, radius, elevation, gradients, flags, transition, font-family, monospace font, font-size, font-weight, and line-height tokens. Production shell chrome binds those materials while preserving the original one-to-one port identity.
+The Theme Net is the sole paint speech: xenia-kit's shared theme script emits every catalog key as `--theme-*`; legacy names are pure CSS `var(--theme-…)` rebinds in the shell, never a copied JavaScript value map. The catalog includes color, status, spacing, sizing, radius, elevation, gradients, flags, transition, font-family, monospace font, font-size, font-weight, and line-height tokens. Production shell chrome binds those materials while preserving the original one-to-one port identity.
 
 The visible theme control and persistence behavior must match the original Flask/React Header and ThemeComponent behavior unless an explicit divergence is recorded.
