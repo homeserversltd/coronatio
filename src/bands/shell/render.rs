@@ -116,10 +116,6 @@ fn crown_chrome_js() -> String {
         &render_indicator_modal_registry(Session::Guest),
     )
     .replace("__UPDATE_MANAGER_CLIENT__", include_str!("update-manager-client.js"))
-    // The Test pane's health projection is assembled from a separate shell
-    // document; keep it on the shared theme door without changing that source.
-    .replace("theme_catalog: Boolean(themeCatalog?.themes)", "theme_catalog: Boolean(window.CrownTheme?.names().length)")
-    .replace("theme: headerState.theme", "theme: window.CrownTheme?.current()")
     .replace("__EXPLAIN_CLIENT__", shell_explain_client())
     .replace("__DHCP_CLIENT__", shell_dhcp_client())
     .replace("__UNBOUND_CLIENT__", shell_unbound_client())
