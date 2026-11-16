@@ -72,8 +72,9 @@
 
 /* The face rides a four-pixel lip; the status socket and hit area stay put. */
 .portal-element:not([data-visible="false"]) > .portal-card[data-portal-card] > .portal-card-face {
+  --portal-card-hover-background: color-mix(in srgb, var(--background) 94%, white);
   --portal-keycap-lip: color-mix(in srgb, var(--background) 55%, var(--text));
-  --portal-keycap-edge: color-mix(in srgb, var(--background) 70%, var(--text));
+  --portal-keycap-edge: color-mix(in srgb, var(--background) 60%, color-mix(in srgb, white 99%, var(--text)));
   box-shadow: inset 0 1px 0 var(--portal-keycap-edge),
               0 4px 0 var(--portal-keycap-lip),
               0 7px 9px color-mix(in srgb, var(--text) 22%, transparent);
@@ -96,6 +97,10 @@
 
 .portal-element[data-visible="false"] > .portal-card[data-portal-card] > .portal-card-face {
   background: var(--hiddenTabBackground);
+  box-shadow: none;
+}
+
+.add-portal-card > .portal-card-face {
   box-shadow: none;
 }
 
