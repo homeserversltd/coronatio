@@ -787,5 +787,5 @@
 [data-portal-create-not-wired="true"], [data-portal-modal-not-wired="true"] { cursor: not-allowed; }
 
 @media (prefers-reduced-motion: reduce) {
-  .portal-card-face { transition-duration: 0s !important; }
+  .portal-card-face { transition-duration: .001ms !important; }
 }
