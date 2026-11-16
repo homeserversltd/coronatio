@@ -1,8 +1,10 @@
 # Theme tokens
 
+Shared sheets, the theme catalog, and author-face names live in xenia-kit `style/`; changes to them belong in xenia-kit.
+
 Coronatio themes are JSON maps projected into CSS custom properties. One catalog supplies the whole crown: shell, native panes, controls, cards, modals, and cartridge-facing visual roles.
 
-The catalog lives at `src/bands/theme/catalog.json`. It currently contains `light`, `dark`, and `radioactive`. Runtime selection comes from `global.theme.name` in `homeserver.json`; the catalog provides the corresponding firmware values. Do not create a second runtime theme authority.
+The catalog lives at xenia-kit `style/theme/catalog.json`. It currently contains `light`, `dark`, and `radioactive`. Runtime selection comes from `global.theme.name` in `homeserver.json`; the catalog provides the corresponding firmware values. Do not create a second runtime theme authority.
 
 ## How a token travels
 
@@ -25,7 +27,7 @@ Avoid names such as `blue-card` or `dark-border`: they describe one theme rather
 
 ## Add or change a token
 
-1. Add the key to every theme in `src/bands/theme/catalog.json`. A `component-*` key may instead be declared by only some themes when its consumer supplies a fallback; portal `component-keycap-*` keys are one example.
+1. Add the key to every theme in xenia-kit `style/theme/catalog.json`. A `component-*` key may instead be declared by only some themes when its consumer supplies a fallback; portal `component-keycap-*` keys are one example.
 2. Keep values as JSON strings, including numbers represented for CSS such as `".12"`.
 3. Consume the projected `--theme-<key>` variable in the owning CSS surface.
 4. Demonstrate a new visual primitive in the Test pane before spreading it across production panes when the primitive is genuinely new.

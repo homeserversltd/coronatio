@@ -11,47 +11,75 @@ const SHELL_UX_README: &str = include_str!("ux/README.md");
 const SHELL_UX_CHILDREN: &[&str] = &[
     "shell/base-and-chrome.css", "shell/explain.css", "library/_badge.css", "library/_breadcrumbs.css", "library/_button.css", "library/_calendar.css", "library/_card.css", "library/_checkbox.css", "library/_collapsible.css", "library/_editable-field.css", "library/_empty-state.css", "library/_file-input.css", "library/_ip-calendar.css", "library/_icon-button.css", "library/_input.css", "library/_loading-spinner.css", "library/_modal.css", "library/_plus-button.css", "library/_progress-bar.css", "library/_row-info-tile.css", "library/_select.css", "library/_setting-row.css", "library/_skeleton.css", "library/_slot.css", "library/_slider.css", "library/_stat-tile.css", "library/_sub-tabs.css", "library/_switch.css", "library/_table.css", "library/_tabs.css", "library/_text-box.css", "library/_time-picker.css", "library/_toast.css", "library/_toggle.css", "library/_update-card.css", "library/_usage-bar.css", "library/_visibility-toggle.css", "packs/upload.css", "packs/stats.css", "packs/portals.css", "packs/test-services.css", "packs/test-animations.css", "packs/test-config.css", "packs/test-health.css", "packs/admin.css", "packs/dhcp.css", "packs/firewall.css", "packs/wake-on-lan.css", "packs/unbound.css", "packs/backblaze.css", "packs/headless.css", "shell/document-2-css.css",
 ];
-const SHELL_UX_CONTENTS: &[&str] = &[
-    include_str!("ux/shell/base-and-chrome.css"),
+// Resolve each named kit sheet at compile time as well as at runtime: a missing
+// shared path must fail the build rather than the first page request.
+const fn kit_has_sheet(path: &str) -> bool {
+    let expected = path.as_bytes();
+    let mut i = 0;
+    while i < xenia_kit::style::SHARED.len() {
+        let candidate = xenia_kit::style::SHARED[i].path.as_bytes();
+        if candidate.len() == expected.len() {
+            let mut j = 0;
+            while j < expected.len() && candidate[j] == expected[j] {
+                j += 1;
+            }
+            if j == expected.len() {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+macro_rules! shared_sheet {
+    ($path:literal) => {{
+        const _: () = assert!(kit_has_sheet($path), "shared xenia-kit sheet missing");
+        xenia_kit::style::sheet($path).expect(concat!("shared xenia-kit sheet missing: ", $path))
+    }};
+}
+
+static SHELL_UX_CONTENTS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| vec![
+    shared_sheet!("shell/base-and-chrome.css"),
     include_str!("ux/shell/explain.css"),
-    include_str!("ux/library/_badge.css"),
-    include_str!("ux/library/_breadcrumbs.css"),
-    include_str!("ux/library/_button.css"),
-    include_str!("ux/library/_calendar.css"),
-    include_str!("ux/library/_card.css"),
-    include_str!("ux/library/_checkbox.css"),
-    include_str!("ux/library/_collapsible.css"),
-    include_str!("ux/library/_editable-field.css"),
-    include_str!("ux/library/_empty-state.css"),
-    include_str!("ux/library/_file-input.css"),
-    include_str!("ux/library/_ip-calendar.css"),
-    include_str!("ux/library/_icon-button.css"),
-    include_str!("ux/library/_input.css"),
-    include_str!("ux/library/_loading-spinner.css"),
-    include_str!("ux/library/_modal.css"),
-    include_str!("ux/library/_plus-button.css"),
-    include_str!("ux/library/_progress-bar.css"),
-    include_str!("ux/library/_row-info-tile.css"),
-    include_str!("ux/library/_select.css"),
-    include_str!("ux/library/_setting-row.css"),
-    include_str!("ux/library/_skeleton.css"),
-    include_str!("ux/library/_slot.css"),
-    include_str!("ux/library/_slider.css"),
-    include_str!("ux/library/_stat-tile.css"),
-    include_str!("ux/library/_sub-tabs.css"),
-    include_str!("ux/library/_switch.css"),
-    include_str!("ux/library/_table.css"),
-    include_str!("ux/library/_tabs.css"),
-    include_str!("ux/library/_text-box.css"),
-    include_str!("ux/library/_time-picker.css"),
-    include_str!("ux/library/_toast.css"),
-    include_str!("ux/library/_toggle.css"),
-    include_str!("ux/library/_update-card.css"),
-    include_str!("ux/library/_usage-bar.css"),
-    include_str!("ux/library/_visibility-toggle.css"),
+    shared_sheet!("library/_badge.css"),
+    shared_sheet!("library/_breadcrumbs.css"),
+    shared_sheet!("library/_button.css"),
+    shared_sheet!("library/_calendar.css"),
+    shared_sheet!("library/_card.css"),
+    shared_sheet!("library/_checkbox.css"),
+    shared_sheet!("library/_collapsible.css"),
+    shared_sheet!("library/_editable-field.css"),
+    shared_sheet!("library/_empty-state.css"),
+    shared_sheet!("library/_file-input.css"),
+    shared_sheet!("library/_ip-calendar.css"),
+    shared_sheet!("library/_icon-button.css"),
+    shared_sheet!("library/_input.css"),
+    shared_sheet!("library/_loading-spinner.css"),
+    shared_sheet!("library/_modal.css"),
+    shared_sheet!("library/_plus-button.css"),
+    shared_sheet!("library/_progress-bar.css"),
+    shared_sheet!("library/_row-info-tile.css"),
+    shared_sheet!("library/_select.css"),
+    shared_sheet!("library/_setting-row.css"),
+    shared_sheet!("library/_skeleton.css"),
+    shared_sheet!("library/_slot.css"),
+    shared_sheet!("library/_slider.css"),
+    shared_sheet!("library/_stat-tile.css"),
+    shared_sheet!("library/_sub-tabs.css"),
+    shared_sheet!("library/_switch.css"),
+    shared_sheet!("library/_table.css"),
+    shared_sheet!("library/_tabs.css"),
+    shared_sheet!("library/_text-box.css"),
+    shared_sheet!("library/_time-picker.css"),
+    shared_sheet!("library/_toast.css"),
+    shared_sheet!("library/_toggle.css"),
+    shared_sheet!("library/_update-card.css"),
+    shared_sheet!("library/_usage-bar.css"),
+    shared_sheet!("library/_visibility-toggle.css"),
     include_str!("ux/packs/upload.css"),
-    include_str!("ux/packs/stats.css"),
-    include_str!("ux/packs/portals.css"),
+    shared_sheet!("packs/stats.css"),
+    shared_sheet!("packs/portals.css"),
     include_str!("ux/packs/test-services.css"),
     include_str!("ux/packs/test-animations.css"),
     include_str!("ux/packs/test-config.css"),
@@ -63,8 +91,8 @@ const SHELL_UX_CONTENTS: &[&str] = &[
     include_str!("ux/packs/unbound.css"),
     include_str!("ux/packs/backblaze.css"),
     include_str!("ux/packs/headless.css"),
-    include_str!("ux/shell/document-2-css.css"),
-];
+    shared_sheet!("shell/document-2-css.css"),
+]);
 
 fn shell_ux_css() -> String {
     SHELL_UX_CONTENTS.concat()

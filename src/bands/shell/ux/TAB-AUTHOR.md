@@ -1,5 +1,7 @@
 # Theme Net tab author cookbook
 
+Shared sheets, the theme catalog, and author-face names live in xenia-kit `style/`; changes to them belong in xenia-kit.
+
 Audience: humans and small open-source-trained models adding a Coronatio tab or cartridge.
 
 The Theme Net has two levels. The shell owns the full system lattice and its beauty materials. A tab sees the shallow author face only. This is progressive disclosure, not a second theme system: see `pali:agentics-theme-net-indra-skin-tablet`, `pali:agentics-theme-net-projection-membrane-tablet`, and `pali:agentics-theme-net-tab-author-face-tablet`.
@@ -22,49 +24,9 @@ Do not invent hex colors. Do not use `--theme-role-*`, `--theme-surface-*`, `--t
 
 ## Author-face allowlist
 
-```text
-background
-background-alt
-background-alt-hover
-surface
-surface-soft
-text
-text-secondary
-text-muted
-secondary
-primary
-primaryHover
-accent
-accent-soft
-border
-error
-warning
-success
-info
-status-up
-status-down
-status-partial
-status-unknown
-hiddenTabBackground
-hiddenTabText
-shadow
-primary-rgb
-background-rgb
-statusUp
-statusDown
-statusPartial
-statusUnknown
-border-radius
-font-size-sm
-transition-fast
-monoFont
-tabBorder
-tabContentBackground
-disabled
-border-color
-```
+The canonical names are in xenia-kit `style/author-face.json`.
 
-The machine-readable source is `author-face.json`; the focused Rust wall tests enforce it across `packs/**/*.css`. If a repeated quarry-shaped name is needed, add one shell rebind and this list in the same change. Rewrite one-off names to an existing author-face variable instead.
+The machine-readable source is xenia-kit `style/author-face.json`; the focused Rust wall tests enforce it across `packs/**/*.css`. If a repeated quarry-shaped name is needed, add one shell rebind and this list in the same change. Rewrite one-off names to an existing author-face variable instead.
 
 ## Raising a toast from a fragment
 

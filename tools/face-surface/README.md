@@ -1,10 +1,12 @@
 # Regenerating the face surface
 
+Shared sheets, the theme catalog, and author-face names live in xenia-kit `style/`; changes to them belong in xenia-kit.
+
 From the repository root, run:
 
 ```sh
-python3 tools/face-surface/generate.py
-python3 tools/face-surface/generate.py --check
+python3 tools/face-surface/generate.py --author-face /path/to/xenia-kit/style/author-face.json
+python3 tools/face-surface/generate.py --author-face /path/to/xenia-kit/style/author-face.json --check
 ```
 
 You need Python 3 (standard library only), Git, and rustc. The generator compiles
@@ -59,9 +61,10 @@ of the `coronatio.face-surface.v1` schema; Caduceus owns that public seat.
 `source_sha` identifies the committed rendering-input snapshot, not the eventual
 commit containing its own generated hash. For this initial generation it is
 `6bf0972afcdcf2320c45abd4d4c690bea1919b87`. The generator compares the source
-renderer and its included animation file, toast source, author-face bytes,
-library CSS bytes, and ux CSS child membership with the named Git commit before
-using it. Metadata-only artifact membership does not change that input snapshot.
+renderer and its included animation file, toast source, Cargo.lock, and ux CSS
+child membership with the named Git commit before using it. The explicitly supplied
+author-face file is external to that crown commit; use the pinned kit revision.
+Metadata-only artifact membership does not change that input snapshot.
 
 On subsequent runs you retain the recorded pin while those inputs still match.
 Otherwise the generator tries HEAD. You may select an exact matching committed

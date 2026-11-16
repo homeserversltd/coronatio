@@ -1,10 +1,12 @@
 # Coronatio theme projection
 
+Shared sheets, the theme catalog, and author-face names live in xenia-kit `style/`; changes to them belong in xenia-kit.
+
 Coronatio is a one-to-one port of the old Flask/React HOMESERVER surface. Theme behavior is governed first by the original HomeServer state model and the central HomeServer config file, `homeserver.json`.
 
 Runtime theme selection SHALL come from `/etc/appliance/config.json`, specifically `global.theme.name`, before any Coronatio-local fallback or firmware default. `CORONATIO_HOMESERVER_JSON` is the sole development and test fixture seam.
 
-Coronatio carries exactly one firmware-owned embedded token catalog at `src/bands/theme/catalog.json`; it is Rust build substrate, not user state authority and has no served sidecar. `/api/themes` reads `homeserver.json` only for `global.theme.name`, then projects that selected catalog mode into the browser-visible one-to-one port membrane:
+Coronatio carries exactly one firmware-owned embedded token catalog at xenia-kit `style/theme/catalog.json`; it is Rust build substrate, not user state authority and has no served sidecar. `/api/themes` reads `homeserver.json` only for `global.theme.name`, then projects that selected catalog mode into the browser-visible one-to-one port membrane:
 
 ```text
 preferred-theme

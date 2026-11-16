@@ -710,7 +710,7 @@ fn sensitive_response_header(name: &hyper::header::HeaderName) -> bool {
 fn author_face() -> &'static BTreeSet<String> {
     static NAMES: OnceLock<BTreeSet<String>> = OnceLock::new();
     NAMES.get_or_init(|| {
-        serde_json::from_str::<serde_json::Value>(include_str!("shell/ux/author-face.json"))
+        serde_json::from_str::<serde_json::Value>(xenia_kit::style::AUTHOR_FACE)
             .ok()
             .and_then(|value| {
                 value

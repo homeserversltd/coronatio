@@ -1053,7 +1053,7 @@ async fn load_theme_catalog() -> Result<(String, ThemeCatalog), String> {
     Ok((format!("{} global.theme.name; firmware catalog", source), catalog))
 }
 
-const FIRMWARE_THEME_CATALOG: &str = include_str!("theme/catalog.json");
+const FIRMWARE_THEME_CATALOG: &str = xenia_kit::style::THEME_CATALOG;
 
 fn firmware_theme_catalog(default: String) -> Result<ThemeCatalog, String> {
     let mut catalog: ThemeCatalog = serde_json::from_str(FIRMWARE_THEME_CATALOG)
