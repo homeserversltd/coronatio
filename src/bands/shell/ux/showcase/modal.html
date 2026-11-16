@@ -1,1 +1,11 @@
 <div class="modal-overlay" data-ux-modal-demo-backdrop aria-hidden="true"><section class="modal medium" role="dialog" aria-modal="true" aria-labelledby="ux-modal-demo-title" data-ux-modal-demo-window><button type="button" class="modal-close" data-ux-modal-close data-modal-dismiss aria-label="Close modal">×</button><h4 class="modal-title" id="ux-modal-demo-title" data-ux-modal-demo-title>Medium modal</h4><div class="modal-content"><p data-ux-modal-demo-body>Regular dialog body.</p></div><div class="modal-buttons"><button type="button" class="ui-button ui-button--secondary" data-ux-modal-close data-modal-dismiss>Cancel</button><button type="button" class="ui-button" data-ux-modal-close data-modal-dismiss>Confirm</button></div></section></div>
+<!-- Stand-in for a guest fragment; the guest supplies only markup. -->
+<button type="button" class="ui-button" data-crown-dialog-open="showcase-guest-dialog">Choose an option</button>
+<dialog class="crown-dialog" id="showcase-guest-dialog" data-size="medium" aria-labelledby="showcase-guest-dialog-title">
+  <h4 class="crown-dialog__title" id="showcase-guest-dialog-title">Choose an option</h4>
+  <button type="button" class="crown-dialog__close" data-modal-dismiss aria-label="Close">×</button>
+  <div class="crown-dialog__body" id="showcase-guest-dialog-body">
+    <button type="button" class="ui-button">First choice</button>
+    <button type="button" class="ui-button">Second choice</button>
+  </div>
+</dialog>

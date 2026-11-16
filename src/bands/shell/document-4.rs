@@ -108,7 +108,15 @@ fn shell_document_4() -> &'static str {
       if (error) { error.hidden = false; error.textContent = message || '⚠️ NAS Storage Unavailable'; }
       syncUploadTreeSelection();
     }
+    document.body.addEventListener('htmx:beforeCleanupElement', event => {
+      const removed = event.detail?.elt;
+      if (!(removed instanceof Element)) return;
+      document.querySelectorAll('dialog.crown-dialog:modal').forEach(dialog => {
+        if (removed === dialog || removed.contains(dialog)) closeCrownDialog(dialog);
+      });
+    });
     document.body.addEventListener('htmx:afterSwap', event => {
+      if (!document.querySelector('dialog.crown-dialog:modal')) document.body.classList.remove('crown-dialog-open');
       const target = event.detail?.target;
       if (target instanceof Element && (target.matches('[data-upload-tree]') || target.closest('[data-upload-tree]'))) syncUploadTreeSelection();
       if (target instanceof Element && (target.matches('[data-portals-grid]') || target.closest('[data-portals-grid]'))) {
@@ -1383,6 +1391,19 @@ fn shell_document_4() -> &'static str {
     function renderTestUpstreamReadout(specimen) { const addresses = [...specimen.querySelectorAll('[data-upstream-provider]:checked')].flatMap(box => testUpstreamProviders[box.value] || []); const custom = specimen.querySelector('[data-upstream-custom-addresses]')?.value.split(',').map(value => value.trim()).filter(Boolean) || []; const dot = Boolean(specimen.querySelector('[data-upstream-dot]')?.checked); specimen.querySelector('[data-upstream-readout]').textContent = `Upstreams: [${[...addresses, ...custom].join(', ')}] · DoT: ${dot ? 'on' : 'off'}`; }
 
     document.body.addEventListener('click', event => {
+      const crownOpen = event.target.closest('[data-crown-dialog-open]');
+      if (crownOpen) {
+        const pane = crownOpen.closest('[data-pane-panel]');
+        const dialog = document.getElementById(crownOpen.dataset.crownDialogOpen);
+        if (pane && dialog instanceof HTMLDialogElement && !dialog.open && dialog.matches('.crown-dialog') && dialog.closest('[data-pane-panel]') === pane) {
+          guestCrownDialogs.add(dialog);
+          openCrownDialog(dialog, crownOpen);
+        }
+        return;
+      }
+      const dismiss = event.target.closest('[data-modal-dismiss]');
+      const guestDialog = dismiss?.closest('dialog.crown-dialog:modal');
+      if (guestDialog && guestCrownDialogs.has(guestDialog)) { closeCrownDialog(guestDialog); return; }
       const toastSpawn = event.target.closest('[data-coronatio-toast-spawn]');
       if (toastSpawn) { showCoronatioToast(toastSpawn.dataset.toastMessage || 'Notification', toastSpawn.dataset.toastVariant || 'info'); return; }
 
@@ -1470,6 +1491,7 @@ fn shell_document_4() -> &'static str {
       if (domainFile) { const section = domainFile.closest('[data-test-domain-file-section]'); const names = Array.from(domainFile.files || []).map(file => file.name); const readback = section?.querySelector('[data-test-domain-file-name]'); const submit = section?.querySelector('[data-test-domain-submit]'); if (readback) readback.textContent = names.length ? names.join(', ') : 'No files selected'; if (submit) submit.disabled = names.length === 0; }
     }); let uxModalDemoOpener = null;
     const crownDialogOpeners = new WeakMap();
+    const guestCrownDialogs = new WeakSet();
     function openCrownDialog(dialog, opener = document.activeElement) {
       if (!(dialog instanceof HTMLDialogElement) || dialog.open) return;
       crownDialogOpeners.set(dialog, opener);
@@ -1479,6 +1501,7 @@ fn shell_document_4() -> &'static str {
     function closeCrownDialog(dialog) {
       if (!(dialog instanceof HTMLDialogElement)) return;
       if (dialog.open) dialog.close();
+      guestCrownDialogs.delete(dialog);
       if (!document.querySelector('dialog.crown-dialog:modal')) document.body.classList.remove('crown-dialog-open');
       const opener = crownDialogOpeners.get(dialog); crownDialogOpeners.delete(dialog);
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
