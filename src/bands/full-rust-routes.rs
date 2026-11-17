@@ -726,12 +726,18 @@ async fn internet_speedtest_route(headers: axum::http::HeaderMap) -> Response {
     // firstMissingSignal, so the receipt passes through unchanged. Coronatio's
     // own door stays POST behind the admin session; the downstream verb is
     // the actuator's, not a reason to relax the caller's gate.
-    let readback = caduceus_http_json(
-        "GET",
-        "/api/v1/network/bandwidth/measure",
-        serde_json::json!({}),
-        None,
-    );
+    let readback = tokio::task::spawn_blocking(move || {
+        let target = "/api/v1/network/bandwidth/measure";
+        let context = MutationRequestContext::from_headers(&headers);
+        match mutation_authority().authorize(&context) {
+            Ok(attendance) => caduceus_http_json_with_attendance_and_document_timeout(
+                "GET", target, serde_json::json!({}),
+                Some(&attendance.proof), Some(&attendance.document),
+                std::time::Duration::from_secs(120),
+            ),
+            Err(refusal) => mutation_refusal_readback(target, refusal),
+        }
+    }).await.unwrap_or_else(|_| mutation_task_failure_readback("/api/v1/network/bandwidth/measure"));
     if readback.ok {
         return (StatusCode::OK, Json(readback.body)).into_response();
     }
