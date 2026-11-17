@@ -17,7 +17,6 @@
   color: var(--text);
 }
 
-.dhcp-info-banner,
 .dhcp-banner {
   display: flex;
   flex-wrap: wrap;
@@ -29,34 +28,11 @@
   background: var(--hiddenTabBackground);
 }
 
-.dhcp-info-item,
-.dhcp-list-item-info,
-.dhcp-list-item-actions,
-.dhcp-button-row,
 .reservation-slider {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
-}
-
-.dhcp-info-value,
-.info-value,
-.dhcp-boundary-value {
-  color: var(--accent);
-  font-family: monospace;
-  font-weight: 600;
-}
-
-.dhcp-info-separator {
-  color: var(--secondary);
-}
-
-.dhcp-button-row {
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--border-radius, 6px);
-  background: var(--primary);
 }
 
 .reservation-slider {
@@ -73,79 +49,13 @@
   flex: 1 1 10rem;
 }
 
-.dhcp-tablet-content,
-.dhcp-list {
+.dhcp-tablet-content {
   display: grid;
   gap: 0.75rem;
   min-width: 0;
 }
 
-.dhcp-list-item {
-  display: grid;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--accent);
-  border-radius: var(--border-radius, 6px);
-  background: var(--primary);
-}
-
-.dhcp-list-item.pinned,
-.add-reservation-row {
-  border-left-color: var(--success);
-  background: var(--hiddenTabBackground);
-}
-
-.dhcp-list-item-content,
-.dhcp-list-item-main {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  min-width: 0;
-}
-
-.dhcp-list-item-info {
-  flex: 1 1 30rem;
-}
-
-.dhcp-list-item-mac,
-.dhcp-list-item-ip,
-.dhcp-list-item-hostname {
-  display: grid;
-  gap: 0.25rem;
-  flex: 1 1 10rem;
-  min-width: 0;
-}
-
-.info-label {
-  color: var(--secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.info-value {
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-
-.dhcp-list-item-badge {
-  display: flex;
-  align-items: center;
-}
-
-.dhcp-list-item-actions {
-  justify-content: flex-end;
-}
-
-.dhcp-empty-state {
-  padding: 2rem 1rem;
-  color: var(--secondary);
-  text-align: center;
-}
-
-.dhcp-banner[hidden],
-.dhcp-empty-state[hidden] {
+.dhcp-banner[hidden] {
   display: none;
 }
 
@@ -164,17 +74,6 @@
   border-color: var(--accent);
   border-right-color: transparent;
 }
-
-.dhcp-modal-field {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.dhcp-modal-message {
-  margin: 0;
-  color: var(--secondary);
-}
-
 
 .dhcp-device-roster {
   display: grid;
@@ -287,15 +186,12 @@
     padding: 1rem;
   }
 
-  .dhcp-list-item-content,
-  .dhcp-list-item-main,
   .reservation-slider {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .reservation-slider .ui-slider,
-  .dhcp-list-item-actions .ui-button {
+  .reservation-slider .ui-slider {
     width: 100%;
   }
 }
