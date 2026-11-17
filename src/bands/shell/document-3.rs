@@ -1100,6 +1100,7 @@ fn shell_document_3() -> &'static str {
         if (!headerState.isAdmin && requiresAdmin) { if (output) output.textContent = 'Enter Admin Mode'; return; }
         const originalLabel = button.textContent;
         const isSpeedTest = button.hasAttribute('data-speed-test-button');
+        if (isSpeedTest && internetState.isSpeedTesting) return;
         const isTransmissionKeysMutation = route === '/api/transmission/keys/replace' || route === '/api/transmission/keys/rotate';
         const isTailscaleAction = route.startsWith('/api/status/tailscale/') && route !== '/api/status/tailscale/config';
         let requestSecret = '';
@@ -1135,6 +1136,7 @@ fn shell_document_3() -> &'static str {
             } else {
               internetState.speedTestError = parsed?.firstMissingSignal && parsed.firstMissingSignal !== 'none' ? parsed.firstMissingSignal : 'Speed test result unavailable.';
             }
+            internetState.isSpeedTesting = false;
             openInfoModal('Internet Status', 'internet');
             return;
           }
@@ -1172,7 +1174,15 @@ fn shell_document_3() -> &'static str {
         } finally {
           requestBody = undefined;
           requestSecret = '';
-          if (isSpeedTest) internetState.isSpeedTesting = false;
+          if (isSpeedTest) {
+            internetState.isSpeedTesting = false;
+            const currentButton = infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="internet"] [data-speed-test-button]');
+            if (currentButton) {
+              currentButton.textContent = 'Run Speed Test';
+              currentButton.disabled = false;
+              currentButton.classList.remove('pending-operation');
+            }
+          }
           if (isCurrent()) {
             button.textContent = originalLabel;
             button.classList.remove('pending-operation');
