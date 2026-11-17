@@ -824,10 +824,10 @@ fn shell_document_3() -> &'static str {
       renderPowerModal();
     }
     function internetSpeedTestHtml() {
-      if (internetState.speedTestError) return `<div class="error-message">${internetState.speedTestError}</div>`;
+      if (internetState.speedTestError) return `<div class="error-message">${escapeHtml(internetState.speedTestError)}</div>`;
       const result = internetState.speedTestResults;
       if (!result) return '';
-      return `<div class="speed-results"><p>Download: ${result.download} Mbps</p><p>Upload: ${result.upload} Mbps</p><p>Latency: ${result.latency} ms</p></div>`;
+      return `<div class="speed-results"><p>Download: ${escapeHtml(result.download)} Mbps</p><p>Upload: ${escapeHtml(result.upload)} Mbps</p><p>Latency: ${escapeHtml(result.latency)} ms</p></div>`;
     }
     function safeHttpUrl(value) {
       if (typeof value !== 'string' || !value.trim()) return null;
@@ -1108,6 +1108,10 @@ fn shell_document_3() -> &'static str {
         const requestModal = infoBody.querySelector('[data-modal-kind-body]');
         const expectedAdmin = headerState.isAdmin;
         const isCurrent = () => modalResponseIsCurrent(requestGeneration, requestModal, expectedAdmin);
+        const requestAttendance = isSpeedTest ? coronatioAttendanceRuntime.currentAttendance : null;
+        const speedTestPanelIsCurrent = () => expectedAdmin && headerState.isAdmin && requestAttendance &&
+          requestAttendance === coronatioAttendanceRuntime.currentAttendance && infoBackdrop.classList.contains('open') &&
+          Boolean(infoBody.querySelector('[data-modal-kind-body="internet"]'));
         if (isSpeedTest) {
           internetState.isSpeedTesting = true;
           internetState.speedTestResults = null;
@@ -1126,7 +1130,7 @@ fn shell_document_3() -> &'static str {
           requestBody = undefined;
           let parsed = null;
           try { parsed = JSON.parse(text); } catch (_) {}
-          if (!isCurrent()) return;
+          if (isSpeedTest ? !speedTestPanelIsCurrent() : !isCurrent()) return;
           if (isSpeedTest) {
             if (parsed?.error) throw new Error(parsed.error);
             if (parsed && (parsed.download !== undefined || parsed.upload !== undefined || parsed.latency !== undefined)) {
@@ -1163,7 +1167,7 @@ fn shell_document_3() -> &'static str {
             output.textContent = parsed ? JSON.stringify(parsed, null, 2) : text;
           }
         } catch (error) {
-          if (!isCurrent()) return;
+          if (isSpeedTest ? !speedTestPanelIsCurrent() : !isCurrent()) return;
           if (isSpeedTest) {
             internetState.speedTestError = error?.message || 'Speed test failed unexpectedly.';
             internetState.isSpeedTesting = false;
