@@ -260,7 +260,7 @@ fn render_stage_fragment() -> String {
 "#,
     );
     markup.push_str(
-        r#"      <button type="submit" class="action-button" data-stage-vault-submit disabled>Unlock Vault</button>
+        r#"      <button type="submit" class="ui-button ui-button--primary ui-button--medium ui-button--full-width" data-stage-vault-submit disabled>Unlock Vault</button>
     </form>
     <p class="vault-unlock-result" data-stage-vault-result aria-live="polite"></p>
   </div>

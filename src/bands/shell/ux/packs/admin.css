@@ -419,54 +419,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   top: 20px;
 }
 
-.action-button {
-  width: 100%;
-  padding: 15px;
-  border-radius: 8px;
-  border: none;
-  font-weight: bold;
-  font-size: 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.create-button {
-  background-color: var(--primary);
-  color: var(--text);
-}
-
-.create-button:hover {
-  background-color: var(--primaryHover);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.update-button {
-  background-color: var(--primary);
-  color: var(--text);
-}
-
-.update-button:hover {
-  background-color: var(--primaryHover);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.admin-password-button {
-  background-color: var(--primary);
-  color: var(--text);
-}
-
-.admin-password-button:hover {
-  background-color: var(--primaryHover);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
 /* Responsive layout */
 @media (max-width: 768px) {
   .key-manager-content {
@@ -708,46 +660,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 
 
 
-.action-button {
-  padding: 8px 10px;
-  border-radius: 5px;
-  color: var(--text);
-  background-color: var(--primary);
-  border: 1px solid var(--border);
-  font-weight: bold;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
-}
-
-.action-button:hover {
-  background-color: var(--primaryHover);
-  color: var(--text);
-  border-color: var(--accent);
-}
-
-.action-button.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background-color: var(--primary);
-  color: var(--secondary);
-  border-color: var(--border);
-}
-
-.action-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background-color: var(--primary);
-  color: var(--secondary);
-  border-color: var(--border);
-}
-
-.action-button.loading {
-  opacity: 0.8;
-  cursor: wait;
-}
 
 
 
@@ -845,38 +757,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   box-shadow: 0 0 12px var(--success);
 }
 
-/* Enhance the mount button when it's enabled for an unlocked device */
-.action-button.mount:not(.disabled) {
-  background-color: var(--success);
-  box-shadow: 0 0 8px var(--success);
-  transform: scale(1.05);
-  transition: all 0.3s ease;
-  color: var(--background);
-}
-
-.action-button.mount:not(.disabled):hover {
-  background-color: var(--success);
-  box-shadow: 0 0 12px var(--success);
-  transform: scale(1.1);
-  color: var(--background);
-}
-
-/* Add pulsing animation for the mount button when an unlocked device is selected */
-@keyframes admin-pulse-success {
-  0% {
-    box-shadow: 0 0 0 0 var(--success);
-  }
-  70% {
-    box-shadow: 0 0 0 10px transparent;
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
-
-.action-button.mount:not(.disabled) {
-  animation: admin-pulse-success 1.5s infinite;
-}
 
 /* Destinations that are already in use should be visually unavailable */
 .disk-item.mounted:not(.selected) {

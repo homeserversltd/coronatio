@@ -398,7 +398,7 @@ fn shell_document_4_tail() -> &'static str {
       if (allowRefresh) {
         const refresh = document.createElement('button');
         refresh.type = 'button';
-        refresh.className = 'action-button';
+        refresh.className = 'ui-button ui-button--secondary ui-button--small';
         refresh.dataset.nasCensusRefresh = '';
         refresh.textContent = 'Read disk status again';
         status.append(document.createTextNode(' '), refresh);

@@ -31,13 +31,13 @@ fn shell_admin_document_patch() -> &'static str {
               <div class="key-manager-content">
                 <div class="key-manager-left">
                   <div class="security-status">
-                    <div class="status-item"><span class="status-icon secure">🛡</span><div class="status-details"><p>This is the key to your vault. When you boot your HOMESERVER and visit home.arpa, this is what unlocks your encrypted storage system - just like unlocking your smartphone. Your /vault partition contains the sensitive keys stored on the device. Unlock the vault and everything HOMESERVER specifically stores is accessible. This is the device's master key.<button type="button" class="action-button info-button" data-manager-open="key-guide" aria-label="View Full Guide &amp; Critical Warnings"><span>ⓘ</span> View Full Guide &amp; Critical Warnings</button></p></div></div>
+                    <div class="status-item"><span class="status-icon secure">🛡</span><div class="status-details"><p>This is the key to your vault. When you boot your HOMESERVER and visit home.arpa, this is what unlocks your encrypted storage system - just like unlocking your smartphone. Your /vault partition contains the sensitive keys stored on the device. Unlock the vault and everything HOMESERVER specifically stores is accessible. This is the device's master key.<button type="button" class="ui-button ui-button--secondary ui-button--small" data-manager-open="key-guide" aria-label="View Full Guide &amp; Critical Warnings"><span>ⓘ</span> View Full Guide &amp; Critical Warnings</button></p></div></div>
                   </div>
                 </div>
                 <div class="key-manager-right"><div class="key-actions">
-                  <button type="button" class="action-button create-button" data-manager-open="create-key"><span>+ Create New Key</span></button>
-                  <button type="button" class="action-button update-button" data-manager-open="update-key"><span>⟳ Update Key on Drive</span></button>
-                  <button type="button" class="action-button admin-password-button" data-manager-open="admin-password"><span>🔒 Admin Password</span></button>
+                  <button type="button" class="ui-button ui-button--primary ui-button--large ui-button--full-width" data-manager-open="create-key"><span>+ Create New Key</span></button>
+                  <button type="button" class="ui-button ui-button--primary ui-button--large ui-button--full-width" data-manager-open="update-key"><span>⟳ Update Key on Drive</span></button>
+                  <button type="button" class="ui-button ui-button--primary ui-button--large ui-button--full-width" data-manager-open="admin-password"><span>🔒 Admin Password</span></button>
                 </div></div>
               </div>
             </div>
