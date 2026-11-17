@@ -109,16 +109,7 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 }
 
 /* Icon styling match */
-.system-controls-btn .svg-inline--fa {
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
-  transition: filter 0.2s ease;
-}
 
-.system-controls-btn:hover .svg-inline--fa {
-  filter: 
-    drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3))
-    brightness(1.1);
-}
 
 /* Mobile responsiveness */
 @media (max-width: 768px) {
@@ -134,50 +125,11 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   }
 }
 
-.update-progress-modal {
-  max-width: 800px;
-  width: 100%;
-}
 
-.update-output-content {
-  background: var(--primary);
-  padding: 12px;
-  border-radius: 4px;
-  overflow: auto;
-  max-height: 400px;
-  margin-bottom: 16px;
-  font-family: monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
 
-.update-progress-modal .copy-button {
-  padding: 8px 16px;
-  background: var(--primary);
-  color: var(--background);
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
-}
 
-.update-progress-modal .copy-button:hover {
-  background: var(--primaryHover);
-}
 
-.system-action-modal {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-}
 
-.system-action-text {
-  font-size: 1.2rem;
-  margin: 0;
-  text-align: center;
-}
 
 /* System Controls Container */
 .system-controls-container {
@@ -360,52 +312,14 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   color: var(--warning);
 }
 
-.ssh-service-details {
-  font-size: 13px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-color);
-  margin-top: 8px;
-}
 
-.service-info {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 5px;
-}
 
-.service-label {
-  color: var(--secondary);
-}
 
-.service-value {
-  font-weight: 500;
-}
 
-.service-value.enabled {
-  color: var(--success);
-}
 
-.service-value.disabled {
-  color: var(--error);
-}
 
 /* Update Progress Modal Styles */
-.update-progress-modal {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
 
-.update-output-content {
-  background-color: var(--primary);
-  border-radius: 4px;
-  padding: 15px;
-  max-height: 400px;
-  overflow-y: auto;
-  font-family: monospace;
-  white-space: pre-wrap;
-  font-size: 12px;
-}
 
 .copy-button {
   align-self: flex-end;
@@ -422,18 +336,7 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   background-color: var(--primaryHover);
 }
 
-.system-action-modal {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  padding: 20px;
-}
 
-.system-action-text {
-  font-size: 1.1rem;
-  text-align: center;
-}
 
 /* Media queries for responsive layout */
 @media (min-width: 768px) {
@@ -663,19 +566,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 }
 
 /* Modal form styles (for the extracted components) */
-.modal-form {
-  margin-top: 6px;
-  margin-bottom: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  position: relative;
-  width: 100%;
-  /* Important to capture all clicks within the form */
-  pointer-events: auto;
-  z-index: 10;
-}
 
 .form-group {
   display: flex;
@@ -709,43 +599,15 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   margin-top: 5px;
 }
 
-.radio-option {
-  display: flex;
-  align-items: flex-start;
-  padding: 12px;
-  border-radius: 6px;
-  border: 2px solid transparent;
-  background-color: rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-  cursor: pointer;
-  pointer-events: auto;
-  z-index: 20;
-}
 
-.radio-option:hover {
-  background-color: rgba(0, 0, 0, 0.15);
-}
 
-.radio-option.selected {
-  border-color: var(--accent);
-  background-color: rgba(0, 0, 0, 0.2);
-}
 
-.radio-label {
-  display: flex;
-  margin-left: 10px;
-  pointer-events: none;
-}
 
 .radio-label-title {
   font-weight: bold;
   margin-bottom: 3px;
 }
 
-.radio-label-description {
-  font-size: 0.9rem;
-  opacity: 0.8;
-}
 
 
 
@@ -771,32 +633,10 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   transition: all 0.2s ease;
 }
 
-.modal-button-primary {
-  background-color: var(--accent);
-  color: var(--background);
-  border: none;
-}
 
-.modal-button-primary:hover {
-  filter: brightness(1.1);
-}
 
-.modal-button-primary:disabled {
-  background-color: var(--border);
-  color: var(--secondary);
-  cursor: not-allowed;
-  filter: none;
-}
 
-.modal-button-secondary {
-  background-color: transparent;
-  color: var(--text);
-  border: 1px solid var(--border);
-}
 
-.modal-button-secondary:hover {
-  background-color: rgba(0, 0, 0, 0.1);
-}
 
 
 
@@ -865,14 +705,7 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   background-color: var(--primaryHover);
 }
 
-.disk-item.non-standard-mount {
-  background-color: var(--error);
-  border-left: 4px solid var(--warning);
-}
 
-.disk-item.non-standard-mount:hover {
-  background-color: var(--error);
-}
 
 .disk-item.unavailable {
   opacity: 0.5;
@@ -884,9 +717,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   box-shadow: 0 0 8px var(--success);
 }
 
-.disk-item.locked-pair {
-  border-color: var(--warning);
-}
 
 .disk-item.nas-compatible {
   border-left: 4px solid var(--success);
@@ -939,115 +769,26 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   color: var(--background);
 }
 
-.encrypt-icon {
-  color: var(--warning);
-  margin-left: 8px;
-}
 
-.disk-details {
-  font-size: 0.9rem;
-  color: var(--text);
-  margin-bottom: 5px;
-}
 
-.disk-space-usage {
-  font-size: 0.85rem;
-  color: var(--secondary);
-  margin-top: 5px;
-  padding: 3px 6px;
-  background-color: var(--hiddenTabBackground);
-  border-radius: 3px;
-  border-left: 3px solid var(--info);
-}
 
-.disk-space-usage strong {
-  color: var(--text);
-}
 
-.disk-space-usage.low-space {
-  border-left-color: var(--warning);
-  background-color: var(--error);
-}
 
-.low-space-warning {
-  color: var(--warning);
-  font-weight: bold;
-  margin-left: 8px;
-}
 
-.disk-serial {
-  font-size: 0.8rem;
-  color: var(--secondary);
-  margin-bottom: 5px;
-  font-family: monospace;
-}
 
-.disk-mount-info {
-  font-size: 0.85rem;
-  color: var(--secondary);
-  margin-top: 5px;
-}
 
-.disk-mount-info.prominent {
-  font-size: 0.95rem;
-  color: var(--text);
-  margin: 8px 0;
-  padding: 4px 8px;
-  background-color: var(--hiddenTabBackground);
-  border-radius: 4px;
-  border-left: 3px solid var(--success);
-}
 
-.disk-mount-info.prominent strong {
-  color: var(--text);
-}
 
-.partition-info, .mapper-info {
-  font-size: 0.85rem;
-  color: var(--primaryHover);
-  margin-top: 3px;
-  font-style: italic;
-}
 
-.destination-label {
-  font-weight: bold;
-  color: var(--text);
-}
 
-.non-standard-label {
-  color: var(--error);
-  font-weight: bold;
-  background-color: var(--error);
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--error);
-  cursor: help;
-}
 
-.non-standard-label .warning-icon {
-  margin-right: 4px;
-  font-size: 0.8em;
-}
 
 .device-label {
   font-weight: bold;
   color: var(--accent);
 }
 
-.lock-icon {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  color: var(--warning);
-}
 
-.disk-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, max-content));
-  gap: 8px;
-  justify-content: center;
-  margin-top: 20px;
-}
 
 .action-button {
   padding: 8px 10px;
@@ -1090,18 +831,7 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   cursor: wait;
 }
 
-.no-devices-message {
-  text-align: center;
-  padding: 30px;
-  background-color: var(--primary);
-  border-radius: 8px;
-}
 
-.warning-icon {
-  font-size: 2rem;
-  color: var(--error);
-  margin-bottom: 15px;
-}
 
 .hint {
   font-size: 0.9rem;
@@ -1119,34 +849,9 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 }
 
 /* No devices message */
-.no-devices-message {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  text-align: center;
-  background-color: var(--primary);
-  border-radius: 8px;
-  margin: 1rem 0;
-}
 
-.no-devices-message .warning-icon {
-  font-size: 2.5rem;
-  color: var(--warning);
-  margin-bottom: 1rem;
-}
 
-.no-devices-message p {
-  margin: 0.5rem 0;
-  color: var(--text);
-}
 
-.no-devices-message .hint {
-  font-size: 0.85rem;
-  color: var(--hiddenTabText);
-  font-style: italic;
-}
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
@@ -1155,23 +860,10 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
     gap: 1.5rem;
   }
   
-  .disk-actions { grid-template-columns: repeat(auto-fit, minmax(9rem, max-content)); }
 }
 
-.disk-item.non-standard-mount {
-  border-left: 4px solid var(--warning);
-}
 
-.disk-item.non-standard-mount.selected {
-  border-left: 4px solid var(--accent);
-}
 
-.partition-info {
-  font-size: 0.8rem;
-  margin-top: 0.25rem;
-  color: var(--hiddenTabText);
-  font-style: italic;
-}
 
 /* Add these new styles to highlight available and unavailable options */
 
@@ -1204,130 +896,29 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 }
 
 /* Style for locked pairs to show the relationship between device and destination */
-.disk-item.locked-pair {
-  box-shadow: 0 0 10px var(--accent);
-  border: 2px solid var(--accent);
-  transition: all 0.3s ease;
-}
 
-.disk-item.locked-pair .lock-icon {
-  color: var(--accent);
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  font-size: 0.85rem;
-}
 
 /* Unlocked encrypted device styling */
-.disk-item.unlocked-encrypted {
-  border-left: 3px solid var(--success);
-}
 
 /* Encryption status indicators */
-.encryption-status {
-  font-size: 0.8rem;
-  margin-top: 4px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
 
-.encryption-status.locked {
-  background-color: var(--error);
-  color: var(--background);
-}
 
-.encryption-status.unlocked {
-  background-color: var(--success);
-  color: var(--background);
-}
 
 /* Unlocked icon styling */
-.encrypt-icon.unlocked {
-  color: var(--success);
-}
 
 /* Mapper info styling */
-.mapper-info {
-  font-size: 0.8rem;
-  color: var(--secondary);
-  margin-top: 2px;
-}
 
 /* Partition info styling */
-.partition-info {
-  font-size: 0.8rem;
-  color: var(--secondary);
-  margin-top: 2px;
-}
 
 /* Filesystem label styling */
-.filesystem-label {
-  font-size: 0.8rem;
-  color: var(--text);
-  margin-left: 4px;
-}
 
-.non-standard-badge {
-  display: inline-block;
-  background-color: var(--error);
-  color: var(--background);
-  font-size: 0.7rem;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-left: 8px;
-  vertical-align: middle;
-}
 
-.non-standard-badge svg {
-  margin-right: 3px;
-  font-size: 0.7em;
-}
 
 /* Special styling for unlocked but not mounted devices */
-.disk-item.unlocked-ready {
-  border: 2px solid var(--success);
-  position: relative;
-  background-color: var(--background);
-  border-left: 5px solid var(--success);
-}
 
-.disk-item.unlocked-ready::after {
-  content: "Ready to Mount";
-  position: absolute;
-  bottom: 5px;
-  right: 5px;
-  background-color: var(--success);
-  color: var(--background);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 0.7rem;
-  font-weight: bold;
-  z-index: 2;
-}
 
 /* Make selected unlocked-ready devices more obvious */
-.disk-item.selected.unlocked-ready {
-  border: 3px solid var(--success);
-  background-color: var(--primary);
-  box-shadow: 0 0 12px var(--success);
-}
 
-.disk-item.selected.unlocked-ready::after {
-  content: "Ready to Mount";
-  position: absolute;
-  bottom: 5px;
-  right: 5px;
-  background-color: var(--success);
-  color: var(--background);
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: bold;
-  z-index: 2;
-}
 
 /* Make destination available for unlocked-ready devices more obvious */
 .disk-item.selected.available {
@@ -1436,27 +1027,8 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 }
 
 /* Service management message styling */
-.service-management-message {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  margin-top: 1.5rem;
-  background-color: var(--primary);
-  border-radius: 6px;
-  border-left: 4px solid var(--accent);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
-}
 
-.service-management-message .service-icon {
-  font-size: 1.5rem;
-  color: var(--accent);
-}
 
-.service-management-message p {
-  margin: 0;
-  color: var(--text);
-}
 
 /* Styling for items disabled due to an operation in progress */
 .disk-item.disabled {
@@ -1467,42 +1039,10 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   transition: all 0.2s ease;
 }
 
-.sync-recommendation {
-  background-color: var(--warning);
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  padding: 15px;
-  margin: 20px 0;
-  text-align: center;
-}
 
-.sync-recommendation-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  color: var(--text);
-  font-size: 1.1rem;
-}
 
-.sync-icon {
-  color: var(--accent);
-  font-size: 1.2rem;
-}
 
-.sync-reason {
-  color: var(--text);
-  margin: 8px 0;
-  font-size: 0.95rem;
-}
 
-.sync-usage-comparison {
-  display: flex;
-  justify-content: space-around;
-  margin-top: 12px;
-  gap: 20px;
-}
 
 .usage-item {
   background-color: var(--primary);
@@ -1520,12 +1060,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   color: var(--accent);
 }
 
-@media (max-width: 768px) {
-  .sync-usage-comparison {
-    flex-direction: column;
-    gap: 10px;
-  }
-} 
 /* END OG src/tablets/admin/components/DiskManager.css */
 
 /* UX-MIGRATION-SLICE-09B manager continuation: OG anatomy, Crown tokens, portal-created dialog. */
@@ -1535,8 +1069,7 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 .manager-modal .modal-body { display: grid; gap: .75rem; }
 .manager-modal label { display: grid; gap: .3rem; color: var(--text); }
 .manager-modal .ui-input { width: 100%; }
-.manager-route-state, .manager-action-reading { color: var(--warning); border-left: 3px solid var(--warning); padding-left: .6rem; }
-.manager-warning { color: var(--text); font-size: .9rem; }
+.manager-route-state { color: var(--warning); border-left: 3px solid var(--warning); padding-left: .6rem; }
 
 
 /* Hestia public household trust download, composed in the original admin modal grammar. */
