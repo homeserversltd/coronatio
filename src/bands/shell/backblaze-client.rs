@@ -305,8 +305,8 @@ fn shell_backblaze_client() -> &'static str {
         const menuOpen = state.menuBucket === bucket.bucket;
         const editable = canRewriteConfig(binding) && bucketWritable(bucket);
         return `<article class="backup-offsite-card" data-offsite-card="${esc(bucket.bucket)}">
-          <div class="backup-card-heading backup-offsite-heading"><div><strong>${esc(bucket.bucket)}</strong><span>Backblaze B2 bucket · ${esc(connected.toLowerCase())}</span></div><div class="backup-settings"><button type="button" data-settings-toggle="${esc(bucket.bucket)}" aria-expanded="${menuOpen}" aria-haspopup="true">Settings ▾</button><div class="backup-settings-menu" role="group" aria-label="Settings for ${esc(bucket.bucket)}" ${menuOpen ? '' : 'hidden'}>
-            <button type="button" data-bucket-action="run" data-bucket="${esc(bucket.bucket)}" ${canUse(binding) ? '' : 'disabled'}>Run now</button><button type="button" data-bucket-action="verify" data-bucket="${esc(bucket.bucket)}" ${canUse(binding) ? '' : 'disabled'}>Check connection</button><button type="button" data-bucket-action="credentials" data-bucket="${esc(bucket.bucket)}" ${editable ? '' : 'disabled'}>Update credentials</button><button type="button" data-bucket-action="remove" data-bucket="${esc(bucket.bucket)}" ${editable ? '' : 'disabled'}>Remove this copy</button>
+          <div class="backup-card-heading backup-offsite-heading"><div><strong>${esc(bucket.bucket)}</strong><span>Backblaze B2 bucket · ${esc(connected.toLowerCase())}</span></div><div class="backup-settings"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-settings-toggle="${esc(bucket.bucket)}" aria-expanded="${menuOpen}" aria-haspopup="true">Settings ▾</button><div class="backup-settings-menu" role="group" aria-label="Settings for ${esc(bucket.bucket)}" ${menuOpen ? '' : 'hidden'}>
+            <button type="button" class="ui-button ui-button--secondary ui-button--small" data-bucket-action="run" data-bucket="${esc(bucket.bucket)}" ${canUse(binding) ? '' : 'disabled'}>Run now</button><button type="button" class="ui-button ui-button--secondary ui-button--small" data-bucket-action="verify" data-bucket="${esc(bucket.bucket)}" ${canUse(binding) ? '' : 'disabled'}>Check connection</button><button type="button" class="ui-button ui-button--secondary ui-button--small" data-bucket-action="credentials" data-bucket="${esc(bucket.bucket)}" ${editable ? '' : 'disabled'}>Update credentials</button><button type="button" class="ui-button ui-button--danger ui-button--small" data-bucket-action="remove" data-bucket="${esc(bucket.bucket)}" ${editable ? '' : 'disabled'}>Remove this copy</button>
           </div></div><span class="backup-run-state">${esc(latest.state)}</span></div>
           <div class="backup-figures"><div><strong>${esc(size)}</strong><span>Size of your copy</span><small>as of the last run</small></div><div><strong>${esc(added)}</strong><span>Added last run</span><small>only what changed</small></div><div><strong>${esc(formatDate(localRun?.at, '—'))}</strong><span>Last run</span><small>took ${esc(formatDuration(localRun?.duration_ms))}</small></div></div>
           <p class="backup-costless">Counted by this box after every run, so checking it never asks Backblaze and never costs anything.</p>
@@ -631,7 +631,7 @@ fn shell_backblaze_client() -> &'static str {
       if (!paths.length) { host.innerHTML = '<p class="backup-empty">No folders here.</p>'; return; }
       host.innerHTML = paths.map(path => {
         const name = path.slice(path.lastIndexOf('/') + 1);
-        return `<div class="backup-folder-row"><label><input type="checkbox" data-folder-select="${esc(path)}" ${state.folderDraft.has(path) ? 'checked' : ''}><span>${esc(name)}</span></label><button type="button" data-folder-enter="${esc(path)}" aria-label="Pick inside ${esc(name)}">Pick inside</button></div>`;
+        return `<div class="backup-folder-row"><label><input type="checkbox" data-folder-select="${esc(path)}" ${state.folderDraft.has(path) ? 'checked' : ''}><span>${esc(name)}</span></label><button type="button" class="ui-button ui-button--secondary ui-button--small" data-folder-enter="${esc(path)}" aria-label="Pick inside ${esc(name)}">Pick inside</button></div>`;
       }).join('');
     }
     function updateFolderSummary(binding = state.binding) {
@@ -690,7 +690,7 @@ fn shell_backblaze_client() -> &'static str {
         const kind = match === true ? 'matches' : match === false ? 'misses' : match === null ? 'unavailable' : 'checking';
         const mark = match === true ? '✓' : match === false ? '!' : match === null ? '?' : '…';
         const note = match === false ? `<small>${esc(name)} matches nothing on your Git server. Check the spelling.</small>` : match === null ? '<small>Name check unavailable.</small>' : '';
-        return `<div class="backup-skip-chip backup-skip-chip--${kind}"><span aria-hidden="true">${mark}</span><strong>${esc(name)}</strong><button type="button" data-skip-remove="${index}" aria-label="Remove ${esc(name)}">Remove</button>${note}</div>`;
+        return `<div class="backup-skip-chip backup-skip-chip--${kind}"><span aria-hidden="true">${mark}</span><strong>${esc(name)}</strong><button type="button" class="ui-button ui-button--secondary ui-button--small" data-skip-remove="${index}" aria-label="Remove ${esc(name)}">Remove</button>${note}</div>`;
       }).join('');
     }
     async function openSkipModal(bucketName, binding = state.binding) {
