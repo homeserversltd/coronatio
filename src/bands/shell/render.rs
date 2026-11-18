@@ -82,7 +82,7 @@ static SHELL_UX_CONTENTS: std::sync::LazyLock<Vec<&'static str>> = std::sync::La
     include_str!("ux/packs/upload.css"),
     shared_sheet!("packs/stats.css"),
     shared_sheet!("packs/portals.css"),
-    include_str!("ux/packs/test-services.css"),
+    shared_sheet!("packs/test-services.css"),
     include_str!("ux/packs/test-animations.css"),
     include_str!("ux/packs/test-config.css"),
     include_str!("ux/packs/test-health.css"),

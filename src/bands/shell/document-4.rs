@@ -1006,11 +1006,7 @@ fn shell_document_4() -> &'static str {
         await refreshElementFragment('portals'); showCoronatioToast(`Portal "${name}" deleted`, 'success');
       } catch (error) { showCoronatioToast(error.message || 'Failed to delete portal', 'error'); }
     }
-    function renderAddPortalCard() {
-      return `<div class="portal-card add-portal-card" data-admin-only data-admin-viewport="portals" data-add-portal-open role="button" tabindex="0" aria-label="Add new portal">
-        <div class="portal-card-face"><div class="add-portal-content"><div class="add-portal-icon"><i class="fas fa-plus"></i></div><h3 class="add-portal-title">Add Portal</h3><p class="add-portal-description">Create a new portal for your services</p></div></div>
-      </div>`;
-    }
+
     function openPortalModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
     function closePortalModals() { document.querySelectorAll('[data-add-portal-modal], [data-service-status-modal]').forEach(modal => { modal.hidden = true; }); }
     function cartridgeIdFromTitle(title) { return String(title || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
@@ -1436,7 +1432,7 @@ fn shell_document_4() -> &'static str {
       const tabCheck = event.target.closest('[data-tab-check]'); if (tabCheck) { void checkMadeTabForm(); return; }
       const removeCartridgeButton = event.target.closest('[data-cartridge-remove]');
       if (removeCartridgeButton) { removeCartridge(removeCartridgeButton.dataset.cartridgeRemove, removeCartridgeButton.closest('[data-tab-lane]')?.dataset.tabLane); return; }
-      const addPortal = event.target.closest('[data-add-portal-open], [data-test-add-portal]');
+      const addPortal = event.target.closest('[data-add-portal-open]');
       if (addPortal) { openPortalModal('[data-add-portal-modal]'); return; }
       const addTabModalClose = event.target.closest('[data-add-tab-modal-close]');
       if (addTabModalClose) { closeAddTabModal(); return; }

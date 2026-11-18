@@ -274,36 +274,58 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
     let destination_raw = construct_portal_destination(portal, host);
     if destination_raw.trim().is_empty() && portal_access_is_remote(host) { return None; }
     let visible = grant.state == RenderState::Visible;
-    let eye = if visible { "fa-eye" } else { "fa-eye-slash" };
-    let verb = if visible { "Hide" } else { "Show" };
-    let name = html_escape(element_id);
-    let description = html_escape(&portal.description);
-    let destination = html_escape(if destination_raw.trim().is_empty() { &portal.local_url } else { &destination_raw });
-    let status = derive_portal_currentness(portal);
-    let services = html_escape(&serde_json::to_string(&portal.services).unwrap_or_else(|_| "[]".to_string()));
-    // Quarry: only systemd portals expose direct service controls. Script portals
-    // remain plainly actionable only through their system restart notice.
-    let admin_controls = if session == Session::Admin && portal.r#type == "systemd" {
-        format!(r#"<div class="admin-controls" data-admin-only data-admin-viewport="portals" data-portal-services="{}"><div class="admin-controls-row"><button type="button" class="ui-nested-button" data-service-action="start" title="Start service">Start</button><button type="button" class="ui-nested-button" data-service-action="stop" title="Stop service">Stop</button><button type="button" class="ui-nested-button" data-service-action="restart" title="Restart service">Restart</button></div><div class="admin-controls-row"><button type="button" class="ui-nested-button" data-service-action="enable" title="Enable service at boot">Enable</button><button type="button" class="ui-nested-button" data-service-action="disable" title="Disable service at boot">Disable</button><button type="button" class="ui-nested-button" data-service-action="status" title="Check service status">Status</button></div></div>"#, services)
-    } else if session == Session::Admin && portal.r#type == "script" {
-        r#"<div class="admin-controls script-management-notice" data-admin-only data-admin-viewport="portals"><span class="script-notice-text" title="System restart required for changes to take effect. Script-managed services are controlled through system scripts rather than direct service commands.">Script-managed Service — system restart required</span></div>"#.to_string()
-    } else { String::new() };
-    let delete = if session == Session::Admin && !factory_portals.iter().any(|factory| factory == element_id) {
-        format!(r#"<button type="button" class="delete-portal-button" data-admin-only data-admin-viewport="portals" data-portal-delete data-portal-name="{}" title="Delete portal" aria-label="Delete {}"><i class="fas fa-trash" aria-hidden="true"></i></button>"#, name, name)
-    } else { String::new() };
-    let toggle = if session == Session::Admin {
-        format!(r#"<button type="button" class="visibility-toggle ui-visibility-toggle" data-admin-only data-admin-viewport="portals" data-portal-visibility-toggle="{}" data-visible="{}" aria-pressed="{}" aria-label="{} {}"><i class="fas {}" aria-hidden="true"></i></button>"#, name, visible, visible, verb, name, eye)
-    } else { String::new() };
-    let portal_name = if session == Session::Admin {
-        String::new()
-    } else {
-        format!(r#"<h2 class="portal-name">{}</h2>"#, name)
+    use xenia_kit::{html, Render, fragment::DataSeat, layout::{AdminGate, PortalCard, PortalDelete, PortalEye, PortalLink, PortalSeats, PortalState, ServiceAction, ServiceActions, ServiceNotice}};
+    let gate = || Some(AdminGate { viewport: "portals".into() });
+    let services = serde_json::to_string(&portal.services).unwrap_or_else(|_| "[]".to_string());
+    let admin = session == Session::Admin;
+    let controls = if admin && portal.r#type == "systemd" {
+        let action = |label: &str, title: &str, name: &str| ServiceAction {
+            label: label.into(), title: title.into(), action: Some(name.into()),
+        };
+        ServiceActions {
+            rows: vec![
+                vec![action("Start", "Start service", "start"), action("Stop", "Stop service", "stop"), action("Restart", "Restart service", "restart")],
+                vec![action("Enable", "Enable service at boot", "enable"), action("Disable", "Disable service at boot", "disable"), action("Status", "Check service status", "status")],
+            ], gate: gate(), services_json: Some(services.clone()),
+        }.render()
+    } else if admin && portal.r#type == "script" {
+        ServiceNotice {
+            title: "System restart required for changes to take effect. Script-managed services are controlled through system scripts rather than direct service commands.".into(),
+            text: "Script-managed Service — system restart required".into(), gate: gate(),
+        }.render()
+    } else { html! {} };
+    let toggle = if admin {
+        PortalEye {
+            visible, label: format!("{} {}", if visible { "Hide" } else { "Show" }, element_id), gate: gate(),
+            seats: vec![DataSeat::new("data-portal-visibility-toggle", Some(element_id.into())).expect("valid visibility seat")],
+        }.render()
+    } else { html! {} };
+    let delete = if admin && !factory_portals.iter().any(|factory| factory == element_id) {
+        PortalDelete {
+            gate: gate(), hidden: false, name: Some(element_id.into()), title: "Delete portal".into(),
+            label: format!("Delete {}", element_id), seats: vec![DataSeat::new("data-portal-delete", None).expect("valid delete seat")],
+        }.render()
+    } else { html! {} };
+    let state = match derive_portal_currentness(portal) {
+        "up" => PortalState::Up, "down" => PortalState::Down, "partial" => PortalState::Partial,
+        _ => PortalState::Unknown,
     };
-    Some(format!(r#"<div class="portal-element" data-portal-element data-visible="{}" style="position:relative">{}{}<article class="portal-card {}" data-portal-card data-portal-name="{}" data-portal-url="{}" data-portal-services="{}" role="link" tabindex="0"><div class="portal-card-face"><div class="portal-card-header"><img src="/api/portals/images/{}.png" alt="{} icon" class="portal-icon" onerror="this.onerror=null;this.src='/api/portals/images/default.png';">{}<p class="portal-description">{}</p></div><div class="portal-meta">{}</div></div></article></div>"#, visible, toggle, delete, status, name, destination, services, name, name, portal_name, description, admin_controls))
+    let destination = if destination_raw.trim().is_empty() { &portal.local_url } else { &destination_raw };
+    Some(PortalCard {
+        name: element_id.into(), description: portal.description.clone(),
+        image: format!("/api/portals/images/{}.png", element_id), state, visible, show_name: !admin,
+        link: Some(PortalLink { url: destination.clone(), services_json: Some(services) }),
+        chrome: html! { (toggle) (delete) }, controls, seats: PortalSeats::default(),
+    }.render().into_string())
 }
 
 fn render_add_portal_card_fragment() -> String {
-    r#"<div class="portal-card add-portal-card" data-admin-only data-admin-viewport="portals" data-add-portal-open role="button" tabindex="0" aria-label="Add new portal"><div class="portal-card-face"><div class="add-portal-content"><div class="add-portal-icon"><i class="fas fa-plus"></i></div><h3 class="add-portal-title">Add Portal</h3><p class="add-portal-description">Create a new portal for your services</p></div></div></div>"#.to_string()
+    use xenia_kit::{Render, layout::{AddPortalCard, AddPortalOpener, AdminGate}};
+    AddPortalCard {
+        accessible_label: "Add new portal".into(), title: "Add Portal".into(),
+        description: "Create a new portal for your services".into(),
+        gate: Some(AdminGate { viewport: "portals".into() }), opener: Some(AddPortalOpener::Page), seats: vec![],
+    }.render().into_string()
 }
 
 fn default_element_grant_from_facts(facts: &IrisFacts, session: Session, tab_id: &str, element_id: &str) -> ElementGrant {
