@@ -125,47 +125,6 @@
   border-color: var(--primary);
 }
 
-.add-button {
-  padding: 8px 12px;
-  background: var(--primary);
-  color: var(--text);
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s ease;
-  font-size: 0.9em;
-  @media (max-width: 480px) {
-    padding: 6px 8px;
-    font-size: 0.9em;
-    width: 100%;
-  }
-}
-
-.add-button:hover {
-  background: var(--primaryHover);
-}
-
-.submit-button {
-  padding: 8px 12px;
-  width: 100%;
-  background: var(--primary);
-  color: var(--text);
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  align-self: flex-end;
-  transition: background 0.2s ease;
-  font-size: 0.9em;
-  @media (max-width: 480px) {
-    padding: 6px 8px;
-    font-size: 0.9em;
-    width: 100%;
-  }
-}
-
-.submit-button:hover {
-  background: var(--primaryHover);
-}
 
 .upload-progress {
   background: var(--hiddenTabBackground);
@@ -330,89 +289,6 @@
   color: var(--status-down);
 }
 
-.blacklist-button {
-  background: var(--primary);
-  color: var(--text);
-  padding: 8px 12px;
-  border: none;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  font-size: var(--font-size-sm);
-}
-
-.blacklist-button:hover {
-  background: var(--primaryHover);
-}
-
-.admin-upload-controls button {
-  background: var(--primary);
-  border: none;
-  border-radius: var(--border-radius);
-  padding: 8px 12px;
-  color: var(--text);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  font-size: var(--font-size-sm);
-  margin-right: 8px;
-  margin-bottom: 8px;
-}
-
-.admin-upload-controls button:hover {
-  background: var(--primaryHover);
-}
-
-.file-upload-section button {
-  background: var(--primary);
-  border: none;
-  border-radius: var(--border-radius);
-  padding: 8px 12px;
-  color: var(--text);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  font-size: var(--font-size-sm);
-  margin-right: 8px;
-  margin-bottom: 8px;
-}
-
-.file-upload-section button:hover {
-  background: var(--primaryHover);
-}
-
-.directory-browser button {
-  background: var(--primary);
-  border: none;
-  border-radius: var(--border-radius);
-  padding: 8px 12px;
-  color: var(--text);
-  cursor: pointer;
-  transition: all var(--transition-fast), transform 0.2s ease;
-  font-size: var(--font-size-sm);
-  margin-right: 8px;
-  margin-bottom: 8px;
-}
-
-.directory-browser button:active {
-  transform: scale(0.95);
-}
-
-.directory-browser button[disabled] {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background: var(--disabled) !important;
-}
-
-.file-upload-section button[disabled] {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background: var(--disabled);
-}
-
-.file-upload-section button[disabled]:hover,
-.directory-browser button[disabled]:hover {
-  background: var(--disabled) !important;
-  transform: none !important;
-}
 
 .file-upload-section input[type="file"] {
   background: var(--primary);
@@ -508,19 +384,6 @@
   font-size: 1.1em;
 }
 
-.refresh-button {
-  background: var(--hiddenTabBackground);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 12px;
-  color: var(--text);
-  transition: all 0.2s ease;
-}
-
-.refresh-button:hover {
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
-  border-color: var(--primary);
-}
 
 .directory-error {
   padding: 24px;
@@ -549,19 +412,6 @@
   font-size: 1.1em;
 }
 
-.directory-error button {
-  background: var(--hiddenTabBackground);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 12px;
-  color: var(--text);
-  transition: all 0.2s ease;
-}
-
-.directory-error button:hover {
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
-  border-color: var(--primary);
-}
 
 /* Add subtle animation for entry selection */
 @keyframes macSelect {
@@ -595,28 +445,9 @@
   color: var(--text-secondary);
 }
 
-.directory-error button {
-  margin-top: 8px;
-  padding: 6px 12px;
-}
 
 
 
-.force-allow-button {
-  position: relative;
-}
-
-.force-allow-button.loading::after {
-  content: '';
-  position: absolute;
-  right: -25px;
-  border: 3px solid color-mix(in srgb, var(--text) 40%, transparent);
-  border-top: 3px solid var(--primary);
-  border-radius: 50%;
-  width: 16px;
-  height: 16px;
-  animation: spin 1s linear infinite;
-}
 
 @keyframes spin {
   0% { transform: rotate(0deg); }
@@ -663,19 +494,6 @@
 /* Style modal content for upload history */
 
 
-/* Add media query for admin-upload-controls on small screens */
-@media (max-width: 480px) {
-  .admin-upload-controls {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .admin-upload-controls button {
-    width: 100%;
-    margin-right: 0;
-    margin-bottom: 4px;
-  }
-}
 
 .upload-history-empty {
   text-align: center;
@@ -684,22 +502,6 @@
   padding: 8px;
 }
 
-.clear-history-button {
-  width: 100%;
-  padding: 8px;
-  background: var(--error);
-  color: var(--text);
-  border: none;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  font-size: var(--font-size-sm);
-  margin-top: 4px;
-}
-
-.clear-history-button:hover {
-  background: var(--status-down);
-}
 
 .upload-history-loading {
   display: flex;
@@ -945,39 +747,8 @@
   gap: 8px; /* Space between buttons */
 }
 
-.directory-browser-header button {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background-color: var(--primary);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: background-color 0.2s, border-color 0.2s;
-  display: inline-flex; /* Align icon and text */
-  align-items: center;
-  gap: 4px;
-}
-
-.directory-browser-header button:hover:not(:disabled) {
-  background-color: var(--primaryHover);
-  border-color: var(--border);
-}
-
-.directory-browser-header button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 
 /* Specific button styling if needed */
-.refresh-button {
-  /* Optional: specific styles */
-  font-weight: bold;
-}
-
-.admin-button {
-  /* Optional: common styles for admin buttons */
-}
 
 .directory-tree-container {
   flex-grow: 1;
@@ -1048,15 +819,6 @@
 
 
 
-.directory-browser-header button i {
-  /* margin-right: 6px; */ /* Remove if buttons only have icons now or adjust as needed */
-  /* Ensure icons are centered if they are the only content */
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%; /* Make icon take full width of its container if it's the sole child */
-  height: 100%; /* Make icon take full height */
-}
 
 /* Style for the new toggle PIN button */
 
@@ -1125,19 +887,6 @@
   opacity: 0.9;
 }
 
-.directory-error button {
-  background: var(--primary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 12px;
-  color: var(--text);
-  transition: all 0.2s ease;
-}
-
-.directory-error button:hover {
-  background: var(--primaryHover);
-  border-color: var(--border);
-}
 
 @keyframes macSelect {
   0% {
@@ -1170,26 +919,6 @@
   color: var(--secondary);
 }
 
-.directory-error button {
-  margin-top: 8px;
-  padding: 6px 12px;
-}
-
-.force-allow-button {
-  position: relative;
-}
-
-.force-allow-button.loading::after {
-  content: '';
-  position: absolute;
-  right: -25px;
-  border: 3px solid var(--text);
-  border-top: 3px solid var(--primary);
-  border-radius: 50%;
-  width: 16px;
-  height: 16px;
-  animation: spin 1s linear infinite;
-}
 
 @keyframes spin {
   0% { transform: rotate(0deg); }

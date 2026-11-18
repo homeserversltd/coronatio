@@ -23,18 +23,4 @@
   font-size: clamp(1.35rem, 3vw, 2rem);
   line-height: 1.25;
 }
-.headless-tablet-reload {
-  min-height: var(--theme-control-height);
-  padding: var(--theme-control-padding-y) var(--theme-control-padding-x);
-  border: var(--theme-border-width) solid var(--theme-component-card-outline);
-  border-radius: var(--theme-radius-md);
-  background: var(--theme-component-button-container);
-  color: var(--theme-component-button-on-container);
-  font: inherit;
-  font-weight: var(--theme-font-weight-bold);
-  cursor: pointer;
-  box-shadow: var(--theme-elevation-1);
-}
-.headless-tablet-reload:hover { background: var(--theme-component-button-hover-container); border-color: var(--theme-outline); }
-.headless-tablet-reload:focus-visible { outline: var(--theme-focus-width) solid var(--theme-focus-color); outline-offset: var(--theme-focus-offset); box-shadow: var(--theme-highlight-ring); }
 .headless-tablet small { color: var(--text-secondary); }

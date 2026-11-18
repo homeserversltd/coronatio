@@ -55,7 +55,7 @@ fn shell_document_2() -> &'static str {
         <article class="headless-tablet" data-crown-headless-viewport>
           <img class="headless-tablet-logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNjAiIGhlaWdodD0iMTYwIiB2aWV3Qm94PSIwIDAgMTYwIDE2MCI+PHJlY3Qgd2lkdGg9IjE2MCIgaGVpZ2h0PSIxNjAiIHJ4PSIzMiIgZmlsbD0iIzFmMjkzNyIvPjxwYXRoIGQ9Ik0yOCA4MiA4MCAzNGw1MiA0OHY0NEgyOHoiIGZpbGw9IiM2MGE1ZmEiLz48cGF0aCBkPSJNNTkgMTI2Vjg2aDQydjQwIiBmaWxsPSIjMWYyOTM3Ii8+PHRleHQgeD0iODAiIHk9IjE1MSIgZmlsbD0id2hpdGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjEzIiBmb250LXdlaWdodD0iNzAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5IT01FU0VSVkVSPC90ZXh0Pjwvc3ZnPg==" alt="HomeServer logo">
           <h1>You have been disconnected due to inactivity.</h1>
-          <button type="button" class="headless-tablet-reload" data-crown-headless-reload>Reload Page</button>
+          <button type="button" class="ui-button ui-button--secondary ui-button--medium" data-crown-headless-reload>Reload Page</button>
           <small>Product of HOMESERVER LLC</small>
         </article>
       </section>
@@ -78,11 +78,11 @@ fn shell_document_2() -> &'static str {
           <div class="upload-controls">
             <div class="directory-browser" data-upload-regular="directory-browser" data-directory-browser>
               <div class="directory-browser-header">
-                <button type="button" class="refresh-button" data-upload-refresh title="Refresh Directory Tree">🔄</button>
-                <button type="button" class="admin-button force-allow-button" data-admin-only data-admin-viewport="upload" data-upload-force-allow title="Force Allow Upload (Admin)">🛡️ Allow</button>
-                <button type="button" class="admin-button set-default-button" data-admin-only data-admin-viewport="upload" data-upload-set-default title="Set as Default Directory (Admin)">📌 Default</button>
-                <button type="button" class="admin-button blacklist-button" data-admin-only data-admin-viewport="upload" data-upload-blacklist title="Manage Blacklist (Admin)">🚫 Blacklist</button>
-                <button type="button" class="admin-button upload-history-button" data-admin-only data-admin-viewport="upload" data-upload-history title="View Upload History (Admin)">📜 History</button>
+                <button type="button" class="ui-button ui-button--secondary ui-button--small" data-upload-refresh title="Refresh Directory Tree">🔄</button>
+                <button type="button" class="ui-button ui-button--secondary ui-button--small" data-admin-only data-admin-viewport="upload" data-upload-force-allow title="Force Allow Upload (Admin)">🛡️ Allow</button>
+                <button type="button" class="ui-button ui-button--secondary ui-button--small" data-admin-only data-admin-viewport="upload" data-upload-set-default title="Set as Default Directory (Admin)">📌 Default</button>
+                <button type="button" class="ui-button ui-button--secondary ui-button--small" data-admin-only data-admin-viewport="upload" data-upload-blacklist title="Manage Blacklist (Admin)">🚫 Blacklist</button>
+                <button type="button" class="ui-button ui-button--secondary ui-button--small" data-admin-only data-admin-viewport="upload" data-upload-history title="View Upload History (Admin)">📜 History</button>
                 <button type="button" class="toggle-pin-button" data-admin-only data-admin-viewport="upload" data-upload-pin-toggle title="Enable PIN requirement for uploads (Currently Off)" aria-label="Toggle PIN requirement (currently disabled)"><span class="loading-spinner" data-upload-pin-spinner hidden role="progressbar" aria-label="Saving PIN requirement"></span></button>
               </div>
               <div class="directory-breadcrumb-container">
@@ -93,19 +93,19 @@ fn shell_document_2() -> &'static str {
             </div>
             <div class="file-upload-section" data-upload-regular="file-ingress" data-upload-file-section>
               <input type="file" multiple data-upload-file aria-label="Upload files">
-              <button type="button" data-upload-submit disabled>Upload Selected Files</button>
+              <button type="button" class="ui-button ui-button--primary ui-button--medium" data-upload-submit disabled>Upload Selected Files</button>
             </div>
           </div>
           <div class="modal-overlay" data-upload-history-backdrop data-upload-history-modal aria-hidden="true" hidden>
             <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-history-title">
               <button type="button" class="modal-close" data-upload-modal-close data-modal-dismiss aria-label="Close modal">×</button><h2 class="modal-title" id="upload-history-title">Upload History</h2>
-              <div class="modal-content upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="clear-history-button" data-upload-clear-history disabled>Clear History</button></div>
+              <div class="modal-content upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="ui-button ui-button--danger ui-button--medium ui-button--full-width" data-upload-clear-history disabled>Clear History</button></div>
             </section>
           </div>
           <div class="modal-overlay" data-upload-blacklist-backdrop data-upload-blacklist-modal aria-hidden="true" hidden>
             <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-blacklist-title">
               <button type="button" class="modal-close" data-upload-modal-close data-modal-dismiss aria-label="Close modal">×</button><h2 class="modal-title" id="upload-blacklist-title">Manage Blacklist</h2>
-              <div class="modal-content"><div class="blacklist-manager"><div class="blacklist-entries" data-upload-blacklist-entries></div><div class="blacklist-controls"><form class="add-entry" data-upload-blacklist-form><input type="text" class="entry-input" placeholder="Enter path to blacklist" data-upload-blacklist-input><button type="button" class="add-button" data-upload-blacklist-add>New</button></form><button type="button" class="submit-button" data-upload-blacklist-submit>Submit</button></div></div></div>
+              <div class="modal-content"><div class="blacklist-manager"><div class="blacklist-entries" data-upload-blacklist-entries></div><div class="blacklist-controls"><form class="add-entry" data-upload-blacklist-form><input type="text" class="entry-input" placeholder="Enter path to blacklist" data-upload-blacklist-input><button type="button" class="ui-button ui-button--secondary ui-button--small" data-upload-blacklist-add>New</button></form><button type="button" class="ui-button ui-button--primary ui-button--medium ui-button--full-width" data-upload-blacklist-submit>Submit</button></div></div></div>
             </section>
           </div>
           <div class="modal-overlay" data-upload-pin-backdrop data-upload-pin-modal aria-hidden="true" hidden>
@@ -195,7 +195,7 @@ fn shell_document_2() -> &'static str {
   </div>
   <div class="portal-modal-overlay" data-service-status-modal hidden>
     <div class="portal-modal-content">
-      <div class="service-status-modal"><button type="button" data-portal-modal-close data-modal-dismiss hidden></button><pre class="service-status-content" data-service-status-content></pre><button type="button" class="copy-button" data-service-status-copy>Copy to Clipboard</button></div>
+      <div class="service-status-modal"><button type="button" data-portal-modal-close data-modal-dismiss hidden></button><pre class="service-status-content" data-service-status-content></pre><button type="button" class="ui-button ui-button--primary ui-button--small" data-service-status-copy>Copy to Clipboard</button></div>
     </div>
   </div>
   <div class="modal-overlay" data-add-tab-modal aria-hidden="true" hidden>
