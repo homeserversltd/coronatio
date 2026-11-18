@@ -1132,8 +1132,8 @@ dependencies = [
 
 [[package]]
 name = "xenia-kit"
-version = "0.15.0"
-source = "git+https://github.com/homeserversltd/xenia-kit?rev=c8a5ec64dd73c477eca7508b595761a9128a5852#c8a5ec64dd73c477eca7508b595761a9128a5852"
+version = "0.15.1"
+source = "git+https://github.com/homeserversltd/xenia-kit?rev=afedca50b22c568e9cfe9cbe0de4ba0e868dd8ee#afedca50b22c568e9cfe9cbe0de4ba0e868dd8ee"
 
 [[package]]
 name = "zmij"

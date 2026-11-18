@@ -290,57 +290,12 @@
 }
 
 
-.file-upload-section button {
-  background: var(--primary);
-  border: none;
-  border-radius: var(--border-radius);
-  padding: 8px 12px;
-  color: var(--text);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  font-size: var(--font-size-sm);
-  margin-right: 8px;
-  margin-bottom: 8px;
-}
 
-.file-upload-section button:hover {
-  background: var(--primaryHover);
-}
 
-.directory-browser button {
-  background: var(--primary);
-  border: none;
-  border-radius: var(--border-radius);
-  padding: 8px 12px;
-  color: var(--text);
-  cursor: pointer;
-  transition: all var(--transition-fast), transform 0.2s ease;
-  font-size: var(--font-size-sm);
-  margin-right: 8px;
-  margin-bottom: 8px;
-}
 
-.directory-browser button:active {
-  transform: scale(0.95);
-}
 
-.directory-browser button[disabled] {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background: var(--disabled) !important;
-}
 
-.file-upload-section button[disabled] {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background: var(--disabled);
-}
 
-.file-upload-section button[disabled]:hover,
-.directory-browser button[disabled]:hover {
-  background: var(--disabled) !important;
-  transform: none !important;
-}
 
 .file-upload-section input[type="file"] {
   background: var(--primary);
@@ -436,19 +391,7 @@
   font-size: 1.1em;
 }
 
-.refresh-button {
-  background: var(--hiddenTabBackground);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 12px;
-  color: var(--text);
-  transition: all 0.2s ease;
-}
 
-.refresh-button:hover {
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
-  border-color: var(--primary);
-}
 
 .directory-error {
   padding: 24px;
@@ -812,35 +755,10 @@
   gap: 8px; /* Space between buttons */
 }
 
-.directory-browser-header button {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background-color: var(--primary);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: background-color 0.2s, border-color 0.2s;
-  display: inline-flex; /* Align icon and text */
-  align-items: center;
-  gap: 4px;
-}
 
-.directory-browser-header button:hover:not(:disabled) {
-  background-color: var(--primaryHover);
-  border-color: var(--border);
-}
 
-.directory-browser-header button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 
 /* Specific button styling if needed */
-.refresh-button {
-  /* Optional: specific styles */
-  font-weight: bold;
-}
 
 
 .directory-tree-container {
@@ -912,15 +830,6 @@
 
 
 
-.directory-browser-header button i {
-  /* margin-right: 6px; */ /* Remove if buttons only have icons now or adjust as needed */
-  /* Ensure icons are centered if they are the only content */
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%; /* Make icon take full width of its container if it's the sole child */
-  height: 100%; /* Make icon take full height */
-}
 
 /* Style for the new toggle PIN button */
 
