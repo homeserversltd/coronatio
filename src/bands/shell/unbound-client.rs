@@ -92,7 +92,7 @@ fn shell_unbound_client() -> &'static str {
         const order=sort.key==='address'?dnsCompareAddress(va,vb):String(va).localeCompare(String(vb));
         return sort.dir*order||dnsCompareAddress(a.address,b.address)||a.name.localeCompare(b.name);});
       if(!rows.length&&!identityState.ready.roster&&!identityState.ready.dns)return;
-      const heading=(key,label)=>{const active=sort.key===key,arrow=active?(sort.dir>0?' ▲':' ▼'):'';return `<button type="button" class="dns-sort-button" data-dns-names-sort="${key}" aria-sort="${active?(sort.dir>0?'ascending':'descending'):'none'}" title="Sort by ${label.toLowerCase()}">${label}${arrow}</button>`;};
+      const heading=(key,label)=>{const active=sort.key===key,arrow=active?(sort.dir>0?' ▲':' ▼'):'';return `<button type="button" class="ui-button ui-button--plain ui-button--medium dns-sort-button" data-dns-names-sort="${key}" aria-sort="${active?(sort.dir>0?'ascending':'descending'):'none'}" title="Sort by ${label.toLowerCase()}">${label}${arrow}</button>`;};
       const html=rows.length?`<div class="dns-name-list"><div class="dns-name-row dns-name-heading">${heading('name','Name')}${heading('address','Address')}${heading('device','Device')}<span>Action</span></div>${rows.map(row=>{
         const key=`${row.name.toLowerCase()}-${row.address.toLowerCase()}`;
         const deviceLabel = deviceLabelFor(row);

@@ -60,7 +60,7 @@ fn shell_document_4() -> &'static str {
       progressList.hidden = uploads.length === 0;
       progressList.innerHTML = uploads.map(upload => `
         <div class="upload-progress ${upload.status}" data-upload-progress="${upload.filename}">
-          <div class="upload-header"><span class="status-icon">${uploadStatusIcon(upload.status)}</span><span class="filename">${upload.filename}</span><button type="button" class="remove-button" data-upload-remove="${upload.filename}" aria-label="Remove upload">×</button></div>
+          <div class="upload-header"><span class="status-icon">${uploadStatusIcon(upload.status)}</span><span class="filename">${upload.filename}</span><button type="button" class="ui-icon-button ui-icon-button--small ui-icon-button--circle ui-icon-button--ghost ui-icon-button--danger" data-upload-remove="${upload.filename}" aria-label="Remove upload">×</button></div>
           <div class="progress-section"><div class="progress-bar-container" role="progressbar" aria-label="${upload.filename}: ${upload.status}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${upload.progress.toFixed(1)}"><div class="progress-bar" style="width:${upload.progress}%"><span class="progress-text">${upload.progress.toFixed(1)}%</span></div></div><div class="upload-stats"><span class="size">${uploadFormatSize(upload.uploaded)} / ${uploadFormatSize(upload.total)}</span><span class="speed">${upload.speed ? uploadFormatSize(upload.speed) + '/s' : upload.status}</span></div>${upload.error ? `<div class="error-message" role="alert">${upload.error}</div>` : ''}</div>
         </div>`).join('');
     }
@@ -289,7 +289,7 @@ fn shell_document_4() -> &'static str {
     function refreshUploadBlacklistDomOnly(binding = uploadState.binding) {
       if (!uploadCurrent(binding) || !headerState.isAdmin) return;
       const entries = binding.root.querySelector('[data-upload-blacklist-entries]');
-      if (entries) morphLivePane(entries, uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry" data-blacklist-entry="${escapeHtml(entry)}"><span class="entry-path">${escapeHtml(entry)}</span><button type="button" class="remove-entry" data-blacklist-remove="${index}" ${uploadState.blacklistStale ? 'disabled' : ''} aria-label="Remove entry">×</button></div>`).join('') || '<p class="blacklist-empty" data-blacklist-empty>No blocked paths.</p>');
+      if (entries) morphLivePane(entries, uploadState.blacklist.map((entry, index) => `<div class="blacklist-entry" data-blacklist-entry="${escapeHtml(entry)}"><span class="entry-path">${escapeHtml(entry)}</span><button type="button" class="ui-icon-button ui-icon-button--small ui-icon-button--circle ui-icon-button--ghost ui-icon-button--danger" data-blacklist-remove="${index}" ${uploadState.blacklistStale ? 'disabled' : ''} aria-label="Remove entry">×</button></div>`).join('') || '<p class="blacklist-empty" data-blacklist-empty>No blocked paths.</p>');
       const modal = binding.root.querySelector('[data-upload-blacklist-modal]');
       modal?.querySelectorAll('[data-upload-blacklist-add], [data-upload-blacklist-submit]').forEach(node => { node.disabled = uploadState.blacklistStale; });
     }

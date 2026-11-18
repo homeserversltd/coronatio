@@ -162,7 +162,7 @@
 .dhcp-row-name { min-width: 0; overflow-wrap: anywhere; }
 .dhcp-row:not(.dhcp-row--reserved) .dhcp-row-name { padding-inline-start: 2rem; }
 .dhcp-pin { display: inline-block; width: 1.5rem; margin-inline-end: .5rem; }
-.dhcp-chevron { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--text); font-size: 1.5rem; cursor: pointer; grid-column: 5; }
+.dhcp-chevron { grid-column: 5; }
 .dhcp-row .ui-button, .dhcp-range .ui-button { min-height: 44px; }
 .dhcp-range { border-top: 1px solid var(--border); }
 .dhcp-range summary { min-height: 48px; display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; cursor: pointer; }

@@ -69,25 +69,6 @@
   }
 }
 
-.remove-entry {
-  background: none;
-  border: none;
-  color: var(--text);
-  font-size: 1.2em;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  @media (max-width: 480px) {
-    padding: 2px 4px;
-    font-size: 1em;
-  }
-}
-
-.remove-entry:hover {
-  color: var(--statusDown);
-  background: color-mix(in srgb, var(--error) 10%, transparent);
-}
 
 .blacklist-controls {
   display: flex;
@@ -156,21 +137,6 @@
   text-overflow: ellipsis;
 }
 
-.remove-button {
-  background: none;
-  border: none;
-  color: var(--secondary);
-  font-size: 1.2em;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.remove-button:hover {
-  color: var(--statusDown);
-  background: color-mix(in srgb, var(--error) 10%, transparent);
-}
 
 .progress-section {
   display: flex;
