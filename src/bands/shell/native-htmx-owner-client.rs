@@ -445,9 +445,13 @@ fn shell_native_htmx_owner_client() -> &'static str {
       } catch (_) { return false; }
     }
 
+    function guestSlotPane(slot) {
+      return slot instanceof Element ? slot.closest('[data-admitted-pane-host="true"]') : null;
+    }
+
     function inspectGuestSlot(slot, path, target = slot) {
       if (!(slot instanceof Element) || !slot.hasAttribute('data-scaffold-slot')) return null;
-      const pane = slot.closest('[data-pane-panel]');
+      const pane = guestSlotPane(slot);
       const guest = pane?.dataset.panePanel || '';
       if (!pane || !guest || Object.prototype.hasOwnProperty.call(nativePaneContracts, guest)) return null;
       const root = slot.closest('[data-scaffold-root]');
@@ -465,7 +469,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
       const source = detail.elt instanceof Element ? detail.elt : null;
       const request = source?.closest('[hx-get], [hx-post], [hx-put], [hx-patch], [hx-delete]');
       if (!(request instanceof Element) || !request.hasAttribute('data-scaffold-slot')) return null;
-      const pane = request.closest('[data-pane-panel]');
+      const pane = guestSlotPane(request);
       const guest = pane?.dataset.panePanel || '';
       if (!pane || !guest || Object.prototype.hasOwnProperty.call(nativePaneContracts, guest)) return null;
       const path = String(detail.requestConfig?.path || request.getAttribute('hx-get') || '');
