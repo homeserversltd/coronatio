@@ -85,15 +85,15 @@ fn shell_firewall_client() -> &'static str {
         const rowHtml = (row, showAddress) => {
           const mac = firewallMac(row); const ip = showAddress ? (String(row.ip || '').trim() || '—') : (firewallLanIp(row) || '—');
           const detail = showAddress ? `${escapeHtml(ip)} · ${escapeHtml(mac)}` : escapeHtml(ip);
-          return `<li data-scaffold-key="firewall-observed:${escapeHtml(mac)}"><span class="firewall-row-text"><strong>${escapeHtml(firewallObservedName(row))}</strong><span>${detail}</span></span><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-register="${escapeHtml(mac)}"${firewallState.observedReady && firewallState.childrenReady ? '' : ' disabled'}>Register</button></li>`;
+          return `<li class="ui-setting-row ui-setting-row--ruled ui-setting-row--inline" data-scaffold-key="firewall-observed:${escapeHtml(mac)}"><span class="firewall-row-text"><strong>${escapeHtml(firewallObservedName(row))}</strong><span>${detail}</span></span><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-register="${escapeHtml(mac)}"${firewallState.observedReady && firewallState.childrenReady ? '' : ' disabled'}>Register</button></li>`;
         };
-        morphLivePane(observed, `<ul class="firewall-list">${main.map(row => rowHtml(row, false)).join('') || (firewallState.observedReady ? '<li>No unregistered devices are available.</li>' : '')}</ul><details class="firewall-other"${open ? ' open' : ''}><summary>Other addresses (${other.length})</summary><ul class="firewall-list">${other.map(row => rowHtml(row, true)).join('')}</ul></details>`);
+        morphLivePane(observed, `<ul class="firewall-list">${main.map(row => rowHtml(row, false)).join('') || (firewallState.observedReady ? '<li class="ui-setting-row ui-setting-row--ruled ui-setting-row--inline">No unregistered devices are available.</li>' : '')}</ul><details class="firewall-other"${open ? ' open' : ''}><summary>Other addresses (${other.length})</summary><ul class="firewall-list">${other.map(row => rowHtml(row, true)).join('')}</ul></details>`);
       }
       if (children && scaffoldReadProjectionAllowed(children, preserveReadySlots)) morphLivePane(children, firewallState.children.map(row => {
         const mac = firewallMac(row); const name = firewallChildName(mac);
         const status = [Array.isArray(row.hostnames) ? `${row.hostnames.length} ${row.hostnames.length === 1 ? 'site' : 'sites'} allowed` : '', row.enforcement === 'pending-renewal' ? 'pending renewal' : ''].filter(Boolean).join(' · ');
-        return `<li data-scaffold-key="firewall-child:${escapeHtml(mac)}"><button type="button" class="firewall-child" data-firewall-whitelist="${escapeHtml(mac)}"${firewallState.childrenReady ? '' : ' disabled'}><span class="firewall-row-text"><strong>${escapeHtml(name)}</strong>${status ? `<span>${escapeHtml(status)}</span>` : ''}</span><span aria-hidden="true">›</span></button></li>`;
-      }).join('') || (firewallState.childrenReady ? '<li data-scaffold-key="firewall-children-empty">Register a device below to give it a website allowlist.</li>' : ''));
+        return `<li class="ui-setting-row ui-setting-row--ruled ui-setting-row--inline" data-scaffold-key="firewall-child:${escapeHtml(mac)}"><button type="button" class="firewall-child" data-firewall-whitelist="${escapeHtml(mac)}"${firewallState.childrenReady ? '' : ' disabled'}><span class="firewall-row-text"><strong>${escapeHtml(name)}</strong>${status ? `<span>${escapeHtml(status)}</span>` : ''}</span><span aria-hidden="true">›</span></button></li>`;
+      }).join('') || (firewallState.childrenReady ? '<li class="ui-setting-row ui-setting-row--ruled ui-setting-row--inline" data-scaffold-key="firewall-children-empty">Register a device below to give it a website allowlist.</li>' : ''));
       firewallSetControls(binding, preserveReadySlots);
     }
     function firewallRead(binding, key, route, field, slotName, options = {}) {
@@ -162,7 +162,7 @@ fn shell_firewall_client() -> &'static str {
     function renderFirewallHosts(binding = firewallState.binding) {
       if (!firewallCurrent(binding)) return;
       const target = binding.root.querySelector('[data-firewall-hosts]'); if (!target) return;
-      morphLivePane(target, firewallState.hosts.map(host => `<li data-scaffold-key="firewall-host:${escapeHtml(host)}"><code>${escapeHtml(host)}</code><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-remove-host="${escapeHtml(host)}">Remove</button></li>`).join('') || (firewallState.whitelistReady ? '<li data-scaffold-key="firewall-hosts-empty">No websites allowed yet.</li>' : ''));
+      morphLivePane(target, firewallState.hosts.map(host => `<li class="ui-setting-row ui-setting-row--ruled ui-setting-row--inline" data-scaffold-key="firewall-host:${escapeHtml(host)}"><code>${escapeHtml(host)}</code><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-remove-host="${escapeHtml(host)}">Remove</button></li>`).join('') || (firewallState.whitelistReady ? '<li class="ui-setting-row ui-setting-row--ruled ui-setting-row--inline" data-scaffold-key="firewall-hosts-empty">No websites allowed yet.</li>' : ''));
       firewallSetControls(binding);
     }
     function firewallWrite(binding, key, route, options) {

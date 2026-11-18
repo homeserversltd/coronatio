@@ -128,27 +128,6 @@
   border-left-color: var(--accent);
 }
 
-.dhcp-pin-badge,
-.dhcp-unpinned-state {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.6rem;
-  padding: 0 0.5rem;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.dhcp-pin-badge {
-  color: var(--success);
-  border: 1px solid var(--success);
-}
-
-.dhcp-unpinned-state {
-  color: var(--secondary);
-  border: 1px solid var(--border);
-}
-
 .dhcp-device-actions {
   white-space: nowrap;
 }

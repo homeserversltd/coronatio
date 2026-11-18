@@ -631,7 +631,7 @@ fn shell_backblaze_client() -> &'static str {
       if (!paths.length) { host.innerHTML = '<p class="backup-empty">No folders here.</p>'; return; }
       host.innerHTML = paths.map(path => {
         const name = path.slice(path.lastIndexOf('/') + 1);
-        return `<div class="backup-folder-row"><label><input type="checkbox" data-folder-select="${esc(path)}" ${state.folderDraft.has(path) ? 'checked' : ''}><span>${esc(name)}</span></label><button type="button" class="ui-button ui-button--secondary ui-button--small" data-folder-enter="${esc(path)}" aria-label="Pick inside ${esc(name)}">Pick inside</button></div>`;
+        return `<div class="backup-folder-row ui-setting-row ui-setting-row--ruled ui-setting-row--inline"><label><input type="checkbox" data-folder-select="${esc(path)}" ${state.folderDraft.has(path) ? 'checked' : ''}><span>${esc(name)}</span></label><button type="button" class="ui-button ui-button--secondary ui-button--small" data-folder-enter="${esc(path)}" aria-label="Pick inside ${esc(name)}">Pick inside</button></div>`;
       }).join('');
     }
     function updateFolderSummary(binding = state.binding) {
@@ -791,7 +791,7 @@ fn shell_backblaze_client() -> &'static str {
     function renderSnapshotRows(rows, binding = state.binding) {
       const host = el('[data-snapshots-result]', binding); if (!host) return;
       if (!rows.length) { host.textContent = 'No stored copies were returned.'; return; }
-      host.innerHTML = `<ul class="backup-snapshot-list">${rows.map(row => `<li><strong>Stored copy</strong><span>${esc(formatDate(row.time, 'Date unavailable'))}</span><span>${esc(row.status || 'Available')}</span></li>`).join('')}</ul>`;
+      host.innerHTML = `<ul class="backup-snapshot-list">${rows.map(row => `<li class="ui-setting-row ui-setting-row--ruled ui-setting-row--inline"><strong>Stored copy</strong><span>${esc(formatDate(row.time, 'Date unavailable'))}</span><span>${esc(row.status || 'Available')}</span></li>`).join('')}</ul>`;
     }
     async function listSnapshotsAfterYes(binding = state.binding) {
       if (!current(binding) || state.activeModal !== 'confirm') return;

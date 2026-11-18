@@ -25,7 +25,7 @@
 .dns-group-heading, .dns-encryption { justify-content: space-between; min-height: 48px; }
 .dns-detail-line { flex-wrap: wrap; }
 .dns-blocklist-sources { display: grid; }
-.dns-blocklist-source { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-width: 0; border-top: 1px solid var(--border); }
+.dns-blocklist-source { min-width: 0; }
 .dns-blocklist-source span { min-width: 0; overflow-wrap: anywhere; }
 .dns-blocklist-source__text { display: grid; gap: .1rem; padding-block: .4rem; }
 .dns-blocklist-source__text small { color: var(--secondary); font-size: 12px; }
