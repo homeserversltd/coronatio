@@ -269,27 +269,40 @@ fn render_stage_fragment() -> String {
     markup
 }
 
+fn stage_theme_properties() -> &'static str {
+    static PROPERTIES: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PROPERTIES.get_or_init(|| {
+        let Ok(catalog) = serde_json::from_str::<serde_json::Value>(xenia_kit::style::THEME_CATALOG) else {
+            return String::new();
+        };
+        let Some(theme) = catalog.get("default").and_then(|value| value.as_str())
+            .and_then(|default| catalog.get("themes")?.get(default)?.as_object()) else {
+            return String::new();
+        };
+        let mut properties = String::new();
+        for (key, value) in theme {
+            if let Some(value) = value.as_str() {
+                properties.push_str(&format!("      --theme-{key}: {value};\n"));
+            }
+        }
+        properties.push_str("      --theme-accent-soft: color-mix(in srgb, var(--theme-accent) 16%, transparent);\n");
+        for (key, property) in [("primary", "primary-rgb"), ("background", "background-rgb")] {
+            if let Some(hex) = theme.get(key).and_then(|value| value.as_str()).map(str::trim).and_then(|value| value.strip_prefix('#')).filter(|value| value.len() == 6 && value.bytes().all(|byte| byte.is_ascii_hexdigit())) {
+                if let Ok(number) = u32::from_str_radix(hex, 16) {
+                    properties.push_str(&format!("      --theme-{property}: {}, {}, {};\n", (number >> 16) & 255, (number >> 8) & 255, number & 255));
+                }
+            }
+        }
+        properties
+    })
+}
+
 fn render_stage_document() -> String {
     let mut document = shell_document_1().to_string();
-    // The locked stage must paint before the face's theme catalog is available.
-    // Values are the dark theme in theme/catalog.json; face theme CSS can replace them.
-    document.push_str(r#"
-    :root {
-      --theme-background: #0A0A0A;
-      --theme-bg-primary: #0A0A0A;
-      --theme-bg-tertiary: #1E293B;
-      --theme-bg-hover: #6B7280;
-      --theme-text: #E0E0E0;
-      --theme-text-secondary: #9CA3AF;
-      --theme-text-tertiary: #A0AEC0;
-      --theme-border: #1E293B;
-      --theme-primary: #323840;
-      --theme-primaryHover: #6B7280;
-      --theme-secondary: #9CA3AF;
-      --theme-accent: #A78BFA;
-      --theme-success: #10B981;
-      --theme-error: #df0a3f;
-    }
+    // The locked stage paints from the kit before the face's theme script runs.
+    document.push_str("\n    :root {\n");
+    document.push_str(stage_theme_properties());
+    document.push_str(r#"    }
     .pane.active.stage-vault { display: block; opacity: 1; transform: none; }
 "#);
     document.push_str(&shell_ux_css());
