@@ -244,8 +244,8 @@ fn shell_backblaze_client() -> &'static str {
     function driveCard(drive, role, index, binding) {
       const isBackup = role === 'backup';
       if (!drive) {
-        if (isBackup) return '<article class="backup-drive-card backup-drive-card--empty"><strong>No backup drive in this box yet</strong></article>';
-        return '<article class="backup-drive-card"><strong>Main drive unavailable</strong><p>Drive details could not be read from this box.</p></article>';
+        if (isBackup) return '<article class="backup-drive-card backup-drive-card--empty ui-panel ui-panel--filled"><strong>No backup drive in this box yet</strong></article>';
+        return '<article class="backup-drive-card ui-panel ui-panel--filled"><strong>Main drive unavailable</strong><p>Drive details could not be read from this box.</p></article>';
       }
       const [health, healthState] = driveHealth(drive);
       const size = Number(drive.sizeBytes), used = Number(drive.usedBytes), free = Number(drive.freeBytes);
@@ -256,7 +256,7 @@ fn shell_backblaze_client() -> &'static str {
       const mount = typeof drive.mountpoint === 'string' && drive.mountpoint ? drive.mountpoint : 'Mount unavailable';
       const transport = typeof drive.transport === 'string' && drive.transport ? drive.transport.toUpperCase() : 'Connection unavailable';
       const readErrors = drive.readErrors == null || !Number.isFinite(Number(drive.readErrors)) ? '—' : Number(drive.readErrors);
-      return `<article class="backup-drive-card${isBackup ? ' backup-drive-card--backup' : ''}" data-drive-role="${role}" data-drive-index="${index}">
+      return `<article class="backup-drive-card ui-panel ui-panel--filled${isBackup ? ' backup-drive-card--backup' : ''}" data-drive-role="${role}" data-drive-index="${index}">
         <div class="backup-card-heading"><div><strong>${isBackup ? 'Backup drive' : 'Main drive'} · in the HomeServer</strong><span class="backup-health backup-health--${healthState}">${esc(paused ? 'Paused after a drive swap' : health)}</span></div></div>
         <p class="backup-drive-model">${esc(model)} · ${esc(formatBytes(drive.sizeBytes))}</p>
         <div class="backup-meter" role="img" aria-label="${esc(formatBytes(drive.usedBytes))} used of ${esc(formatBytes(drive.sizeBytes))}"><span style="width:${percent.toFixed(1)}%"></span></div>
@@ -304,7 +304,7 @@ fn shell_backblaze_client() -> &'static str {
         const added = localRun ? formatBytes(localRun.added_bytes) : '—';
         const menuOpen = state.menuBucket === bucket.bucket;
         const editable = canRewriteConfig(binding) && bucketWritable(bucket);
-        return `<article class="backup-offsite-card" data-offsite-card="${esc(bucket.bucket)}">
+        return `<article class="backup-offsite-card ui-panel ui-panel--filled" data-offsite-card="${esc(bucket.bucket)}">
           <div class="backup-card-heading backup-offsite-heading"><div><strong>${esc(bucket.bucket)}</strong><span>Backblaze B2 bucket · ${esc(connected.toLowerCase())}</span></div><div class="backup-settings"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-settings-toggle="${esc(bucket.bucket)}" aria-expanded="${menuOpen}" aria-haspopup="true">Settings ▾</button><div class="backup-settings-menu" role="group" aria-label="Settings for ${esc(bucket.bucket)}" ${menuOpen ? '' : 'hidden'}>
             <button type="button" class="ui-button ui-button--secondary ui-button--small" data-bucket-action="run" data-bucket="${esc(bucket.bucket)}" ${canUse(binding) ? '' : 'disabled'}>Run now</button><button type="button" class="ui-button ui-button--secondary ui-button--small" data-bucket-action="verify" data-bucket="${esc(bucket.bucket)}" ${canUse(binding) ? '' : 'disabled'}>Check connection</button><button type="button" class="ui-button ui-button--secondary ui-button--small" data-bucket-action="credentials" data-bucket="${esc(bucket.bucket)}" ${editable ? '' : 'disabled'}>Update credentials</button><button type="button" class="ui-button ui-button--danger ui-button--small" data-bucket-action="remove" data-bucket="${esc(bucket.bucket)}" ${editable ? '' : 'disabled'}>Remove this copy</button>
           </div></div><span class="backup-run-state">${esc(latest.state)}</span></div>

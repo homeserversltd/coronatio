@@ -251,7 +251,7 @@ async fn crown_stage_script_route() -> impl IntoResponse {
 fn render_stage_fragment() -> String {
     let mut markup = String::from(
         r#"<section class="pane active stage-vault" data-face-stage="vault" aria-labelledby="face-stage-vault-title">
-  <div class="vault-unlock-panel" aria-label="Vault unlock">
+  <div class="vault-unlock-panel ui-panel ui-panel--bordered" aria-label="Vault unlock">
     <h1 id="face-stage-vault-title">Unlock encrypted storage</h1>
     <p>Unlock the vault to continue to HOMESERVER.</p>
     <form data-stage-vault-form autocomplete="off" method="post">

@@ -5,7 +5,7 @@ fn shell_admin_document_patch() -> &'static str {
 
         <div class="admin-tablet" data-admin-only="true" data-admin-viewport="admin">
           <section class="mb-6" style="margin-bottom: 0.5rem">
-            <div class="system-controls-container" aria-label="System controls">
+            <div class="system-controls-container ui-panel" aria-label="System controls">
               <div class="system-controls" data-admin-action-strip="wrapped-row" data-admin-action-strip-count="6">
                 <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-admin-action-id="update" data-update-manager-open><span class="admin-action-icon">⬇</span><span>Update</span></button>
                 <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-admin-action-id="restart" hx-post="/admit/admin/action/restart" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Restart HOMESERVER now? Active services will be interrupted."><span class="admin-action-icon">⟳</span><span>Restart</span></button>
@@ -16,17 +16,17 @@ fn shell_admin_document_patch() -> &'static str {
               </div>
               <div class="system-service-controls" data-admin-service-controls data-state-source="/api/services/data">
                 <div class="ssh-controls">
-                  <div class="ssh-control" data-service-card="ssh-password-authentication" hx-get="/admit/admin/service/ssh-password-authentication" hx-trigger="admin-ready" hx-target="this" hx-swap="innerHTML"><div class="ssh-status" data-admin-toggle-card="ssh-password-authentication"><h3>SSH Password Authentication</h3><div class="ssh-toggle"><span class="toggle-label">Loading…</span></div></div></div>
-                  <div class="ssh-control" data-service-card="ssh-service" hx-get="/admit/admin/service/ssh-service" hx-trigger="admin-ready" hx-target="this" hx-swap="innerHTML"><div class="ssh-status" data-admin-toggle-card="ssh-service"><h3>SSH Service</h3><div class="ssh-toggle"><span class="toggle-label">Loading…</span></div></div></div>
+                  <div class="ssh-control ui-panel ui-panel--filled" data-service-card="ssh-password-authentication" hx-get="/admit/admin/service/ssh-password-authentication" hx-trigger="admin-ready" hx-target="this" hx-swap="innerHTML"><div class="ssh-status" data-admin-toggle-card="ssh-password-authentication"><h3>SSH Password Authentication</h3><div class="ssh-toggle"><span class="toggle-label">Loading…</span></div></div></div>
+                  <div class="ssh-control ui-panel ui-panel--filled" data-service-card="ssh-service" hx-get="/admit/admin/service/ssh-service" hx-trigger="admin-ready" hx-target="this" hx-swap="innerHTML"><div class="ssh-status" data-admin-toggle-card="ssh-service"><h3>SSH Service</h3><div class="ssh-toggle"><span class="toggle-label">Loading…</span></div></div></div>
                 </div>
-                <div class="samba-control" data-service-card="samba-file-sharing" hx-get="/admit/admin/service/samba-file-sharing" hx-trigger="admin-ready" hx-target="this" hx-swap="innerHTML"><div class="samba-status" data-admin-toggle-card="samba-file-sharing"><h3>Samba File Sharing</h3><div class="samba-toggle"><span class="toggle-label">Loading…</span></div></div></div>
+                <div class="samba-control ui-panel ui-panel--filled" data-service-card="samba-file-sharing" hx-get="/admit/admin/service/samba-file-sharing" hx-trigger="admin-ready" hx-target="this" hx-swap="innerHTML"><div class="samba-status" data-admin-toggle-card="samba-file-sharing"><h3>Samba File Sharing</h3><div class="samba-toggle"><span class="toggle-label">Loading…</span></div></div></div>
               </div>
               <div class="update-status-container" data-admin-action-result data-og-affordance="toast-mapped-to-result-strip" aria-live="polite"></div>
             </div>
           </section>
 
           <section class="mb-6" style="margin-bottom: 0.5rem">
-            <div class="key-manager">
+            <div class="key-manager ui-panel">
               <h3><span class="admin-action-icon">⚿</span> Key Management</h3>
               <div class="key-manager-content">
                 <div class="key-manager-left">
@@ -44,7 +44,7 @@ fn shell_admin_document_patch() -> &'static str {
           </section>
 
           <section class="mb-6" style="margin-bottom: 0.5rem">
-            <div class="disk-manager">
+            <div class="disk-manager ui-panel">
               <div class="disk-manager-container">
                 <div class="disk-column"><p class="admin-nas-status" data-admin-nas-status aria-live="polite"><span class="ui-skeleton__line ui-skeleton__line--medium" aria-hidden="true"></span></p><div class="disk-list" data-disk-census-readback="/api/v1/storage/disk/census" data-scaffold-slot="admin-disk-census" data-scaffold-placeholder="available devices"><div class="ui-skeleton" aria-hidden="true"><span class="ui-skeleton__line"></span><span class="ui-skeleton__line ui-skeleton__line--short"></span><span class="ui-skeleton__block"></span></div></div></div>
               </div>

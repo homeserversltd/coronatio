@@ -15,10 +15,6 @@
   display: grid;
   gap: .5rem;
   padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--border-radius, 6px);
-  background: var(--surface);
-  color: var(--text);
 }
 .dns-group h3, .dns-records h3, .dns-group p { margin: 0; }
 .dns-group-heading, .dns-detail-line, .dns-status-line, .dns-actions, .dns-encryption {

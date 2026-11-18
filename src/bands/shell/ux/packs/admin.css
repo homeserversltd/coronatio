@@ -66,8 +66,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 
 /* System Controls Container */
 .system-controls-container {
-  box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border);
-  border-radius: 8px; /* Added rounding for the corners */
 
   display: flex;
   flex-direction: column;
@@ -97,9 +95,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   flex-direction: column;
   gap: 8px;
   padding: 15px;
-  border-radius: 8px;
-  background-color: var(--primary);
-  box-shadow: 0 2px 4px var(--border);
   flex: 1;
   min-width: 250px;
   min-height: 68px;
@@ -269,12 +264,8 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 
 /* BEGIN OG src/tablets/admin/components/KeyManager.css */
 .admin-tablet .key-manager {
-  background-color: var(--background);
-  border-radius: 8px;
   padding: 20px;
   margin-bottom: 20px;
-  box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border);
-  color: var(--text);
 }
 
 .key-manager-content {
@@ -418,9 +409,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 /* BEGIN OG src/tablets/admin/components/DiskManager.css */
 .admin-tablet .disk-manager {
   padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px var(--primary), 0 2px 4px var(--border);
-  background-color: var(--background);
 }
 
 
@@ -653,10 +641,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
   display: grid;
   gap: 0.65rem;
   padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--background);
-  color: var(--text);
 }
 
 .vault-unlock-panel p {
