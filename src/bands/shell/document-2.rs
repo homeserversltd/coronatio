@@ -96,13 +96,13 @@ fn shell_document_2() -> &'static str {
               <button type="button" data-upload-submit disabled>Upload Selected Files</button>
             </div>
           </div>
-          <div class="modal-overlay" data-admin-only="true" data-upload-history-backdrop data-upload-history-modal aria-hidden="true" hidden>
+          <div class="modal-overlay" data-upload-history-backdrop data-upload-history-modal aria-hidden="true" hidden>
             <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-history-title">
               <button type="button" class="modal-close" data-upload-modal-close data-modal-dismiss aria-label="Close modal">×</button><h2 class="modal-title" id="upload-history-title">Upload History</h2>
               <div class="modal-content upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="clear-history-button" data-upload-clear-history disabled>Clear History</button></div>
             </section>
           </div>
-          <div class="modal-overlay" data-admin-only="true" data-upload-blacklist-backdrop data-upload-blacklist-modal aria-hidden="true" hidden>
+          <div class="modal-overlay" data-upload-blacklist-backdrop data-upload-blacklist-modal aria-hidden="true" hidden>
             <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-blacklist-title">
               <button type="button" class="modal-close" data-upload-modal-close data-modal-dismiss aria-label="Close modal">×</button><h2 class="modal-title" id="upload-blacklist-title">Manage Blacklist</h2>
               <div class="modal-content"><div class="blacklist-manager"><div class="blacklist-entries" data-upload-blacklist-entries></div><div class="blacklist-controls"><form class="add-entry" data-upload-blacklist-form><input type="text" class="entry-input" placeholder="Enter path to blacklist" data-upload-blacklist-input><button type="button" class="add-button" data-upload-blacklist-add>New</button></form><button type="button" class="submit-button" data-upload-blacklist-submit>Submit</button></div></div></div>

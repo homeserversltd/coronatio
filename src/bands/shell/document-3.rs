@@ -24,7 +24,10 @@ fn shell_document_3() -> &'static str {
         el.hidden = !headerState.isAdmin;
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
-      if (!headerState.isAdmin) closeWakeOnLanModal();
+      if (!headerState.isAdmin) {
+        closeWakeOnLanModal();
+        document.querySelectorAll('[data-upload-history-backdrop], [data-upload-blacklist-backdrop]').forEach(closeUploadModal);
+      }
     }
     function retirePrivilegedClientState() {
       window.scaffoldRegistry?.retire('admin', 'Admin role retired');
