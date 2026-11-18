@@ -1167,8 +1167,8 @@ dependencies = [
 
 [[package]]
 name = "xenia-kit"
-version = "0.16.1"
-source = "git+https://github.com/homeserversltd/xenia-kit?rev=3a1a8e5e5dada80566d9f212c6d45cc41cea9c1c#3a1a8e5e5dada80566d9f212c6d45cc41cea9c1c"
+version = "0.17.0"
+source = "git+https://github.com/homeserversltd/xenia-kit?rev=a4de53e7a861f9b5e94736fdd4377ac7e068702c#a4de53e7a861f9b5e94736fdd4377ac7e068702c"
 dependencies = [
  "maud",
 ]
