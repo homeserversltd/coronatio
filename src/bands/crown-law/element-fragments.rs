@@ -24,7 +24,20 @@ async fn element_visibility_route(headers: axum::http::HeaderMap, Json(request):
             .into_response();
     }
     let tab = normalize_tab_id(&request.tab_id.or(request.tab).unwrap_or_default());
-    let element = normalize_element_id_for_tab(&tab, &request.element_id.or(request.element).or(request.id).unwrap_or_default());
+    let raw_element = request.element_id.or(request.element).or(request.id).unwrap_or_default();
+    let element = if tab == "portals" {
+        let name = raw_element.trim();
+        if name.is_empty() || name.contains(['.', '/', '\\']) || !read_portals_config()
+            .map(|config| config.portals.iter().any(|portal| portal.name == name))
+            .unwrap_or(false)
+        {
+            String::new()
+        } else {
+            name.to_string()
+        }
+    } else {
+        normalize_element_id_for_tab(&tab, &raw_element)
+    };
     if tab.is_empty() || element.is_empty() {
         return (StatusCode::BAD_REQUEST, Html(r#"<div data-element-visibility-refusal="invalid-element-request">invalid-element-request</div>"#.to_string())).into_response();
     }
