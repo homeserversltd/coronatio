@@ -790,16 +790,23 @@ fn hyalos_upload_history_from_tail(readback: &CaduceusHttpReadback) -> Option<Ve
 }
 
 fn hyalos_upload_history_size(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * KIB;
+    const GIB: u64 = 1024 * MIB;
+    // At one decimal place, half a tenth of the smaller unit rounds up.
+    const FIRST_MB: u64 = MIB - KIB / 20;
+    const FIRST_GB: u64 = GIB - MIB / 20;
+
     let (scale, unit) = match bytes {
         0..=1023 => {
-            let kilobytes = format!("{:.3}", bytes as f64 / 1024.0);
+            let kilobytes = format!("{:.3}", bytes as f64 / KIB as f64);
             return format!("{} KB", kilobytes.trim_end_matches('0').trim_end_matches('.'));
         }
-        1024..=1_048_575 => (1024.0, "KB"),
-        1_048_576..=1_073_741_823 => (1_048_576.0, "MB"),
-        _ => (1_073_741_824.0, "GB"),
+        FIRST_GB.. => (GIB, "GB"),
+        FIRST_MB.. => (MIB, "MB"),
+        _ => (KIB, "KB"),
     };
-    format!("{:.1} {unit}", bytes as f64 / scale)
+    format!("{:.1} {unit}", bytes as f64 / scale as f64)
 }
 
 fn hyalos_clear_upload_history(headers: &axum::http::HeaderMap) -> CaduceusHttpReadback {
