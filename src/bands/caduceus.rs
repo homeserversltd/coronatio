@@ -860,7 +860,7 @@ fn admin_log_pagination(uri: &Uri) -> (usize, usize) {
     (offset, limit)
 }
 
-fn admin_logs_modal_fragment(readback: &CaduceusHttpReadback, offset: usize, limit: usize, notice: Option<&str>) -> String {
+fn admin_logs_page_fragment(readback: &CaduceusHttpReadback, offset: usize, limit: usize) -> String {
     let lines = readback.body.get("lines").and_then(serde_json::Value::as_array);
     let total = readback.body.get("total_lines").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
     let returned = lines.map_or(0, Vec::len);
@@ -873,7 +873,7 @@ fn admin_logs_modal_fragment(readback: &CaduceusHttpReadback, offset: usize, lim
             "<p data-admin-log-empty>No appliance log lines are available.</p>".to_string()
         } else {
             let lines = lines.unwrap_or(&Vec::new()).iter().filter_map(serde_json::Value::as_str).map(html_escape).collect::<Vec<_>>().join("");
-            format!(r#"<pre class="log-frame" data-admin-log-lines>{lines}</pre>"#)
+            format!(r#"<pre data-admin-log-lines>{lines}</pre>"#)
         }
     } else {
         format!(
@@ -881,9 +881,15 @@ fn admin_logs_modal_fragment(readback: &CaduceusHttpReadback, offset: usize, lim
             html_escape(&readback.first_missing_signal),
         )
     };
-    let notice = notice.map(|value| format!(r#"<p class="success" data-admin-log-notice>{}</p>"#, html_escape(value))).unwrap_or_default();
     format!(
-        r#"<section class="modal modal-window admin-log-modal" data-admin-log-modal data-admin-action-result-fragment="view-logs" data-admin-action-route="/api/admin/logs/homeserver" role="dialog" aria-label="Appliance logs"><h2>Appliance Logs</h2>{notice}<div class="modal-toolbar"><span>Newest first · {returned} shown of {total}</span></div><div class="modal-body">{content}</div><div class="modal-pager"><button type="button" class="secondary" hx-get="/admit/admin/action/view-logs?offset={previous}&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML"{previous_disabled}>Previous</button><button type="button" class="secondary" hx-get="/admit/admin/action/view-logs?offset={next}&amp;limit={limit}" hx-target="closest [data-admin-log-modal]" hx-swap="outerHTML"{next_disabled}>Next</button></div></section>"#,
+        r##"<section class="crown-dialog__body" data-admin-log-page tabindex="0" aria-label="Log entries">
+  <p aria-live="polite">Newest first · {returned} shown of {total}</p>
+  {content}
+</section>
+<div class="crown-dialog__actions">
+  <button type="button" class="ui-button ui-button--secondary" data-admin-log-pager="previous" hx-get="/admit/admin/action/view-logs?offset={previous}&amp;limit={limit}" hx-target="#admin-log-slot" hx-swap="innerHTML"{previous_disabled}>Previous</button>
+  <button type="button" class="ui-button ui-button--secondary" data-admin-log-pager="next" hx-get="/admit/admin/action/view-logs?offset={next}&amp;limit={limit}" hx-target="#admin-log-slot" hx-swap="innerHTML"{next_disabled}>Next</button>
+</div>"##,
     )
 }
 
@@ -892,7 +898,7 @@ async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> 
     let path = format!("/api/v1/log/read?offset={offset}&limit={limit}");
     let readback = admin_fragment_caduceus_request(&headers, "GET", &path);
     log_admin_action_admission(&headers, "/admit/admin/action/view-logs", &readback, StatusCode::OK);
-    admin_html_fragment_response(StatusCode::OK, admin_logs_modal_fragment(&readback, offset, limit, None))
+    admin_html_fragment_response(StatusCode::OK, admin_logs_page_fragment(&readback, offset, limit))
 }
 
 async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {

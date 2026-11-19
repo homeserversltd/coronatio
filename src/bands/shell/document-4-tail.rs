@@ -29,17 +29,18 @@ fn shell_document_4_tail() -> &'static str {
       toast.append(icon, text); stack.appendChild(toast); startCoronatioToastTimer(toast, duration);
     }
     // UX-MIGRATION-SLICE-09A: delegated so these bindings survive Caduceus HTMX card swaps.
+    const adminActionButtonSelector = '[data-admin-action-id]:not([data-admin-action-id="view-logs"])';
     const adminActionLabels = Object.freeze({
       'hard-drive-test': 'Hard Drive Test', update: 'Update', restart: 'Restart', shutdown: 'Shutdown',
-      'restart-website': 'Restart Website', 'view-logs': 'View Logs'
+      'restart-website': 'Restart Website'
     });
     function adminActionToast(action, success) {
       const label = adminActionLabels[action] || 'System action';
       if (!success) return `${label} could not be started.`;
-      return action === 'view-logs' ? 'Logs opened.' : `${label} initiated.`;
+      return `${label} initiated.`;
     }
     function restoreAdminActionControls() {
-      document.querySelectorAll('[data-admin-action-id]').forEach(button => {
+      document.querySelectorAll(adminActionButtonSelector).forEach(button => {
         button.disabled = false;
         if (button.dataset.adminActionOriginal) {
           button.innerHTML = button.dataset.adminActionOriginal;
@@ -73,9 +74,9 @@ fn shell_document_4_tail() -> &'static str {
         control.after(spinner);
         return;
       }
-      const actionButton = source.closest('[data-admin-action-id]');
+      const actionButton = source.closest(adminActionButtonSelector);
       if (!actionButton) return;
-      document.querySelectorAll('[data-admin-action-id]').forEach(button => {
+      document.querySelectorAll(adminActionButtonSelector).forEach(button => {
         button.disabled = true;
         if (!button.dataset.adminActionOriginal) button.dataset.adminActionOriginal = button.innerHTML;
       });
@@ -108,14 +109,22 @@ fn shell_document_4_tail() -> &'static str {
     });
     document.body.addEventListener('htmx:afterRequest', event => {
       const source = event.detail?.elt;
-      if (source instanceof Element && source.closest('[data-admin-action-id]')) restoreAdminActionControls();
+      if (source instanceof Element && source.closest(adminActionButtonSelector)) restoreAdminActionControls();
       if (source instanceof Element && source.closest('[data-service-card] .ui-toggle__input')) restoreAdminToggle(source);
     });
     document.body.addEventListener('htmx:responseError', event => {
       const source = event.detail?.elt;
-      if (source instanceof Element && source.closest('[data-admin-action-id]')) { restoreAdminActionControls(); showCoronatioToast('System action could not be started.', 'error'); }
+      if (source instanceof Element && source.closest(adminActionButtonSelector)) { restoreAdminActionControls(); showCoronatioToast('System action could not be started.', 'error'); }
       if (source instanceof Element && source.closest('[data-service-card] .ui-toggle__input')) { restoreAdminToggle(source); showCoronatioToast('Service change could not be started.', 'error'); }
     });
+    function closeAdminLogsForTeardown(root) {
+      const dialog = root.querySelector('dialog#admin-appliance-logs:modal');
+      if (dialog) closeCrownDialog(dialog);
+    }
+    window.addEventListener('coronatio:native-pane-reset', event => {
+      if (event.detail?.id === 'admin') closeAdminLogsForTeardown(event.detail.pane);
+    });
+    window.addEventListener('coronatio:privileged-state-retired', () => closeAdminLogsForTeardown(document));
     function toggleLoadingSpinnerDemo(loadingToggle) {
       const specimen = loadingToggle.closest('[data-loading-spinner-catalog]'); const frame = specimen?.querySelector('[data-loading-spinner-frame]'); const result = specimen?.querySelector('[data-loading-spinner-result]'); if (!frame || !result) return;
       const loading = frame.dataset.loadingSpinnerState !== 'loaded'; frame.dataset.loadingSpinnerState = loading ? 'loaded' : 'loading'; loadingToggle.setAttribute('aria-pressed', String(!loading)); loadingToggle.textContent = loading ? 'Show loading state' : 'Show loaded state'; result.textContent = loading ? 'Loaded state active' : 'Loading state active'; frame.innerHTML = loading ? '<p><strong>Network data ready</strong></p>' : '<div class="network-loading"><div class="loading-spinner medium" role="progressbar" aria-label="Loading network data"></div><p>Loading network data...</p></div>';

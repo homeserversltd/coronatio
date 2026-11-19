@@ -1389,6 +1389,7 @@ fn shell_document_4() -> &'static str {
     document.body.addEventListener('click', event => {
       const crownOpen = event.target.closest('[data-crown-dialog-open]');
       if (crownOpen) {
+        if (crownOpen.dataset.adminOnly === 'true' && !headerState.isAdmin) return;
         const pane = crownOpen.closest('[data-pane-panel]');
         const dialog = document.getElementById(crownOpen.dataset.crownDialogOpen);
         if (pane && dialog instanceof HTMLDialogElement && !dialog.open && dialog.matches('.crown-dialog') && dialog.closest('[data-pane-panel]') === pane) {

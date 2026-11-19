@@ -373,11 +373,25 @@ fn shell_native_htmx_owner_client() -> &'static str {
       return true;
     }
 
+    const nativeAdminLogsPath = '/admit/admin/action/view-logs';
+    const nativeAdminLogsSlot = 'dialog.crown-dialog#admin-appliance-logs > #admin-log-slot';
+    function nativeAdminLogsSourceAllowed(request, source, path, pane) {
+      if (pane?.dataset.panePanel !== 'admin' || !headerState.isAdmin || request !== source
+          || !(request instanceof HTMLButtonElement) || request.disabled || request.getAttribute('hx-get') !== path) return false;
+      if (path === nativeAdminLogsPath) {
+        return request === pane.querySelector('button[data-admin-action-id="view-logs"][data-crown-dialog-open="admin-appliance-logs"]');
+      }
+      const slot = request.closest(nativeAdminLogsSlot);
+      return path.startsWith(`${nativeAdminLogsPath}?`)
+        && /^offset=\d+&limit=\d+$/.test(path.slice(nativeAdminLogsPath.length + 1))
+        && request.matches('[data-admin-log-pager="previous"], [data-admin-log-pager="next"]')
+        && Boolean(slot && pane.contains(slot) && slot.parentElement.matches(':modal'));
+    }
+
     function nativeHtmxReadSourceAllowed(guest, request, source, path, pane) {
       if (!(request instanceof Element) && !(source instanceof Element)) return false;
       if (guest === 'admin') {
-        return (request?.matches('[data-service-card]') && /^\/admit\/admin\/service\/[a-z0-9-]+$/.test(path))
-          || (request?.matches('[data-admin-action-id="view-logs"]') && path === '/admit/admin/action/view-logs');
+        return request?.matches('[data-service-card]') && /^\/admit\/admin\/service\/[a-z0-9-]+$/.test(path);
       }
       if (guest === 'linker') {
         const linkerSource = request?.closest('#linker-fragment') || source?.closest?.('#linker-fragment');
@@ -407,11 +421,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
       }
       if (!(request instanceof Element) || !pane.contains(request)) return false;
       if (guest === 'portals') return request.matches('[data-portals-grid]') && target === request;
-      if (guest === 'admin') {
-        if (request.matches('[data-service-card]')) return target === request;
-        return request.matches('[data-admin-action-id="view-logs"]')
-          && target === pane.querySelector('[data-admin-action-result]');
-      }
+      if (guest === 'admin') return request.matches('[data-service-card]') && target === request;
       return false;
     }
 
@@ -842,7 +852,6 @@ fn shell_native_htmx_owner_client() -> &'static str {
       }
       const source = detail.elt instanceof Element ? detail.elt : null;
       const target = detail.target instanceof Element ? detail.target : null;
-      if (source?.closest('[data-pane]')) return;
       const request = source?.closest('[hx-get], [hx-post], [hx-put], [hx-patch], [hx-delete]');
       const configuredVerb = String(detail.requestConfig?.verb || detail.requestConfig?.method || '').toLowerCase();
       const verb = configuredVerb || (request?.hasAttribute('hx-get') ? 'get'
@@ -850,15 +859,28 @@ fn shell_native_htmx_owner_client() -> &'static str {
         : request?.hasAttribute('hx-put') ? 'put'
         : request?.hasAttribute('hx-patch') ? 'patch'
         : request?.hasAttribute('hx-delete') ? 'delete' : '');
-      if (verb !== 'get' || !detail.xhr) return;
       const pane = source?.closest('[data-pane-panel]') || target?.closest('[data-pane-panel]');
       const guest = pane?.dataset.panePanel;
-      if (!pane || !guest || !Object.prototype.hasOwnProperty.call(nativePaneContracts, guest)) return;
       const path = String(detail.requestConfig?.path || request?.getAttribute('hx-get') || '');
-      if (!nativeHtmxReadSourceAllowed(guest, request, source, path, pane)) return;
-      if (!nativeHtmxReadTargetAllowed(guest, request, source, target, pane)) {
-        event.preventDefault();
-        return;
+      const finalPath = detail.pathInfo?.finalRequestPath;
+      const logsRead = target?.id === 'admin-log-slot'
+        || (finalPath && new URL(finalPath, document.baseURI).pathname === nativeAdminLogsPath);
+      if (logsRead) {
+        // Never let a mismatched log read fall through to an unowned HTMX swap.
+        if (verb !== 'get' || !detail.xhr || !nativeAdminLogsSourceAllowed(request, source, path, pane)
+            || !target || target !== pane.querySelector(nativeAdminLogsSlot)
+            || request.getAttribute('hx-swap') !== 'innerHTML') {
+          event.preventDefault();
+          return;
+        }
+      } else {
+        if (source?.closest('[data-pane]') || verb !== 'get' || !detail.xhr) return;
+        if (!pane || !guest || !Object.prototype.hasOwnProperty.call(nativePaneContracts, guest)) return;
+        if (!nativeHtmxReadSourceAllowed(guest, request, source, path, pane)) return;
+        if (!nativeHtmxReadTargetAllowed(guest, request, source, target, pane)) {
+          event.preventDefault();
+          return;
+        }
       }
       primeNativeHtmxSlotIndicators(source, target);
       const binding = scaffoldRegistry.capture(guest);
@@ -902,7 +924,10 @@ fn shell_native_htmx_owner_client() -> &'static str {
       nativeHtmxOwners.set(owner.xhr, owner);
       nativeHtmxTargetOwners.set(target, owner);
       scaffoldRegistry.clearRetry(binding, readKey);
-      clearNativeReadState(owner);
+      if (logsRead && path === nativeAdminLogsPath) {
+        target.replaceChildren();
+        displayNativeReadState(owner, 'Loading appliance logs…');
+      } else clearNativeReadState(owner);
       if (guest === 'upload' && !setNativeUploadTreePending(binding, target)) {
         event.preventDefault();
         retireNativeHtmxOwner(owner, 'Upload tree slot retired', { abort: true });
@@ -1022,6 +1047,10 @@ fn shell_native_htmx_owner_client() -> &'static str {
         return;
       }
       if (owner.guest === 'portals') bindPortalFragmentControls(owner.target);
+      if (owner.target.matches(nativeAdminLogsSlot)) {
+        // The morph retains the pager nodes; rebind HTMX to their updated URLs.
+        window.htmx?.process(owner.target);
+      }
       if (owner.guest === 'upload') syncUploadTreeSelection();
       if (owner.guest === 'upload') {
         if (!nativeUploadTreeOwnerSlot(owner) || !scaffoldRegistry.setSlot(owner.binding, owner.target, 'ready')) {
