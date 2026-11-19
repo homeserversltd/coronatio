@@ -638,24 +638,40 @@ async fn upload_history_admin_route(headers: axum::http::HeaderMap) -> Response 
 }
 
 async fn upload_history_route() -> impl IntoResponse {
-    let readback = hyalos_tail_readback(Some("upload"), 100);
-    let history = hyalos_upload_history_from_tail(&readback);
-    let ok = readback.ok;
-    (
-        if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE },
-        Json(serde_json::json!({
+    match tokio::task::spawn_blocking(hyalos_upload_history_readback).await {
+        Ok(Some(history)) => (StatusCode::OK, Json(serde_json::json!({
             "schema": "coronatio.upload.history.v1",
-            "ok": ok,
+            "ok": true,
             "history": history,
-            "authority": "Caduceus Hyalos tail membrane",
-            "caduceus": readback,
-            "firstMissingSignal": if ok { "none" } else { readback.first_missing_signal.as_str() }
-        })),
-    )
+        }))),
+        _ => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+            "schema": "coronatio.upload.history.v1",
+            "ok": false,
+            "message": "Could not load upload history. Try again.",
+        }))),
+    }
 }
 
-fn clear_upload_history_route() -> Response {
-    hyalos_channel_clear_refusal_response("coronatio.upload.history.clear.v1", "/api/upload/history/clear")
+async fn clear_upload_history_route(headers: axum::http::HeaderMap) -> Response {
+    let readback = tokio::task::spawn_blocking(move || hyalos_clear_upload_history(&headers))
+        .await.unwrap_or_else(|_| mutation_task_failure_readback("/api/v1/log/clear"));
+    let ok = readback.ok && (200..300).contains(&readback.status)
+        && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true);
+    let (status, message) = if ok {
+        (StatusCode::OK, "Upload history cleared.")
+    } else {
+        match StatusCode::from_u16(readback.status) {
+            Ok(status) if status.is_client_error() => (status, "This device refused to clear upload history."),
+            Ok(status) if status.is_server_error() => (status, "Could not clear upload history. Try again."),
+            _ => (StatusCode::SERVICE_UNAVAILABLE, "Could not clear upload history. Try again."),
+        }
+    };
+    (status, Json(serde_json::json!({
+        "schema": "coronatio.upload.history.clear.v1",
+        "ok": ok,
+        "message": message,
+        "deleted": if ok { readback.body.get("deleted").and_then(serde_json::Value::as_u64) } else { None },
+    }))).into_response()
 }
 
 async fn uptime_route() -> impl IntoResponse {
@@ -703,7 +719,7 @@ async fn admin_class_generic_mutation_route(headers: axum::http::HeaderMap, meth
     if mutation_context_refusal(&headers).is_some() {
         return homeserver_mutation_response(&headers, method.as_str(), uri.path());
     }
-    if uri.path() == "/api/upload/history/clear" { return clear_upload_history_route(); }
+    if uri.path() == "/api/upload/history/clear" { return clear_upload_history_route(headers).await; }
     if uri.path() == "/api/admin/logs/homeserver/clear" {
         return hyalos_channel_clear_refusal_response("coronatio.admin.logs.homeserver.clear.v1", uri.path());
     }

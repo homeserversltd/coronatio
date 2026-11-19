@@ -737,36 +737,75 @@ fn hyalos_tail_readback(kind: Option<&str>, count: usize) -> CaduceusHttpReadbac
     caduceus_http("GET", &hyalos_tail_path(kind, count))
 }
 
-fn hyalos_upload_history_message_visible(message: &str) -> bool {
-    let normalized = message.to_ascii_lowercase();
-    !normalized.contains("[error]")
-        && !normalized.contains("failed to")
-        && !normalized.contains("[system]")
+fn hyalos_upload_history_readback() -> Option<Vec<serde_json::Value>> {
+    let readback = caduceus_http("GET", "/api/v1/log/tail?kind=upload&organ=file-ingress&count=100");
+    if !readback.ok || !(200..300).contains(&readback.status) {
+        return None;
+    }
+    hyalos_upload_history_from_tail(&readback)
 }
 
-fn hyalos_event_is_upload(event: &serde_json::Value) -> bool {
-    event.get("kind").and_then(serde_json::Value::as_str) == Some("upload")
-        || event.get("organ").and_then(serde_json::Value::as_str) == Some("file-ingress")
-}
+fn hyalos_upload_history_from_tail(readback: &CaduceusHttpReadback) -> Option<Vec<serde_json::Value>> {
+    use serde_json::Value;
 
-fn hyalos_upload_history_from_tail(readback: &CaduceusHttpReadback) -> Vec<String> {
-    readback
-        .body
-        .get("events")
-        .and_then(serde_json::Value::as_array)
-        .map(|events| {
-            events
-                .iter()
-                .filter(|event| hyalos_event_is_upload(event))
-                .filter_map(|event| event.get("message").and_then(serde_json::Value::as_str))
-                .filter(|message| hyalos_upload_history_message_visible(message))
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect()
+    fn order_key(row: &Value) -> (&str, Option<i64>) {
+        // The door speaks UTC. Strip its zone suffix so an exact second sorts before its fractions.
+        let at = row.get("at").and_then(Value::as_str).unwrap_or("");
+        let utc = at.trim_end_matches('Z').trim_end_matches("+00:00");
+        (utc, row.get("id").and_then(Value::as_i64))
+    }
+
+    let mut uploads = readback.body.get("events")?.as_array()?.iter().filter(|row| {
+        row.get("organ").and_then(Value::as_str) == Some("file-ingress")
+            && row.get("verb").and_then(Value::as_str) == Some("upload")
+    }).collect::<Vec<_>>();
+    uploads.sort_by_key(|row| std::cmp::Reverse(order_key(row)));
+
+    let root = upload_root_path();
+    let display_root = upload_display_root(&root);
+    Some(uploads.into_iter().take(100).map(|row| {
+        let family = row.get("families").and_then(|value| value.get("upload"));
+        let field = |key| family.and_then(|value| value.get(key));
+        let filename = |value: &Value| value.as_str().filter(|name| {
+            !name.trim().is_empty() && *name != "." && *name != ".." && !name.contains(['/', '\\', '\0'])
+        }).map(str::to_owned);
+        let name = field("filename").and_then(filename)
+            .or_else(|| row.get("target").and_then(filename))
+            .unwrap_or_else(|| "A file (name not recorded)".to_owned());
+        let folder = field("destination").and_then(Value::as_str)
+            .and_then(|path| upload_resolve_path(&root, &display_root, path))
+            .and_then(|path| path.strip_prefix(&root).ok().map(|relative| relative.display().to_string()))
+            .map(|relative| if relative.is_empty() { "Storage root".to_owned() } else { relative })
+            .unwrap_or_else(|| "Folder not recorded".to_owned());
+        let size = field("bytes").and_then(Value::as_u64)
+            .map(hyalos_upload_history_size).unwrap_or_else(|| "Size not recorded".to_owned());
+        serde_json::json!({
+            "name": name,
+            "size": size,
+            "folder": folder,
+            "at": row.get("at").and_then(Value::as_str),
+            "success": matches!(row.get("outcome").and_then(Value::as_str), Some("ok" | "success")),
         })
-        .unwrap_or_default()
+    }).collect())
+}
+
+fn hyalos_upload_history_size(bytes: u64) -> String {
+    let (scale, unit) = match bytes {
+        0..=1023 => return format!("{bytes} B"),
+        1024..=1_048_575 => (1024.0, "KB"),
+        1_048_576..=1_073_741_823 => (1_048_576.0, "MB"),
+        _ => (1_073_741_824.0, "GB"),
+    };
+    format!("{:.1} {unit}", bytes as f64 / scale)
+}
+
+fn hyalos_clear_upload_history(headers: &axum::http::HeaderMap) -> CaduceusHttpReadback {
+    admin_fragment_caduceus_json_request(
+        headers,
+        "POST",
+        "/api/v1/log/clear",
+        serde_json::json!({"kind": "change", "verb": "upload"}),
+    )
 }
 
 fn hyalos_channel_clear_refusal_response(schema: &str, path: &str) -> Response {

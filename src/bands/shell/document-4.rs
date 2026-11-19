@@ -25,7 +25,8 @@ fn shell_document_4() -> &'static str {
           uploadState.binding = null; uploadState.policyReady = false; uploadState.policyStale = true;
           uploadState.history = []; uploadState.historyReady = false; uploadState.historyStale = true; uploadState.blacklist = []; uploadState.blacklistReady = false; uploadState.blacklistStale = true;
           const root = binding.root; root?.querySelectorAll('[data-upload-submit], [data-upload-pin-toggle]').forEach(node => { node.disabled = true; });
-          root?.querySelectorAll('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]').forEach(node => { node.hidden = true; node.setAttribute('aria-hidden', 'true'); });
+          closeUploadModal(root?.querySelector('[data-upload-history-modal]'));
+          root?.querySelectorAll('[data-upload-blacklist-backdrop], [data-upload-pin-backdrop]').forEach(node => { node.hidden = true; node.setAttribute('aria-hidden', 'true'); });
           root?.querySelectorAll('[data-upload-history-list], [data-upload-blacklist-entries]').forEach(node => node.replaceChildren());
         });
       }
@@ -243,29 +244,73 @@ fn shell_document_4() -> &'static str {
       });
     }
     function openUploadModal(selector) { const modal = document.querySelector(selector); if (modal) { modal.hidden = false; modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); } }
-    function closeUploadModal(modal) { if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); modal.hidden = true; const pin = modal.querySelector('[data-upload-pin-input]'); if (pin) pin.value = ''; const message = modal.querySelector('[data-upload-pin-message]'); if (message) message.textContent = ''; } }
-    async function refreshUploadHistory(binding = uploadBinding()) {
-      const modal = binding?.root.querySelector('[data-upload-history-modal]'), list = modal?.querySelector('.upload-history-list'), empty = modal?.querySelector('.uploadHistoryModal'), clear = modal?.querySelector('[data-upload-clear-history]');
+    function closeUploadModal(modal) {
+      if (modal?.matches('dialog[data-upload-history-modal]')) {
+        if (modal.open) closeCrownDialog(modal);
+        return;
+      }
+      if (modal) { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); modal.hidden = true; const pin = modal.querySelector('[data-upload-pin-input]'); if (pin) pin.value = ''; const message = modal.querySelector('[data-upload-pin-message]'); if (message) message.textContent = ''; }
+    }
+    function paintUploadHistoryEntry(entry, index) {
+      const time = Date.parse(entry.at);
+      const when = Number.isFinite(time) ? new Date(time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' }) : 'Time not recorded';
+      const line = `${entry.name} — ${entry.size} — ${entry.folder} — ${when}`;
+      return `<div class="history-item ${entry.success === true ? 'success' : 'error'}" data-upload-history-row="${index}">${escapeHtml(line)}</div>`;
+    }
+    async function refreshUploadHistory(binding = uploadBinding(), afterClear = false) {
+      const modal = binding?.root?.querySelector('[data-upload-history-modal]');
       if (!binding || !uploadCurrent(binding) || !headerState.isAdmin || !modal) return false;
+      const list = modal.querySelector('[data-upload-history-list]'), empty = modal.querySelector('[data-upload-history-empty]');
+      const clear = modal.querySelector('[data-upload-clear-history]'), status = modal.querySelector('.crown-dialog__actions');
       return scaffoldRegistry.run(binding, 'upload-history', async context => {
+        clear.disabled = true;
+        if (!uploadState.historyReady) {
+          list.hidden = empty.hidden = true;
+          uploadReadStatus(status, 'upload-history', 'Loading upload history…', 'pending');
+        }
         const data = await context.fetchJson('/api/upload/history', { headers: uploadAdminHeaders() });
         if (!context.current() || !uploadCurrent(binding) || !headerState.isAdmin) return false;
-        if (!data || typeof data !== 'object' || Array.isArray(data) || data.ok === false || !Array.isArray(data.history)) throw new Error('Upload history response is incomplete');
-        uploadState.history = data.history.map(line => String(line)); uploadState.historyReady = true; uploadState.historyStale = false;
-        if (!context.current() || !uploadCurrent(binding)) return false;
-        if (list) { list.hidden = uploadState.history.length === 0; morphLivePane(list, uploadState.history.map((line, index) => `<div class="history-item ${line.includes('Successfully') ? 'success' : 'error'}" data-upload-history-row="${index}">${escapeHtml(line)}</div>`).join('')); }
-        if (empty) empty.hidden = uploadState.history.length !== 0;
-        if (clear) clear.disabled = uploadState.history.length === 0 || uploadState.historyStale;
-        uploadReadStatus(modal.querySelector('.modal-content'), 'upload-history', '', 'ready');
+        if (data?.ok !== true || !Array.isArray(data.history)) throw new Error('Upload history response is incomplete');
+        morphLivePane(list, data.history.map(paintUploadHistoryEntry).join(''));
+        uploadState.history = data.history; uploadState.historyReady = true; uploadState.historyStale = false;
+        list.hidden = data.history.length === 0;
+        empty.hidden = !list.hidden;
+        clear.disabled = list.hidden || clear.hasAttribute('aria-busy');
+        uploadReadStatus(status, 'upload-history', '', 'ready');
         return true;
-      }, { slots: [], timeoutMs: 8000, slowMs: 750, onFailure: ({ current, reason }) => {
+      }, { slots: [], timeoutMs: 8000, slowMs: 750, supersede: true, onFailure: ({ current }) => {
         if (!current() || !uploadCurrent(binding) || !headerState.isAdmin) return;
         uploadState.historyStale = true;
-        if (empty) empty.hidden = !uploadState.historyReady || uploadState.history.length !== 0;
-        if (list) list.hidden = !uploadState.historyReady || uploadState.history.length === 0;
-        if (clear) clear.disabled = true;
-        uploadReadStatus(modal.querySelector('.modal-content'), 'upload-history', `History refresh unavailable: ${reason || 'Read failed'}. ${uploadState.historyReady ? 'Showing last known history.' : ''}`, 'stale', true);
+        clear.disabled = true;
+        const message = afterClear ? 'Upload history was cleared, but the updated list could not be loaded.' : 'Could not load upload history.';
+        uploadReadStatus(status, 'upload-history', message + (uploadState.historyReady ? ' Showing the last known history.' : ''), 'stale', true);
       } });
+    }
+    async function clearUploadHistory(binding, clear) {
+      if (clear.disabled || !headerState.isAdmin || !uploadState.historyReady || uploadState.historyStale) return;
+      const modal = clear.closest('[data-upload-history-modal]');
+      const status = modal.querySelector('.crown-dialog__actions');
+      const current = () => uploadCurrent(binding) && headerState.isAdmin;
+      clear.disabled = true;
+      clear.setAttribute('aria-busy', 'true');
+      uploadReadStatus(status, 'upload-history', 'Clearing upload history…', 'pending');
+      const fallback = 'Could not clear upload history. Try again.';
+      try {
+        const response = await fetch('/api/upload/history/clear', { method: 'POST', headers: uploadAdminHeaders() });
+        const data = await response.json().catch(() => null);
+        if (!current()) return;
+        if (!response.ok || data?.ok !== true) {
+          const message = data?.schema === 'coronatio.upload.history.clear.v1' && typeof data.message === 'string' ? data.message : fallback;
+          uploadReadStatus(status, 'upload-history', message, 'stale');
+          return;
+        }
+        await refreshUploadHistory(binding, true);
+      } catch (_) {
+        if (current()) uploadReadStatus(status, 'upload-history', fallback, 'stale');
+      } finally {
+        clear.removeAttribute('aria-busy');
+        if (current()) clear.disabled = uploadState.historyStale || uploadState.history.length === 0;
+      }
     }
     async function refreshUploadBlacklist(binding = uploadBinding()) {
       const modal = binding?.root.querySelector('[data-upload-blacklist-modal]'), entries = modal?.querySelector('[data-upload-blacklist-entries]');
@@ -374,11 +419,16 @@ fn shell_document_4() -> &'static str {
       if (control.matches('[data-upload-refresh]')) { refreshUploadTree(); return; }
       if (control.matches('[data-upload-force-allow]')) { if (confirm(`WARNING: This will override security settings for ${uploadState.currentPath}. \nOnly continue if you understand the risks.`)) await postUploadDirectoryAction('/api/upload/force-permissions', 'Directory permissions updated successfully'); return; }
       if (control.matches('[data-upload-set-default]')) { await postUploadDirectoryAction('/api/upload/default-directory', 'Default directory updated successfully'); return; }
-      if (control.matches('[data-upload-history]')) { if (!headerState.isAdmin) return; openUploadModal('[data-upload-history-modal]'); await refreshUploadHistory(binding); return; }
+      if (control.matches('[data-upload-history]')) {
+        if (!headerState.isAdmin) return;
+        openCrownDialog(binding.root.querySelector('[data-upload-history-modal]'), control);
+        await refreshUploadHistory(binding);
+        return;
+      }
       if (control.matches('[data-upload-blacklist]')) { if (!headerState.isAdmin) return; openUploadModal('[data-upload-blacklist-modal]'); await refreshUploadBlacklist(binding); return; }
       if (control.matches('[data-upload-blacklist-add]')) { if (!headerState.isAdmin || !uploadState.blacklistReady || uploadState.blacklistStale) return; const input = binding.root.querySelector('[data-upload-blacklist-input]'); const next = input?.value?.trim(); if (next && !uploadState.blacklist.includes(next)) { uploadState.blacklist.push(next); input.value = ''; refreshUploadBlacklistDomOnly(binding); } return; }
       if (control.matches('[data-upload-blacklist-submit]')) { if (!headerState.isAdmin || !uploadState.blacklistReady || uploadState.blacklistStale) return; const response = await fetch('/api/upload/blacklist/update', { method: 'PUT', headers: uploadAdminHeaders(true), body: JSON.stringify({ blacklist: uploadState.blacklist }) }); if (uploadCurrent(binding) && response.ok) refreshUploadTree(); return; }
-      if (control.matches('[data-upload-clear-history]')) { if (!headerState.isAdmin || !uploadState.historyReady || uploadState.historyStale) return; const response = await fetch('/api/upload/history/clear', { method: 'POST', headers: uploadAdminHeaders() }); if (uploadCurrent(binding) && response.ok) await refreshUploadHistory(binding); return; }
+      if (control.matches('[data-upload-clear-history]')) { await clearUploadHistory(binding, control); return; }
       if (control.matches('[data-upload-pin-toggle]')) await toggleUploadPin(control); });
     syncUploadTreeSelection();
     let uptimeBaseSeconds = null; let uptimeBaseStamp = 0; function secondsFromUptimeText(text) {

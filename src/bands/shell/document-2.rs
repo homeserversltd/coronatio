@@ -96,12 +96,15 @@ fn shell_document_2() -> &'static str {
               <button type="button" class="ui-button ui-button--primary ui-button--medium" data-upload-submit disabled>Upload Selected Files</button>
             </div>
           </div>
-          <div class="modal-overlay" data-upload-history-backdrop data-upload-history-modal aria-hidden="true" hidden>
-            <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-history-title">
-              <button type="button" class="modal-close" data-upload-modal-close data-modal-dismiss aria-label="Close modal">×</button><h2 class="modal-title" id="upload-history-title">Upload History</h2>
-              <div class="modal-content upload-history-modal-content"><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div><div class="upload-history-list" hidden></div><button type="button" class="ui-button ui-button--danger ui-button--medium ui-button--full-width" data-upload-clear-history disabled>Clear History</button></div>
-            </section>
-          </div>
+          <dialog class="crown-dialog" data-size="full" data-upload-history-backdrop data-upload-history-modal aria-labelledby="upload-history-title">
+            <button type="button" class="crown-dialog__close" data-upload-modal-close data-modal-dismiss aria-label="Close">×</button>
+            <h2 class="crown-dialog__title" id="upload-history-title">Upload History</h2>
+            <div class="crown-dialog__body" tabindex="0" aria-label="Upload history entries">
+              <div data-upload-history-empty hidden><div class="uploadHistoryModal empty"><div class="upload-history-empty-message">No upload history available</div></div></div>
+              <div data-upload-history-list hidden></div>
+            </div>
+            <div class="crown-dialog__actions"><button type="button" class="ui-button ui-button--danger ui-button--medium ui-button--full-width" data-upload-clear-history disabled>Clear History</button></div>
+          </dialog>
           <div class="modal-overlay" data-upload-blacklist-backdrop data-upload-blacklist-modal aria-hidden="true" hidden>
             <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-blacklist-title">
               <button type="button" class="modal-close" data-upload-modal-close data-modal-dismiss aria-label="Close modal">×</button><h2 class="modal-title" id="upload-blacklist-title">Manage Blacklist</h2>
