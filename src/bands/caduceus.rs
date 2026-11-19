@@ -1007,7 +1007,7 @@ async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> 
 async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap) -> Response {
     const PATH: &str = "/api/v1/log/clear";
     let attended_headers = headers.clone();
-    let readback = load_trace::spawn_blocking_with_trace(move || {
+    let mut readback = load_trace::spawn_blocking_with_trace(move || {
         caduceus_actuate_json(&mutation_authority(), &attended_headers, PATH, serde_json::json!({}))
     }).await.unwrap_or_else(|_| mutation_task_failure_readback(PATH));
     let cleared = readback.ok
@@ -1016,6 +1016,11 @@ async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap) -> Resp
     let status = if cleared {
         StatusCode::OK
     } else {
+        // A successful HTTP reply does not by itself confirm the clear.
+        readback.ok = false;
+        if readback.first_missing_signal.is_empty() || readback.first_missing_signal == "none" {
+            readback.first_missing_signal = "caduceus-log-clear-unconfirmed".to_owned();
+        }
         StatusCode::from_u16(readback.status).ok()
             .filter(|status| status.is_client_error() || status.is_server_error())
             .unwrap_or(StatusCode::BAD_GATEWAY)
