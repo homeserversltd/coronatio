@@ -981,8 +981,8 @@ fn admin_logs_page_fragment(readback: &CaduceusHttpReadback, level: Option<u64>,
 async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
     let (offset, limit) = admin_log_pagination(&uri);
     let path = format!("/api/v1/log/read?offset={offset}&limit={limit}");
+    let context = MutationRequestContext::attended_document_from_headers(&headers);
     let (readback, level) = load_trace::spawn_blocking_with_trace(move || {
-        let context = MutationRequestContext::attended_document_from_headers(&headers);
         let attendance = match mutation_authority().authorize(&context) {
             Ok(attendance) => attendance,
             Err(refusal) => return (mutation_refusal_readback(&path, refusal), None),
@@ -991,7 +991,7 @@ async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> 
         let document = Some(attendance.document.as_str());
         let readback = caduceus_http_with_attendance_and_document("GET", &path, proof, document);
         let level = readback.ok.then(|| {
-            // An optional level must not hold up an otherwise readable page.
+            // The page waits for this optional level read for at most its timeout.
             caduceus_http_with_attendance_and_document_timeout(
                 "GET", "/api/v1/log/level", proof, document, Duration::from_millis(750),
             )
@@ -1000,6 +1000,7 @@ async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> 
             .filter(|level| (1..=5).contains(level));
         (readback, level)
     }).await.unwrap_or_else(|_| (caduceus_failure_readback("/api/v1/log/read", "caduceus-log-read-task-failed"), None));
+    log_admin_action_admission(&headers, "/admit/admin/action/view-logs", &readback, StatusCode::OK);
     admin_html_fragment_response(StatusCode::OK, admin_logs_page_fragment(&readback, level, offset, limit))
 }
 
@@ -1009,20 +1010,29 @@ async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap) -> Resp
     let readback = load_trace::spawn_blocking_with_trace(move || {
         caduceus_actuate_json(&mutation_authority(), &attended_headers, PATH, serde_json::json!({}))
     }).await.unwrap_or_else(|_| mutation_task_failure_readback(PATH));
-    if readback.ok && (200..300).contains(&readback.status) && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
+    let cleared = readback.ok
+        && (200..300).contains(&readback.status)
+        && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true);
+    let status = if cleared {
+        StatusCode::OK
+    } else {
+        StatusCode::from_u16(readback.status).ok()
+            .filter(|status| status.is_client_error() || status.is_server_error())
+            .unwrap_or(StatusCode::BAD_GATEWAY)
+    };
+    log_admin_action_admission(&headers, "/admit/admin/action/view-logs-clear", &readback, status);
+    if cleared {
         // Start the new page at the beginning of what is now in the log.
         return admin_logs_fragment_route(headers, Uri::from_static("/admit/admin/action/view-logs")).await;
     }
-    let status = StatusCode::from_u16(readback.status).ok()
-        .filter(|status| status.is_client_error() || status.is_server_error())
-        .unwrap_or(StatusCode::BAD_GATEWAY);
     let message = match status {
         StatusCode::UNAUTHORIZED => "Enter Admin Mode to clear appliance logs.",
         StatusCode::BAD_REQUEST if readback.first_missing_signal == "caduceus-attendance-document-required" =>
             "Enter Admin Mode to clear appliance logs.",
         StatusCode::NOT_FOUND => "Clearing appliance logs is not available on this device yet.",
         _ if readback.status == 0 => "The appliance did not confirm the log was cleared. Reopen Appliance Logs to see what remains.",
-        _ => "The appliance refused to clear the log.",
+        status if status.is_client_error() => "The appliance refused to clear the log.",
+        _ => "Could not clear the appliance log. Try again.",
     };
     admin_html_fragment_response(status, format!(r#"<p data-admin-log-clear-refusal>{message}</p>"#))
 }
