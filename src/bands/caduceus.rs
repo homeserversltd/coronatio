@@ -791,7 +791,10 @@ fn hyalos_upload_history_from_tail(readback: &CaduceusHttpReadback) -> Option<Ve
 
 fn hyalos_upload_history_size(bytes: u64) -> String {
     let (scale, unit) = match bytes {
-        0..=1023 => return format!("{bytes} B"),
+        0..=1023 => {
+            let kilobytes = format!("{:.3}", bytes as f64 / 1024.0);
+            return format!("{} KB", kilobytes.trim_end_matches('0').trim_end_matches('.'));
+        }
         1024..=1_048_575 => (1024.0, "KB"),
         1_048_576..=1_073_741_823 => (1_048_576.0, "MB"),
         _ => (1_073_741_824.0, "GB"),

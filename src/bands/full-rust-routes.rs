@@ -670,7 +670,6 @@ async fn clear_upload_history_route(headers: axum::http::HeaderMap) -> Response 
         "schema": "coronatio.upload.history.clear.v1",
         "ok": ok,
         "message": message,
-        "deleted": if ok { readback.body.get("deleted").and_then(serde_json::Value::as_u64) } else { None },
     }))).into_response()
 }
 
