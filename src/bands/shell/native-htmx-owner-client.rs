@@ -375,17 +375,32 @@ fn shell_native_htmx_owner_client() -> &'static str {
 
     const nativeAdminLogsPath = '/admit/admin/action/view-logs';
     const nativeAdminLogsSlot = 'dialog.crown-dialog#admin-appliance-logs > #admin-log-slot';
+    const nativeAdminLogsButton = 'button[data-admin-action-id="view-logs"][data-crown-dialog-open="admin-appliance-logs"]';
     function nativeAdminLogsSourceAllowed(request, source, path, pane) {
       if (pane?.dataset.panePanel !== 'admin' || !headerState.isAdmin || request !== source
           || !(request instanceof HTMLButtonElement) || request.disabled || request.getAttribute('hx-get') !== path) return false;
       if (path === nativeAdminLogsPath) {
-        return request === pane.querySelector('button[data-admin-action-id="view-logs"][data-crown-dialog-open="admin-appliance-logs"]');
+        return request === pane.querySelector(nativeAdminLogsButton);
       }
       const slot = request.closest(nativeAdminLogsSlot);
       return path.startsWith(`${nativeAdminLogsPath}?`)
         && /^offset=\d+&limit=\d+$/.test(path.slice(nativeAdminLogsPath.length + 1))
         && request.matches('[data-admin-log-pager="previous"], [data-admin-log-pager="next"]')
         && Boolean(slot && pane.contains(slot) && slot.parentElement.matches(':modal'));
+    }
+
+    function showNativeAdminLogsReadRefusal(pane, source) {
+      // The real opener can still open the dialog while the pane has no read binding.
+      // Report that refusal in its own slot, never in the requested target or over an active read.
+      if (!source || pane?.dataset.panePanel !== 'admin' || !headerState.isAdmin
+          || source !== pane.querySelector(nativeAdminLogsButton)) return;
+      const slot = pane.querySelector(nativeAdminLogsSlot);
+      if (!slot || nativeHtmxTargetOwners.has(slot)) return;
+      const notice = document.createElement('p');
+      notice.className = 'crown-dialog__body';
+      notice.setAttribute('role', 'status');
+      notice.textContent = 'Appliance logs are unavailable. Close and try again.';
+      slot.replaceChildren(notice);
     }
 
     function nativeHtmxReadSourceAllowed(guest, request, source, path, pane) {
@@ -871,6 +886,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
             || !target || target !== pane.querySelector(nativeAdminLogsSlot)
             || request.getAttribute('hx-swap') !== 'innerHTML') {
           event.preventDefault();
+          showNativeAdminLogsReadRefusal(pane, source);
           return;
         }
       } else {
@@ -886,6 +902,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
       const binding = scaffoldRegistry.capture(guest);
       if (!binding || !scaffoldRegistry.current(binding) || binding.root !== pane || !target || !binding.root.contains(target)) {
         event.preventDefault();
+        if (logsRead) showNativeAdminLogsReadRefusal(pane, source);
         return;
       }
       if (guest === 'upload' && scaffoldRegistry.slot(binding, 'upload-tree') !== target) {
