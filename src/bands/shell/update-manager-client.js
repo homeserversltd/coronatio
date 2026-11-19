@@ -75,7 +75,10 @@
           const pending = rows.filter(row => !row.silenced), muted = rows.filter(row => row.silenced);
           content.innerHTML = !(Array.isArray(interactables) || Array.isArray(interactables?.interactables)) ? '<p>Updates unavailable</p>' : rows.length ? draw(pending, false) + (muted.length ? `<p>Silenced</p>${draw(muted, true)}` : '') : '<p>Nothing waiting</p>';
         } else {
-          content.innerHTML = runs.map(run => `<article><p>${esc(localTime(run.finished_at))} · ${esc(run.outcome)} · ${esc(run.duration_ms)} ms · ${esc(run.module_count)} modules · ${esc(run.updated_count)} updated</p>${(Array.isArray(run.failures) ? run.failures : []).map(f => `<p>${esc(f.module)}: ${esc(f.signal)} <button type="button" data-copy-failure="${esc(`${f.module}: ${f.signal}`)}">Copy</button></p>`).join('')}</article>`).join('') || '<p>No update history available.</p>';
+          const failureOnly = Number.isInteger(history?.level) && history.level < 3;
+          const note = failureOnly ? '<p>Only failed updates are recorded on this device.</p>' : '';
+          const entries = runs.map(run => `<article><p>${esc(localTime(run.finished_at))} · ${esc(run.outcome)} · ${esc(run.duration_ms)} ms · ${esc(run.module_count)} modules · ${esc(run.updated_count)} updated</p>${(Array.isArray(run.failures) ? run.failures : []).map(f => `<p>${esc(f.module)}: ${esc(f.signal)} <button type="button" data-copy-failure="${esc(`${f.module}: ${f.signal}`)}">Copy</button></p>`).join('')}</article>`).join('');
+          content.innerHTML = note + entries || (history === null ? '<p>No update history available.</p>' : '<p>No updates recorded yet.</p>');
         }
       }
       modal.addEventListener('click', async event => {

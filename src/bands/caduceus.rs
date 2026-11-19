@@ -909,21 +909,56 @@ fn admin_log_pagination(uri: &Uri) -> (usize, usize) {
     (offset, limit)
 }
 
-fn admin_logs_page_fragment(readback: &CaduceusHttpReadback, offset: usize, limit: usize) -> String {
-    let lines = readback.body.get("lines").and_then(serde_json::Value::as_array);
+fn admin_logs_page_fragment(readback: &CaduceusHttpReadback, level: Option<u64>, offset: usize, limit: usize) -> String {
+    let rows = readback.body.get("rows").and_then(serde_json::Value::as_array);
     let total = readback.body.get("total_lines").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
-    let returned = lines.map_or(0, Vec::len);
+    let returned = rows.map_or(0, Vec::len);
     let previous = offset.saturating_sub(limit);
     let next = offset.saturating_add(returned);
     let previous_disabled = if offset == 0 { " disabled" } else { "" };
     let next_disabled = if returned == 0 || next >= total { " disabled" } else { "" };
-    let content = if readback.ok {
-        if returned == 0 {
-            "<p data-admin-log-empty>No appliance log lines are available.</p>".to_string()
+    let recording = level.map_or_else(String::new, |level| format!(" · recording level {level} of 5"));
+    let page = if let Some(rows) = rows.filter(|rows| readback.ok && rows.iter().all(serde_json::Value::is_object)) {
+        let content = if rows.is_empty() {
+            "<p data-admin-log-empty>No appliance logs have been recorded.</p>".to_string()
         } else {
-            let lines = lines.unwrap_or(&Vec::new()).iter().filter_map(serde_json::Value::as_str).map(html_escape).collect::<Vec<_>>().join("");
-            format!(r#"<pre data-admin-log-lines>{lines}</pre>"#)
-        }
+            let entries = rows.iter().map(|row| {
+                let text = |key| row.get(key).and_then(serde_json::Value::as_str).unwrap_or_default();
+                let at = text("at");
+                let when = if at.is_empty() {
+                    String::new()
+                } else {
+                    let utc = at.strip_suffix('Z').or_else(|| at.strip_suffix("+00:00")).unwrap_or(at);
+                    format!(r#"<time datetime="{}">{} UTC</time>"#, html_escape(at), html_escape(&utc.replacen('T', " ", 1)))
+                };
+                let mut result = html_escape(text("outcome"));
+                if row.get("trouble").and_then(serde_json::Value::as_bool) == Some(true) {
+                    if !result.is_empty() { result.push_str(" · "); }
+                    result.push_str(r#"<span class="ui-badge ui-badge--danger ui-badge--small">Trouble</span>"#);
+                    let signal = text("signal");
+                    if !signal.is_empty() {
+                        result.push_str(" · ");
+                        result.push_str(&html_escape(signal));
+                    }
+                }
+                format!(
+                    r#"    <tr><td data-label="When">{when}</td><td data-label="Who">{}</td><td data-label="What">{}</td><td data-label="Target">{}</td><td data-label="Outcome"><span>{result}</span></td></tr>"#,
+                    html_escape(text("organ")), html_escape(text("verb")), html_escape(text("target")),
+                )
+            }).collect::<Vec<_>>().join("\n");
+            format!(r#"<div class="ui-table ui-table--ruled ui-table--stack-list" style="overflow-x: auto; border-inline-end: 2px solid var(--border)" role="region" aria-label="Appliance log entries" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">What</th><th scope="col">Target</th><th scope="col">Outcome</th></tr></thead>
+    <tbody>
+{entries}
+    </tbody>
+  </table>
+</div>"#)
+        };
+        format!(r#"<p aria-live="polite">Newest first · {returned} shown of {total}{recording}</p>
+  {content}"#)
+    } else if readback.ok {
+        "<p class=\"error\" data-admin-log-error>The appliance did not return log entries.</p>".to_string()
     } else {
         format!(
             r#"<p class="error" data-admin-log-error>Could not read appliance logs: <code>{}</code></p>"#,
@@ -932,12 +967,13 @@ fn admin_logs_page_fragment(readback: &CaduceusHttpReadback, offset: usize, limi
     };
     format!(
         r##"<section class="crown-dialog__body" data-admin-log-page tabindex="0" aria-label="Log entries">
-  <p aria-live="polite">Newest first · {returned} shown of {total}</p>
-  {content}
+  {page}
 </section>
+<div data-admin-log-clear-status role="status"></div>
 <div class="crown-dialog__actions">
   <button type="button" class="ui-button ui-button--secondary" data-admin-log-pager="previous" hx-get="/admit/admin/action/view-logs?offset={previous}&amp;limit={limit}" hx-target="#admin-log-slot" hx-swap="innerHTML"{previous_disabled}>Previous</button>
   <button type="button" class="ui-button ui-button--secondary" data-admin-log-pager="next" hx-get="/admit/admin/action/view-logs?offset={next}&amp;limit={limit}" hx-target="#admin-log-slot" hx-swap="innerHTML"{next_disabled}>Next</button>
+  <button type="button" class="ui-button ui-button--danger" data-admin-log-clear hx-post="/admit/admin/action/view-logs-clear" hx-target="#admin-log-slot" hx-swap="innerHTML" hx-disabled-elt="this" hx-trigger="click queue:none" hx-confirm="Clear the entire appliance log? All log entries will be permanently deleted and cannot be recovered.">Clear</button>
 </div>"##,
     )
 }
@@ -945,9 +981,50 @@ fn admin_logs_page_fragment(readback: &CaduceusHttpReadback, offset: usize, limi
 async fn admin_logs_fragment_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
     let (offset, limit) = admin_log_pagination(&uri);
     let path = format!("/api/v1/log/read?offset={offset}&limit={limit}");
-    let readback = admin_fragment_caduceus_request(&headers, "GET", &path);
-    log_admin_action_admission(&headers, "/admit/admin/action/view-logs", &readback, StatusCode::OK);
-    admin_html_fragment_response(StatusCode::OK, admin_logs_page_fragment(&readback, offset, limit))
+    let (readback, level) = load_trace::spawn_blocking_with_trace(move || {
+        let context = MutationRequestContext::attended_document_from_headers(&headers);
+        let attendance = match mutation_authority().authorize(&context) {
+            Ok(attendance) => attendance,
+            Err(refusal) => return (mutation_refusal_readback(&path, refusal), None),
+        };
+        let proof = Some(&attendance.proof);
+        let document = Some(attendance.document.as_str());
+        let readback = caduceus_http_with_attendance_and_document("GET", &path, proof, document);
+        let level = readback.ok.then(|| {
+            // An optional level must not hold up an otherwise readable page.
+            caduceus_http_with_attendance_and_document_timeout(
+                "GET", "/api/v1/log/level", proof, document, Duration::from_millis(750),
+            )
+        }).filter(|reply| reply.ok && (200..300).contains(&reply.status))
+            .and_then(|reply| reply.body.get("level").and_then(serde_json::Value::as_u64))
+            .filter(|level| (1..=5).contains(level));
+        (readback, level)
+    }).await.unwrap_or_else(|_| (caduceus_failure_readback("/api/v1/log/read", "caduceus-log-read-task-failed"), None));
+    admin_html_fragment_response(StatusCode::OK, admin_logs_page_fragment(&readback, level, offset, limit))
+}
+
+async fn admin_logs_clear_fragment_route(headers: axum::http::HeaderMap) -> Response {
+    const PATH: &str = "/api/v1/log/clear";
+    let attended_headers = headers.clone();
+    let readback = load_trace::spawn_blocking_with_trace(move || {
+        caduceus_actuate_json(&mutation_authority(), &attended_headers, PATH, serde_json::json!({}))
+    }).await.unwrap_or_else(|_| mutation_task_failure_readback(PATH));
+    if readback.ok && (200..300).contains(&readback.status) && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
+        // Start the new page at the beginning of what is now in the log.
+        return admin_logs_fragment_route(headers, Uri::from_static("/admit/admin/action/view-logs")).await;
+    }
+    let status = StatusCode::from_u16(readback.status).ok()
+        .filter(|status| status.is_client_error() || status.is_server_error())
+        .unwrap_or(StatusCode::BAD_GATEWAY);
+    let message = match status {
+        StatusCode::UNAUTHORIZED => "Enter Admin Mode to clear appliance logs.",
+        StatusCode::BAD_REQUEST if readback.first_missing_signal == "caduceus-attendance-document-required" =>
+            "Enter Admin Mode to clear appliance logs.",
+        StatusCode::NOT_FOUND => "Clearing appliance logs is not available on this device yet.",
+        _ if readback.status == 0 => "The appliance did not confirm the log was cleared. Reopen Appliance Logs to see what remains.",
+        _ => "The appliance refused to clear the log.",
+    };
+    admin_html_fragment_response(status, format!(r#"<p data-admin-log-clear-refusal>{message}</p>"#))
 }
 
 async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle_id): Path<String>) -> impl IntoResponse {

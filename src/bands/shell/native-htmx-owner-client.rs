@@ -191,6 +191,8 @@ fn shell_native_htmx_owner_client() -> &'static str {
           || owner.binding.root !== owner.pane
           || !owner.pane.contains(owner.target)
           || !owner.target.isConnected) return false;
+      if (owner.logsClear && (!headerState.isAdmin || !coronatioAttendanceRuntime.currentAttendance
+          || !owner.target.parentElement.matches(':modal'))) return false;
       return !requireSource || (owner.source?.isConnected && owner.pane.contains(owner.source));
     }
 
@@ -297,6 +299,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
     }
 
     function failNativeHtmxOwner(owner, reason = 'Read unavailable') {
+      if (owner?.logsClear) return failNativeAdminLogsClear(owner);
       if (!nativeHtmxOwnerCurrent(owner, false)) return false;
       owner.responseHandled = true;
       const binding = owner.binding;
@@ -338,7 +341,8 @@ fn shell_native_htmx_owner_client() -> &'static str {
 
     function nativeHtmxResponseFailure(owner, html) {
       const source = String(html || '');
-      if (/data-(?:cartridge-fault|cartridge-fault-kind|service-card-fault-kind|admin-membrane-refusal)=/.test(source)) {
+      if (!owner.target.matches(nativeAdminLogsSlot)
+          && /data-(?:cartridge-fault|cartridge-fault-kind|service-card-fault-kind|admin-membrane-refusal)=/.test(source)) {
         return 'Read returned an upstream refusal';
       }
       const template = document.createElement('template');
@@ -376,6 +380,28 @@ fn shell_native_htmx_owner_client() -> &'static str {
     const nativeAdminLogsPath = '/admit/admin/action/view-logs';
     const nativeAdminLogsSlot = 'dialog.crown-dialog#admin-appliance-logs > #admin-log-slot';
     const nativeAdminLogsButton = 'button[data-admin-action-id="view-logs"][data-crown-dialog-open="admin-appliance-logs"]';
+    const nativeAdminLogsClearPath = '/admit/admin/action/view-logs-clear';
+    const nativeAdminLogsClearButton = 'button[data-admin-log-clear]';
+    function nativeAdminLogsClearAllowed(request, source, target, pane) {
+      const slot = pane?.querySelector(nativeAdminLogsSlot);
+      return pane?.dataset.panePanel === 'admin' && headerState.isAdmin && Boolean(coronatioAttendanceRuntime.currentAttendance)
+        && Boolean(slot && target === slot && slot.parentElement.matches(':modal'))
+        && source instanceof HTMLButtonElement && request === source && !source.disabled
+        && source === slot.querySelector(nativeAdminLogsClearButton)
+        && source.getAttribute('hx-post') === nativeAdminLogsClearPath && source.getAttribute('hx-swap') === 'innerHTML';
+    }
+
+    function setNativeAdminLogsClearStatus(slot, message) {
+      const status = slot.querySelector('[data-admin-log-clear-status]');
+      if (status) status.textContent = message;
+    }
+
+    function failNativeAdminLogsClear(owner, message = 'Could not confirm that the appliance log was cleared. Reopen Appliance Logs to see what remains.') {
+      if (nativeHtmxOwnerCurrent(owner, false)) setNativeAdminLogsClearStatus(owner.target, message);
+      // A clear is never a retryable read, even when its answer did not arrive.
+      return retireNativeHtmxOwner(owner, 'Log clear did not return a page', { abort: true });
+    }
+
     function nativeAdminLogsSourceAllowed(request, source, path, pane) {
       if (pane?.dataset.panePanel !== 'admin' || !headerState.isAdmin || request !== source
           || !(request instanceof HTMLButtonElement) || request.disabled || request.getAttribute('hx-get') !== path) return false;
@@ -878,9 +904,18 @@ fn shell_native_htmx_owner_client() -> &'static str {
       const guest = pane?.dataset.panePanel;
       const path = String(detail.requestConfig?.path || request?.getAttribute('hx-get') || '');
       const finalPath = detail.pathInfo?.finalRequestPath;
+      const finalPathname = finalPath && new URL(finalPath, document.baseURI).pathname;
+      const logsClear = path === nativeAdminLogsClearPath || finalPathname === nativeAdminLogsClearPath
+        || source?.matches(nativeAdminLogsClearButton);
       const logsRead = target?.id === 'admin-log-slot'
-        || (finalPath && new URL(finalPath, document.baseURI).pathname === nativeAdminLogsPath);
-      if (logsRead) {
+        || finalPathname === nativeAdminLogsPath;
+      if (logsClear) {
+        if (verb !== 'post' || !detail.xhr || path !== nativeAdminLogsClearPath || finalPath !== nativeAdminLogsClearPath
+            || !nativeAdminLogsClearAllowed(request, source, target, pane)) {
+          event.preventDefault();
+          return;
+        }
+      } else if (logsRead) {
         // Never let a mismatched log read fall through to an unowned HTMX swap.
         if (verb !== 'get' || !detail.xhr || !nativeAdminLogsSourceAllowed(request, source, path, pane)
             || !target || target !== pane.querySelector(nativeAdminLogsSlot)
@@ -902,7 +937,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
       const binding = scaffoldRegistry.capture(guest);
       if (!binding || !scaffoldRegistry.current(binding) || binding.root !== pane || !target || !binding.root.contains(target)) {
         event.preventDefault();
-        if (logsRead) showNativeAdminLogsReadRefusal(pane, source);
+        if (logsRead && !logsClear) showNativeAdminLogsReadRefusal(pane, source);
         return;
       }
       if (guest === 'upload' && scaffoldRegistry.slot(binding, 'upload-tree') !== target) {
@@ -916,6 +951,11 @@ fn shell_native_htmx_owner_client() -> &'static str {
       const readKey = `htmx:${nativeReadTargetKey(target, guest)}`;
       const prior = binding.readOwners.get(readKey);
       if (prior && !prior.retired) {
+        // Paging must not abort an in-flight clear or cover its fresh readback.
+        if (prior.logsClear) {
+          event.preventDefault();
+          return;
+        }
         if (!nativeHtmxOwnerCurrent(prior)) {
           retireNativeHtmxOwner(prior, 'Read owner retired', { abort: true });
         } else if (prior.path === path) {
@@ -926,12 +966,14 @@ fn shell_native_htmx_owner_client() -> &'static str {
         }
       }
       const requestedTimeout = Number(detail.requestConfig?.timeout || detail.timeout);
-      const timeoutMs = Number.isSafeInteger(requestedTimeout) && requestedTimeout > 0
-        ? Math.min(requestedTimeout, 30000)
-        : DEFAULT_NATIVE_READ_TIMEOUT_MS;
+      const readTimeoutMs = Number.isSafeInteger(requestedTimeout) && requestedTimeout > 0
+        ? Math.min(requestedTimeout, 30000) : DEFAULT_NATIVE_READ_TIMEOUT_MS;
+      // An attended clear is followed by another attended read.
+      const timeoutMs = logsClear ? 16000 : readTimeoutMs;
       const swap = String(request?.getAttribute('hx-swap') || detail.requestConfig?.swap || 'innerHTML');
       const owner = {
         guest, pane, source, request, target, binding, xhr: detail.xhr, path, swap,
+        logsClear,
         swapStyle: swap.trim().split(/\s+/)[0], readKey, timeoutMs,
         retired: false, release: null, timer: null, originalStatusText: undefined,
         retire: reason => retireNativeHtmxOwner(owner, reason, { abort: true })
@@ -941,7 +983,8 @@ fn shell_native_htmx_owner_client() -> &'static str {
       nativeHtmxOwners.set(owner.xhr, owner);
       nativeHtmxTargetOwners.set(target, owner);
       scaffoldRegistry.clearRetry(binding, readKey);
-      if (logsRead && path === nativeAdminLogsPath) {
+      if (logsClear) setNativeAdminLogsClearStatus(target, 'Clearing appliance logs…');
+      else if (logsRead && path === nativeAdminLogsPath) {
         target.replaceChildren();
         displayNativeReadState(owner, 'Loading appliance logs…');
       } else clearNativeReadState(owner);
@@ -958,7 +1001,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
         retireNativeHtmxOwner(owner, retirement?.reason || 'Guest retired', { abort: true });
       });
       owner.timer = window.setTimeout(() => failNativeHtmxOwner(owner, 'Read timed out'), timeoutMs + 25);
-      owner.slowTimer = window.setTimeout(() => displayNativeReadState(owner, `${guest} is still loading.`), Math.min(DEFAULT_NATIVE_SLOW_READ_MS, timeoutMs - 1));
+      if (!logsClear) owner.slowTimer = window.setTimeout(() => displayNativeReadState(owner, `${guest} is still loading.`), Math.min(DEFAULT_NATIVE_SLOW_READ_MS, timeoutMs - 1));
     });
 
     document.body.addEventListener('htmx:oobBeforeSwap', event => {
@@ -982,6 +1025,14 @@ fn shell_native_htmx_owner_client() -> &'static str {
         return;
       }
       const status = Number(owner.xhr?.status || 0);
+      if (owner.logsClear && (status < 200 || status >= 300)) {
+        event.detail.shouldSwap = false;
+        const reply = document.createElement('template');
+        reply.innerHTML = event.detail?.serverResponse || '';
+        const refusal = reply.content.querySelector('p[data-admin-log-clear-refusal]');
+        failNativeAdminLogsClear(owner, refusal?.textContent || undefined);
+        return;
+      }
       const declaredSwap = String(event.detail?.swapOverride == null ? owner.swap : event.detail.swapOverride).trim();
       const declaredParts = declaredSwap.split(/\s+/);
       const effectiveOwner = { ...owner, swapStyle: declaredParts[0] };
@@ -1067,6 +1118,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
       if (owner.target.matches(nativeAdminLogsSlot)) {
         // The morph retains the pager nodes; rebind HTMX to their updated URLs.
         window.htmx?.process(owner.target);
+        localizeAdminLogTimes(owner.target);
       }
       if (owner.guest === 'upload') syncUploadTreeSelection();
       if (owner.guest === 'upload') {
@@ -1077,7 +1129,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
         clearNativeUploadTreeGeneratedLabel(owner.target);
       }
       applyAdminDomState();
-      clearNativeReadState(owner, { restoreStatus: false });
+      if (!owner.logsClear) clearNativeReadState(owner, { restoreStatus: false });
       retireNativeHtmxOwner(owner, 'Read completed');
     });
 

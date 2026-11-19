@@ -117,6 +117,12 @@ fn shell_document_4_tail() -> &'static str {
       if (source instanceof Element && source.closest(adminActionButtonSelector)) { restoreAdminActionControls(); showCoronatioToast('System action could not be started.', 'error'); }
       if (source instanceof Element && source.closest('[data-service-card] .ui-toggle__input')) { restoreAdminToggle(source); showCoronatioToast('Service change could not be started.', 'error'); }
     });
+    function localizeAdminLogTimes(slot) {
+      slot.querySelectorAll('[data-admin-log-page] time[datetime]').forEach(time => {
+        const local = new Date(time.dateTime);
+        if (!Number.isNaN(local.valueOf())) time.textContent = local.toLocaleString();
+      });
+    }
     function closeAdminLogsForTeardown(root) {
       const dialog = root.querySelector('dialog#admin-appliance-logs:modal');
       if (dialog) closeCrownDialog(dialog);
