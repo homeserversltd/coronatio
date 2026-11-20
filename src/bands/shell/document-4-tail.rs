@@ -121,7 +121,8 @@ fn shell_document_4_tail() -> &'static str {
       const { adminRestartName: name, adminRestartKind: kind } = button.dataset;
       if (button.disabled || !status || !label || !/^[a-z0-9][a-z0-9-]*$/.test(name) || !['face', 'guest'].includes(kind)) return;
       const face = kind === 'face';
-      if (!window.confirm(`Restart ${label} now?${face ? ' This page will reconnect.' : ''}`)) return;
+      const confirmation = face ? 'Restart Coronatio now? This page will reconnect.' : `Restart ${label} now?`;
+      if (!window.confirm(confirmation)) return;
       const current = () => adminRestartCurrent(dialog, attendance) && slot.contains(button);
       if (!current()) return;
       button.disabled = true;
