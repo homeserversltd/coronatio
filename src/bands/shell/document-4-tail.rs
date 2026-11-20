@@ -39,9 +39,45 @@ fn shell_document_4_tail() -> &'static str {
       if (!success) return `${label} could not be started.`;
       return `${label} initiated.`;
     }
+    const restartWebsiteActionId = 'restart-website';
+    let websiteRestartPending = false;
+    function waitForWebsiteRestart(button) {
+      if (websiteRestartPending) return;
+      websiteRestartPending = true;
+      button.disabled = true;
+      const timeoutMs = 90000;
+      const deadline = performance.now() + timeoutMs;
+      showCoronatioToast('Website restarting…', 'info', timeoutMs);
+      let probe;
+      const finish = healthy => {
+        window.clearInterval(poll);
+        window.clearTimeout(timeout);
+        probe?.abort();
+        if (healthy) {
+          window.location.reload();
+        } else {
+          websiteRestartPending = false;
+          if (!button.dataset.adminActionOriginal) button.disabled = false;
+          showCoronatioToast('The website did not come back within 90 seconds.', 'error');
+        }
+      };
+      const poll = window.setInterval(async () => {
+        if (performance.now() >= deadline) return;
+        // A stalled health probe must not keep later probes from being sent.
+        probe?.abort();
+        const controller = new AbortController();
+        probe = controller;
+        try {
+          const response = await fetch('/health', { cache: 'no-store', signal: controller.signal });
+          if (response.status === 200 && (await response.json())?.ok === true
+              && !controller.signal.aborted && performance.now() < deadline) finish(true);
+        } catch (_) { /* The listener may still be down. */ }
+      }, 1000);
+      const timeout = window.setTimeout(() => finish(false), timeoutMs);
+    }
     function restoreAdminActionControls() {
       document.querySelectorAll(adminActionButtonSelector).forEach(button => {
-        button.disabled = false;
+        button.disabled = websiteRestartPending && button.dataset.adminActionId === restartWebsiteActionId;
         if (button.dataset.adminActionOriginal) {
           button.innerHTML = button.dataset.adminActionOriginal;
           delete button.dataset.adminActionOriginal;
@@ -76,6 +112,10 @@ fn shell_document_4_tail() -> &'static str {
       }
       const actionButton = source.closest(adminActionButtonSelector);
       if (!actionButton) return;
+      if (websiteRestartPending && actionButton.dataset.adminActionId === restartWebsiteActionId) {
+        event.preventDefault();
+        return;
+      }
       document.querySelectorAll(adminActionButtonSelector).forEach(button => {
         button.disabled = true;
         if (!button.dataset.adminActionOriginal) button.dataset.adminActionOriginal = button.innerHTML;
@@ -103,7 +143,9 @@ fn shell_document_4_tail() -> &'static str {
       if (mutation) {
         const label = serviceCard.querySelector('h3')?.textContent || 'Service';
         const success = mutation.classList.contains('success');
-        showCoronatioToast(success ? `${label} change initiated; state re-read.` : `${label} could not be changed.`, success ? 'success' : 'error');
+        const sshFailure = !success && mutation.dataset.adminMutationResult === 'ssh-service'
+          ? mutation.querySelector('span')?.textContent : '';
+        showCoronatioToast(sshFailure || (success ? `${label} change initiated; state re-read.` : `${label} could not be changed.`), success ? 'success' : 'error');
         mutation.remove();
       }
     });
@@ -112,9 +154,31 @@ fn shell_document_4_tail() -> &'static str {
       if (source instanceof Element && source.closest(adminActionButtonSelector)) restoreAdminActionControls();
       if (source instanceof Element && source.closest('[data-service-card] .ui-toggle__input')) restoreAdminToggle(source);
     });
+    document.body.addEventListener('htmx:sendError', event => {
+      const source = event.detail?.elt;
+      const button = source instanceof Element ? source.closest(adminActionButtonSelector) : null;
+      if (button?.dataset.adminActionId === restartWebsiteActionId) waitForWebsiteRestart(button);
+    });
     document.body.addEventListener('htmx:responseError', event => {
       const source = event.detail?.elt;
-      if (source instanceof Element && source.closest(adminActionButtonSelector)) { restoreAdminActionControls(); showCoronatioToast('System action could not be started.', 'error'); }
+      const button = source instanceof Element ? source.closest(adminActionButtonSelector) : null;
+      if (button?.dataset.adminActionId === restartWebsiteActionId) {
+        restoreAdminActionControls();
+        // HTMX does not swap the error reply. Read the crown's result in an
+        // inert template rather than treating an upstream refusal as a restart.
+        const reply = document.createElement('template');
+        reply.innerHTML = event.detail?.xhr?.responseText || '';
+        const result = reply.content.querySelector('[data-admin-action-result-fragment="restart-website"]');
+        if (result) {
+          const signal = result.querySelector('code')?.textContent?.trim();
+          const message = adminActionToast(restartWebsiteActionId, false);
+          showCoronatioToast(signal && signal !== 'none' ? `${message} (${signal})` : message, 'error');
+        } else {
+          waitForWebsiteRestart(button);
+        }
+        return;
+      }
+      if (button) { restoreAdminActionControls(); showCoronatioToast('System action could not be started.', 'error'); }
       if (source instanceof Element && source.closest('[data-service-card] .ui-toggle__input')) { restoreAdminToggle(source); showCoronatioToast('Service change could not be started.', 'error'); }
     });
     function localizeAdminLogTimes(slot) {
