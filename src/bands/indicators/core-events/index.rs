@@ -897,8 +897,10 @@ fn collect_stats_indicator_topic_from_readbacks(
         let signal = stats_signal(current.body.get(block_name), "caduceus-stats-block-missing");
         return unavailable_topic_sample(topic_id, signal);
     };
-    if let Some(signal) = stale_block_signal(block, stats_block_stale_after(block_name), block_name) {
-        return unavailable_topic_sample(topic_id, signal);
+    if block_name != "vpn" {
+        if let Some(signal) = stale_block_signal(block, stats_block_stale_after(block_name), block_name) {
+            return unavailable_topic_sample(topic_id, signal);
+        }
     }
     let mut sample = match topic_id {
         "power.status" => project_power_guest(block),
@@ -1003,7 +1005,9 @@ pub(crate) fn completed_current_indicator_projections(current: CaduceusStatsRead
         let sample = if !has_body {
             unavailable_topic_sample(topic_id, source_signal.clone())
         } else if let Some(block) = current.body.get(block_name).and_then(serde_json::Value::as_object) {
-            if let Some(signal) = stale_block_signal(block, stats_block_stale_after(block_name), block_name) {
+            if block_name == "vpn" {
+                project_vpn_guest(block)
+            } else if let Some(signal) = stale_block_signal(block, stats_block_stale_after(block_name), block_name) {
                 unavailable_topic_sample(topic_id, signal)
             } else {
                 match topic_id {
@@ -1011,7 +1015,6 @@ pub(crate) fn completed_current_indicator_projections(current: CaduceusStatsRead
                     "tailscale.status" => project_tailscale_guest(block),
                     "internet.status" => project_internet_guest(block),
                     "services.status" => project_services_completed(block),
-                    "vpn.status" => project_vpn_guest(block),
                     _ => unavailable_topic_sample(topic_id, "unknown topic".to_owned()),
                 }
             }
@@ -1021,7 +1024,9 @@ pub(crate) fn completed_current_indicator_projections(current: CaduceusStatsRead
         let mut snapshot = sample.snapshot;
         if let Some(object) = snapshot.as_object_mut() {
             object.insert("sampleAgeMs".to_owned(), current.age.map(|age| serde_json::json!(age.as_millis().min(u64::MAX as u128) as u64)).unwrap_or(serde_json::Value::Null));
-            object.insert("stale".to_owned(), serde_json::Value::Bool(source_stale || sample.unavailable_signal.is_some()));
+            if topic_id != "vpn.status" || !object.contains_key("stale") {
+                object.insert("stale".to_owned(), serde_json::Value::Bool(source_stale || sample.unavailable_signal.is_some()));
+            }
             if source_stale && object.get("firstMissingSignal").and_then(serde_json::Value::as_str).is_none_or(|signal| signal.is_empty() || signal == "none") {
                 object.insert("firstMissingSignal".to_owned(), serde_json::Value::String(source_signal.clone()));
             }
@@ -1041,7 +1046,7 @@ pub(crate) fn completed_current_indicator_projections(current: CaduceusStatsRead
 
 fn stats_block_stale_after(block: &str) -> Duration {
     match block {
-        "tailscale" | "services" | "vpn" => Duration::from_secs(15),
+        "tailscale" | "services" => Duration::from_secs(15),
         "internet" => Duration::from_secs(21),
         "power" => Duration::from_secs(10),
         _ => Duration::from_secs(15),
@@ -1511,7 +1516,7 @@ fn project_vpn_guest(block: &serde_json::Map<String, serde_json::Value>) -> Indi
         1 => "warn",
         _ => "error",
     };
-    IndicatorTopicSample {
+    let mut sample = IndicatorTopicSample {
         snapshot: serde_json::json!({
             "ok":valid,"success":valid,"status":if valid { "available" } else { "unavailable" },
             "vpnStatus":vpn,
@@ -1522,7 +1527,21 @@ fn project_vpn_guest(block: &serde_json::Map<String, serde_json::Value>) -> Indi
         }),
         indicator_state: Some(if valid { indicator_state } else { "unavailable" }),
         unavailable_signal: (!valid).then_some(signal),
+    };
+    // The VPN block is event-fed: ts records the read, not its freshness horizon.
+    if valid && block.get("on").and_then(serde_json::Value::as_bool) == Some(true) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let fresh_until = block.get("freshUntil").and_then(serde_json::Value::as_u64);
+        if fresh_until.is_none_or(|deadline| deadline < now) {
+            sample.snapshot["firstMissingSignal"] = serde_json::json!("caduceus-stats-vpn-past-fresh-until");
+            sample.snapshot["stale"] = serde_json::Value::Bool(true);
+            sample.indicator_state = Some("warn");
+        }
     }
+    sample
 }
 
 fn stats_signal_from_object(
