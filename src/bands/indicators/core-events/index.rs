@@ -1027,6 +1027,11 @@ pub(crate) fn completed_current_indicator_projections(current: CaduceusStatsRead
             if topic_id != "vpn.status" || !object.contains_key("stale") {
                 object.insert("stale".to_owned(), serde_json::Value::Bool(source_stale || sample.unavailable_signal.is_some()));
             }
+            if topic_id == "vpn.status" {
+                if let Some(state) = sample.indicator_state {
+                    object.insert("indicatorState".to_owned(), serde_json::Value::String(state.to_owned()));
+                }
+            }
             if source_stale && object.get("firstMissingSignal").and_then(serde_json::Value::as_str).is_none_or(|signal| signal.is_empty() || signal == "none") {
                 object.insert("firstMissingSignal".to_owned(), serde_json::Value::String(source_signal.clone()));
             }
