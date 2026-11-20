@@ -72,7 +72,8 @@ fn shell_document_4_tail() -> &'static str {
     async function waitForWebsiteRestart(status) {
       const reconnectTimeoutMs = 90000;
       status.textContent = 'Website restarting…';
-      showCoronatioToast(status.textContent, 'info', reconnectTimeoutMs);
+      // Keep the existing toast lifetime separate from the health deadline.
+      showCoronatioToast(status.textContent, 'info', 92000);
       if (await waitForRestartHealth('/health', reconnectTimeoutMs)) {
         window.location.reload();
       } else {
