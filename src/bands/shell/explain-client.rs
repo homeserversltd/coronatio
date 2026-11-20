@@ -19,20 +19,23 @@ fn shell_explain_client() -> &'static str {
     }
     explainInitialize(document);
     new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => { if (node instanceof Element) explainInitialize(node); }))).observe(document.documentElement, {childList: true, subtree: true});
-    function explainCloseDots() {
-      document.querySelectorAll('[data-explain-dot][data-explain-open="true"]').forEach(dot => {
+    const explainDotSelector = 'button[type="button"][data-explain-dot][data-explain-hint]';
+    function explainCloseDots(state = '[data-explain-open="true"]') {
+      document.querySelectorAll(`${explainDotSelector}${state}`).forEach(dot => {
         delete dot.dataset.explainOpen;
         dot.setAttribute('aria-expanded', 'false');
+        dot.setAttribute('data-explain-dismissed', '');
       });
     }
     document.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null;
-      const dot = target?.closest('button[data-explain-dot][data-explain-hint]');
+      const dot = target?.closest(explainDotSelector);
       const shouldOpen = dot && dot.dataset.explainOpen !== 'true';
       explainCloseDots();
       if (dot) {
         event.preventDefault();
         if (shouldOpen) {
+          dot.removeAttribute('data-explain-dismissed');
           dot.dataset.explainOpen = 'true';
           dot.setAttribute('aria-expanded', 'true');
         }
@@ -46,7 +49,16 @@ fn shell_explain_client() -> &'static str {
       try { const memory = explainMemory(); memory[scope.dataset.explainScope] = on; localStorage.setItem(explainKey, JSON.stringify(memory)); } catch (_) { /* Storage is optional. */ }
     });
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') explainCloseDots();
+      if (event.key === 'Escape') explainCloseDots(':is([data-explain-open="true"], :hover, :focus-visible)');
+    }, true);
+    function explainPreviewAgain(event) {
+      const dot = event.target instanceof Element ? event.target.closest(explainDotSelector) : null;
+      if (dot && !(event.relatedTarget instanceof Node && dot.contains(event.relatedTarget))) {
+        dot.removeAttribute('data-explain-dismissed');
+      }
+    }
+    ['pointerover', 'focusin'].forEach(type => {
+      document.addEventListener(type, explainPreviewAgain);
     });
 "####
 }
