@@ -32,52 +32,140 @@ fn shell_document_4_tail() -> &'static str {
     const adminActionButtonSelector = '[data-admin-action-id]:not([data-admin-action-id="view-logs"])';
     const adminActionLabels = Object.freeze({
       'hard-drive-test': 'Hard Drive Test', update: 'Update', restart: 'Restart', shutdown: 'Shutdown',
-      'restart-website': 'Restart Website'
     });
     function adminActionToast(action, success) {
       const label = adminActionLabels[action] || 'System action';
       if (!success) return `${label} could not be started.`;
       return `${label} initiated.`;
     }
-    const restartWebsiteActionId = 'restart-website';
-    let websiteRestartPending = false;
-    function waitForWebsiteRestart(button) {
-      if (websiteRestartPending) return;
-      websiteRestartPending = true;
-      button.disabled = true;
-      const timeoutMs = 90000;
-      const deadline = performance.now() + timeoutMs;
-      showCoronatioToast('Website restarting…', 'info', timeoutMs);
-      let probe;
-      const finish = healthy => {
-        window.clearInterval(poll);
-        window.clearTimeout(timeout);
-        probe?.abort();
-        if (healthy) {
-          window.location.reload();
-        } else {
-          websiteRestartPending = false;
-          if (!button.dataset.adminActionOriginal) button.disabled = false;
-          showCoronatioToast('The website did not come back within 90 seconds.', 'error');
+    function waitForRestartHealth(path, delayMs, timeoutMs, current = () => true) {
+      return new Promise(resolve => {
+        const deadline = performance.now() + timeoutMs;
+        let poll, probe;
+        const finish = healthy => {
+          window.clearTimeout(start);
+          window.clearInterval(poll);
+          window.clearTimeout(timeout);
+          probe?.abort();
+          resolve(healthy);
+        };
+        async function check() {
+          if (!current() || performance.now() >= deadline) return finish(false);
+          // Do not let a stalled probe hold up subsequent attempts.
+          probe?.abort();
+          const controller = new AbortController();
+          probe = controller;
+          try {
+            const response = await fetch(path, { cache: 'no-store', redirect: 'error', signal: controller.signal });
+            if (response.status === 200 && (await response.json())?.ok === true
+                && !controller.signal.aborted && current() && performance.now() < deadline) finish(true);
+          } catch (_) { /* The listener may still be down. */ }
         }
-      };
-      const poll = window.setInterval(async () => {
-        if (performance.now() >= deadline) return;
-        // A stalled health probe must not keep later probes from being sent.
-        probe?.abort();
-        const controller = new AbortController();
-        probe = controller;
-        try {
-          const response = await fetch('/health', { cache: 'no-store', signal: controller.signal });
-          if (response.status === 200 && (await response.json())?.ok === true
-              && !controller.signal.aborted && performance.now() < deadline) finish(true);
-        } catch (_) { /* The listener may still be down. */ }
-      }, 1000);
-      const timeout = window.setTimeout(() => finish(false), timeoutMs);
+        const start = window.setTimeout(() => {
+          poll = window.setInterval(check, 1000);
+          void check();
+        }, delayMs);
+        const timeout = window.setTimeout(() => finish(false), timeoutMs);
+      });
     }
+    async function waitForWebsiteRestart(status) {
+      const restartDelayMs = 2000;
+      const reconnectTimeoutMs = 90000;
+      status.textContent = 'Website restarting…';
+      showCoronatioToast(status.textContent, 'info', restartDelayMs + reconnectTimeoutMs);
+      // Let the scheduled restart start before entering the website health wait.
+      await new Promise(resolve => window.setTimeout(resolve, restartDelayMs));
+      if (await waitForRestartHealth('/health', 1000, reconnectTimeoutMs)) {
+        window.location.reload();
+      } else {
+        status.textContent = 'The website did not come back within 90 seconds.';
+        showCoronatioToast(status.textContent, 'error');
+      }
+    }
+    const adminRestartOpener = 'button[data-crown-dialog-open="admin-restart"]';
+    const adminRestartButton = 'button[data-admin-restart-name][data-admin-restart-kind]';
+    const adminRestartReads = new WeakMap();
+    function adminRestartCurrent(dialog, attendance) {
+      return dialog.isConnected && headerState.isAdmin && Boolean(attendance)
+        && coronatioAttendanceRuntime.currentAttendance === attendance;
+    }
+    async function loadAdminRestartList(dialog, slot, attendance) {
+      // Closing and reopening must not replace any row awaiting its reply or health.
+      if (slot.querySelector(`${adminRestartButton}:disabled`)) return;
+      adminRestartReads.get(dialog)?.abort();
+      const controller = new AbortController();
+      adminRestartReads.set(dialog, controller);
+      const current = () => adminRestartCurrent(dialog, attendance) && dialog.matches(':modal') && !controller.signal.aborted;
+      const notice = document.createElement('p');
+      notice.className = 'crown-dialog__body';
+      notice.setAttribute('role', 'status');
+      notice.textContent = 'Loading restart options…';
+      slot.replaceChildren(notice);
+      try {
+        const response = await fetch('/admit/admin/restart', { cache: 'no-store', redirect: 'error', signal: controller.signal });
+        const reply = document.createElement('template');
+        reply.innerHTML = await response.text();
+        const list = reply.content.firstElementChild;
+        if (!response.ok || !list?.matches('section[data-admin-restart-list]')) throw new Error('Restart list unavailable');
+        if (current()) slot.replaceChildren(list);
+      } catch (_) {
+        if (current()) notice.textContent = 'Could not load the restart list. Close and try again.';
+      } finally {
+        if (adminRestartReads.get(dialog) === controller) adminRestartReads.delete(dialog);
+      }
+    }
+    async function restartAdminService(button, dialog, slot, attendance) {
+      const row = button.closest('.admin-restart-row');
+      const label = row?.querySelector('[data-admin-restart-label]')?.textContent;
+      const status = row?.querySelector('[data-admin-restart-status]');
+      const { adminRestartName: name, adminRestartKind: kind } = button.dataset;
+      if (button.disabled || !status || !label || !/^[a-z0-9][a-z0-9-]*$/.test(name) || !['face', 'guest'].includes(kind)) return;
+      const face = kind === 'face';
+      if (!window.confirm(`Restart ${label} now?${face ? ' This page will reconnect.' : ''}`)) return;
+      const current = () => adminRestartCurrent(dialog, attendance) && slot.contains(button);
+      if (!current()) return;
+      button.disabled = true;
+      status.textContent = '';
+      const segment = encodeURIComponent(name);
+      try {
+        const response = await fetch(`/admit/admin/restart/${segment}`, { method: 'POST', cache: 'no-store', redirect: 'error' });
+        const reply = document.createElement('template');
+        reply.innerHTML = await response.text();
+        const result = reply.content.querySelector('[data-admin-restart-result]');
+        if (!current()) return;
+        if (!response.ok || result?.dataset.ok !== 'true') {
+          const signal = result?.dataset.firstMissingSignal;
+          status.textContent = signal && signal !== 'none'
+            ? `Could not restart ${label} (${signal}).` : `Could not confirm a restart for ${label}.`;
+        } else if (face) {
+          await waitForWebsiteRestart(status);
+        } else {
+          status.textContent = 'Restarting…';
+          const healthy = await waitForRestartHealth(`/api/tabs/${segment}/health`, 3000, 60000, current);
+          if (current()) status.textContent = healthy ? `${label} is back` : `${label} did not come back within a minute.`;
+        }
+      } catch (_) {
+        if (current()) status.textContent = `Could not confirm a restart for ${label}.`;
+      } finally {
+        button.disabled = false;
+      }
+    }
+    document.body.addEventListener('click', event => {
+      const source = event.target instanceof Element ? event.target : null;
+      const opener = source?.closest(adminRestartOpener);
+      const button = source?.closest(adminRestartButton);
+      if (!opener && !button) return;
+      const pane = source.closest('[data-pane-panel="admin"]');
+      const dialog = pane?.querySelector('dialog.crown-dialog#admin-restart:modal');
+      const slot = dialog?.querySelector(':scope > #admin-restart-slot');
+      const attendance = coronatioAttendanceRuntime.currentAttendance;
+      if (!slot || !adminRestartCurrent(dialog, attendance)) return;
+      if (opener && opener === pane.querySelector(adminRestartOpener)) void loadAdminRestartList(dialog, slot, attendance);
+      else if (button && slot.contains(button)) void restartAdminService(button, dialog, slot, attendance);
+    });
     function restoreAdminActionControls() {
       document.querySelectorAll(adminActionButtonSelector).forEach(button => {
-        button.disabled = websiteRestartPending && button.dataset.adminActionId === restartWebsiteActionId;
+        button.disabled = false;
         if (button.dataset.adminActionOriginal) {
           button.innerHTML = button.dataset.adminActionOriginal;
           delete button.dataset.adminActionOriginal;
@@ -112,10 +200,6 @@ fn shell_document_4_tail() -> &'static str {
       }
       const actionButton = source.closest(adminActionButtonSelector);
       if (!actionButton) return;
-      if (websiteRestartPending && actionButton.dataset.adminActionId === restartWebsiteActionId) {
-        event.preventDefault();
-        return;
-      }
       document.querySelectorAll(adminActionButtonSelector).forEach(button => {
         button.disabled = true;
         if (!button.dataset.adminActionOriginal) button.dataset.adminActionOriginal = button.innerHTML;
@@ -154,30 +238,9 @@ fn shell_document_4_tail() -> &'static str {
       if (source instanceof Element && source.closest(adminActionButtonSelector)) restoreAdminActionControls();
       if (source instanceof Element && source.closest('[data-service-card] .ui-toggle__input')) restoreAdminToggle(source);
     });
-    document.body.addEventListener('htmx:sendError', event => {
-      const source = event.detail?.elt;
-      const button = source instanceof Element ? source.closest(adminActionButtonSelector) : null;
-      if (button?.dataset.adminActionId === restartWebsiteActionId) waitForWebsiteRestart(button);
-    });
     document.body.addEventListener('htmx:responseError', event => {
       const source = event.detail?.elt;
       const button = source instanceof Element ? source.closest(adminActionButtonSelector) : null;
-      if (button?.dataset.adminActionId === restartWebsiteActionId) {
-        restoreAdminActionControls();
-        // HTMX does not swap the error reply. Read the crown's result in an
-        // inert template rather than treating an upstream refusal as a restart.
-        const reply = document.createElement('template');
-        reply.innerHTML = event.detail?.xhr?.responseText || '';
-        const result = reply.content.querySelector('[data-admin-action-result-fragment="restart-website"]');
-        if (result) {
-          const signal = result.querySelector('code')?.textContent?.trim();
-          const message = adminActionToast(restartWebsiteActionId, false);
-          showCoronatioToast(signal && signal !== 'none' ? `${message} (${signal})` : message, 'error');
-        } else {
-          waitForWebsiteRestart(button);
-        }
-        return;
-      }
       if (button) { restoreAdminActionControls(); showCoronatioToast('System action could not be started.', 'error'); }
       if (source instanceof Element && source.closest('[data-service-card] .ui-toggle__input')) { restoreAdminToggle(source); showCoronatioToast('Service change could not be started.', 'error'); }
     });
@@ -187,14 +250,19 @@ fn shell_document_4_tail() -> &'static str {
         if (!Number.isNaN(local.valueOf())) time.textContent = local.toLocaleString();
       });
     }
-    function closeAdminLogsForTeardown(root) {
-      const dialog = root.querySelector('dialog#admin-appliance-logs:modal');
-      if (dialog) closeCrownDialog(dialog);
+    function closeAdminDialogsForTeardown(root) {
+      const logs = root.querySelector('dialog#admin-appliance-logs:modal');
+      if (logs) closeCrownDialog(logs);
+      const restart = root.querySelector('dialog#admin-restart');
+      if (restart) {
+        adminRestartReads.get(restart)?.abort();
+        if (restart.matches(':modal')) closeCrownDialog(restart);
+      }
     }
     window.addEventListener('coronatio:native-pane-reset', event => {
-      if (event.detail?.id === 'admin') closeAdminLogsForTeardown(event.detail.pane);
+      if (event.detail?.id === 'admin') closeAdminDialogsForTeardown(event.detail.pane);
     });
-    window.addEventListener('coronatio:privileged-state-retired', () => closeAdminLogsForTeardown(document));
+    window.addEventListener('coronatio:privileged-state-retired', () => closeAdminDialogsForTeardown(document));
     function toggleLoadingSpinnerDemo(loadingToggle) {
       const specimen = loadingToggle.closest('[data-loading-spinner-catalog]'); const frame = specimen?.querySelector('[data-loading-spinner-frame]'); const result = specimen?.querySelector('[data-loading-spinner-result]'); if (!frame || !result) return;
       const loading = frame.dataset.loadingSpinnerState !== 'loaded'; frame.dataset.loadingSpinnerState = loading ? 'loaded' : 'loading'; loadingToggle.setAttribute('aria-pressed', String(!loading)); loadingToggle.textContent = loading ? 'Show loading state' : 'Show loaded state'; result.textContent = loading ? 'Loaded state active' : 'Loading state active'; frame.innerHTML = loading ? '<p><strong>Network data ready</strong></p>' : '<div class="network-loading"><div class="loading-spinner medium" role="progressbar" aria-label="Loading network data"></div><p>Loading network data...</p></div>';

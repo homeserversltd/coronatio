@@ -889,7 +889,6 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
         "rotate-capability-key" => Some(("Rotate Capability Key", "POST", "/usr/local/sbin/caduceus-keyman-rotate-capability", true)),
         "restart" => Some(("Restart", "POST", "/api/admin/system/restart", true)),
         "shutdown" => Some(("Shutdown", "POST", "/api/admin/system/shutdown", true)),
-        "restart-website" => Some(("Restart Website", "POST", "/api/v1/appliance/service/coronatio/restart", true)),
         "view-logs" => Some(("View Logs", "GET", "/api/admin/logs/homeserver", false)),
         _ => None,
     }
@@ -1062,6 +1061,60 @@ fn admin_control_failure_signal(readback: &CaduceusHttpReadback, fallback: &str)
     .to_string()
 }
 
+fn admin_restart_row(row: &serde_json::Value) -> Option<String> {
+    let name = html_escape(row.get("name")?.as_str()?);
+    let label = html_escape(row.get("label")?.as_str()?);
+    let kind = row.get("kind")?.as_str()?;
+    let website = if kind == "face" { " <small>(this website)</small>" } else { "" };
+    let kind = html_escape(kind);
+    Some(format!(
+        r#"<li class="admin-restart-row"><div><strong data-admin-restart-label>{label}</strong>{website}<div data-admin-restart-status role="status"></div></div><button type="button" class="ui-button ui-button--secondary ui-button--small" data-admin-restart-name="{name}" data-admin-restart-kind="{kind}" aria-label="Restart {label}">Restart</button></li>"#,
+    ))
+}
+
+async fn admin_restart_list_fragment_route(headers: axum::http::HeaderMap) -> Response {
+    const PATH: &str = "/api/v1/appliance/restartable";
+    let readback = load_trace::spawn_blocking_with_trace(move || {
+        admin_fragment_caduceus_request(&headers, "GET", PATH)
+    }).await.unwrap_or_else(|_| caduceus_failure_readback(PATH, "caduceus-restartable-task-failed"));
+    let rows = readback.body.get("restartable").and_then(serde_json::Value::as_array)
+        .filter(|_| admin_control_confirmed(&readback))
+        .and_then(|rows| rows.iter().map(admin_restart_row).collect::<Option<Vec<_>>>());
+    let content = match rows {
+        Some(rows) if rows.is_empty() => "<p>Nothing to restart.</p>".to_string(),
+        Some(rows) => format!(r#"<ul class="admin-restart-rows" role="list">{}</ul>"#, rows.concat()),
+        None => {
+            let signal = admin_control_failure_signal(&readback, "caduceus-restartable-unconfirmed");
+            format!(r#"<p role="status">Could not load the restart list: <code>{}</code></p>"#, html_escape(&signal))
+        }
+    };
+    admin_html_fragment_response(StatusCode::OK, format!(
+        r#"<section class="crown-dialog__body" data-admin-restart-list aria-label="Restartable services">{content}</section>"#,
+    ))
+}
+
+async fn admin_restart_service_fragment_route(headers: axum::http::HeaderMap, Path(name): Path<String>) -> Response {
+    const PATH: &str = "/api/v1/appliance/restart-listed";
+    let readback = load_trace::spawn_blocking_with_trace(move || {
+        caduceus_actuate_json_with_timeout(
+            &mutation_authority(), &headers, PATH, serde_json::json!({"name": name}), ADMIN_SERVICE_ACTION_TIMEOUT,
+        )
+    }).await.unwrap_or_else(|_| mutation_task_failure_readback(PATH));
+    let ok = admin_control_confirmed(&readback);
+    let (status, signal) = if ok {
+        (StatusCode::OK, readback.first_missing_signal)
+    } else {
+        let status = StatusCode::from_u16(readback.status).ok()
+            .filter(|status| status.is_client_error() || status.is_server_error())
+            .unwrap_or(StatusCode::BAD_GATEWAY);
+        (status, admin_control_failure_signal(&readback, "caduceus-restart-unconfirmed"))
+    };
+    admin_html_fragment_response(status, format!(
+        r#"<span data-admin-restart-result data-ok="{ok}" data-first-missing-signal="{}"></span>"#,
+        html_escape(&signal),
+    ))
+}
+
 async fn admin_ssh_service_toggle_fragment(headers: axum::http::HeaderMap) -> Response {
     let (status_readback, ok, message, first_missing_signal) = load_trace::spawn_blocking_with_trace(move || {
         let read_status = || {
@@ -1174,15 +1227,21 @@ async fn admin_service_card_fragment_route(headers: axum::http::HeaderMap, Path(
     admin_html_fragment_response(StatusCode::OK, render_admin_service_card_result_html(&toggle_id, Some(&readback), None))
 }
 
-async fn admin_action_fragment_route(headers: axum::http::HeaderMap, request_method: Method, Path(action_id): Path<String>) -> impl IntoResponse {
-    let restart_website = action_id == "restart-website";
-    if restart_website && request_method != Method::POST {
-        return (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "POST")]).into_response();
+async fn admin_action_fragment_gate(
+    Path(action_id): Path<String>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    // An unknown action is local; do not even call the upstream face-stage gate.
+    if admin_action_target(&action_id).is_none() {
+        return next.run(request).await;
     }
+    face_stage_route_gate(request, next).await
+}
+
+async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>) -> impl IntoResponse {
     let route = format!("/admit/admin/action/{action_id}");
-    // A restart refusal, including an attendance refusal, must carry the action
-    // result fragment so the page can distinguish it from a lost connection.
-    if let Some(refusal) = admin_fragment_context_refusal(&headers).filter(|_| !restart_website) {
+    if let Some(refusal) = admin_fragment_context_refusal(&headers) {
         let readback = mutation_refusal_readback("/api/v1/appliance/report", refusal);
         log_admin_action_admission(&headers, &route, &readback, mutation_response_status(&readback));
         return admin_html_fragment_response(
@@ -1198,19 +1257,7 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, request_met
             admin_membrane_refusal_fragment("unknown admin action", "unknown-admin-action"),
         );
     };
-    let readback = if restart_website {
-        let attended_headers = headers.clone();
-        let mut readback = load_trace::spawn_blocking_with_trace(move || {
-            caduceus_actuate_json_with_timeout(
-                &mutation_authority(), &attended_headers, path, serde_json::json!({}), ADMIN_SERVICE_ACTION_TIMEOUT,
-            )
-        }).await.unwrap_or_else(|_| mutation_task_failure_readback(path));
-        readback.ok = admin_control_confirmed(&readback);
-        if !readback.ok {
-            readback.first_missing_signal = admin_control_failure_signal(&readback, "caduceus-action-unconfirmed");
-        }
-        readback
-    } else if action_id == "update" {
+    let readback = if action_id == "update" {
         caduceus_mutation_readback(&headers, path)
     } else if mutation {
         admin_fragment_translation_debt(&headers, method, path)
@@ -1222,8 +1269,6 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, request_met
     let class = if readback.ok { "success" } else { "error" };
     let message = if readback.ok {
         if mutation { "Caduceus accepted the action." } else { "Readback returned through the Caduceus/crown route." }
-    } else if restart_website {
-        "Restart Website could not be started."
     } else if mutation {
         "Caduceus actuator is not wired or unavailable; no optimistic success was rendered."
     } else {

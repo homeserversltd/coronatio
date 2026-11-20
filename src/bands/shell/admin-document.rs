@@ -10,7 +10,7 @@ fn shell_admin_document_patch() -> &'static str {
                 <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-admin-action-id="update" data-update-manager-open><span class="admin-action-icon">⬇</span><span>Update</span></button>
                 <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-admin-action-id="restart" hx-post="/admit/admin/action/restart" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Restart HOMESERVER now? Active services will be interrupted."><span class="admin-action-icon">⟳</span><span>Restart</span></button>
                 <button type="button" class="ui-button ui-button--danger ui-button--medium system-controls-btn" data-admin-action-id="shutdown" hx-post="/admit/admin/action/shutdown" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Shut down HOMESERVER now? Active services will stop."><span class="admin-action-icon">⏻</span><span>Shutdown</span></button>
-                <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-admin-action-id="restart-website" hx-post="/admit/admin/action/restart-website" hx-target="[data-admin-action-result]" hx-swap="innerHTML" hx-disabled-elt="this" hx-confirm="Restart Website now? The web service will reset and this page will reconnect."><span class="admin-action-icon">↻</span><span>Restart Website</span></button>
+                <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-admin-only="true" data-crown-dialog-open="admin-restart" aria-haspopup="dialog" aria-controls="admin-restart"><span class="admin-action-icon">↻</span><span>Restart Website</span></button>
                 <button type="button" class="ui-button ui-button--secondary ui-button--medium system-controls-btn" data-admin-action-id="view-logs" data-admin-only="true" data-crown-dialog-open="admin-appliance-logs" aria-haspopup="dialog" aria-controls="admin-appliance-logs" hx-get="/admit/admin/action/view-logs" hx-trigger="click queue:none" hx-target="#admin-log-slot" hx-swap="innerHTML"><span class="admin-action-icon">▤</span><span>View Logs</span></button>
                 <button type="button" class="ui-button ui-button--primary ui-button--medium system-controls-btn" data-hestia-certificate-open><span class="admin-action-icon">◆</span><span>Install Certificate</span></button>
               </div>
@@ -52,6 +52,11 @@ fn shell_admin_document_patch() -> &'static str {
             </div>
           </section>
         </div>
+        <dialog class="crown-dialog" id="admin-restart" data-size="large" aria-labelledby="admin-restart-title">
+          <button type="button" class="crown-dialog__close" data-modal-dismiss aria-label="Close">×</button>
+          <h2 class="crown-dialog__title" id="admin-restart-title">Restart</h2>
+          <div id="admin-restart-slot" style="display: contents"></div>
+        </dialog>
         <dialog class="crown-dialog" id="admin-appliance-logs" data-size="full" aria-labelledby="admin-appliance-logs-title">
           <button type="button" class="crown-dialog__close" data-modal-dismiss aria-label="Close">×</button>
           <h2 class="crown-dialog__title" id="admin-appliance-logs-title">Appliance Logs</h2>
