@@ -38,7 +38,7 @@ fn shell_document_4_tail() -> &'static str {
       if (!success) return `${label} could not be started.`;
       return `${label} initiated.`;
     }
-    function waitForRestartHealth(path, delayMs, timeoutMs, current = () => true) {
+    function waitForRestartHealth(path, timeoutMs, current = () => true) {
       return new Promise(resolve => {
         const deadline = performance.now() + timeoutMs;
         let poll, probe;
@@ -61,21 +61,19 @@ fn shell_document_4_tail() -> &'static str {
                 && !controller.signal.aborted && current() && performance.now() < deadline) finish(true);
           } catch (_) { /* The listener may still be down. */ }
         }
+        // Let the scheduled restart begin and give the old process time to stop.
         const start = window.setTimeout(() => {
           poll = window.setInterval(check, 1000);
           void check();
-        }, delayMs);
+        }, 5000);
         const timeout = window.setTimeout(() => finish(false), timeoutMs);
       });
     }
     async function waitForWebsiteRestart(status) {
-      const restartDelayMs = 2000;
       const reconnectTimeoutMs = 90000;
       status.textContent = 'Website restarting…';
-      showCoronatioToast(status.textContent, 'info', restartDelayMs + reconnectTimeoutMs);
-      // Let the scheduled restart start before entering the website health wait.
-      await new Promise(resolve => window.setTimeout(resolve, restartDelayMs));
-      if (await waitForRestartHealth('/health', 1000, reconnectTimeoutMs)) {
+      showCoronatioToast(status.textContent, 'info', reconnectTimeoutMs);
+      if (await waitForRestartHealth('/health', reconnectTimeoutMs)) {
         window.location.reload();
       } else {
         status.textContent = 'The website did not come back within 90 seconds.';
@@ -142,7 +140,7 @@ fn shell_document_4_tail() -> &'static str {
           await waitForWebsiteRestart(status);
         } else {
           status.textContent = 'Restarting…';
-          const healthy = await waitForRestartHealth(`/api/tabs/${segment}/health`, 3000, 60000, current);
+          const healthy = await waitForRestartHealth(`/api/tabs/${segment}/health`, 60000, current);
           if (current()) status.textContent = healthy ? `${label} is back` : `${label} did not come back within a minute.`;
         }
       } catch (_) {
