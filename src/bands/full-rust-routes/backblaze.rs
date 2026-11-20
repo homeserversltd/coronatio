@@ -65,34 +65,74 @@ fn backblaze_invalidate() {
 fn backup_schedule(id: &str) -> Result<(Option<serde_json::Value>, Option<serde_json::Value>), CaduceusHttpReadback> {
     let mut cache = BACKUP_SCHEDULE_CACHE.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap_or_else(|e| e.into_inner());
     cache.retain(|(time,_,_,_)| time.elapsed() < BACKBLAZE_CACHE_TTL);
-    if let Some((_,_,row,kernel)) = cache.iter().find(|(_,name,_,_)|name == id) { return Ok((row.clone(),kernel.clone())); }
+    if let Some((_,_,row,_)) = cache.iter().find(|(_,name,_,_)|name == id) { return Ok((row.clone(),None)); }
     let encoded: String = url::form_urlencoded::byte_serialize(id.as_bytes()).collect();
     let receipt = caduceus_http("GET", &format!("{BACKUP_SCHEDULE_DOOR}/status/{encoded}"));
     if !receipt.ok { return Err(receipt); }
-    let payload = receipt.body.get("receiptPayload").unwrap_or(&receipt.body);
+    let payload = if receipt.body.get("schedule").is_some() {
+        &receipt.body
+    } else {
+        receipt.body.get("receiptPayload").unwrap_or(&receipt.body)
+    };
     let row = if payload.get("schedule") == Some(&serde_json::Value::Null) { None } else if let Some(schedule) = payload.get("schedule").and_then(serde_json::Value::as_object) { let field = |name: &str| schedule.get(name).cloned().unwrap_or(serde_json::Value::Null); let fire = payload.get("last_fire").filter(|v|v.is_object()).map(|v|serde_json::json!({"state":v.get("state"),"trigger":v.get("trigger"),"started_at":v.get("started_at"),"finished_at":v.get("finished_at"),"duration_ms":v.get("duration_ms"),"first_missing_signal":v.get("first_missing_signal"),"reason":v.get("reason")})); Some(serde_json::json!({"schedule":{"enabled":field("enabled"),"frequency":field("frequency"),"time":field("time"),"weekday":field("weekday"),"calendar":field("calendar")},"next_fire":payload.get("next_fire"),"last_fire":fire})) } else { return Err(CaduceusHttpReadback {ok:false,status:503,path:receipt.path,body:serde_json::json!({"ok":false,"reason":"schedule status unavailable"}),first_missing_signal:"schedule status unavailable".into()}); };
-    let kernel = if receipt.body.get("receiptPayload").is_some() { Some(serde_json::json!({"schema":receipt.body.get("schema"),"version":receipt.body.get("version"),"timestamp":receipt.body.get("timestamp")})) } else { None };
     if cache.len() >= 256 { cache.remove(0); }
-    cache.push((Instant::now(), id.to_owned(), row.clone(), kernel.clone())); Ok((row,kernel))
+    // The second slot stays empty for the existing callers; no receipt kernel is kept.
+    cache.push((Instant::now(), id.to_owned(), row.clone(), None));
+    Ok((row, None))
 }
 fn backup_id(bucket: &str) -> String { format!("backblaze-{bucket}") }
 fn backup_schedule_fresh(id: &str) -> Result<(Option<serde_json::Value>, Option<serde_json::Value>), CaduceusHttpReadback> {
     BACKUP_SCHEDULE_CACHE.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap_or_else(|e| e.into_inner()).retain(|(_,name,_,_)| name != id);
     backup_schedule(id)
 }
-fn backup_command(mut body: serde_json::Value, kernel: Option<&serde_json::Value>, transition: &str) -> serde_json::Value {
-    if let (Some(object), Some(kernel)) = (body.as_object_mut(), kernel) {
-        for field in ["schema", "version", "timestamp"] { if let Some(value) = kernel.get(field) { object.insert(field.into(), value.clone()); } }
-        object.insert("intent_id".into(), "coronatio-backups".into());
-        object.insert("transition".into(), transition.into());
-    }
-    body
+fn backup_command(body: serde_json::Value, _: Option<&serde_json::Value>, transition: &str) -> serde_json::Value {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seconds = match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(elapsed) => i128::from(elapsed.as_secs()),
+        Err(error) => {
+            let before = error.duration();
+            -i128::from(before.as_secs()) - i128::from(before.subsec_nanos() != 0)
+        }
+    };
+    // Gregorian civil_from_days (Hinnant): 400-year eras starting in March.
+    let days = seconds.div_euclid(86_400) + 719_468;
+    let era = days.div_euclid(146_097);
+    let day_of_era = days.rem_euclid(146_097);
+    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let march_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * march_month + 2) / 5 + 1;
+    let month = if march_month < 10 { march_month + 3 } else { march_month - 9 };
+    let year = era * 400 + year_of_era + i128::from(month <= 2);
+    let clock = seconds.rem_euclid(86_400);
+    let timestamp = format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z", clock / 3600, clock / 60 % 60, clock % 60);
+
+    let mut object = match body {
+        serde_json::Value::Object(object) => object,
+        _ => serde_json::Map::new(),
+    };
+    object.insert("schema".into(), "caduceus.staff.v1".into());
+    object.insert("version".into(), env!("CARGO_PKG_VERSION").into());
+    object.insert("timestamp".into(), timestamp.into());
+    object.insert("intent_id".into(), "coronatio-backups".into());
+    object.insert("transition".into(), transition.into());
+    serde_json::Value::Object(object)
 }
 fn backup_schedule_response(mut receipt: CaduceusHttpReadback) -> Response {
-    if receipt.ok && receipt.body.get("ok").is_none() {
-        let payload_ok = receipt.body.get("receiptPayload").and_then(|v|v.get("ok")).and_then(serde_json::Value::as_bool).unwrap_or(true);
-        receipt.ok = payload_ok;
-        if let Some(object) = receipt.body.as_object_mut() { object.insert("ok".into(), payload_ok.into()); }
+    // A successful HTTP exchange still needs an explicit receipt verdict.
+    if receipt.ok {
+        const OK_UNOBSERVED: &str = "caduceus-schedule-ok-unobserved";
+        let ok = receipt.body.get("ok").and_then(serde_json::Value::as_bool)
+            .or_else(|| receipt.body.pointer("/receiptPayload/ok").and_then(serde_json::Value::as_bool));
+        let Some(object) = receipt.body.as_object_mut() else {
+            return backblaze_error(StatusCode::SERVICE_UNAVAILABLE, OK_UNOBSERVED);
+        };
+        receipt.ok = ok == Some(true);
+        object.insert("ok".into(), receipt.ok.into());
+        if ok.is_none() {
+            receipt.first_missing_signal = OK_UNOBSERVED.into();
+            object.insert("reason".into(), OK_UNOBSERVED.into());
+        }
     }
     backblaze_readback_response(receipt)
 }
