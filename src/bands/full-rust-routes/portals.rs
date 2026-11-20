@@ -250,30 +250,37 @@ async fn portal_service_control_route(headers: axum::http::HeaderMap, Json(paylo
 
 fn portal_service_mutation_response(caduceus: CaduceusHttpReadback) -> Response {
     let body = &caduceus.body;
-    let semantic_success = body
-        .get("success")
-        .and_then(serde_json::Value::as_bool)
-        .or_else(|| body.get("ok").and_then(serde_json::Value::as_bool))
-        .unwrap_or(caduceus.ok);
+    let portal_service = body.get("portalService").filter(|projection| !projection.is_null());
+    let semantic_success = if let Some(projection) = portal_service {
+        // A successful stop does not imply a successful portal service action.
+        projection
+            .get("ok")
+            .and_then(serde_json::Value::as_bool)
+            .or_else(|| projection.get("success").and_then(serde_json::Value::as_bool))
+            .unwrap_or(false)
+    } else {
+        body.get("success")
+            .and_then(serde_json::Value::as_bool)
+            .or_else(|| body.get("ok").and_then(serde_json::Value::as_bool))
+            .unwrap_or(caduceus.ok)
+    };
     let success = caduceus.ok && semantic_success;
     let first_missing_signal = body
         .get("firstMissingSignal")
         .or_else(|| body.get("first_missing_signal"))
         .and_then(serde_json::Value::as_str)
         .unwrap_or(caduceus.first_missing_signal.as_str());
-    let message = body
-        .get("message")
-        .or_else(|| body.get("error"))
-        .or_else(|| body.get("output"))
-        .or_else(|| body.get("stdout"))
-        .and_then(serde_json::Value::as_str)
+    let read_text = |keys: &[&str]| {
+        portal_service
+            .and_then(|projection| {
+                keys.iter()
+                    .find_map(|key| projection.get(*key).and_then(serde_json::Value::as_str))
+            })
+            .or_else(|| keys.iter().find_map(|key| body.get(*key)).and_then(serde_json::Value::as_str))
+    };
+    let message = read_text(&["message", "error", "output", "stdout"])
         .unwrap_or(if success { "Service action completed" } else { first_missing_signal });
-    let output = body
-        .get("output")
-        .or_else(|| body.get("stdout"))
-        .or_else(|| body.get("message"))
-        .or_else(|| body.get("error"))
-        .and_then(serde_json::Value::as_str)
+    let output = read_text(&["output", "stdout", "message", "error"])
         .unwrap_or(first_missing_signal);
     let active = body.get("active").and_then(serde_json::Value::as_bool).unwrap_or(false);
     let enabled = body.get("enabled").and_then(serde_json::Value::as_bool);
