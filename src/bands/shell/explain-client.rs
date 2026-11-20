@@ -19,13 +19,34 @@ fn shell_explain_client() -> &'static str {
     }
     explainInitialize(document);
     new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => { if (node instanceof Element) explainInitialize(node); }))).observe(document.documentElement, {childList: true, subtree: true});
+    function explainCloseDots() {
+      document.querySelectorAll('[data-explain-dot][data-explain-open="true"]').forEach(dot => {
+        delete dot.dataset.explainOpen;
+        dot.setAttribute('aria-expanded', 'false');
+      });
+    }
     document.addEventListener('click', event => {
-      const button = event.target instanceof Element ? event.target.closest('[data-explain-toggle]') : null;
+      const target = event.target instanceof Element ? event.target : null;
+      const dot = target?.closest('button[data-explain-dot][data-explain-hint]');
+      const shouldOpen = dot && dot.dataset.explainOpen !== 'true';
+      explainCloseDots();
+      if (dot) {
+        event.preventDefault();
+        if (shouldOpen) {
+          dot.dataset.explainOpen = 'true';
+          dot.setAttribute('aria-expanded', 'true');
+        }
+        return;
+      }
+      const button = target?.closest('[data-explain-toggle]');
       const scope = button?.closest('[data-explain-scope]');
       if (!scope) return;
       const on = scope.dataset.explainOn !== 'true';
       explainApply(scope, on);
       try { const memory = explainMemory(); memory[scope.dataset.explainScope] = on; localStorage.setItem(explainKey, JSON.stringify(memory)); } catch (_) { /* Storage is optional. */ }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') explainCloseDots();
     });
 "####
 }

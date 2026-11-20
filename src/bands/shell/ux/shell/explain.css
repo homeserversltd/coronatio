@@ -1,31 +1,53 @@
 [data-explain-scope] [data-explain] { display: none; }
 [data-explain-scope][data-explain-on="true"] [data-explain] { display: block; }
 
+[data-explain-hint]::after {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: 10;
+  width: max-content;
+  max-width: min(20rem, 80vw);
+  padding: .5rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius, 6px);
+  background: var(--background);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+  color: var(--text);
+  font-size: .875rem;
+  font-weight: normal;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+[data-explain-hint-align="end"]::after { left: auto; right: 0; }
+
+button[data-explain-dot] {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: .5em;
+  border: 0;
+  background: transparent;
+  color: var(--secondary);
+  font: inherit;
+  font-weight: normal;
+  cursor: help;
+}
+/* Below the dot so a pane's first row can explain itself without clipping at the top. */
+[data-explain-dot]::after { box-sizing: border-box; top: 100%; bottom: auto; }
+
 @media (hover: hover) and (pointer: fine) {
   [data-explain-hint] { position: relative; }
   [data-explain-hint]:hover, [data-explain-hint]:focus-visible, [data-explain-hint]:has(:focus-visible) { z-index: 10; }
-  [data-explain-hint]::after {
-    content: attr(data-explain-hint);
-    position: absolute;
-    left: 0;
-    bottom: 100%;
-    z-index: 10;
-    width: max-content;
-    max-width: min(20rem, 80vw);
-    padding: .5rem .7rem;
-    border: 1px solid var(--border);
-    border-radius: var(--border-radius, 6px);
-    background: var(--background);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
-    color: var(--text);
-    font-size: .875rem;
-    font-weight: normal;
-    line-height: 1.35;
-    text-align: left;
-    white-space: normal;
-    pointer-events: none;
-    visibility: hidden;
-  }
-  [data-explain-hint-align="end"]::after { left: auto; right: 0; }
+  [data-explain-hint]::after { content: attr(data-explain-hint); visibility: hidden; }
   [data-explain-hint]:hover::after, [data-explain-hint]:focus-visible::after, [data-explain-hint]:has(:focus-visible)::after { visibility: visible; }
 }
+
+[data-explain-dot][data-explain-open="true"] { z-index: 10; }
+[data-explain-dot][data-explain-open="true"]::after { content: attr(data-explain-hint); visibility: visible; }

@@ -5,7 +5,7 @@ fn shell_unbound_client() -> &'static str {
     const dnsArray = value => Array.isArray(value) ? value : [];
     const dnsValue = (value, fallback = '—') => value === undefined || value === null || value === '' ? fallback : String(value);
     const dnsAddress = row => row?.address || row?.ip || row?.target || row?.value || row?.declared_reservation?.ip || row?.declared_reservation?.['ip-address'] || row?.observed_lease?.ip || '—';
-    const dnsProviders = Object.freeze({ quad9: ['9.9.9.9', '149.112.112.112'], cloudflare: ['1.1.1.1', '1.0.0.1'], google: ['8.8.8.8', '8.8.4.4'] });
+    const dnsProviders = Object.freeze({ quad9: ['9.9.9.9', '149.112.112.112'], 'cloudflare-family': ['1.1.1.3', '1.0.0.3'], cloudflare: ['1.1.1.1', '1.0.0.1'], google: ['8.8.8.8', '8.8.4.4'] });
     const dnsBlocklistTimeoutMs = 300000;
     const dnsBlocklistPresets = Object.freeze([
       ['StevenBlack unified', 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', 'A long-running community list of ad, tracking and malware sites. Safe default; rarely breaks anything.'],
@@ -157,7 +157,7 @@ fn shell_unbound_client() -> &'static str {
       if(blocklist)blocklist.textContent=`${count} domains blocked · updated ${updated}`;
       renderDnsBlocklistSources(status);
       const active=typeof status.unboundActive==='boolean'?(status.unboundActive?'running':'stopped'):'unavailable';
-      const name=hasUpstreams?(choice.preset?({quad9:'Quad9',cloudflare:'Cloudflare',google:'Google'}[choice.preset]):'Custom'):'unavailable';
+      const name=hasUpstreams?(choice.preset?({quad9:'Quad9','cloudflare-family':'Family safe',cloudflare:'Cloudflare',google:'Google'}[choice.preset]):'Custom'):'unavailable';
       const service=root.querySelector('[data-dns-service-status]');
       if(service)service.textContent=`Unbound ${active} · ${name} · encryption ${hasDot?(status.dnsOverTls?'on':'off'):'unavailable'}`;
       dnsSetResolverControls();
