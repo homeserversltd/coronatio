@@ -1245,6 +1245,70 @@ fn shell_document_4() -> &'static str {
     async function hydrateFavoriteManifest() {
       await runFavoriteLadder({ startAt: 0, useHash: true });
     }
+    const checkingHealthBoards = new WeakSet();
+    async function checkHealthBoard(board) {
+      if (!board || checkingHealthBoards.has(board)) return;
+      const list = board.querySelector('[data-health-board-rows]');
+      const rowTemplate = board.querySelector('template[data-health-board-row]')?.content.firstElementChild;
+      const count = board.querySelector('[data-health-board-count]');
+      const caption = board.querySelector('[data-health-board-caption]');
+      if (!list || !rowTemplate || !count || !caption) return;
+
+      const doors = [{ name: 'Coronatio', path: '/health' }];
+      for (const tab of document.querySelectorAll('nav.tab-bar .tab[data-admission-timeout-ms]')) {
+        const id = tab.dataset.tabId;
+        if (!id) continue;
+        doors.push({
+          name: tab.querySelector('.tab-name')?.textContent.trim() || '',
+          path: `/api/tabs/${encodeURIComponent(id)}/health`,
+        });
+      }
+      checkingHealthBoards.add(board);
+      try {
+        const rows = doors.map(({ name, path }) => {
+          const row = rowTemplate.cloneNode(true);
+          const state = row.querySelector('[data-health-board-state]');
+          const sha = row.querySelector('[data-health-board-sha]');
+          row.dataset.state = 'checking';
+          row.querySelector('[data-health-board-name]').textContent = name;
+          row.querySelector('[data-health-board-path]').textContent = path;
+          state.textContent = 'Checking…';
+          sha.textContent = '';
+          return { row, state, sha, path };
+        });
+        list.replaceChildren(...rows.map(({ row }) => row));
+        count.textContent = '–';
+        caption.textContent = 'Checking…';
+
+        const results = await Promise.all(rows.map(async ({ row, state, sha, path }) => {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5000);
+          let answer;
+          try {
+            const response = await fetch(path, {
+              cache: 'no-store',
+              headers: { Accept: 'application/json' },
+              redirect: 'error',
+              signal: controller.signal,
+            });
+            if (response.ok) answer = await response.json();
+          } catch (_) {
+            // A failed request or unreadable reply leaves this door unanswered.
+          } finally {
+            clearTimeout(timeout);
+          }
+          const ok = answer?.ok === true;
+          row.dataset.state = ok ? 'ok' : 'none';
+          state.textContent = ok ? 'OK' : 'No answer';
+          sha.textContent = ok && typeof answer.source_sha === 'string' ? answer.source_sha.slice(0, 7) : '';
+          return ok;
+        }));
+        count.textContent = `${results.filter(Boolean).length} / ${rows.length}`;
+        caption.textContent = 'answering OK';
+      } finally {
+        checkingHealthBoards.delete(board);
+      }
+    }
     // TEST-001: og Test UX-library chrome is allowed here: generic scoped tabs, demo modal, demo readbacks.
     function inTabScope(element, scope) {
       return element && element.closest('[data-tab-scope]') === scope;
@@ -1262,7 +1326,13 @@ fn shell_document_4() -> &'static str {
       });
       scope.querySelectorAll('[data-tab-panel]').forEach(panel => {
         if (!inTabScope(panel, scope)) return;
-        panel.classList.toggle('active', panel.dataset.tabPanel === selectedName);
+        const selected = panel.dataset.tabPanel === selectedName;
+        const opening = selected && !panel.classList.contains('active');
+        panel.classList.toggle('active', selected);
+        if (opening) {
+          const board = panel.querySelector('[data-health-board]');
+          if (inTabScope(board, scope)) void checkHealthBoard(board);
+        }
       });
     }
     const motionTimers = new Set();
@@ -1495,8 +1565,8 @@ fn shell_document_4() -> &'static str {
       if (copyStatus) { navigator.clipboard?.writeText(document.querySelector('[data-service-status-content]')?.textContent || ''); showCoronatioToast('Status copied to clipboard', 'success'); return; }
       const fileButton = event.target.closest('[data-upload-file-button]');
       if (fileButton) { uploadFileInput?.click(); return; }
-      const health = event.target.closest('[data-test-health-check]');
-      if (health) { const out = document.querySelector('[data-test-health-output]'); if (out) out.textContent = JSON.stringify({ schema: 'coronatio.test.health.v1', status: 'ready', dependencies: { rust_shell: true, theme_catalog: Boolean(window.CrownTheme?.names().length), ux_library: true }, theme: window.CrownTheme?.current() }, null, 2); return; }
+      const health = event.target.closest('[data-health-board-check]');
+      if (health) { void checkHealthBoard(health.closest('[data-health-board]')); return; }
       const testFileButton = event.target.closest('[data-test-file-input] .ui-file-input__button'); if (testFileButton) { testFileButton.closest('[data-test-file-input]')?.querySelector('[data-ui-file-input]')?.click(); return; }
       const testBreadcrumb = event.target.closest('[data-test-breadcrumb-path]'); if (testBreadcrumb) { const path = testBreadcrumb.dataset.testBreadcrumbPath; const nav = testBreadcrumb.closest('.breadcrumb-navigation, .ui-breadcrumbs'); nav?.querySelectorAll('[data-test-breadcrumb-path]').forEach(crumb => { const current = crumb.dataset.testBreadcrumbPath === path; crumb.classList.toggle('current', current); crumb.classList.toggle('ui-breadcrumbs__item--current', current); if (current) crumb.setAttribute('aria-current', 'page'); else crumb.removeAttribute('aria-current'); }); const specimen = testBreadcrumb.closest('[data-test-upload-domain-pack]'); const out = specimen?.querySelector('[data-test-domain-path]') || testBreadcrumb.closest('.showcase-item')?.querySelector('[data-breadcrumb-path]'); if (out) out.textContent = path; return; }
       const testDirectory = event.target.closest('[data-test-directory-path]'); if (testDirectory) { const specimen = testDirectory.closest('[data-test-upload-domain-pack]'); specimen?.querySelectorAll('[data-test-directory-path]').forEach(entry => { const selected = entry === testDirectory; entry.classList.toggle('selected', selected); entry.setAttribute('aria-selected', String(selected)); }); const out = specimen?.querySelector('[data-test-domain-path]'); if (out) out.textContent = testDirectory.dataset.testDirectoryPath; return; }

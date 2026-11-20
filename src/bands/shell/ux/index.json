@@ -44,7 +44,6 @@
     "packs/test-services.css",
     "packs/test-animations.css",
     "packs/test-config.css",
-    "packs/test-health.css",
     "packs/admin.css",
     "packs/dhcp.css",
     "packs/firewall.css",
