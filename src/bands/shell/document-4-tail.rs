@@ -768,7 +768,12 @@ fn shell_document_4_tail() -> &'static str {
       summary.className = success ? 'nas-setup-outcome success' : 'nas-setup-outcome error';
       summary.textContent = success ? 'NAS is ready.' : 'NAS setup could not finish.';
       target.appendChild(summary);
-      const steps = Array.isArray(result?.steps) ? result.steps : [];
+      const faceSteps = result?.face?.steps;
+      let steps = Array.isArray(faceSteps) ? faceSteps : [];
+      if (!steps.length && Array.isArray(result?.stages)) {
+        steps = result.stages.flatMap(stage =>
+          Array.isArray(stage?.receipt?.steps) ? stage.receipt.steps : []);
+      }
       if (steps.length) {
         const list = document.createElement('ol');
         list.className = 'nas-setup-steps';

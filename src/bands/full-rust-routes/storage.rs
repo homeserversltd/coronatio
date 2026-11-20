@@ -173,7 +173,6 @@ fn normalized_storage_device(display_name: &str) -> Option<String> {
 
 fn storage_nas_receipt_ok(body: &serde_json::Value) -> bool {
     let projection = match body.get("schema").and_then(serde_json::Value::as_str) {
-        Some("caduceus.nas.setup.v1") => body,
         Some("caduceus.chord.receipt.v1") => {
             if body.get("routine_id").and_then(serde_json::Value::as_str) != Some("storage/nas/setup")
                 || body.get("ok").and_then(serde_json::Value::as_bool) != Some(true)
