@@ -65,6 +65,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/status/tailscale/update-tailnet", post(tailscale_mutation_route))
         .route("/api/status/vpn/pia", get(indicator_legacy_read_route))
         .route("/api/status/vpn/transmission", get(indicator_legacy_read_route))
+        .route("/api/status/vpn/look", post(transmission_vpn_look_route))
         .route("/api/transmission/keys", get(transmission_keys_route))
         .route("/api/transmission/keys/replace", post(transmission_keys_replace_route))
         .route("/api/transmission/keys/rotate", post(transmission_keys_rotate_route))
@@ -931,6 +932,7 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/status/tailscale/update-tailnet", &["post"]),
         ("/api/status/vpn/pia", &["get"]),
         ("/api/status/vpn/transmission", &["get"]),
+        ("/api/status/vpn/look", &["post"]),
         ("/api/transmission/keys", &["get"]),
         ("/api/transmission/keys/replace", &["post"]),
         ("/api/transmission/keys/rotate", &["post"]),

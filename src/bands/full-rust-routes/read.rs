@@ -121,6 +121,11 @@ fn indicator_projection_response(path: &str, topic: &str, session: Session, samp
         object.insert("success".to_owned(), serde_json::Value::Bool(unavailable.is_none()));
         object.insert("topicId".to_owned(), serde_json::Value::String(topic.to_owned()));
         object.insert("path".to_owned(), serde_json::Value::String(path.to_owned()));
+        if topic == "vpn.status" {
+            if let Some(state) = sample.indicator_state {
+                object.insert("indicatorState".to_owned(), serde_json::Value::String(state.to_owned()));
+            }
+        }
         if let Some(signal) = unavailable.as_ref() {
             let existing = object.get("firstMissingSignal").and_then(serde_json::Value::as_str);
             if existing.is_none_or(|value| value.is_empty() || value == "none") {

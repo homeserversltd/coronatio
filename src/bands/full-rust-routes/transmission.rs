@@ -3,6 +3,52 @@ const TRANSMISSION_KEYS_REPLACE_TARGET: &str = "/api/v1/transmission/keys/replac
 const TRANSMISSION_KEYS_ROTATE_TARGET: &str = "/api/v1/transmission/keys/rotate";
 const TRANSMISSION_VPN_SETTINGS_TARGET: &str = "/api/v1/transmission/vpn/settings";
 
+async fn transmission_vpn_look_route() -> Response {
+    let signal = match tokio::time::timeout(Duration::from_secs(3), relay_transmission_vpn_look()).await {
+        Ok(Ok(response)) => return response,
+        Ok(Err(signal)) => signal,
+        Err(_) => "caduceus-vpn-look-timeout",
+    };
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(serde_json::json!({"ok": false, "firstMissingSignal": signal})),
+    )
+        .into_response()
+}
+
+async fn relay_transmission_vpn_look() -> Result<Response, &'static str> {
+    use http_body_util::{BodyExt, Empty};
+
+    // The JSON helper projects replies. This door carries the upstream bytes intact.
+    let stream = tokio::net::UnixStream::connect(caduceus_socket_path())
+        .await
+        .map_err(|_| "caduceus-unreachable")?;
+    let (mut sender, connection) =
+        hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
+            .await
+            .map_err(|_| "caduceus-vpn-look-transport-failed")?;
+    let request = hyper::Request::builder()
+        .method(Method::POST)
+        .uri("/api/v1/transmission/status/look")
+        .header(header::HOST, "caduceus.local")
+        .header(header::CONNECTION, "close")
+        .header(header::CONTENT_LENGTH, "0")
+        .body(Empty::<Bytes>::new())
+        .expect("fixed VPN look request");
+    let reply = async move {
+        let (parts, body) = sender.send_request(request).await?.into_parts();
+        let mut response = Response::new(Body::from(body.collect().await?.to_bytes()));
+        *response.status_mut() = parts.status;
+        if let Some(content_type) = parts.headers.get(header::CONTENT_TYPE) {
+            response.headers_mut().insert(header::CONTENT_TYPE, content_type.clone());
+        }
+        Ok(response)
+    };
+    tokio::try_join!(connection, reply)
+        .map(|(_, response)| response)
+        .map_err(|_| "caduceus-vpn-look-transport-failed")
+}
+
 async fn transmission_vpn_settings_get_route(headers: axum::http::HeaderMap) -> Response {
     if session_projection_from_headers(&headers).await != Session::Admin {
         return (

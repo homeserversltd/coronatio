@@ -252,7 +252,7 @@ fn shell_document_3() -> &'static str {
     }
     function hydrateTransmissionModal(data, modal = infoBody.querySelector('[data-modal-kind-body="openvpn"]')) {
       if (!modal) return;
-      setVpnIndicatorState(data);
+      setVpnIndicatorState(data, data?.indicatorState);
       const vpnNode = modal.querySelector('[data-modal-status]');
       const transmissionNode = modal.querySelector('[data-modal-secondary-status]');
       if (vpnNode) vpnNode.textContent = transmissionStatusText(data?.vpnStatus);
@@ -1003,6 +1003,32 @@ fn shell_document_3() -> &'static str {
         setInternetIndicatorState({ status: 'disconnected' });
       }
     }
+    async function requestVpnLook() {
+      try {
+        const response = await fetch('/api/status/vpn/look', { method: 'POST', cache: 'no-store' });
+        if (!response.ok) return false;
+        const receipt = await response.json();
+        return receipt?.ok === true && receipt.attempt?.outcome === 'queued';
+      } catch (_) {
+        return false;
+      }
+    }
+    async function refreshVpnModalAfterLook(look, initialReads, generation, modal, expectedAdmin) {
+      const isCurrent = () => modalResponseIsCurrent(generation, modal, expectedAdmin);
+      if (!(await look) || !isCurrent()) return;
+      try {
+        await Promise.all([initialReads, new Promise(resolve => window.setTimeout(resolve, 3000))]);
+        if (!isCurrent()) return;
+        const route = '/api/status/vpn/pia';
+        const response = await fetch(route, { cache: 'no-store' });
+        const data = await response.json();
+        if (!isCurrent()) return;
+        const readData = routeReadWasRefused(response, data) ? unavailableReadData(data, routeUnavailableSignal(route)) : data;
+        hydrateTransmissionModal(readData, modal);
+      } catch (_) {
+        // A background transport failure leaves the last shown status alone.
+      }
+    }
     async function hydrateModalRouteReads(kind) {
       const generation = infoModalGeneration;
       const expectedModal = infoBody.querySelector('[data-modal-kind-body]');
@@ -1199,6 +1225,8 @@ fn shell_document_3() -> &'static str {
       }));
     }
     function openInfoModal(title, kind = 'status') {
+      const newVpnOpening = kind === 'openvpn' &&
+        !(infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="openvpn"]'));
       if (infoBody.querySelector('[data-modal-kind-body="power-meter"]')) cancelPowerCalibrationEditing();
       infoModalGeneration += 1;
       invalidateWakeOnLanModal();
@@ -1211,7 +1239,12 @@ fn shell_document_3() -> &'static str {
       infoBackdrop.classList.add('open');
       infoBackdrop.setAttribute('aria-hidden', 'false');
       wireModalFetches();
-      hydrateModalRouteReads(kind);
+      const look = newVpnOpening ? requestVpnLook() : null;
+      const initialReads = hydrateModalRouteReads(kind);
+      if (look) {
+        void refreshVpnModalAfterLook(look, initialReads, infoModalGeneration,
+          infoBody.querySelector('[data-modal-kind-body="openvpn"]'), headerState.isAdmin);
+      }
 
       if (kind === 'openvpn' && headerState.isAdmin) {
         const transmissionModal = infoBody.querySelector('[data-modal-kind-body="openvpn"]');
@@ -1484,6 +1517,7 @@ fn shell_document_3() -> &'static str {
       });
     }
     bootstrapAdminMode();
+    void requestVpnLook();
     connectCoreStream();
     function eligibleRegularTabs() { return tabs.filter(tab => tab.dataset.visibility !== 'hidden' && tab.dataset.adminOnly !== 'true'); }
     function visibleTabs() { return headerState.isAdmin ? tabs.filter(tab => tab.dataset.pane !== fallbackTab) : eligibleRegularTabs(); }
