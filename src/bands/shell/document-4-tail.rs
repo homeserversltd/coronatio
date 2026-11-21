@@ -42,7 +42,7 @@ fn shell_document_4_tail() -> &'static str {
       const signal = result?.querySelector('code')?.textContent;
       showCoronatioToast(signal && signal !== 'none' ? `${message} (${signal})` : message, 'error');
     }
-    function waitForRestartHealth(path, timeoutMs, current = () => true, { pollMs = 1000, statusOnly = false } = {}) {
+    function waitForRestartHealth(path, timeoutMs, current = () => true, { initialDelayMs = 5000, pollMs = 1000, statusOnly = false } = {}) {
       return new Promise(resolve => {
         const deadline = performance.now() + timeoutMs;
         let poll, probe;
@@ -69,7 +69,7 @@ fn shell_document_4_tail() -> &'static str {
         const start = window.setTimeout(() => {
           poll = window.setInterval(check, pollMs);
           void check();
-        }, 5000);
+        }, initialDelayMs);
         const timeout = window.setTimeout(() => finish(false), timeoutMs);
       });
     }
@@ -88,7 +88,7 @@ fn shell_document_4_tail() -> &'static str {
     async function waitForHomeServerRestart() {
       const timeoutMs = 10 * 60 * 1000;
       showCoronatioToast('HomeServer restarting…', 'info', timeoutMs);
-      if (await waitForRestartHealth('/health', timeoutMs, undefined, { pollMs: 5000, statusOnly: true })) {
+      if (await waitForRestartHealth('/health', timeoutMs, undefined, { initialDelayMs: 30000, pollMs: 5000, statusOnly: true })) {
         window.location.reload();
       } else {
         showCoronatioToast('The HomeServer did not come back within 10 minutes.', 'error');
