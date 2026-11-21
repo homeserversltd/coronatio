@@ -864,20 +864,13 @@ fn admin_html_fragment_response(status: StatusCode, body: String) -> Response {
 }
 
 const ADMIN_SSH_STATUS_PATH: &str = "/api/v1/settings/ssh/status";
+const ADMIN_SAMBA_STATUS_PATH: &str = "/api/v1/settings/samba/status";
 const ADMIN_SERVICE_ACTION_TIMEOUT: Duration = Duration::from_secs(120);
-
-fn admin_toggle_target(toggle_id: &str) -> Option<(&'static str, &'static str)> {
-    match toggle_id {
-        "ssh-password-authentication" => Some(("SSH Password Authentication", "/api/admin/ssh/toggle")),
-        "samba-file-sharing" => Some(("Samba File Sharing", "/api/admin/samba/service")),
-        _ => None,
-    }
-}
 
 fn admin_service_status_target(toggle_id: &str) -> Option<&'static str> {
     match toggle_id {
         "ssh-password-authentication" | "ssh-service" => Some(ADMIN_SSH_STATUS_PATH),
-        "samba-file-sharing" => Some("/api/v1/settings/samba/status"),
+        "samba-file-sharing" => Some(ADMIN_SAMBA_STATUS_PATH),
         _ => None,
     }
 }
@@ -887,8 +880,8 @@ fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &
         "hard-drive-test" => Some(("Hard Drive Test", "POST", "/api/admin/hard-drive-test/start", true)),
         "update" => Some(("Update", "POST", "/api/v1/update/now", true)),
         "rotate-capability-key" => Some(("Rotate Capability Key", "POST", "/usr/local/sbin/caduceus-keyman-rotate-capability", true)),
-        "restart" => Some(("Restart", "POST", "/api/admin/system/restart", true)),
-        "shutdown" => Some(("Shutdown", "POST", "/api/admin/system/shutdown", true)),
+        "restart" => Some(("Restart", "POST", "/api/v1/appliance/power/reboot", true)),
+        "shutdown" => Some(("Shutdown", "POST", "/api/v1/appliance/power/poweroff", true)),
         "view-logs" => Some(("View Logs", "GET", "/api/admin/logs/homeserver", false)),
         _ => None,
     }
@@ -1171,32 +1164,64 @@ async fn admin_toggle_fragment_route(headers: axum::http::HeaderMap, Path(toggle
     if toggle_id == "ssh-service" {
         return admin_ssh_service_toggle_fragment(headers).await;
     }
-    let Some((label, path)) = admin_toggle_target(&toggle_id) else {
-        let readback = mutation_refusal_readback(
-            "/api/v1/appliance/report",
-            MutationRefusal { code: "unknown-admin-toggle".to_string(), status: 404 },
-        );
-        return admin_html_fragment_response(
-            StatusCode::NOT_FOUND,
-            render_admin_service_card_result_html(&toggle_id, Some(&readback), None),
-        );
+    let (label, status_path, on_path, off_path, unknown_signal) = match toggle_id.as_str() {
+        "ssh-password-authentication" => (
+            "SSH Password Authentication", ADMIN_SSH_STATUS_PATH,
+            "/api/v1/settings/ssh/password/on", "/api/v1/settings/ssh/password/off",
+            "ssh-password-authentication-readback-unknown",
+        ),
+        "samba-file-sharing" => (
+            "Samba File Sharing", ADMIN_SAMBA_STATUS_PATH,
+            "/api/v1/settings/samba/on", "/api/v1/settings/samba/off",
+            "samba-service-readback-unknown",
+        ),
+        _ => {
+            let readback = mutation_refusal_readback(
+                "/api/v1/appliance/report",
+                MutationRefusal { code: "unknown-admin-toggle".to_string(), status: 404 },
+            );
+            return admin_html_fragment_response(
+                StatusCode::NOT_FOUND,
+                render_admin_service_card_result_html(&toggle_id, Some(&readback), None),
+            );
+        }
     };
-    let readback = admin_fragment_translation_debt(&headers, "POST", path);
-    let status_readback = admin_service_status_target(&toggle_id)
-        .map(|status_path| {
-            if matches!(toggle_id.as_str(), "ssh-password-authentication" | "samba-file-sharing") {
-                admin_fragment_caduceus_json_request(&headers, "GET", status_path, serde_json::json!({}))
-            } else {
-                admin_fragment_caduceus_request(&headers, "POST", status_path)
-            }
-        })
-        .unwrap_or_else(|| mutation_refusal_readback(path, MutationRefusal { code: "unknown-admin-toggle".to_string(), status: 404 }));
+    let read_id = toggle_id.clone();
+    let (status_readback, ok, message, first_missing_signal) = load_trace::spawn_blocking_with_trace(move || {
+        let read_status = || {
+            admin_fragment_caduceus_json_request(&headers, "GET", status_path, serde_json::json!({}))
+        };
+        let mut before = read_status();
+        let state = caduceus_admin_service_state(&read_id, &before);
+        // An unavailable card also has enabled=false; that is not permission to ask for on.
+        if !admin_control_confirmed(&before) || state.state == "Unavailable" {
+            let signal = admin_control_failure_signal(&before, unknown_signal);
+            before.ok = false;
+            before.first_missing_signal = signal.clone();
+            return (before, false, format!("Could not read {label} status; no change was requested."), signal);
+        }
+        let path = if state.enabled { off_path } else { on_path };
+        let readback = caduceus_actuate_json_with_timeout(
+            &mutation_authority(), &headers, path, serde_json::json!({}), ADMIN_SERVICE_ACTION_TIMEOUT,
+        );
+        let ok = admin_control_confirmed(&readback);
+        let (message, signal) = if ok {
+            ("Caduceus accepted the mutation; card re-read real state.".to_string(), "none".to_string())
+        } else {
+            (format!("{label} could not be changed."), admin_control_failure_signal(&readback, "caduceus-action-unconfirmed"))
+        };
+        (read_status(), ok, message, signal)
+    }).await.unwrap_or_else(|_| {
+        let readback = mutation_task_failure_readback(status_path);
+        let signal = readback.first_missing_signal.clone();
+        (readback, false, format!("{label} could not be changed."), signal)
+    });
     let result = AdminMutationResult {
         action: toggle_id.clone(),
         title: label.to_string(),
-        message: if readback.ok { "Caduceus accepted the mutation; card re-read real state." } else { "Caduceus actuator is not wired or unavailable; card re-read unchanged real state." }.to_string(),
-        ok: readback.ok,
-        first_missing_signal: if readback.ok { "none".to_string() } else { readback.first_missing_signal.clone() },
+        message,
+        ok,
+        first_missing_signal,
     };
     admin_html_fragment_response(StatusCode::OK, render_admin_service_card_result_html(&toggle_id, Some(&status_readback), Some(&result)))
 }
@@ -1239,7 +1264,12 @@ async fn admin_action_fragment_gate(
     face_stage_route_gate(request, next).await
 }
 
-async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>) -> impl IntoResponse {
+async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action_id): Path<String>, request_method: Method) -> impl IntoResponse {
+    let power = matches!(action_id.as_str(), "restart" | "shutdown");
+    // This shared fragment route also accepts GET; a read must never send a power action.
+    if power && request_method != Method::POST {
+        return (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "POST")]).into_response();
+    }
     let route = format!("/admit/admin/action/{action_id}");
     if let Some(refusal) = admin_fragment_context_refusal(&headers) {
         let readback = mutation_refusal_readback("/api/v1/appliance/report", refusal);
@@ -1257,9 +1287,22 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
             admin_membrane_refusal_fragment("unknown admin action", "unknown-admin-action"),
         );
     };
-    let readback = if action_id == "update" {
+    let readback = if power {
+        let attended_headers = headers.clone();
+        let mut readback = load_trace::spawn_blocking_with_trace(move || {
+            caduceus_actuate_json_with_timeout(
+                &mutation_authority(), &attended_headers, path, serde_json::json!({}), ADMIN_SERVICE_ACTION_TIMEOUT,
+            )
+        }).await.unwrap_or_else(|_| mutation_task_failure_readback(path));
+        readback.ok = admin_control_confirmed(&readback);
+        if !readback.ok {
+            readback.first_missing_signal = admin_control_failure_signal(&readback, "caduceus-action-unconfirmed");
+        }
+        readback
+    } else if action_id == "update" {
         caduceus_mutation_readback(&headers, path)
-    } else if mutation {
+    } else if matches!(action_id.as_str(), "hard-drive-test" | "rotate-capability-key") {
+        // Legacy API aliases only. The Admin tab does not render either action ID.
         admin_fragment_translation_debt(&headers, method, path)
     } else {
         admin_fragment_caduceus_request(&headers, method, path)
@@ -1269,6 +1312,8 @@ async fn admin_action_fragment_route(headers: axum::http::HeaderMap, Path(action
     let class = if readback.ok { "success" } else { "error" };
     let message = if readback.ok {
         if mutation { "Caduceus accepted the action." } else { "Readback returned through the Caduceus/crown route." }
+    } else if power {
+        "The HomeServer did not confirm the action."
     } else if mutation {
         "Caduceus actuator is not wired or unavailable; no optimistic success was rendered."
     } else {

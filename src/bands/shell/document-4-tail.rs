@@ -38,7 +38,11 @@ fn shell_document_4_tail() -> &'static str {
       if (!success) return `${label} could not be started.`;
       return `${label} initiated.`;
     }
-    function waitForRestartHealth(path, timeoutMs, current = () => true) {
+    function adminRefusalToast(result, message) {
+      const signal = result?.querySelector('code')?.textContent;
+      showCoronatioToast(signal && signal !== 'none' ? `${message} (${signal})` : message, 'error');
+    }
+    function waitForRestartHealth(path, timeoutMs, current = () => true, { pollMs = 1000, statusOnly = false } = {}) {
       return new Promise(resolve => {
         const deadline = performance.now() + timeoutMs;
         let poll, probe;
@@ -57,13 +61,13 @@ fn shell_document_4_tail() -> &'static str {
           probe = controller;
           try {
             const response = await fetch(path, { cache: 'no-store', redirect: 'error', signal: controller.signal });
-            if (response.status === 200 && (await response.json())?.ok === true
+            if (response.status === 200 && (statusOnly || (await response.json())?.ok === true)
                 && !controller.signal.aborted && current() && performance.now() < deadline) finish(true);
           } catch (_) { /* The listener may still be down. */ }
         }
         // Let the scheduled restart begin and give the old process time to stop.
         const start = window.setTimeout(() => {
-          poll = window.setInterval(check, 1000);
+          poll = window.setInterval(check, pollMs);
           void check();
         }, 5000);
         const timeout = window.setTimeout(() => finish(false), timeoutMs);
@@ -79,6 +83,15 @@ fn shell_document_4_tail() -> &'static str {
       } else {
         status.textContent = 'The website did not come back within 90 seconds.';
         showCoronatioToast(status.textContent, 'error');
+      }
+    }
+    async function waitForHomeServerRestart() {
+      const timeoutMs = 10 * 60 * 1000;
+      showCoronatioToast('HomeServer restarting…', 'info', timeoutMs);
+      if (await waitForRestartHealth('/health', timeoutMs, undefined, { pollMs: 5000, statusOnly: true })) {
+        window.location.reload();
+      } else {
+        showCoronatioToast('The HomeServer did not come back within 10 minutes.', 'error');
       }
     }
     const adminRestartOpener = 'button[data-crown-dialog-open="admin-restart"]';
@@ -219,7 +232,14 @@ fn shell_document_4_tail() -> &'static str {
       const actionResult = target.matches('[data-admin-action-result]') ? target.querySelector('[data-admin-action-result-fragment]') : null;
       if (actionResult) {
         const action = actionResult.dataset.adminActionResultFragment || '';
-        showCoronatioToast(adminActionToast(action, actionResult.classList.contains('success')), actionResult.classList.contains('success') ? 'success' : 'error');
+        const success = actionResult.classList.contains('success');
+        if (action === 'restart' || action === 'shutdown') {
+          if (!success) adminRefusalToast(actionResult, actionResult.querySelector('span')?.textContent || adminActionToast(action, false));
+          else if (action === 'restart') void waitForHomeServerRestart();
+          else showCoronatioToast('The HomeServer is shutting down. It will stay off until it is turned on again.', 'info', 10000);
+        } else {
+          showCoronatioToast(adminActionToast(action, success), success ? 'success' : 'error');
+        }
         target.replaceChildren(); // OG result grammar is toast feedback, never a durable action-success panel.
       }
       const serviceCard = target.matches('[data-service-card]') ? target : target.closest('[data-service-card]');
@@ -227,9 +247,14 @@ fn shell_document_4_tail() -> &'static str {
       if (mutation) {
         const label = serviceCard.querySelector('h3')?.textContent || 'Service';
         const success = mutation.classList.contains('success');
-        const sshFailure = !success && mutation.dataset.adminMutationResult === 'ssh-service'
-          ? mutation.querySelector('span')?.textContent : '';
-        showCoronatioToast(sshFailure || (success ? `${label} change initiated; state re-read.` : `${label} could not be changed.`), success ? 'success' : 'error');
+        const action = mutation.dataset.adminMutationResult;
+        const failure = success ? '' : mutation.querySelector('span')?.textContent;
+        if (!success && (action === 'ssh-password-authentication' || action === 'samba-file-sharing')) {
+          adminRefusalToast(mutation, failure || `${label} could not be changed.`);
+        } else {
+          const sshFailure = action === 'ssh-service' ? failure : '';
+          showCoronatioToast(sshFailure || (success ? `${label} change initiated; state re-read.` : `${label} could not be changed.`), success ? 'success' : 'error');
+        }
         mutation.remove();
       }
     });
@@ -241,7 +266,20 @@ fn shell_document_4_tail() -> &'static str {
     document.body.addEventListener('htmx:responseError', event => {
       const source = event.detail?.elt;
       const button = source instanceof Element ? source.closest(adminActionButtonSelector) : null;
-      if (button) { restoreAdminActionControls(); showCoronatioToast('System action could not be started.', 'error'); }
+      if (button) {
+        restoreAdminActionControls();
+        const action = button.dataset.adminActionId;
+        if (action === 'restart' || action === 'shutdown') {
+          // HTMX does not swap non-2xx fragments. Extract only text from the refusal.
+          const reply = document.createElement('template');
+          reply.innerHTML = event.detail?.xhr?.responseText || '';
+          const fragment = reply.content.querySelector(`[data-admin-action-result-fragment="${action}"]`);
+          const refusal = fragment || reply.content.querySelector('[data-admin-membrane-refusal]');
+          adminRefusalToast(refusal, fragment?.querySelector('span')?.textContent || adminActionToast(action, false));
+        } else {
+          showCoronatioToast('System action could not be started.', 'error');
+        }
+      }
       if (source instanceof Element && source.closest('[data-service-card] .ui-toggle__input')) { restoreAdminToggle(source); showCoronatioToast('Service change could not be started.', 'error'); }
     });
     function localizeAdminLogTimes(slot) {
