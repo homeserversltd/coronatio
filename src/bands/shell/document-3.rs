@@ -1452,10 +1452,29 @@ fn shell_document_3() -> &'static str {
       if (coreStreamId) requests.push(setStreamMembership('core', coreStreamId, 'downgrade'));
       return Promise.all(requests);
     }
+    const crownStore = (() => {
+      const snapshots = new Map();
+      const subscribers = new Map();
+      const latest = topicId => snapshots.get(topicId);
+      function subscribe(topicId, fn) {
+        if (!subscribers.has(topicId)) subscribers.set(topicId, new Set());
+        const listeners = subscribers.get(topicId);
+        listeners.add(fn);
+        fn(latest(topicId));
+        return () => listeners.delete(fn);
+      }
+      function set(topicId, snapshot) {
+        if (snapshot === latest(topicId)) return;
+        if (snapshot === undefined) snapshots.delete(topicId);
+        else snapshots.set(topicId, snapshot);
+        subscribers.get(topicId)?.forEach(fn => fn(snapshot));
+      }
+      function clear() { snapshots.forEach((_, topicId) => set(topicId, undefined)); }
+      return Object.freeze({ latest, subscribe, set, clear });
+    })();
+    window.addEventListener('coronatio:privileged-state-retired', crownStore.clear);
     const coreTopicIds = indicatorTopicIds;
     function applyCoreTopic(topicId, envelope) {
-      if (window.htmx) window.htmx.trigger(document.body, topicId);
-
       const snapshotData = envelope?.snapshot;
       const snapshot = envelope?.status === 'snapshot' && snapshotData && typeof snapshotData === 'object' && !Array.isArray(snapshotData);
       const fallbackSignal = ({
@@ -1469,6 +1488,10 @@ fn shell_document_3() -> &'static str {
       const data = snapshot
         ? snapshotData
         : { ok: false, success: false, status: 'unavailable', firstMissingSignal };
+      // The core stream can replay a cached sample after a newer action read.
+      if (topicId === 'services.status' && Number.isFinite(data.ts) && data.ts < crownStore.latest(topicId)?.ts) return;
+      crownStore.set(topicId, data);
+      if (window.htmx) window.htmx.trigger(document.body, topicId);
       if (topicId === 'vpn.status') {
         if (infoBackdrop.classList.contains('open')) hydrateTransmissionModal(data);
         setVpnIndicatorState(data, snapshot ? envelope?.indicatorState : null);
@@ -1632,17 +1655,6 @@ __NATIVE_HTMX_OWNER__
       pulseStream = null;
       pulseStreamId = null;
     }
-    let portalCurrentnessTimer = null;
-    let portalCurrentnessBinding = null;
-    function stopPortalCurrentnessCadence() { if (portalCurrentnessTimer) window.clearInterval(portalCurrentnessTimer); portalCurrentnessTimer = null; portalCurrentnessBinding = null; }
-    function startPortalCurrentnessCadence() {
-      const binding = viewportFamilyAdmitted('portals') ? scaffoldRegistry.capture('portals') : null;
-      if (!binding) { stopPortalCurrentnessCadence(); return; }
-      if (portalCurrentnessBinding === binding && portalCurrentnessTimer) return;
-      stopPortalCurrentnessCadence(); portalCurrentnessBinding = binding;
-      refreshPortalCurrentness(binding);
-      portalCurrentnessTimer = window.setInterval(() => { if (portalCurrentnessBinding === binding && viewportFamilyAdmitted('portals') && scaffoldRegistry.current(binding)) refreshPortalCurrentness(binding); else stopPortalCurrentnessCadence(); }, 5000);
-    }
     function resumeIncompleteNativeReads(active) {
       if (!window.htmx) return;
       const pane = document.querySelector(`[data-pane-panel="${CSS.escape(active)}"]`);
@@ -1676,7 +1688,6 @@ __NATIVE_HTMX_OWNER__
     }
     function reconcileViewportStreamFamily() {
       closeViewportStreamFamily(true);
-      stopPortalCurrentnessCadence();
       if (document.visibilityState !== 'visible') {
         const hiddenGuest = window.immortalFloor?.activeGuest;
         if (hiddenGuest) scaffoldRegistry.retire(hiddenGuest, 'Document hidden');
@@ -1698,7 +1709,7 @@ __NATIVE_HTMX_OWNER__
       if (active === 'unbound') hydrateDns();
       if (active === 'firewall') hydrateFirewall();
       if (active === 'backblaze') hydrateBackblaze();
-      if (active === 'portals') { startPortalCurrentnessCadence(); connectPulseStream(); }
+      if (active === 'portals') connectPulseStream();
       if (active === 'admin') {
         if (adminDocumentPatchPendingHydration && window.htmx) adminDocumentPatchPendingHydration = false;
         reconcileAdminDiskSnapshot();

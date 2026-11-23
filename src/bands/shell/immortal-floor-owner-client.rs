@@ -419,7 +419,6 @@ fn shell_immortal_floor_owner_client() -> &'static str {
         if (admissionRequest) retireAdmissionRequest(admissionRequest);
         if (outgoing) scaffoldRegistry.retire(outgoing);
         closeViewportStreamFamily();
-        stopPortalCurrentnessCadence();
         crossingGuest = selected;
         const readyNow = await ready;
         if (!readyNow) {

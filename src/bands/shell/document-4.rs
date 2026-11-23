@@ -1124,6 +1124,42 @@ fn shell_document_4() -> &'static str {
       }).join('\n\n');
       if (modal) modal.hidden = false;
     }
+    const portalServiceSettles = new Map();
+    window.addEventListener('coronatio:privileged-state-retired', () => {
+      portalServiceSettles.forEach(controller => controller.abort());
+      portalServiceSettles.clear();
+    });
+    function settlePortalServiceAction(portalName, goal, controller, attendance) {
+      const { signal } = controller;
+      const deadline = performance.now() + 30000;
+      const expiry = window.setTimeout(() => controller.abort(), 30000);
+      let retry;
+      signal.addEventListener('abort', () => {
+        window.clearTimeout(expiry);
+        window.clearTimeout(retry);
+        if (portalServiceSettles.get(portalName) === controller) portalServiceSettles.delete(portalName);
+      }, { once: true });
+      const current = () => !signal.aborted && performance.now() < deadline && headerState.isAdmin
+        && coronatioAttendanceRuntime.currentAttendance === attendance;
+      const read = async () => {
+        if (!current()) { controller.abort(); return; }
+        let settled = false;
+        try {
+          const response = await fetch('/api/status/services', { cache: 'no-store', signal });
+          if (response.ok) {
+            const snapshot = await response.json();
+            if (current() && Array.isArray(snapshot?.services)) {
+              applyCoreTopic('services.status', { status: 'snapshot', snapshot });
+              settled = crownStore.latest('services.status') === snapshot
+                && snapshot.services.some(row => row?.name === portalName && row.status === goal);
+            }
+          }
+        } catch (_) { /* A missed read may retry only within this action's window. */ }
+        if (goal && !settled && current()) retry = window.setTimeout(read, 1000);
+        else controller.abort();
+      };
+      void read();
+    }
     async function handlePortalServiceAction(event) {
       event.preventDefault();
       event.stopPropagation();
@@ -1136,6 +1172,17 @@ fn shell_document_4() -> &'static str {
         if (action === 'status') showPortalServiceStatus([{ service: 'service', error: 'No services specified for this portal.' }]);
         else showCoronatioToast('No services specified', 'error');
         return;
+      }
+      const portalName = button.closest('[data-portal-card]')?.dataset.portalName;
+      const attendance = coronatioAttendanceRuntime.currentAttendance;
+      let settleController;
+      if (portalName && headerState.isAdmin) {
+        portalServiceSettles.get(portalName)?.abort();
+        portalServiceSettles.delete(portalName);
+        if (['start', 'stop', 'restart', 'enable', 'disable'].includes(action)) {
+          settleController = new AbortController();
+          portalServiceSettles.set(portalName, settleController);
+        }
       }
       const results = [];
 
@@ -1162,8 +1209,13 @@ fn shell_document_4() -> &'static str {
         }
       }
       if (action === 'status') showPortalServiceStatus(results);
+      else if (settleController && !settleController.signal.aborted) {
+        const goal = action === 'stop' ? 'down' : ['start', 'restart'].includes(action) ? 'up' : null;
+        settlePortalServiceAction(portalName, goal, settleController, attendance);
+      }
     }
     function bindPortalFragmentControls(grid) {
+      applyPortalTileStatuses(grid, crownStore.latest('services.status'));
       grid.querySelectorAll('[data-portal-card]').forEach(card => {
         if (card.dataset.portalFragmentControlsBound === 'true') return;
         card.dataset.portalFragmentControlsBound = 'true';
@@ -1174,32 +1226,22 @@ fn shell_document_4() -> &'static str {
       grid.querySelectorAll('[data-service-action]').forEach(button => { if (button.dataset.portalFragmentControlBound === 'true') return; button.dataset.portalFragmentControlBound = 'true'; button.addEventListener('click', handlePortalServiceAction); });
       grid.querySelectorAll('[data-portal-delete]').forEach(button => { if (button.dataset.portalFragmentControlBound === 'true') return; button.dataset.portalFragmentControlBound = 'true'; button.addEventListener('click', deletePortal); });
     }
-    async function refreshPortalCurrentness(binding = scaffoldRegistry.capture('portals')) {
-      if (!binding || binding.guest !== 'portals' || !viewportFamilyAdmitted('portals') || !scaffoldRegistry.current(binding)) return false;
-      const grid = binding.root.querySelector('[data-portals-grid]');
-      if (!grid) return false;
-      return scaffoldRegistry.run(binding, 'portals-currentness', async context => {
-        const data = await context.fetchJson('/api/portals/currentness');
-        if (!context.current() || !viewportFamilyAdmitted('portals') || !binding.root.contains(grid)) return false;
-        if (!data || typeof data !== 'object' || Array.isArray(data) || !data.portals || typeof data.portals !== 'object' || Array.isArray(data.portals)) throw new Error('Portal currentness response is incomplete');
-        const statuses = ['up', 'down', 'partial', 'unknown'];
-        for (const [name, value] of Object.entries(data.portals)) if (value !== null && value !== undefined && !statuses.includes(value)) throw new Error('Portal currentness row is malformed');
-        for (const card of grid.querySelectorAll('[data-portal-card]')) {
-          if (!context.current() || !viewportFamilyAdmitted('portals') || !binding.root.contains(card)) return false;
-          const next = statuses.includes(data.portals[card.dataset.portalName]) ? data.portals[card.dataset.portalName] : 'unknown';
-          const current = statuses.find(status => card.classList.contains(status)) || 'unknown';
-          if (current !== next) { card.classList.remove(...statuses); card.classList.add(next); }
-        }
-        if (context.current()) { delete grid.dataset.currentnessStale; delete grid.dataset.currentnessError; }
-        return true;
-      }, {
-        slots: [], timeoutMs: 8000, slowMs: 750, retry: false,
-        onFailure: ({ current, reason }) => {
-          if (!current() || !viewportFamilyAdmitted('portals') || !scaffoldRegistry.current(binding) || !binding.root.contains(grid)) return;
-          grid.dataset.currentnessStale = 'true'; grid.dataset.currentnessError = reason || 'Portal currentness unavailable';
-        }
-      });
+    function applyPortalTileStatuses(grid, snapshot) {
+      const statuses = ['up', 'down', 'partial', 'unknown'];
+      const rows = new Map();
+      if (Array.isArray(snapshot?.services)) {
+        for (const row of snapshot.services) if (row?.name) rows.set(row.name, row.status);
+      }
+      for (const card of grid.querySelectorAll('[data-portal-card]')) {
+        const status = rows.get(card.dataset.portalName);
+        const next = statuses.includes(status) ? status : 'unknown';
+        if (!card.classList.contains(next)) { card.classList.remove(...statuses); card.classList.add(next); }
+      }
     }
+    crownStore.subscribe('services.status', snapshot => {
+      const grid = document.querySelector('[data-portals-grid]');
+      if (grid) applyPortalTileStatuses(grid, snapshot);
+    });
     const portalElementsChanged = window.consumeElementsChanged({
       paneId: 'portals',
       route: '/api/portals/elements',

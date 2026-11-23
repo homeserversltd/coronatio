@@ -319,10 +319,7 @@ fn render_portal_element_from_grant(session: Session, facts: &IrisFacts, plan: &
             label: format!("Delete {}", element_id), seats: vec![DataSeat::new("data-portal-delete", None).expect("valid delete seat")],
         }.render()
     } else { html! {} };
-    let state = match derive_portal_currentness(portal) {
-        "up" => PortalState::Up, "down" => PortalState::Down, "partial" => PortalState::Partial,
-        _ => PortalState::Unknown,
-    };
+    let state = PortalState::Unknown;
     let destination = if destination_raw.trim().is_empty() { &portal.local_url } else { &destination_raw };
     Some(PortalCard {
         name: element_id.into(), description: portal.description.clone(),
