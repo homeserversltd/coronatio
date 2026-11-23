@@ -25,6 +25,7 @@ hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1", "tokio"] }
 http-body-util = "0.1"
 cssparser = "0.35"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 
 [dev-dependencies]

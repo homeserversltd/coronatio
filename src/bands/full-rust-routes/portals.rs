@@ -96,42 +96,124 @@ fn read_factory_portal_names() -> (Option<String>, Vec<String>, String) {
     }
 }
 
-async fn portal_image_route(Path(filename): Path<String>) -> impl IntoResponse {
+const PORTAL_ICON_MAX_EDGE: u32 = 240;
+
+async fn portal_image_route(
+    Path(filename): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Response {
     if filename.contains('/') || filename.contains("..") || filename.is_empty() {
         return StatusCode::BAD_REQUEST.into_response();
     }
 
-    let served_filename = match read_portal_image(&filename) {
-        Ok(Some(bytes)) => return portal_image_response(&filename, bytes),
+    // File reads and PNG transforms must not occupy the async worker.
+    tokio::task::spawn_blocking(move || serve_portal_image(&filename, &headers))
+        .await
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+fn serve_portal_image(filename: &str, headers: &axum::http::HeaderMap) -> Response {
+    let served_filename = match read_portal_image(filename) {
+        Ok(Some(image)) => return portal_image_response(filename, image, headers),
         Ok(None) if filename == "default.png" => return StatusCode::NOT_FOUND.into_response(),
         Ok(None) => "default.png",
         Err(()) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
 
     match read_portal_image(served_filename) {
-        Ok(Some(bytes)) => portal_image_response(served_filename, bytes),
+        Ok(Some(image)) => portal_image_response(served_filename, image, headers),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(()) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
-fn read_portal_image(filename: &str) -> Result<Option<Vec<u8>>, ()> {
+struct PortalImage {
+    bytes: Vec<u8>,
+    modified: Option<SystemTime>,
+}
+
+fn read_portal_image(filename: &str) -> Result<Option<PortalImage>, ()> {
     for root in portal_image_roots() {
         let path = root.join(filename);
         if path.is_file() {
-            return std::fs::read(path).map(Some).map_err(|_| ());
+            let mut file = std::fs::File::open(path).map_err(|_| ())?;
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).map_err(|_| ())?;
+            let modified = file.metadata().and_then(|metadata| metadata.modified()).ok();
+            return Ok(Some(PortalImage { bytes, modified }));
         }
     }
     Ok(None)
 }
 
-fn portal_image_response(filename: &str, bytes: Vec<u8>) -> Response {
-    let content_type = if filename.ends_with(".png") {
-        "image/png"
+fn portal_image_response(
+    filename: &str,
+    image: PortalImage,
+    headers: &axum::http::HeaderMap,
+) -> Response {
+    use sha2::{Digest as _, Sha256};
+
+    let is_png = filename.ends_with(".png");
+    let (variant, content_type) = if is_png {
+        ("png-240-v1", "image/png")
     } else {
-        "application/octet-stream"
+        ("raw-v1", "application/octet-stream")
     };
-    (StatusCode::OK, [(header::CONTENT_TYPE, content_type)], bytes).into_response()
+    // A weak validator ties the result to the source snapshot and transform version
+    // without having to decode it on each successful revalidation.
+    let modified_ns = image.modified.map(|time| match time.duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_nanos() as i128,
+        Err(error) => -(error.duration().as_nanos() as i128),
+    });
+    let mut digest = Sha256::new();
+    digest.update([u8::from(modified_ns.is_some())]);
+    digest.update(modified_ns.unwrap_or_default().to_be_bytes());
+    digest.update(&image.bytes);
+    let quoted_tag = format!("\"portal-{variant}-{:x}\"", digest.finalize());
+    let cache_headers = [
+        (header::ETAG, format!("W/{quoted_tag}")),
+        (header::CACHE_CONTROL, "no-cache".to_owned()),
+    ];
+    if portal_image_etag_matches(headers, quoted_tag.as_bytes()) {
+        return (StatusCode::NOT_MODIFIED, cache_headers).into_response();
+    }
+
+    let bytes = if is_png {
+        scale_portal_png(&image.bytes).ok().flatten().unwrap_or(image.bytes)
+    } else {
+        image.bytes
+    };
+    (StatusCode::OK, cache_headers, [(header::CONTENT_TYPE, content_type)], bytes).into_response()
+}
+
+fn portal_image_etag_matches(headers: &axum::http::HeaderMap, quoted_tag: &[u8]) -> bool {
+    headers.get_all(header::IF_NONE_MATCH).iter().any(|value| {
+        let value = value.as_bytes().trim_ascii();
+        value == b"*" || value.split(|&byte| byte == b',').any(|candidate| {
+            let candidate = candidate.trim_ascii();
+            candidate.strip_prefix(b"W/").unwrap_or(candidate) == quoted_tag
+        })
+    })
+}
+
+fn scale_portal_png(bytes: &[u8]) -> image::ImageResult<Option<Vec<u8>>> {
+    use image::{codecs::png::PngDecoder, DynamicImage, ImageDecoder, ImageFormat, Limits};
+    use std::io::Cursor;
+
+    let mut limits = Limits::default();
+    let mut decoder = PngDecoder::with_limits(Cursor::new(bytes), limits.clone())?;
+    let (width, height) = decoder.dimensions();
+    if width.max(height) <= PORTAL_ICON_MAX_EDGE {
+        return Ok(None);
+    }
+
+    limits.reserve(decoder.total_bytes())?;
+    decoder.set_limits(limits)?;
+    let scaled = DynamicImage::from_decoder(decoder)?
+        .thumbnail(PORTAL_ICON_MAX_EDGE, PORTAL_ICON_MAX_EDGE);
+    let mut encoded = Cursor::new(Vec::new());
+    scaled.write_to(&mut encoded, ImageFormat::Png)?;
+    Ok(Some(encoded.into_inner()))
 }
 
 fn portal_image_roots() -> Vec<PathBuf> {
