@@ -319,6 +319,95 @@ fn admin_fragment_translation_debt(
     )
 }
 
+async fn portal_edit_mutation_route(
+    headers: axum::http::HeaderMap,
+    uri: Uri,
+    decoded_name: Result<Path<String>, axum::extract::rejection::PathRejection>,
+    body: Bytes,
+) -> Response {
+    tokio::task::spawn_blocking(move || {
+        let path = uri.path();
+        let context = MutationRequestContext::from_headers(&headers);
+        let attendance = match mutation_authority().authorize(&context) {
+            Ok(attendance) => attendance,
+            Err(refusal) => {
+                // Keep the old homeserver_mutation_response refusal on the attendance boundary.
+                let caduceus = mutation_refusal_readback(path, refusal);
+                return (
+                    mutation_response_status(&caduceus),
+                    Json(serde_json::json!({
+                        "schema": "coronatio.homeserver.route.mutation.v1",
+                        "ok": caduceus.ok,
+                        "accepted": caduceus.ok,
+                        "method": "PUT",
+                        "path": path,
+                        "family": homeserver_route_family(path),
+                        "authority": "Caduceus staff transition membrane",
+                        "caduceus": caduceus,
+                        "firstMissingSignal": caduceus.first_missing_signal,
+                    })),
+                ).into_response();
+            }
+        };
+        let bad_request = |signal| {
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "ok": false,
+                "firstMissingSignal": signal,
+            }))).into_response()
+        };
+        let Ok(Path(portal_name)) = decoded_name else {
+            return bad_request("coronatio-portal-edit-path-invalid");
+        };
+        let Ok(body) = serde_json::from_slice::<serde_json::Value>(&body) else {
+            return bad_request("coronatio-portal-edit-body-invalid");
+        };
+        let Some(name) = body.get("name").and_then(serde_json::Value::as_str) else {
+            return bad_request("coronatio-portal-edit-body-invalid");
+        };
+        if name != portal_name {
+            return bad_request("coronatio-portal-edit-name-mismatch");
+        }
+
+        // Match Caduceus routes/portals/index.rs:name_slug, including edge separators and Unicode.
+        let mut slug = String::new();
+        let mut separator = false;
+        for ch in name.to_lowercase().chars() {
+            if ch.is_alphanumeric() {
+                slug.push(ch);
+                separator = false;
+            } else if !separator {
+                slug.push('-');
+                separator = true;
+            }
+        }
+        // The slug contains only alphanumerics and hyphens; encode its non-ASCII bytes for the HTTP path.
+        let slug: String = url::form_urlencoded::byte_serialize(slug.as_bytes()).collect();
+        let target = format!("/api/v1/portals/{slug}");
+        let readback = caduceus_http_json_with_attendance_and_document(
+            "PUT", &target, body, Some(&attendance.proof), Some(&attendance.document),
+        );
+        if readback.ok && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
+            crate::indicators::invalidate_indicator_portal_metadata();
+        }
+        let status = if !readback.ok && (400..=599).contains(&readback.status) {
+            StatusCode::from_u16(readback.status).unwrap_or_else(|_| mutation_response_status(&readback))
+        } else {
+            mutation_response_status(&readback)
+        };
+        let body = if readback.status == 0 {
+            serde_json::json!({"ok": false, "firstMissingSignal": readback.first_missing_signal})
+        } else {
+            readback.body
+        };
+        (status, Json(body)).into_response()
+    }).await.unwrap_or_else(|_| {
+        (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+            "ok": false,
+            "firstMissingSignal": "caduceus-mutation-task-failed",
+        }))).into_response()
+    })
+}
+
 fn mutation_config_set(
     authority: &MutationAuthority,
     headers: &axum::http::HeaderMap,
