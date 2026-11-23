@@ -68,9 +68,23 @@
           const timerStatus = typeof service?.active === 'boolean' ? `Timer ${service.active ? 'active' : 'inactive'}` : 'Timer status unavailable';
           content.innerHTML = `<label>Automatic updates <input type="checkbox" data-update-schedule ${enabled === true ? 'checked' : ''} ${known ? '' : 'disabled'}></label><p>${known ? timerStatus : 'Automatic updates status unavailable'}</p>${typeof cadence === 'string' && cadence ? `<p>${esc(cadence)}</p>` : ''}`;
         } else if (selected === 'Interactables') {
+          const timeFormat = new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'});
+          const cardTime = (value, unixSeconds = false) => {
+            if (typeof value !== 'string') return '';
+            let date;
+            if (unixSeconds && /^\d+$/.test(value)) date = new Date(Number(value) * 1000);
+            else if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+              // Reject impossible days that Date would roll into the next month.
+              if (Number(value.slice(8, 10)) !== new Date(value.slice(0, 10)).getUTCDate()) return '';
+              date = new Date(value);
+            }
+            return date && Number.isFinite(date.getTime()) ? timeFormat.format(date) : '';
+          };
           const draw = (items, silenced) => items.map(row => {
+            const changed = cardTime(row.reference_changed_at), seen = cardTime(row.created_at, true);
+            const times = [changed && 'Changed by HomeServer ' + changed, seen && 'Seen here ' + seen].filter(Boolean).join(' · ');
             const diff = typeof row.diff === 'string' && row.diff ? `<pre class="ux-readout">${row.diff.split('\n').map(line => `<span${line.startsWith('-') && !line.startsWith('---') ? ' class="error"' : line.startsWith('+') && !line.startsWith('+++') ? ' class="success"' : ''}>${esc(line)}</span>`).join('\n')}</pre>` : '<p>Diff unavailable</p>';
-            return `<article><strong>${esc(row.target_path)}</strong>${row.slice?.sentence ? `<p>${esc(row.slice.sentence)}</p>` : ''}${diff}${silenced ? `<button type="button" data-interactable-action="unsilence" data-interactable-id="${esc(row.id)}">Unsilence</button>` : `<button type="button" data-interactable-action="run" data-interactable-id="${esc(row.id)}">Yes</button> <button type="button" data-interactable-action="silence" data-interactable-id="${esc(row.id)}">Silence</button>`}</article>`;
+            return `<article><strong>${esc(row.target_path)}</strong>${times ? `<p class="muted">${esc(times)}</p>` : ''}${row.slice?.sentence ? `<p>${esc(row.slice.sentence)}</p>` : ''}${diff}${silenced ? `<button type="button" data-interactable-action="unsilence" data-interactable-id="${esc(row.id)}">Unsilence</button>` : `<button type="button" data-interactable-action="run" data-interactable-id="${esc(row.id)}">Yes</button> <button type="button" data-interactable-action="silence" data-interactable-id="${esc(row.id)}">Silence</button>`}</article>`;
           }).join('');
           const pending = rows.filter(row => !row.silenced), muted = rows.filter(row => row.silenced);
           content.innerHTML = !(Array.isArray(interactables) || Array.isArray(interactables?.interactables)) ? '<p>Updates unavailable</p>' : rows.length ? draw(pending, false) + (muted.length ? `<p>Silenced</p>${draw(muted, true)}` : '') : '<p>Nothing waiting</p>';
