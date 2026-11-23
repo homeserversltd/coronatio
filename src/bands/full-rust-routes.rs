@@ -89,9 +89,20 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/upload/blacklist/list", get(upload_blacklist_admin_route))
         .route("/api/upload/blacklist/update", put(admin_class_generic_mutation_route))
         .route("/api/upload/pin-required-status", get(upload_pin_required_route).post(admin_class_generic_mutation_route))
-        .route("/api/portals", get(portals_config_route).post(admin_class_generic_mutation_route))
-        .route("/api/portals/currentness", get(portals_currentness_route))
-        .route("/api/portals/:portal_name", put(portal_edit_mutation_route).delete(admin_class_generic_mutation_route))
+        .route("/api/portals", get(portals_config_route).post(portal_add_mutation_route))
+        .route(
+            "/api/portals/:portal_name",
+            put(portal_edit_mutation_route)
+                .delete(portal_delete_mutation_route)
+                // Named portals have mutation handlers, but no API read handler.
+                .fallback(|method: Method| async move {
+                    if method == Method::GET || method == Method::HEAD {
+                        StatusCode::NOT_FOUND
+                    } else {
+                        StatusCode::METHOD_NOT_ALLOWED
+                    }
+                }),
+        )
         .route("/api/portals/factory", get(portals_factory_route))
         .route("/api/service/control", post(portal_service_control_route))
         .route("/api/portals/images/:filename", get(portal_image_route))

@@ -319,42 +319,135 @@ fn admin_fragment_translation_debt(
     )
 }
 
+fn authorize_portal_mutation(
+    headers: &axum::http::HeaderMap,
+    method: &str,
+    path: &str,
+) -> Result<MutationAttendance, Response> {
+    let context = MutationRequestContext::from_headers(headers);
+    mutation_authority().authorize(&context).map_err(|refusal| {
+        // Preserve the homeserver_mutation_response refusal on the attendance boundary.
+        let caduceus = mutation_refusal_readback(path, refusal);
+        (
+            mutation_response_status(&caduceus),
+            Json(serde_json::json!({
+                "schema": "coronatio.homeserver.route.mutation.v1",
+                "ok": caduceus.ok,
+                "accepted": caduceus.ok,
+                "method": method,
+                "path": path,
+                "family": homeserver_route_family(path),
+                "authority": "Caduceus staff transition membrane",
+                "caduceus": caduceus,
+                "firstMissingSignal": caduceus.first_missing_signal,
+            })),
+        ).into_response()
+    })
+}
+
+fn portal_mutation_error(status: StatusCode, signal: &str) -> Response {
+    (status, Json(serde_json::json!({
+        "ok": false,
+        "firstMissingSignal": signal,
+    }))).into_response()
+}
+
+async fn run_portal_mutation(action: impl FnOnce() -> Response + Send + 'static) -> Response {
+    tokio::task::spawn_blocking(action).await.unwrap_or_else(|_| {
+        portal_mutation_error(StatusCode::SERVICE_UNAVAILABLE, "caduceus-mutation-task-failed")
+    })
+}
+
+fn portal_name_slug(name: &str) -> String {
+    // Match Caduceus routes/portals/index.rs:name_slug, including edge separators and Unicode.
+    let mut slug = String::new();
+    let mut separator = false;
+    for ch in name.to_lowercase().chars() {
+        if ch.is_alphanumeric() {
+            slug.push(ch);
+            separator = false;
+        } else if !separator {
+            slug.push('-');
+            separator = true;
+        }
+    }
+    slug
+}
+
+fn portal_mutation_target(slug: &str) -> String {
+    // The slug contains only alphanumerics and hyphens; encode its non-ASCII bytes for the HTTP path.
+    let slug: String = url::form_urlencoded::byte_serialize(slug.as_bytes()).collect();
+    format!("/api/v1/portals/{slug}")
+}
+
+fn portal_mutation_readback_response(readback: CaduceusHttpReadback) -> Response {
+    if readback.ok && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
+        crate::indicators::invalidate_indicator_portal_metadata();
+    }
+    let status = if !readback.ok && (400..=599).contains(&readback.status) {
+        StatusCode::from_u16(readback.status).unwrap_or_else(|_| mutation_response_status(&readback))
+    } else {
+        mutation_response_status(&readback)
+    };
+    let body = if readback.status == 0 {
+        serde_json::json!({"ok": false, "firstMissingSignal": readback.first_missing_signal})
+    } else {
+        readback.body
+    };
+    (status, Json(body)).into_response()
+}
+
+fn castle_portal_slug_exists(slug: &str) -> Option<bool> {
+    // Read the current store, not the filtered view used to render portal tiles.
+    let (_, config) = read_json(&homeserver_json_path()).ok()?;
+    let entries = config.pointer("/tabs/portals/data/portals")?.as_array()?;
+    Some(entries.iter()
+        .filter_map(|entry| entry.get("name")?.as_str())
+        .any(|name| portal_name_slug(name) == slug))
+}
+
+async fn portal_add_mutation_route(headers: axum::http::HeaderMap, uri: Uri, body: Bytes) -> Response {
+    static ADD_LOCK: Mutex<()> = Mutex::new(());
+
+    run_portal_mutation(move || {
+        let attendance = match authorize_portal_mutation(&headers, "POST", uri.path()) {
+            Ok(attendance) => attendance,
+            Err(response) => return response,
+        };
+        let invalid_body = || portal_mutation_error(StatusCode::BAD_REQUEST, "coronatio-portal-add-body-invalid");
+        let Ok(body) = serde_json::from_slice::<serde_json::Value>(&body) else {
+            return invalid_body();
+        };
+        let Some(name) = body.get("name").and_then(serde_json::Value::as_str).filter(|name| !name.is_empty()) else {
+            return invalid_body();
+        };
+        let slug = portal_name_slug(name);
+        // Serialize crown Adds across the fresh read and the upstream upsert.
+        let _add = ADD_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        match castle_portal_slug_exists(&slug) {
+            Some(false) => {}
+            Some(true) => return portal_mutation_error(StatusCode::CONFLICT, "coronatio-portal-exists"),
+            None => return portal_mutation_error(StatusCode::SERVICE_UNAVAILABLE, "coronatio-portal-store-unavailable"),
+        }
+        let readback = caduceus_http_json_with_attendance_and_document(
+            "PUT", &portal_mutation_target(&slug), body, Some(&attendance.proof), Some(&attendance.document),
+        );
+        portal_mutation_readback_response(readback)
+    }).await
+}
+
 async fn portal_edit_mutation_route(
     headers: axum::http::HeaderMap,
     uri: Uri,
     decoded_name: Result<Path<String>, axum::extract::rejection::PathRejection>,
     body: Bytes,
 ) -> Response {
-    tokio::task::spawn_blocking(move || {
-        let path = uri.path();
-        let context = MutationRequestContext::from_headers(&headers);
-        let attendance = match mutation_authority().authorize(&context) {
+    run_portal_mutation(move || {
+        let attendance = match authorize_portal_mutation(&headers, "PUT", uri.path()) {
             Ok(attendance) => attendance,
-            Err(refusal) => {
-                // Keep the old homeserver_mutation_response refusal on the attendance boundary.
-                let caduceus = mutation_refusal_readback(path, refusal);
-                return (
-                    mutation_response_status(&caduceus),
-                    Json(serde_json::json!({
-                        "schema": "coronatio.homeserver.route.mutation.v1",
-                        "ok": caduceus.ok,
-                        "accepted": caduceus.ok,
-                        "method": "PUT",
-                        "path": path,
-                        "family": homeserver_route_family(path),
-                        "authority": "Caduceus staff transition membrane",
-                        "caduceus": caduceus,
-                        "firstMissingSignal": caduceus.first_missing_signal,
-                    })),
-                ).into_response();
-            }
+            Err(response) => return response,
         };
-        let bad_request = |signal| {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                "ok": false,
-                "firstMissingSignal": signal,
-            }))).into_response()
-        };
+        let bad_request = |signal| portal_mutation_error(StatusCode::BAD_REQUEST, signal);
         let Ok(Path(portal_name)) = decoded_name else {
             return bad_request("coronatio-portal-edit-path-invalid");
         };
@@ -368,44 +461,34 @@ async fn portal_edit_mutation_route(
             return bad_request("coronatio-portal-edit-name-mismatch");
         }
 
-        // Match Caduceus routes/portals/index.rs:name_slug, including edge separators and Unicode.
-        let mut slug = String::new();
-        let mut separator = false;
-        for ch in name.to_lowercase().chars() {
-            if ch.is_alphanumeric() {
-                slug.push(ch);
-                separator = false;
-            } else if !separator {
-                slug.push('-');
-                separator = true;
-            }
-        }
-        // The slug contains only alphanumerics and hyphens; encode its non-ASCII bytes for the HTTP path.
-        let slug: String = url::form_urlencoded::byte_serialize(slug.as_bytes()).collect();
-        let target = format!("/api/v1/portals/{slug}");
+        let target = portal_mutation_target(&portal_name_slug(name));
         let readback = caduceus_http_json_with_attendance_and_document(
             "PUT", &target, body, Some(&attendance.proof), Some(&attendance.document),
         );
-        if readback.ok && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
-            crate::indicators::invalidate_indicator_portal_metadata();
-        }
-        let status = if !readback.ok && (400..=599).contains(&readback.status) {
-            StatusCode::from_u16(readback.status).unwrap_or_else(|_| mutation_response_status(&readback))
-        } else {
-            mutation_response_status(&readback)
+        portal_mutation_readback_response(readback)
+    }).await
+}
+
+async fn portal_delete_mutation_route(
+    headers: axum::http::HeaderMap,
+    uri: Uri,
+    decoded_name: Result<Path<String>, axum::extract::rejection::PathRejection>,
+    _body: Bytes,
+) -> Response {
+    run_portal_mutation(move || {
+        let attendance = match authorize_portal_mutation(&headers, "DELETE", uri.path()) {
+            Ok(attendance) => attendance,
+            Err(response) => return response,
         };
-        let body = if readback.status == 0 {
-            serde_json::json!({"ok": false, "firstMissingSignal": readback.first_missing_signal})
-        } else {
-            readback.body
+        let Ok(Path(portal_name)) = decoded_name else {
+            return portal_mutation_error(StatusCode::BAD_REQUEST, "coronatio-portal-delete-path-invalid");
         };
-        (status, Json(body)).into_response()
-    }).await.unwrap_or_else(|_| {
-        (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
-            "ok": false,
-            "firstMissingSignal": "caduceus-mutation-task-failed",
-        }))).into_response()
-    })
+        let target = portal_mutation_target(&portal_name_slug(&portal_name));
+        let readback = caduceus_http_with_attendance_and_document(
+            "DELETE", &target, Some(&attendance.proof), Some(&attendance.document),
+        );
+        portal_mutation_readback_response(readback)
+    }).await
 }
 
 fn mutation_config_set(
