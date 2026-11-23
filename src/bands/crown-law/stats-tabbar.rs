@@ -25,16 +25,21 @@ fn run_bounded(
                 stdout: stdout_reader.and_then(|reader| reader.join().ok()).unwrap_or_default(),
                 stderr: stderr_reader.and_then(|reader| reader.join().ok()).unwrap_or_default(),
             }),
-            Ok(None) if start.elapsed() < timeout => std::thread::sleep(std::time::Duration::from_millis(25)),
-            Ok(None) | Err(_) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = stdout_reader.and_then(|reader| reader.join().ok());
-                let _ = stderr_reader.and_then(|reader| reader.join().ok());
-                return None;
-            }
+            Ok(None) => {}
+            Err(_) => break,
         }
+        let remaining = timeout.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
+            break;
+        }
+        // Check short-lived children promptly without spinning or budgeting past the deadline.
+        std::thread::sleep(remaining.min(std::time::Duration::from_millis(2)));
     }
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = stdout_reader.and_then(|reader| reader.join().ok());
+    let _ = stderr_reader.and_then(|reader| reader.join().ok());
+    None
 }
 
 
