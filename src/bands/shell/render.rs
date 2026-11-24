@@ -42,7 +42,7 @@ const SHELL_UX_INDEX_JSON: &str = include_str!("ux/index.json");
 const SHELL_UX_README: &str = include_str!("ux/README.md");
 #[allow(dead_code)]
 const SHELL_UX_CHILDREN: &[&str] = &[
-    "shell/base-and-chrome.css", "shell/explain.css", "library/_badge.css", "library/_breadcrumbs.css", "library/_button.css", "library/_calendar.css", "library/_card.css", "library/_checkbox.css", "library/_collapsible.css", "library/_editable-field.css", "library/_empty-state.css", "library/_exhibit.css", "library/_file-input.css", "library/_health-board.css", "library/_ip-calendar.css", "library/_icon-button.css", "library/_input.css", "library/_loading-spinner.css", "library/_modal.css", "library/_nested-button.css", "library/_plus-button.css", "library/_progress-bar.css", "library/_row-info-tile.css", "library/_secret-tile.css", "library/_select.css", "library/_setting-row.css", "library/_skeleton.css", "library/_slot.css", "library/_slider.css", "library/_stat-tile.css", "library/_status-tile.css", "library/_sub-tabs.css", "library/_switch.css", "library/_table.css", "library/_tabs.css", "library/_text-box.css", "library/_time-picker.css", "library/_toast.css", "library/_toggle.css", "library/_update-card.css", "library/_usage-bar.css", "library/_visibility-toggle.css", "packs/upload.css", "packs/stats.css", "packs/portals.css", "packs/test-services.css", "packs/test-animations.css", "packs/test-config.css", "packs/admin.css", "packs/dhcp.css", "packs/firewall.css", "packs/wake-on-lan.css", "packs/unbound.css", "packs/backblaze.css", "packs/headless.css", "shell/document-2-css.css",
+    "shell/base-and-chrome.css", "shell/explain.css", "library/_badge.css", "library/_breadcrumbs.css", "library/_button.css", "library/_calendar.css", "library/_card.css", "library/_checkbox.css", "library/_choice.css", "library/_collapsible.css", "library/_editable-field.css", "library/_empty-state.css", "library/_exhibit.css", "library/_file-input.css", "library/_health-board.css", "library/_ip-calendar.css", "library/_icon-button.css", "library/_input.css", "library/_loading-spinner.css", "library/_modal.css", "library/_nested-button.css", "library/_plus-button.css", "library/_progress-bar.css", "library/_row-info-tile.css", "library/_secret-tile.css", "library/_select.css", "library/_setting-row.css", "library/_skeleton.css", "library/_slot.css", "library/_slider.css", "library/_stat-tile.css", "library/_status-tile.css", "library/_sub-tabs.css", "library/_switch.css", "library/_table.css", "library/_tabs.css", "library/_text-box.css", "library/_time-picker.css", "library/_toast.css", "library/_toggle.css", "library/_update-card.css", "library/_usage-bar.css", "library/_visibility-toggle.css", "packs/upload.css", "packs/stats.css", "packs/portals.css", "packs/test-services.css", "packs/test-animations.css", "packs/test-config.css", "packs/admin.css", "packs/dhcp.css", "packs/firewall.css", "packs/wake-on-lan.css", "packs/unbound.css", "packs/backblaze.css", "packs/headless.css", "shell/document-2-css.css",
 ];
 // Resolve each named kit sheet at compile time as well as at runtime: a missing
 // shared path must fail the build rather than the first page request.
@@ -74,13 +74,14 @@ macro_rules! shared_sheet {
 
 static SHELL_UX_CONTENTS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| vec![
     shared_sheet!("shell/base-and-chrome.css"),
-    include_str!("ux/shell/explain.css"),
+    shared_sheet!("shell/explain.css"),
     shared_sheet!("library/_badge.css"),
     shared_sheet!("library/_breadcrumbs.css"),
     shared_sheet!("library/_button.css"),
     shared_sheet!("library/_calendar.css"),
     shared_sheet!("library/_card.css"),
     shared_sheet!("library/_checkbox.css"),
+    shared_sheet!("library/_choice.css"),
     shared_sheet!("library/_collapsible.css"),
     shared_sheet!("library/_editable-field.css"),
     shared_sheet!("library/_empty-state.css"),
@@ -152,7 +153,8 @@ fn crown_chrome_js() -> String {
         &render_indicator_modal_registry(Session::Guest),
     )
     .replace("__UPDATE_MANAGER_CLIENT__", include_str!("update-manager-client.js"))
-    .replace("__EXPLAIN_CLIENT__", shell_explain_client())
+    .replace("__EXPLAIN_CLIENT__", xenia_kit::style::EXPLAIN_SCRIPT)
+        .replace("__CHOICE_CLIENT__", xenia_kit::style::CHOICE_SCRIPT)
     .replace("__DHCP_CLIENT__", shell_dhcp_client())
     .replace("__UNBOUND_CLIENT__", shell_unbound_client())
     .replace(
@@ -221,6 +223,39 @@ fn assemble_admin_document_patch(privileged_panes: Vec<String>, role_templates: 
     )
 }
 
+
+fn portal_kind_choice() -> String {
+    use maud::Render;
+    use xenia_kit::composite::{Choice, ChoiceOption};
+    let options = [
+        ("link", "fa-link", "Just a link", "Opens a page. Nothing on this box to watch.", true),
+        ("systemd", "fa-cog", "App on this box", "Runs here all the time. The box keeps an eye on it.", false),
+        ("script", "fa-scroll", "Script-started", "Runs here, started by a script. Changes need a restart.", false),
+    ].into_iter().map(|(value, icon, title, line, checked)| ChoiceOption {
+        value: value.into(), icon: icon.into(), title: title.into(), line: line.into(), checked,
+    }).collect();
+    Choice { name: "type".into(), label: "Kind".into(), options, seats: vec![] }.render().0
+}
+
+fn portal_more_options() -> String {
+    use maud::{html, Render};
+    use xenia_kit::{composite::CollapsibleBubble, fragment::DataSeat};
+    let body = html! {
+        div class="form-group" {
+            label for="portal-services" { "Programs that run it" button type="button" data-explain-dot data-explain-hint="The background programs behind this app, like jellyfin. Separate several with commas. The box watches whether they're running." aria-label="About Programs that run it" aria-expanded="false" { "ⓘ" } }
+            input id="portal-services" name="services" type="text";
+            span class="error-text" data-portal-error-for="services" hidden {}
+        }
+        div class="form-group" {
+            label for="portal-port" { "Port" button type="button" data-explain-dot data-explain-hint="The number the app listens on, like 8096." aria-label="About Port" aria-expanded="false" { "ⓘ" } }
+            input id="portal-port" name="port" type="number" min="1" max="65535";
+            span class="error-text" data-portal-error-for="port" hidden {}
+        }
+    };
+    CollapsibleBubble { title: "More options".into(), line: "Programs and port".into(), open: false,
+        seats: vec![DataSeat::new("data-portal-service-fields", None).expect("valid portal seat")], body }.render().0
+}
+
 fn build_crown_shell_source(session: Session) -> String {
     let nav = render_plan_tabbar(session);
     let shell = [
@@ -243,7 +278,8 @@ fn build_crown_shell_source(session: Session) -> String {
         .replace("__UPLOAD_TREE_FRAGMENT__", render_upload_tree_placeholder())
         .replace("__STATS_ELEMENTS_FRAGMENT__", &render_stats_elements_fragment(session))
         .replace("__UPDATE_MANAGER_CLIENT__", include_str!("update-manager-client.js"))
-        .replace("__EXPLAIN_CLIENT__", shell_explain_client())
+        .replace("__EXPLAIN_CLIENT__", xenia_kit::style::EXPLAIN_SCRIPT)
+        .replace("__CHOICE_CLIENT__", xenia_kit::style::CHOICE_SCRIPT)
         .replace("__DHCP_CLIENT__", shell_dhcp_client())
         .replace("__UNBOUND_CLIENT__", shell_unbound_client())
         .replace(
@@ -251,6 +287,8 @@ fn build_crown_shell_source(session: Session) -> String {
             &format!("{}{}{}", shell_backblaze_client(), shell_firewall_client(), shell_wake_on_lan_client()),
         )
         .replace("__UNBOUND_PANE__", DNS_PANE)
+        .replace("__PORTAL_KIND_CHOICE__", &portal_kind_choice())
+        .replace("__PORTAL_MORE_OPTIONS__", &portal_more_options())
         .replace("__CARTRIDGE_PANES__", &render_cartridge_pane_hosts())
 }
 

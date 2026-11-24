@@ -181,20 +181,18 @@ fn shell_document_2() -> &'static str {
   </main>
   <!-- Body-level overlays preserve fixed viewport anchoring outside the transformed Immortal Floor. -->
   <div class="portal-modal-overlay" data-add-portal-modal hidden>
-    <div class="portal-modal-content">
-      <div class="add-portal-modal">
-        <div class="modal-header"><h2>Add New Portal</h2><button type="button" class="close-button" data-portal-modal-close data-modal-dismiss aria-label="Close modal"><i class="fas fa-times"></i></button></div>
-        <form class="portal-form" data-portal-add-form>
-          <div class="form-group"><label for="portal-name">Portal Name *</label><input id="portal-name" name="name" type="text" placeholder="e.g., MyApp" required><span class="error-text" data-portal-error-for="name" hidden></span></div>
-          <div class="form-group"><label for="portal-description">Description *</label><input id="portal-description" name="description" type="text" placeholder="e.g., My custom application" required><span class="error-text" data-portal-error-for="description" hidden></span></div>
-          <div class="form-group"><label for="portal-type">Service Type</label><select id="portal-type" name="type"><option value="systemd">Systemd Service</option><option value="script">Script-managed Service</option><option value="link">Link Only</option></select><small class="help-text">Systemd services can be controlled directly. Script-managed services require system restart. Link-only portals are simple links without service management.</small></div>
-          <div class="form-group" data-portal-service-fields><label for="portal-services">Services *</label><input id="portal-services" name="services" type="text" placeholder="e.g., myapp, myapp-worker (comma-separated)"><span class="error-text" data-portal-error-for="services" hidden></span><small class="help-text">Enter service names separated by commas</small></div>
-          <div class="form-group" data-portal-service-fields><label for="portal-port">Port *</label><input id="portal-port" name="port" type="number" min="1" max="65535" placeholder="e.g., 8080"><span class="error-text" data-portal-error-for="port" hidden></span></div>
-          <div class="form-group"><label for="portal-local-url">Local URL *</label><input id="portal-local-url" name="localURL" type="url" placeholder="e.g., https://myapp.home.arpa" required><span class="error-text" data-portal-error-for="localURL" hidden></span></div>
-          <div class="form-actions"><button type="button" class="cancel-button" data-portal-modal-close data-modal-dismiss>Cancel</button><button type="submit" class="submit-button"><i class="fas fa-plus"></i> Create Portal</button></div>
-        </form>
-      </div>
-    </div>
+    <div class="portal-modal-content"><div class="add-portal-modal">
+      <div class="modal-header"><h2>Add Portal</h2><button type="button" class="close-button" data-portal-modal-close data-modal-dismiss aria-label="Close modal"><i class="fas fa-times"></i></button></div>
+      <form class="portal-form" data-portal-add-form novalidate>
+        <div class="form-group"><label for="portal-name">Name<button type="button" data-explain-dot data-explain-hint="The name on the tile. Two portals can't share a name." aria-label="About Name" aria-expanded="false">ⓘ</button></label><input id="portal-name" name="name" type="text"><span class="error-text" data-portal-error-for="name" hidden></span></div>
+        <div class="form-group"><label for="portal-description">Description<button type="button" data-explain-dot data-explain-hint="One short line under the name, so everyone knows what it's for." aria-label="About Description" aria-expanded="false">ⓘ</button></label><input id="portal-description" name="description" type="text"><span class="error-text" data-portal-error-for="description" hidden></span></div>
+        <div class="form-group"><label for="portal-local-url">Address on your home network<button type="button" data-explain-dot data-explain-hint="Where the tile takes you at home, like https://jellyfin.home.arpa." aria-label="About Address on your home network" aria-expanded="false">ⓘ</button></label><input id="portal-local-url" name="localURL" type="url"><span class="error-text" data-portal-error-for="localURL" hidden></span></div>
+        <div class="form-group"><label>Kind<button type="button" data-explain-dot data-explain-hint="What sits behind the tile. Open the list: each choice says what it means." aria-label="About Kind" aria-expanded="false">ⓘ</button></label>__PORTAL_KIND_CHOICE__</div>
+        __PORTAL_MORE_OPTIONS__
+        <p class="error-text" data-portal-add-error role="alert" hidden></p>
+        <div class="form-actions"><button type="button" class="cancel-button" data-portal-modal-close data-modal-dismiss>Cancel</button><button type="submit" class="submit-button">Add Portal</button></div>
+      </form>
+    </div></div>
   </div>
   <div class="portal-modal-overlay" data-service-status-modal hidden>
     <div class="portal-modal-content">

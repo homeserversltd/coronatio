@@ -8,7 +8,7 @@ The shell UX library now obeys infinite-infinite file hierarchy law: ordered chi
 
 - xenia-kit `style/library/` holds shared og `styles/common/ui` mirrors, one file per og source. Og underscore names are kept one-to-one for traceability.
 - `packs/` holds crown-only per-pane absorbed domain packs; the stats and portals packs live in xenia-kit `style/packs/`. Og tab-local declarations stay byte-identical, plus a clearly labeled `og inline-style fold` section when a tranche folds TSX inline styles or element defaults into the pack. Og truth = tab CSS + TSX inline styles + element defaults.
-- `shell/` holds crown-only explain CSS; shared base/chrome and `shell/document-2-css.css` live in xenia-kit `style/shell/`.
+- `shell/` sheets, including explain CSS, base/chrome and `shell/document-2-css.css`, live in xenia-kit `style/shell/`.
 
 ## How to add
 

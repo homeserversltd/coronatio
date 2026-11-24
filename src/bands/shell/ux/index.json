@@ -9,6 +9,7 @@
     "library/_calendar.css",
     "library/_card.css",
     "library/_checkbox.css",
+    "library/_choice.css",
     "library/_collapsible.css",
     "library/_editable-field.css",
     "library/_empty-state.css",

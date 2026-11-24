@@ -1299,7 +1299,7 @@ dependencies = [
 [[package]]
 name = "xenia-kit"
 version = "0.17.3"
-source = "git+https://github.com/homeserversltd/xenia-kit?rev=171c2fd16c3983a242a66c50d0773fadc848efb8#171c2fd16c3983a242a66c50d0773fadc848efb8"
+source = "git+https://github.com/homeserversltd/xenia-kit?rev=49971f0d6cf4e1cf68055d991a95c9562881a018#49971f0d6cf4e1cf68055d991a95c9562881a018"
 dependencies = [
  "maud",
 ]

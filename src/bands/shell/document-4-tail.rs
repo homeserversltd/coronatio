@@ -1112,6 +1112,7 @@ fn shell_document_4_tail() -> &'static str {
     });
     __UPDATE_MANAGER_CLIENT__
     __EXPLAIN_CLIENT__
+__CHOICE_CLIENT__
     __DHCP_CLIENT__
     __UNBOUND_CLIENT__
     __FIREWALL_CLIENT__

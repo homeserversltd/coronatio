@@ -1029,22 +1029,42 @@ fn shell_document_4() -> &'static str {
       if (!factoryPortalNamesPromise) factoryPortalNamesPromise = fetch('/api/portals/factory', { cache: 'no-store' }).then(response => response.ok ? response.json() : Promise.reject(new Error(`Factory portals unavailable (${response.status})`))).then(payload => new Set(payload.factoryPortals || [])).catch(error => { factoryPortalNamesPromise = undefined; throw error; });
       return factoryPortalNamesPromise;
     }
-    function setPortalFormError(form, field, message) { const input = form.elements[field], node = form.querySelector(`[data-portal-error-for="${field}"]`); if (input) input.classList.toggle('error', Boolean(message)); if (node) { node.textContent = message || ''; node.hidden = !message; } }
+    function setPortalFormError(form, field, message) {
+      const input = form.elements[field], node = form.querySelector(`[data-portal-error-for="${field}"]`);
+      if (message) { const bubble = node?.closest('details.ui-collapsible--bubble'); if (bubble) bubble.open = true; }
+      if (input) input.classList.toggle('error', Boolean(message));
+      if (node) { node.textContent = message || ''; node.hidden = !message; }
+    }
+    function portalAddError(form, message) {
+      const node = form.querySelector('[data-portal-add-error]');
+      if (node) { node.textContent = message || ''; node.hidden = !message; }
+    }
     async function submitPortalForm(event) {
-      event.preventDefault(); const form = event.currentTarget, type = form.elements.type.value;
+      event.preventDefault(); const form = event.currentTarget, type = form.querySelector('input[name="type"]:checked')?.value || 'link';
       const name = form.elements.name.value.trim(), description = form.elements.description.value.trim();
-      const servicesText = form.elements.services.value.trim(), port = Number.parseInt(form.elements.port.value, 10), localURL = form.elements.localURL.value.trim();
-      const errors = { name: !name ? 'Portal name is required' : '', description: !description ? 'Description is required' : '', services: type !== 'link' && !servicesText ? 'At least one service is required' : '', port: type !== 'link' && (!Number.isInteger(port) || port < 1 || port > 65535) ? 'Port must be a valid number between 1 and 65535' : '', localURL: !localURL ? 'Local URL is required' : (!/^https?:\/\//.test(localURL) ? 'Local URL must start with http:// or https://' : '') };
+      const servicesText = form.elements.services.value.trim(), services = servicesText.split(',').map(service => service.trim()).filter(Boolean);
+      const portText = form.elements.port.value.trim(), port = Number(portText), localURL = form.elements.localURL.value.trim();
+      portalAddError(form, '');
+      const errors = { name: !name ? 'Give the portal a name.' : (!/[\p{L}\p{N}]/u.test(name) ? "That name can't be used. Use letters or numbers." : ''), description: !description ? 'Add one short line about it.' : '', services: type !== 'link' && !services.length ? 'Name at least one program, like jellyfin.' : '', port: type !== 'link' && (!portText || !Number.isInteger(port) || port < 1 || port > 65535) ? 'Use a number from 1 to 65535.' : '', localURL: !/^https?:\/\//.test(localURL) ? 'Start with http:// or https://' : '' };
       Object.entries(errors).forEach(([field, message]) => setPortalFormError(form, field, message));
       if (Object.values(errors).some(Boolean)) return;
-      const portal = { name, description, type, localURL, services: type === 'link' ? [] : servicesText.split(',').map(service => service.trim()).filter(Boolean) }; if (type !== 'link') portal.port = port;
-
-      const submit = form.querySelector('[type="submit"]'); if (submit) { submit.disabled = true; submit.setAttribute('aria-busy', 'true'); submit.innerHTML = '<span class="loading-spinner small" aria-hidden="true"></span> Creating...'; }
+      const portal = { name, description, type, localURL, services: type === 'link' ? [] : services }; if (type !== 'link') portal.port = port;
+      const submit = form.querySelector('[type="submit"]'); if (submit) { submit.disabled = true; submit.setAttribute('aria-busy', 'true'); submit.textContent = 'Adding...'; }
       try {
-        const response = await fetch('/api/portals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(portal) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || body.error || `Create failed (${response.status})`); }
+        const response = await fetch('/api/portals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(portal) });
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) { portalAddError(form, 'Admin Mode has ended. Enter your PIN again.'); return; }
+          if (response.status >= 500) { portalAddError(form, "Your box couldn't save it just now. Try again in a moment."); return; }
+          let body; try { body = await response.json(); } catch (_) { portalAddError(form, "Your box couldn't save it just now. Try again in a moment."); return; }
+          const signal = body?.firstMissingSignal || body?.first_missing_signal || body?.signal || body?.error;
+          if (signal === 'coronatio-portal-exists') setPortalFormError(form, 'name', 'A portal with that name is already here. Pick another name.');
+          else if (signal === 'coronatio-portal-store-unavailable') portalAddError(form, "Your box couldn't save it just now. Try again in a moment.");
+          else portalAddError(form, "Your box couldn't save this portal. Check the addresses and try again.");
+          return;
+        }
         form.reset(); closePortalModals(); await refreshElementFragment('portals'); showCoronatioToast(`Portal "${name}" created successfully`, 'success');
-      } catch (error) { showCoronatioToast(error.message || 'Failed to create portal', 'error'); }
-      finally { if (submit) { submit.disabled = false; submit.removeAttribute('aria-busy'); submit.innerHTML = '<i class="fas fa-plus"></i> Create Portal'; } }
+      } catch (_) { portalAddError(form, "Your box couldn't save it just now. Try again in a moment."); }
+      finally { if (submit) { submit.disabled = false; submit.removeAttribute('aria-busy'); submit.textContent = 'Add Portal'; } }
     }
     async function deletePortal(event) {
       event.preventDefault(); event.stopPropagation(); const name = event.currentTarget.dataset.portalName || event.currentTarget.dataset.deletePortal; if (!headerState.isAdmin || !name) return;
@@ -1057,7 +1077,12 @@ fn shell_document_4() -> &'static str {
       } catch (error) { showCoronatioToast(error.message || 'Failed to delete portal', 'error'); }
     }
 
-    function openPortalModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
+    function openPortalModal(selector) {
+      const modal = document.querySelector(selector); if (!modal) return;
+      const form = modal.querySelector('[data-portal-add-form]');
+      if (form) { form.reset(); form.querySelectorAll('details').forEach(details => { details.open = false; }); ['name', 'description', 'localURL', 'services', 'port'].forEach(field => setPortalFormError(form, field, '')); portalAddError(form, ''); }
+      modal.hidden = false;
+    }
     function closePortalModals() { document.querySelectorAll('[data-add-portal-modal], [data-service-status-modal]').forEach(modal => { modal.hidden = true; }); }
     function cartridgeIdFromTitle(title) { return String(title || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
     const caduceusStaffReceiptSchema = 'caduceus.staff.receipt.v1';
@@ -1651,7 +1676,7 @@ fn shell_document_4() -> &'static str {
     }, true); document.body.addEventListener('animationend', event => {
       const toast = event.target.closest?.('[data-coronatio-toast]');
       if (toast && toast.classList.contains('toast-exit') && event.animationName === 'toast-slide-out') toast.remove();
-    }); document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm); document.querySelector('[data-cartridge-add-form]')?.addEventListener('submit', submitCartridgeForm); document.querySelector('[data-made-tab-form]')?.addEventListener('submit', submitMadeTabForm);
+    }); document.querySelector('[data-portal-add-form]')?.addEventListener('change', event => { if (event.target.matches('input[name="type"]') && event.target.value !== 'link') { const bubble = event.currentTarget.querySelector('details.ui-collapsible--bubble'); if (bubble) bubble.open = true; } }); document.querySelector('[data-portal-add-form]')?.addEventListener('submit', submitPortalForm); document.querySelector('[data-cartridge-add-form]')?.addEventListener('submit', submitCartridgeForm); document.querySelector('[data-made-tab-form]')?.addEventListener('submit', submitMadeTabForm);
     document.body.addEventListener('input', event => {
       const slider = event.target.closest('[data-ui-slider]');
       if (slider) { const item = slider.closest('.showcase-item'); const out = item?.querySelector('[data-slider-value]'); if (out) out.textContent = slider.value; const min = Number(slider.min); const max = Number(slider.max); const value = Number(slider.value); const percent = max > min ? ((value - min) / (max - min)) * 100 : 0; const fill = slider.closest('.ui-slider__container')?.querySelector('.ui-slider__fill'); if (fill) fill.style.width = `${Math.max(0, Math.min(100, percent))}%`; if (slider.matches('[data-dhcp-example-boundary]')) { const reservedEnd = value + 1; const poolStart = reservedEnd + 1; const reservedOut = item?.querySelector('[data-dhcp-example-reserved-end]'); const poolOut = item?.querySelector('[data-dhcp-example-pool-start]'); if (reservedOut) reservedOut.textContent = String(reservedEnd); if (poolOut) poolOut.textContent = String(poolStart); } return; }
