@@ -1057,18 +1057,41 @@ fn shell_document_4_tail() -> &'static str {
       const modal = document.createElement('div');
       modal.className = 'modal-backdrop manager-modal-backdrop';
       modal.dataset.driveModal = ''; modal.dataset.driveDevice = name;
-      const filesystem = typeof row.foreign === 'string' && row.foreign ? `${row.foreign} (will be erased)` : diskDisplayValue(row.fstype);
-      const facts = [
-        ['Device', name], ['Partition', diskDisplayValue(row.partition)], ['Model', diskDisplayValue(row.model)],
-        ['Connection', diskDisplayValue(driveConnectionWord(row))], ['Serial', diskDisplayValue(row.serial)],
-        ['Size', driveSizeText(row)], ['Filesystem', filesystem], ['Encryption', diskDisplayValue(row.encryption?.state)],
-        ['Mount', diskDisplayValue(row.mountpoint)], ['Space', diskSpaceDisplayValue(row.space)], ['Health', 'not known yet']
-      ];
-      const labels = { 'open': 'Open', 'copy-nas': 'Copy into NAS', 'test': 'Test drive', 'eject-drive': 'Eject safely', 'eject-nas': 'Eject safely', 'try-again': 'Try again', 'make-nas': 'Make this my NAS', 'make-backup': 'Make this my backup' };
-      const fullscreen = window.matchMedia('(max-width: 768px)').matches ? ' fullscreen' : '';
-      modal.innerHTML = `<section class="modal modal-window manager-modal${fullscreen}" role="dialog" aria-modal="true" aria-labelledby="drive-modal-title"><button type="button" data-manager-close data-modal-dismiss>Close</button><h2 id="drive-modal-title">Drive details</h2><div class="modal-body"><div class="disk-census-fields">${facts.map(([label, value]) => `<p><strong>${escapeDiskHtml(label)}:</strong> ${escapeDiskHtml(value)}</p>`).join('')}</div><div data-drive-options></div><div data-drive-test></div><p role="status" aria-live="polite" data-drive-result></p><div data-drive-share></div><div data-drive-receipt></div></div></section>`;
+      const template = document.querySelector('[data-pane-panel="admin"] template[data-drive-sheet]');
+      if (!template) return;
+      const dialog = document.createElement('section');
+      dialog.className = 'modal modal-window manager-modal' + (window.matchMedia('(max-width: 768px)').matches ? ' fullscreen' : '');
+      dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-labelledby', 'drive-modal-title');
+      dialog.appendChild(template.content.cloneNode(true));
+      modal.appendChild(dialog);
+      dialog.querySelector('[data-drive-sheet-name]').textContent = row.label || name;
+      dialog.querySelector('[data-drive-sheet-subtitle]').textContent = [row.model, driveConnectionWord(row), driveSizeText(row)].filter(part => typeof part === 'string' && part && part !== '—').join(' · ');
+      const kind = driveKindOf(row);
+      const role = dialog.querySelector('[data-drive-sheet-role]');
+      role.dataset.tone = (kind === 'nas-primary' && attachedAt(row, 'primary')) || (kind === 'nas-backup' && attachedAt(row, 'backup')) ? 'good' : 'idle';
+      role.querySelector('.ui-status-mark__word').textContent = { 'nas-primary': 'Your NAS', 'nas-backup': 'Your backup', data: 'Data drive', blank: 'Blank drive', 'locked-foreign': 'Locked drive' }[kind];
+      const space = row.space;
+      const meter = dialog.querySelector('[data-drive-sheet-meter]');
+      if (Number.isFinite(space?.sizeBytes) && space.sizeBytes > 0 && Number.isFinite(space.availableBytes)) {
+        const reading = diskSpaceDisplayValue(space);
+        dialog.querySelector('[data-drive-sheet-reading]').textContent = reading;
+        meter.setAttribute('aria-label', reading); meter.max = space.sizeBytes; meter.value = space.sizeBytes - space.availableBytes;
+        dialog.querySelector('[data-drive-sheet-detail]').textContent = `${Math.round(100 * (space.sizeBytes - space.availableBytes) / space.sizeBytes)}% used`;
+      } else {
+        meter.closest('.ui-detail-sheet__usage').hidden = true;
+      }
+      const facts = { device: name, partition: diskDisplayValue(row.partition), serial: diskDisplayValue(row.serial),
+        filesystem: typeof row.foreign === 'string' && row.foreign ? `${row.foreign} (will be erased)` : diskDisplayValue(row.fstype),
+        encryption: diskDisplayValue(row.encryption?.state), mount: diskDisplayValue(row.mountpoint) };
+      Object.entries(facts).forEach(([key, value]) => { dialog.querySelector(`[data-drive-fact="${key}"]`).textContent = value; });
       modal.querySelector('[data-manager-close]').addEventListener('click', closeDriveModal);
       const options = modal.querySelector('[data-drive-options]');
+      for (const [tag, key] of [['div', 'driveTest'], ['p', 'driveResult'], ['div', 'driveShare'], ['div', 'driveReceipt']]) {
+        const node = document.createElement(tag); node.dataset[key] = '';
+        if (key === 'driveResult') { node.setAttribute('role', 'status'); node.setAttribute('aria-live', 'polite'); }
+        options.before(node);
+      }
+      const labels = { 'open': 'Open', 'copy-nas': 'Copy into NAS', 'test': 'Test drive', 'eject-drive': 'Eject safely', 'eject-nas': 'Eject safely', 'try-again': 'Try again', 'make-nas': 'Make this my NAS', 'make-backup': 'Make this my backup' };
       for (const key of driveOptionsFor(row, owner.devices)) {
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'ui-button ui-button--secondary ui-button--small';
@@ -1084,7 +1107,7 @@ fn shell_document_4_tail() -> &'static str {
           }
           driveSubmit(modal, key, name, row);
         });
-        options.appendChild(button);
+        (key === 'test' ? modal.querySelector('[data-drive-test-slot]') : options).appendChild(button);
       }
       document.body.appendChild(modal);
     }

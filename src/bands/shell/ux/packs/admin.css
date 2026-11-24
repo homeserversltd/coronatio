@@ -701,16 +701,6 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 
 
 
-.disk-census-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: 0.3rem 0.8rem;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
-}
-
-.disk-census-fields strong { color: var(--text); }
 
 
 .disk-item.drive-card { cursor: pointer; }
