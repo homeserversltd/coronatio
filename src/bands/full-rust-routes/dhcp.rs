@@ -64,6 +64,18 @@ fn strip_dhcp_identity(value: &serde_json::Value) -> serde_json::Value {
     }
 }
 
+fn dhcp_read_payload(path: &str, readback: CaduceusHttpReadback) -> serde_json::Value {
+    // Keep a foreign-stop receipt intact so the pool reader can reject it;
+    // unwrapping its legacy payload here would hide the stop before that check.
+    if path == "/api/dhcp/pool-boundary"
+        && readback.body.get("schema").and_then(serde_json::Value::as_str) == Some(CADUCEUS_STAFF_RECEIPT_SCHEMA)
+        && !caduceus_receipt_matches_path(&readback.body, &readback.path)
+    {
+        return readback.body;
+    }
+    device_identity_payload(readback.body)
+}
+
 async fn dhcp_read_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
     let path = uri.path();
     let session = session_projection_from_headers(&headers).await;
@@ -96,7 +108,7 @@ async fn dhcp_read_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
             .into_response();
     }
 
-    let body = device_identity_payload(readback.body);
+    let body = dhcp_read_payload(path, readback);
     let body = match session {
         Session::Admin => body,
         Session::Guest => strip_dhcp_identity(&body),

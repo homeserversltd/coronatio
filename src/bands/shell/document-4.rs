@@ -1068,11 +1068,11 @@ fn shell_document_4() -> &'static str {
       return body.stop?.noun === (split < 0 ? stop : stop.slice(0, split)) && body.stop?.verb === (split < 0 ? '' : stop.slice(split + 1));
     }
     function cartridgeRows(payload, path) {
-      const body = payload?.schema === caduceusStaffReceiptSchema ? payload : payload?.cartridges ?? payload ?? {};
-      if (body?.schema === caduceusStaffReceiptSchema) {
-        if (!caduceusReceiptMatchesPath(body, path)) return [];
-        if (Array.isArray(body.result)) return body.result;
+      if (payload?.schema === caduceusStaffReceiptSchema) {
+        if (!caduceusReceiptMatchesPath(payload, path)) return [];
+        if (Array.isArray(payload.result)) return payload.result;
       }
+      const body = payload?.cartridges ?? payload ?? {};
       return Array.isArray(body) ? body : (body.cartridges || body.rows || []);
     }
     async function loadCartridgeManagement() {
