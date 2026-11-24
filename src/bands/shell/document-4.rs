@@ -1060,13 +1060,28 @@ fn shell_document_4() -> &'static str {
     function openPortalModal(selector) { const modal = document.querySelector(selector); if (modal) modal.hidden = false; }
     function closePortalModals() { document.querySelectorAll('[data-add-portal-modal], [data-service-status-modal]').forEach(modal => { modal.hidden = true; }); }
     function cartridgeIdFromTitle(title) { return String(title || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
-    function cartridgeRows(payload) { const body = payload?.cartridges ?? payload ?? {}; return Array.isArray(body) ? body : (body.cartridges || body.rows || []); }
+    const caduceusStaffReceiptSchema = 'caduceus.staff.receipt.v1';
+    function caduceusReceiptMatchesPath(body, path) {
+      const prefix = '/api/v1/';
+      if (body?.schema !== caduceusStaffReceiptSchema || !path.startsWith(prefix) || path.length === prefix.length) return false;
+      const stop = path.slice(prefix.length), split = stop.lastIndexOf('/');
+      return body.stop?.noun === (split < 0 ? stop : stop.slice(0, split)) && body.stop?.verb === (split < 0 ? '' : stop.slice(split + 1));
+    }
+    function cartridgeRows(payload, path) {
+      const body = payload?.schema === caduceusStaffReceiptSchema ? payload : payload?.cartridges ?? payload ?? {};
+      if (body?.schema === caduceusStaffReceiptSchema) {
+        if (!caduceusReceiptMatchesPath(body, path)) return [];
+        if (Array.isArray(body.result)) return body.result;
+      }
+      return Array.isArray(body) ? body : (body.cartridges || body.rows || []);
+    }
     async function loadCartridgeManagement() {
       const list = document.querySelector('[data-cartridge-management-list]'), status = document.querySelector('[data-tab-list-status]'); if (!list || !status) return;
       const read = async path => { const response = await fetch(path, { cache: 'no-store' }); if (!response.ok) throw new Error('unavailable'); return response.json(); };
-      const [legacy, made] = await Promise.allSettled([read('/api/v1/cartridges'), read('/api/v1/xenia-tabs')]);
+      const path = '/api/v1/cartridges';
+      const [legacy, made] = await Promise.allSettled([read(path), read('/api/v1/xenia-tabs')]);
       const rows = [];
-      if (legacy.status === 'fulfilled') cartridgeRows(legacy.value).forEach(row => rows.push({ id: row.id, name: row.title || row.id, lane: 'web', source: 'web page' }));
+      if (legacy.status === 'fulfilled') cartridgeRows(legacy.value, path).forEach(row => rows.push({ id: row.id, name: row.title || row.id, lane: 'web', source: 'web page' }));
       if (made.status === 'fulfilled' && Array.isArray(made.value.tabs)) made.value.tabs.forEach(row => rows.push({ id: row.id, name: row.displayName || row.id, lane: 'made', source: 'made for you' }));
       list.innerHTML = rows.length ? rows.map(row => `<li data-tab-lane="${row.lane}"><span>${escapeHtml(row.name)}</span> <small>${row.source}</small><button type="button" class="secondary" data-cartridge-remove="${escapeHtml(row.id)}">Remove</button></li>`).join('') : (legacy.status === 'fulfilled' && made.status === 'fulfilled' ? '<li class="ui-empty-state">No tabs added yet.</li>' : '');
       const failures = []; if (legacy.status === 'rejected') failures.push('Web page tabs could not be read.'); if (made.status === 'rejected' || (made.status === 'fulfilled' && !Array.isArray(made.value.tabs))) failures.push('Made-for-you tabs could not be read.');

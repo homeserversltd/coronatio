@@ -321,6 +321,18 @@ struct CaduceusHttpReadback {
     first_missing_signal: String,
 }
 
+const CADUCEUS_STAFF_RECEIPT_SCHEMA: &str = "caduceus.staff.receipt.v1";
+
+fn caduceus_receipt_matches_path(body: &serde_json::Value, path: &str) -> bool {
+    let Some(path) = path.strip_prefix("/api/v1/").filter(|path| !path.is_empty()) else {
+        return false;
+    };
+    let (noun, verb) = path.rsplit_once('/').unwrap_or((path, ""));
+    body.get("schema").and_then(serde_json::Value::as_str) == Some(CADUCEUS_STAFF_RECEIPT_SCHEMA)
+        && body.pointer("/stop/noun").and_then(serde_json::Value::as_str) == Some(noun)
+        && body.pointer("/stop/verb").and_then(serde_json::Value::as_str) == Some(verb)
+}
+
 fn caduceus_socket_path() -> std::path::PathBuf {
     crate::caduceus_access::staff_socket_path()
 }

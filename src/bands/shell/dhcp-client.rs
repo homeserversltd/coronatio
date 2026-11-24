@@ -265,7 +265,12 @@ fn shell_dhcp_client() -> &'static str {
       const binding=scaffoldRegistry.capture('dhcp'); if (!binding || !identityAdopt(binding)) return Promise.resolve(false);
       identityState.dhcpBoundaryChoice=null; identitySetControls(binding);
       const stats=dhcpRead(binding,'dhcp-statistics','/api/dhcp/statistics','dhcp-statistics',body=>{if(!body||typeof body!=='object'||Array.isArray(body))throw new Error('DHCP statistics are unavailable');if(!['homeserver_ip','reservations_count','leases_count','host_count'].some(key=>Object.prototype.hasOwnProperty.call(body,key)))throw new Error('DHCP statistics fields are unavailable');return {homeserver_ip:typeof body.homeserver_ip==='string'?body.homeserver_ip:null,reservations_count:dhcpNumber(body.reservations_count),reservations_total:dhcpNumber(body.reservations_total),leases_count:dhcpNumber(body.leases_count),leases_total:dhcpNumber(body.leases_total),host_count:dhcpNumber(body.host_count)};},value=>{identityState.statistics=value;paintDhcpStatistics(value,binding);},{supersede:options.supersede});
-      const pool=dhcpRead(binding,'dhcp-pool-boundary','/api/dhcp/pool-boundary','dhcp-pool-boundary',body=>{if(!Array.isArray(body)||!body.length||!body[0]?.start||!body[0]?.end||!body[0]?.subnet)throw new Error(body?.error || body?.firstMissingSignal || 'DHCP pool boundary is unavailable');return body;},value=>{identityState.dhcpBoundary=value;identityState.dhcpReady.pool=true;if(identityState.dhcpReady.statistics)paintDhcpBoundary(value,binding);else identitySetControls(binding);},{supersede:options.supersede});
+      const pool=dhcpRead(binding,'dhcp-pool-boundary','/api/dhcp/pool-boundary','dhcp-pool-boundary',body=>{
+        // The Coronatio proxy maps this local URL to the Caduceus boundary door.
+        const rows = caduceusReceiptMatchesPath(body, '/api/v1/network/dhcp/boundary') ? body.result : body;
+        if(!Array.isArray(rows)||!rows.length||!rows[0]?.start||!rows[0]?.end||!rows[0]?.subnet)throw new Error(body?.error || body?.firstMissingSignal || 'DHCP pool boundary is unavailable');
+        return rows;
+      },value=>{identityState.dhcpBoundary=value;identityState.dhcpReady.pool=true;if(identityState.dhcpReady.statistics)paintDhcpBoundary(value,binding);else identitySetControls(binding);},{supersede:options.supersede});
       return Promise.all([stats,pool]);
     }
     function hydrateDhcp(options = {}) { const binding=scaffoldRegistry.capture('dhcp'); if (!binding || !identityAdopt(binding)) return Promise.resolve(false); return Promise.all([startIdentityReads(binding,options),hydrateDhcpBoundary(options)]); }

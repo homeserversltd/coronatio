@@ -171,6 +171,8 @@ fn normalized_storage_device(display_name: &str) -> Option<String> {
     Some(format!("/dev/{name}"))
 }
 
+const NAS_SETUP_PATH: &str = "/api/v1/storage/nas/setup";
+
 fn storage_nas_receipt_ok(body: &serde_json::Value) -> bool {
     let projection = match body.get("schema").and_then(serde_json::Value::as_str) {
         Some("caduceus.chord.receipt.v1") => {
@@ -186,18 +188,18 @@ fn storage_nas_receipt_ok(body: &serde_json::Value) -> bool {
                 return false;
             }
             match body.get("face") {
-                Some(face) => face,
-                None => return false,
+                Some(face) if face.get("schema").and_then(serde_json::Value::as_str) == Some("caduceus.nas.setup.v1") => face,
+                _ => return false,
             }
         }
+        _ if caduceus_receipt_matches_path(body, NAS_SETUP_PATH) => body,
         _ => return false,
     };
     storage_nas_projection_ok(projection)
 }
 
 fn storage_nas_projection_ok(body: &serde_json::Value) -> bool {
-    body.get("schema").and_then(serde_json::Value::as_str) == Some("caduceus.nas.setup.v1")
-        && storage_receipt_reports_success(body)
+    storage_receipt_reports_success(body)
         && !storage_receipt_has_failure(body)
         && !body
             .get("steps")
@@ -266,7 +268,7 @@ async fn storage_nas_setup_route(
             .into_response();
     }
 
-    let path = "/api/v1/storage/nas/setup";
+    let path = NAS_SETUP_PATH;
     let body = serde_json::json!({ "device": device, "role": request.role });
     let result = tokio::task::spawn_blocking(move || {
         storage_actuate_json_timeout(

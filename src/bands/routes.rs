@@ -625,7 +625,9 @@ fn resolve_cartridge_door(method: &str, route: &str) -> Result<CartridgeResolved
     if !readback.ok {
         return Err(CartridgeRouteFailure::Unavailable);
     }
-    if readback.body.get("schema").and_then(|value| value.as_str()) != Some("caduceus.doors.readback.v1") {
+    if readback.body.get("schema").and_then(|value| value.as_str()) != Some("caduceus.doors.readback.v1")
+        && !caduceus_receipt_matches_path(&readback.body, &readback.path)
+    {
         return Err(CartridgeRouteFailure::Unavailable);
     }
     let Some(routes) = readback.body.get("routes").and_then(|value| value.as_array()) else {

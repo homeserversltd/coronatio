@@ -691,7 +691,16 @@ fn fetch_stats_identity_roster() -> Result<StatsKeaLeases, String> {
     let notes = caduceus_http_timeout("GET", "/api/v1/network/notes", remaining);
     if !notes.ok || notes.status == 0 { return Err(if notes.first_missing_signal.trim().is_empty() { "caduceus-network-notes-unavailable".to_owned() } else { notes.first_missing_signal }); }
     let Some(notes) = notes.body.get("notes").and_then(serde_json::Value::as_object) else { return Err("caduceus-network-notes-malformed".to_owned()); };
-    let payload = device_identity_payload(roster.body);
+    let mut body = roster.body;
+    if body.get("schema").and_then(serde_json::Value::as_str) == Some(CADUCEUS_STAFF_RECEIPT_SCHEMA) {
+        if !caduceus_receipt_matches_path(&body, &roster.path) {
+            return Err("caduceus-device-roster-malformed".to_owned());
+        }
+        if body.get("result").is_some_and(serde_json::Value::is_array) {
+            body = body["result"].take();
+        }
+    }
+    let payload = device_identity_payload(body);
     let rows = payload.as_array().cloned().or_else(|| payload.get("devices").or_else(|| payload.get("roster")).or_else(|| payload.get("data").and_then(|data| data.get("devices"))).and_then(serde_json::Value::as_array).cloned());
     let Some(rows) = rows else { return Err("caduceus-device-roster-malformed".to_owned()); };
     if rows.iter().any(|row| !row.is_object()) { return Err("caduceus-device-roster-malformed".to_owned()); }

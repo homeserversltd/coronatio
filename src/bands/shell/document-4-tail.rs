@@ -772,9 +772,10 @@ fn shell_document_4_tail() -> &'static str {
         const nasStatus = owner.host.closest('[data-pane-panel="admin"]')?.querySelector('[data-admin-nas-status]');
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         if (nasStatus) { nasStatus.textContent = 'Reading current disk status…'; nasStatus.dataset.state = 'pending'; }
-        const payload = await context.fetchJson(adminDiskSnapshotFamily.snapshotRoutes[0]);
+        const path = adminDiskSnapshotFamily.snapshotRoutes[0];
+        const payload = await context.fetchJson(path);
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
-        if (payload?.schema !== 'caduceus.disk.census.v1') throw new Error('Available devices could not be read: unexpected response schema.');
+        if (payload?.schema !== 'caduceus.disk.census.v1' && !caduceusReceiptMatchesPath(payload, path)) throw new Error('Available devices could not be read: unexpected response schema.');
         const devices = diskCensusDevices(payload);
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         owner.devices = devices; owner.protectedParents = protectedDiskParents(devices);
@@ -847,15 +848,20 @@ fn shell_document_4_tail() -> &'static str {
       const failedStep = Array.isArray(result?.steps) && result.steps.some(step => step?.ok === false);
       return negative || failure || failedStep;
     }
+    const nasSetupPath = '/api/v1/storage/nas/setup';
     function nasReceiptSucceeded(result, responseOk) {
       if (!responseOk) return false;
-      let projection = result;
+      let projection;
       if (result?.schema === 'caduceus.chord.receipt.v1') {
         const failure = result.failure !== undefined && result.failure !== null && result.failure !== false && result.failure !== '';
         if (result.routine_id !== 'storage/nas/setup' || result.ok !== true || result.success === false || result.converged === false || result.rolledBack === true || failure || (result.failedStage != null && result.failedStage !== '')) return false;
         projection = result.face;
+        if (projection?.schema !== 'caduceus.nas.setup.v1') return false;
+      } else {
+        if (result?.schema !== 'caduceus.nas.setup.v1' && !caduceusReceiptMatchesPath(result, nasSetupPath)) return false;
+        projection = result;
       }
-      return projection?.schema === 'caduceus.nas.setup.v1' && (projection.ok === true || projection.success === true) && !nasReceiptHasFailure(projection);
+      return (projection.ok === true || projection.success === true) && !nasReceiptHasFailure(projection);
     }
     function receiptFieldText(value) {
       if (value === undefined) return 'not reported';
@@ -936,7 +942,7 @@ fn shell_document_4_tail() -> &'static str {
         let responseOk = false;
         let responseStatus = 0;
         try {
-          const response = await fetch('/api/v1/storage/nas/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: '/dev/' + name, role, confirmation: '/dev/' + input.value }) });
+          const response = await fetch(nasSetupPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: '/dev/' + name, role, confirmation: '/dev/' + input.value }) });
           responseStatus = response.status;
           responseOk = response.ok;
           result = await response.json().catch(() => null);
