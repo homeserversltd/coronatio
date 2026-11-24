@@ -1068,11 +1068,13 @@ fn shell_document_4() -> &'static str {
       return body.stop?.noun === (split < 0 ? stop : stop.slice(0, split)) && body.stop?.verb === (split < 0 ? '' : stop.slice(split + 1));
     }
     function cartridgeRows(payload, path) {
-      if (payload?.schema === caduceusStaffReceiptSchema) {
-        if (!caduceusReceiptMatchesPath(payload, path)) return [];
-        if (Array.isArray(payload.result)) return payload.result;
-      }
       const body = payload?.cartridges ?? payload ?? {};
+      // The local proxy carries Caduceus's complete answer under cartridges.
+      const receipt = payload?.schema === caduceusStaffReceiptSchema ? payload : body;
+      if (receipt?.schema === caduceusStaffReceiptSchema) {
+        if (!caduceusReceiptMatchesPath(receipt, path)) return [];
+        if (Array.isArray(receipt.result)) return receipt.result;
+      }
       return Array.isArray(body) ? body : (body.cartridges || body.rows || []);
     }
     async function loadCartridgeManagement() {
