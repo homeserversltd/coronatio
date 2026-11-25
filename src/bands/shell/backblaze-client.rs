@@ -418,7 +418,7 @@ fn shell_backblaze_client() -> &'static str {
     }
     function ledgerKind(row) {
       const verb = String(row.verb || '');
-      return row.job === 'drives' || row.target === 'nas-sync' || verb.startsWith('nas-sync') || verb === 'pid2-fire-interrupted-by-boot' ? 'drives' : 'offsite';
+      return row.job === 'drives' || row.target === 'nas-sync' || verb.startsWith('nas-sync') || verb === 'forgejo-nas-export' || verb === 'pid2-fire-interrupted-by-boot' ? 'drives' : 'offsite';
     }
     function ledgerWhat(row) {
       const verb = String(row.verb || ''), target = String(row.target || '');
@@ -437,6 +437,9 @@ fn shell_backblaze_client() -> &'static str {
       if (verb === 'backblaze-bucket-credentials') return `Credentials updated for ${target}`;
       if (verb === 'backblaze-restic-unlock') return `Off-site copy unlocked for ${target}`;
       if (verb === 'backblaze-restic-rekey') return `Off-site copy key changed for ${target}`;
+      if (verb === 'nas-sync-mirror') return 'Backup drive copied';
+      if (verb === 'mirror-pull') return "Copied onto this box's backup drive";
+      if (verb === 'forgejo-nas-export') return 'Git server saved to the main drive';
       if (verb === 'nas-sync-sync' || (target === 'nas-sync' && verb.endsWith('sync'))) return 'Backup drives mirrored';
       if (verb.includes('sync-hold')) return 'Backup drives swapped · nightly mirror paused';
       if (verb.includes('sync-release')) return 'Backup drives turned back on';
@@ -451,7 +454,14 @@ fn shell_backblaze_client() -> &'static str {
         'invalid-credentials': 'The key or application key could not be used.',
         'access-denied': 'Access was denied by the storage provider.',
         'nas-unavailable': 'A backup drive was not available.',
-        'drive-unavailable': 'A backup drive was not available.'
+        'drive-unavailable': 'A backup drive was not available.',
+        'forgejo-nas-export-busy': 'Another backup is already using the main drive.',
+        'forgejo-nas-export-nas-not-mounted': 'The main drive is not available.',
+        'forgejo-nas-export-stop-failed': 'The Git server could not be stopped.',
+        'forgejo-nas-export-dump-failed': 'The Git server database could not be saved.',
+        'forgejo-nas-export-copy-failed': 'The Git server files could not be copied.',
+        'forgejo-nas-export-start-failed': 'The Git server could not be started.',
+        'forgejo-nas-export-launch-failed': 'The Git server backup could not be started.'
       };
       return known[signal] || signal;
     }
