@@ -206,14 +206,16 @@ fn notifications_modal_html(
     };
     maud::html! {
         div class="notifications-modal modal-content" data-modal-kind-body="notifications" data-indicator-fragment {
-            @if let Some((message, ok)) = notice { p class="notifications-result" data-notifications-result data-ok=(ok) role="status" { (message) } }
-            @if hidden { (button.render()) }
-            @if empty {
-                @if !view.available { p { "Notifications are unavailable right now" } }
-                @else if hidden { p { "Nothing is hidden." } }
-                @else { p { "No notifications" } }
-            } @else { (list.render()) }
-            @if !hidden { (button.render()) }
+            div {
+                @if let Some((message, ok)) = notice { p class="notifications-result" data-notifications-result data-ok=(ok) role="status" { (message) } }
+                @if hidden { (button.render()) }
+                @if empty {
+                    @if !view.available { p { "Notifications are unavailable right now" } }
+                    @else if hidden { p { "Nothing is hidden." } }
+                    @else { p { "No notifications" } }
+                } @else { (list.render()) }
+                @if !hidden { (button.render()) }
+            }
         }
     }.into_string()
 }
