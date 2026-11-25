@@ -151,14 +151,23 @@ fn notification_seat(name: &str, value: String) -> xenia_kit::fragment::DataSeat
         .unwrap_or_else(|error| panic!("invalid {name} seat: {error}"))
 }
 
-fn notification_post_seats(item: &NotificationView, verb: &str, hidden: bool, include: bool) -> Vec<xenia_kit::fragment::DataSeat> {
+const NOTIFICATION_TARGET: &str = "closest .notifications-modal";
+const NOTIFICATION_SWAP: &str = "outerHTML";
+const NOTIFICATION_SYNC: &str = "closest .notifications-modal:drop";
+const NOTIFICATION_DISABLED: &str = ".notifications-modal button";
+
+fn notification_post_path(item: &NotificationView, verb: &str, hidden: bool) -> String {
     let query = if hidden { "?view=hidden" } else { "" };
+    format!("/api/indicators/notifications/{}/{verb}{query}", notification_segment(&item.id))
+}
+
+fn notification_post_seats(item: &NotificationView, verb: &str, hidden: bool, include: bool) -> Vec<xenia_kit::fragment::DataSeat> {
     let mut seats = vec![
-        notification_seat("data-hx-post", format!("/api/indicators/notifications/{}/{verb}{query}", notification_segment(&item.id))),
-        notification_seat("data-hx-target", "closest .notifications-modal".into()),
-        notification_seat("data-hx-swap", "outerHTML".into()),
-        notification_seat("data-hx-sync", "closest .notifications-modal:drop".into()),
-        notification_seat("data-hx-disabled-elt", ".notifications-modal button".into()),
+        notification_seat("data-hx-post", notification_post_path(item, verb, hidden)),
+        notification_seat("data-hx-target", NOTIFICATION_TARGET.into()),
+        notification_seat("data-hx-swap", NOTIFICATION_SWAP.into()),
+        notification_seat("data-hx-sync", NOTIFICATION_SYNC.into()),
+        notification_seat("data-hx-disabled-elt", NOTIFICATION_DISABLED.into()),
     ];
     if include { seats.push(notification_seat("data-hx-include", "closest .ui-notification-tile".into())); }
     seats
@@ -177,12 +186,20 @@ fn notifications_modal_html(
         let fields = if let Some(action) = admin_act {
             if action.fields.get("names").is_some() {
                 let names = edited.filter(|(id, _)| *id == item.id).map(|(_, names)| names).unwrap_or(&item.names);
-                Some(maud::html! { @for (index, name) in names.iter().enumerate() {
-                    (xenia_kit::ux::Input { label: Some(if index == 0 { "Portal name".into() } else { format!("Alias {index}") }), name: Some("names".into()), value: Some(name.clone()), ..Default::default() })
-                } })
+                Some(maud::html! {
+                    form data-hx-post=(notification_post_path(item, "accept", hidden))
+                        data-hx-target=(NOTIFICATION_TARGET) data-hx-swap=(NOTIFICATION_SWAP)
+                        data-hx-sync=(NOTIFICATION_SYNC) data-hx-disabled-elt=(NOTIFICATION_DISABLED)
+                        style="display: contents" {
+                        @for (index, name) in names.iter().enumerate() {
+                            (xenia_kit::ux::Input { label: Some(if index == 0 { "Portal name".into() } else { format!("Alias {index}") }), name: Some("names".into()), value: Some(name.clone()), ..Default::default() })
+                        }
+                        button type="submit" hidden {}
+                    }
+                })
             } else { None }
         } else if item.act.is_some() && session != Session::Admin {
-            Some(maud::html! { p { "The owner can act on this in Admin Mode" } })
+            Some(maud::html! { p class="ui-notification-tile__hint" { "The owner can act on this in Admin Mode" } })
         } else { None };
         let mut seats = xenia_kit::composite::NotificationTileSeats::default();
         seats.tile.push(notification_seat("data-notification-id", item.id.clone()));
