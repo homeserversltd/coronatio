@@ -205,7 +205,7 @@ fn notifications_modal_html(
         ..Default::default()
     };
     maud::html! {
-        div class="notifications-modal" data-modal-kind-body="notifications" data-indicator-fragment {
+        div class="notifications-modal modal-content" data-modal-kind-body="notifications" data-indicator-fragment {
             @if let Some((message, ok)) = notice { p class="notifications-result" data-notifications-result data-ok=(ok) role="status" { (message) } }
             @if hidden { (button.render()) }
             @if empty {
@@ -311,7 +311,7 @@ async fn notifications_action_route(
         "id":id.chars().take(128).collect::<String>(),"outcome":if ok {"ok"} else {"refused"},
         "durationMs":started.elapsed().as_millis(),"signal":deed_signal,
         "firstMissingField":if matches!(signal, "link-up-name-invalid" | "link-up-name-taken") { Some("names") } else { None }}));
-    let (view, _) = tokio::task::spawn_blocking(move || notifications_snapshot(ok)).await
+    let (view, _) = tokio::task::spawn_blocking(move || notifications_snapshot(ok || unattended)).await
         .unwrap_or((NotificationsView { items: Vec::new(), available: false }, 0));
     let session = session_projection_from_headers(&headers).await;
     let mut response = notification_html_response(notifications_modal_html(
