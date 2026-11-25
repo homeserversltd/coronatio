@@ -6,11 +6,23 @@ const NOTIFICATIONS_ICON: &str = r#"<svg class="indicator-icon" viewBox="0 0 24 
 #[derive(Clone, PartialEq, Eq)]
 struct NotificationView {
     id: String,
+    #[allow(dead_code)]
     kind: String,
+    #[allow(dead_code)]
     state: String,
     title: String,
     hostname: String,
     names: Vec<String>,
+    color: String,
+    body: Option<String>,
+    hidden: bool,
+    act: Option<NotificationAction>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct NotificationAction {
+    label: String,
+    fields: serde_json::Value,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -75,8 +87,20 @@ fn notifications_view(readback: &CaduceusHttpReadback) -> NotificationsView {
         if names.is_some_and(|names| names.len() > 64) { return unavailable(); }
         items.push(NotificationView {
             id: text("id"), kind: text("kind"), state: text("state"), title: text("title"),
-            hostname: row.pointer("/from/hostname").and_then(serde_json::Value::as_str).unwrap_or("").to_owned(),
+            hostname: row.pointer("/from/hostname").and_then(serde_json::Value::as_str)
+                .or_else(|| row.pointer("/from/body").and_then(serde_json::Value::as_str)).unwrap_or("").to_owned(),
             names: names.into_iter().flatten().filter_map(serde_json::Value::as_str).map(str::to_owned).collect(),
+            color: text("color"),
+            body: row.get("body").and_then(serde_json::Value::as_str).map(str::to_owned),
+            hidden: row.get("hidden").and_then(serde_json::Value::as_bool).unwrap_or(false),
+            act: row.get("actions").and_then(serde_json::Value::as_array).and_then(|actions| {
+                actions.iter().find_map(|action| {
+                    let label = action.get("label").and_then(serde_json::Value::as_str)?;
+                    (action.get("verb").and_then(serde_json::Value::as_str) == Some("accept") && !label.is_empty()).then(|| NotificationAction {
+                        label: label.to_owned(), fields: action.get("fields").cloned().unwrap_or_default(),
+                    })
+                })
+            }),
         });
     }
     NotificationsView { items, available: true }
@@ -100,14 +124,14 @@ fn render_notifications_modal(_ctx: IndicatorRenderContext) -> String {
 }
 
 fn notifications_badge(view: &NotificationsView) -> String {
-    let count = view.items.len();
+    let count = view.items.iter().filter(|item| !item.hidden).count();
     if count == 0 { return NOTIFICATIONS_ICON.to_owned(); }
     format!(r#"{NOTIFICATIONS_ICON}<span class="notifications-count" data-notifications-count aria-label="{count} notifications" aria-live="polite">{count}</span>"#)
 }
 
 fn notifications_collector(_session: Session) -> Result<serde_json::Value, String> {
     let (view, revision) = notifications_snapshot(false);
-    Ok(serde_json::json!({"count":view.items.len(),"available":view.available,"revision":revision}))
+    Ok(serde_json::json!({"count":view.items.iter().filter(|item| !item.hidden).count(),"available":view.available,"revision":revision}))
 }
 
 fn notification_segment(id: &str) -> String {
@@ -122,50 +146,81 @@ fn notification_segment(id: &str) -> String {
     encoded
 }
 
+fn notification_seat(name: &str, value: String) -> xenia_kit::fragment::DataSeat {
+    xenia_kit::fragment::DataSeat::new(name, Some(value))
+        .unwrap_or_else(|error| panic!("invalid {name} seat: {error}"))
+}
+
+fn notification_post_seats(item: &NotificationView, verb: &str, hidden: bool, include: bool) -> Vec<xenia_kit::fragment::DataSeat> {
+    let query = if hidden { "?view=hidden" } else { "" };
+    let mut seats = vec![
+        notification_seat("data-hx-post", format!("/api/indicators/notifications/{}/{verb}{query}", notification_segment(&item.id))),
+        notification_seat("data-hx-target", "closest .notifications-modal".into()),
+        notification_seat("data-hx-swap", "outerHTML".into()),
+        notification_seat("data-hx-sync", "closest .notifications-modal:drop".into()),
+        notification_seat("data-hx-disabled-elt", ".notifications-modal button".into()),
+    ];
+    if include { seats.push(notification_seat("data-hx-include", "closest .ui-notification-tile".into())); }
+    seats
+}
+
 fn notifications_modal_html(
     view: &NotificationsView,
     session: Session,
     notice: Option<(&str, bool)>,
     edited: Option<(&str, &[String])>,
+    hidden: bool,
 ) -> String {
-    let mut html = String::from(r#"<div class="notifications-modal" data-modal-kind-body="notifications" data-indicator-fragment>"#);
-    if let Some((message, ok)) = notice {
-        html.push_str(&format!(r#"<p class="notifications-result" data-notifications-result data-ok="{ok}" role="status">{}</p>"#, html_escape(message)));
-    }
-    if view.items.is_empty() {
-        html.push_str(if view.available { "<p>No notifications</p>" } else { "<p>Notifications are unavailable right now</p>" });
-    }
-    for item in &view.items {
-        let title = if item.title.is_empty() { "Notification" } else { &item.title };
-        html.push_str(&format!(r#"<article class="notification-request" data-notification-id="{}"><strong>{}</strong><p class="notification-from">{}</p>"#,
-            html_escape(&item.id), html_escape(title), html_escape(&item.hostname)));
-        if session == Session::Admin && item.kind == "house-link-up" && item.state == "pending" && !item.id.is_empty() {
-            let id = notification_segment(&item.id);
-            let names = edited.filter(|(edited_id, _)| *edited_id == item.id).map(|(_, names)| names).unwrap_or(&item.names);
-            html.push_str(&format!(r#"<form class="notification-names" data-admin-only="true" hx-post="/api/indicators/notifications/{id}/accept" hx-target="closest .notifications-modal" hx-swap="outerHTML" hx-sync="closest .notifications-modal:drop" hx-disabled-elt=".notifications-modal button">"#));
-            for (index, name) in names.iter().enumerate() {
-                let label = if index == 0 { "Portal name".to_owned() } else { format!("Alias {index}") };
-                html.push_str(&format!(r#"<label>{label}<input class="ui-input" type="text" name="names" value="{}" autocomplete="off" spellcheck="false"></label>"#, html_escape(name)));
-            }
-            html.push_str(&format!(r#"<div class="button-row"><button type="submit" class="ui-button ui-button--primary">Accept</button><button type="button" class="ui-button ui-button--secondary" hx-post="/api/indicators/notifications/{id}/dismiss" hx-target="closest .notifications-modal" hx-swap="outerHTML">Dismiss</button></div></form>"#));
-        } else {
-            html.push_str("<ul class=\"notification-names\">");
-            for name in &item.names { html.push_str(&format!("<li>{}</li>", html_escape(name))); }
-            html.push_str("</ul>");
-            if item.kind == "house-link-up" && item.state == "pending" && session != Session::Admin {
-                html.push_str("<p>The owner can accept this in Admin Mode</p>");
-            } else if item.state == "accepted" {
-                html.push_str("<p>Accepted</p>");
-            }
+    use maud::Render as _;
+    let tiles = view.items.iter().filter(|item| item.hidden == hidden).map(|item| {
+        let admin_act = item.act.as_ref().filter(|_| session == Session::Admin);
+        let fields = if let Some(action) = admin_act {
+            if action.fields.get("names").is_some() {
+                let names = edited.filter(|(id, _)| *id == item.id).map(|(_, names)| names).unwrap_or(&item.names);
+                Some(maud::html! { @for (index, name) in names.iter().enumerate() {
+                    (xenia_kit::ux::Input { label: Some(if index == 0 { "Portal name".into() } else { format!("Alias {index}") }), name: Some("names".into()), value: Some(name.clone()), ..Default::default() })
+                } })
+            } else { None }
+        } else if item.act.is_some() && session != Session::Admin {
+            Some(maud::html! { p { "The owner can act on this in Admin Mode" } })
+        } else { None };
+        let mut seats = xenia_kit::composite::NotificationTileSeats::default();
+        seats.tile.push(notification_seat("data-notification-id", item.id.clone()));
+        if admin_act.is_some() { seats.act = notification_post_seats(item, "accept", hidden, true); }
+        seats.hide = notification_post_seats(item, if hidden { "unhide" } else { "hide" }, hidden, false);
+        xenia_kit::composite::NotificationTile {
+            tag: item.hostname.clone(), tone: xenia_kit::composite::NoticeTone::from_color(&item.color),
+            title: if item.title.is_empty() { "Notification".into() } else { item.title.clone() },
+            body: item.body.clone().or_else(|| (!item.names.is_empty()).then(|| item.names.join(", "))),
+            fields, act: admin_act.map(|action| action.label.clone()), hidden, seats,
         }
-        html.push_str("</article>");
-    }
-    html.push_str("</div>");
-    html
+    }).collect::<Vec<_>>();
+    let empty = tiles.is_empty();
+    let list = xenia_kit::composite::NotificationTiles { label: if hidden { "Hidden notifications" } else { "Notifications" }.into(), tiles };
+    let button = xenia_kit::ux::Button {
+        text: if hidden { "Back".into() } else { format!("Hidden ({})", view.items.iter().filter(|item| item.hidden).count()) },
+        tone: Some(xenia_kit::ux::ButtonTone::Secondary), size: Some(xenia_kit::ux::Size::Small), button_type: true,
+        hx: xenia_kit::ux::Hx { get: Some(if hidden { "/api/indicators/notifications" } else { "/api/indicators/notifications/hidden" }.into()),
+            target: Some("closest .notifications-modal".into()), swap: Some(xenia_kit::ux::Swap::OuterHtml), ..Default::default() },
+        ..Default::default()
+    };
+    maud::html! {
+        div class="notifications-modal" data-modal-kind-body="notifications" data-indicator-fragment {
+            @if let Some((message, ok)) = notice { p class="notifications-result" data-notifications-result data-ok=(ok) role="status" { (message) } }
+            @if hidden { (button.render()) }
+            @if empty {
+                @if !view.available { p { "Notifications are unavailable right now" } }
+                @else if hidden { p { "Nothing is hidden." } }
+                @else { p { "No notifications" } }
+            } @else { (list.render()) }
+            @if !hidden { (button.render()) }
+        }
+    }.into_string()
 }
 
 fn notifications_message(signal: &str) -> &'static str {
     match signal {
+        "notification-absent" => "That notification is already gone",
         "link-up-name-taken" => "That name is already used on your network",
         "link-up-name-invalid" => "Choose a valid name ending in .home.arpa, such as noesis.home.arpa",
         "link-up-admin-required" => "Enter Admin Mode to manage this request",
@@ -180,6 +235,7 @@ fn notifications_message(signal: &str) -> &'static str {
 pub(crate) fn notifications_routes() -> Router<AppState> {
     Router::new()
         .route("/api/indicators/notifications", get(notifications_modal_route))
+        .route("/api/indicators/notifications/hidden", get(notifications_hidden_route))
         .route("/api/indicators/notifications/badge", get(notifications_badge_route))
         .route("/api/indicators/notifications/:id/:action", post(notifications_action_route))
 }
@@ -194,7 +250,14 @@ async fn notifications_modal_route(headers: axum::http::HeaderMap) -> Response {
     let session = session_projection_from_headers(&headers).await;
     let (view, _) = tokio::task::spawn_blocking(|| notifications_snapshot(false)).await
         .unwrap_or((NotificationsView { items: Vec::new(), available: false }, 0));
-    notification_html_response(notifications_modal_html(&view, session, None, None))
+    notification_html_response(notifications_modal_html(&view, session, None, None, false))
+}
+
+async fn notifications_hidden_route(headers: axum::http::HeaderMap) -> Response {
+    let session = session_projection_from_headers(&headers).await;
+    let (view, _) = tokio::task::spawn_blocking(|| notifications_snapshot(false)).await
+        .unwrap_or((NotificationsView { items: Vec::new(), available: false }, 0));
+    notification_html_response(notifications_modal_html(&view, session, None, None, true))
 }
 
 fn notification_html_response(html: String) -> Response {
@@ -206,9 +269,10 @@ fn notification_html_response(html: String) -> Response {
 async fn notifications_action_route(
     headers: axum::http::HeaderMap,
     Path((id, action)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<std::collections::HashMap<String, String>>,
     body: Bytes,
 ) -> Response {
-    if !matches!(action.as_str(), "accept" | "dismiss") { return StatusCode::NOT_FOUND.into_response(); }
+    if !matches!(action.as_str(), "accept" | "dismiss" | "hide" | "unhide") { return StatusCode::NOT_FOUND.into_response(); }
     let started = Instant::now();
     let names = if headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("application/json")) {
         serde_json::from_slice::<serde_json::Value>(&body).ok()
@@ -222,16 +286,19 @@ async fn notifications_action_route(
     let request_body = if action == "accept" { serde_json::json!({"names":forwarded_names}) } else { serde_json::json!({}) };
     let request_headers = headers.clone();
     let request_path = path.clone();
+    let unattended = matches!(action.as_str(), "hide" | "unhide");
     let readback = tokio::task::spawn_blocking(move || {
-        caduceus_actuate_json(&mutation_authority(), &request_headers, &request_path, request_body)
+        if unattended { caduceus_http("POST", &request_path) }
+        else { caduceus_actuate_json(&mutation_authority(), &request_headers, &request_path, request_body) }
     }).await.unwrap_or_else(|_| mutation_task_failure_readback(&path));
     let ok = readback.ok && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
-        && readback.body.get("converged").and_then(serde_json::Value::as_bool) != Some(false);
+        && readback.body.get("converged").and_then(serde_json::Value::as_bool) != Some(false)
+        && (!unattended || caduceus_receipt_matches_path(&readback.body, &readback.path));
     let signal = readback.body.get("signal").or_else(|| readback.body.get("firstMissingSignal"))
         .or_else(|| readback.body.get("first_missing_signal")).or_else(|| readback.body.get("code"))
         .and_then(serde_json::Value::as_str).unwrap_or(&readback.first_missing_signal);
     let message = if ok {
-        if action == "accept" { "Request accepted" } else { "Request dismissed" }
+        match action.as_str() { "accept" => "Request accepted", "dismiss" => "Request dismissed", "hide" => "Hidden", _ => "Back on your bell" }
     } else { notifications_message(signal) };
     let deed_signal = if ok { "none" } else {
         match signal {
@@ -249,6 +316,7 @@ async fn notifications_action_route(
     let session = session_projection_from_headers(&headers).await;
     let mut response = notification_html_response(notifications_modal_html(
         &view, session, Some((message, ok)), (!ok && action == "accept").then_some((id.as_str(), names.as_slice())),
+        query.get("view").is_some_and(|value| value == "hidden"),
     ));
     if ok {
         response.headers_mut().insert("hx-trigger", HeaderValue::from_static("notifications.status"));
