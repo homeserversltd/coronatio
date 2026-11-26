@@ -223,7 +223,7 @@ fn backup_schedule_save(headers: &axum::http::HeaderMap, body: &serde_json::Valu
         let mut schedule = serde_json::json!({"schedule_id":id,"enabled":false});
         if reseat {
             let job = kernel.as_ref().and_then(|v|v.pointer("/schedule/job"));
-            let valid = job.filter(|v| ["band", "action"].iter().all(|key| v.get(key).and_then(serde_json::Value::as_str).is_some_and(|s| !s.is_empty())));
+            let valid = job.filter(|v| ["band", "action"].iter().all(|key| v.get(key).and_then(serde_json::Value::as_str).is_some_and(|s| !s.trim().is_empty())));
             let Some(job) = valid else { return backblaze_error(StatusCode::BAD_REQUEST, "this backup's job could not be read; nothing was changed"); };
             schedule["job"] = job.clone();
             if let Some(needs) = kernel.as_ref().and_then(|v|v.pointer("/schedule/needs")) { schedule["needs"] = needs.clone(); }
