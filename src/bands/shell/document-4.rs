@@ -1189,21 +1189,45 @@ fn shell_document_4() -> &'static str {
       if (modal) modal.hidden = false;
     }
     const portalServiceSettles = new Map();
+    const portalServiceBusy = new Map();
+    function portalServiceCardName(card) {
+      if (card?.dataset.portalName) return card.dataset.portalName;
+      try { return JSON.parse(decodeURIComponent(card?.querySelector('[data-portal-services]')?.dataset.portalServices || '%5B%5D')).join(', '); } catch (_) { return ''; }
+    }
+    function setPortalServiceBusy(card, busy) {
+      if (!card) return;
+      const element = card.closest('[data-portal-element]') || card;
+      element.querySelectorAll('[data-service-action], [data-portal-delete]').forEach(key => {
+        key.disabled = Boolean(busy);
+        if (!key.matches('[data-service-action]')) return;
+        if (busy && key.dataset.serviceAction === busy.action) {
+          if (!key.hasAttribute('aria-busy')) key.dataset.portalBusyLabel = key.textContent;
+          key.setAttribute('aria-busy', 'true');
+          const spinner = document.createElement('span');
+          spinner.className = 'loading-spinner small';
+          spinner.setAttribute('role', 'progressbar');
+          spinner.setAttribute('aria-label', busy.announce);
+          key.replaceChildren(spinner);
+        } else if (!busy && key.hasAttribute('aria-busy')) {
+          key.textContent = key.dataset.portalBusyLabel || '';
+          delete key.dataset.portalBusyLabel;
+          key.removeAttribute('aria-busy');
+        }
+      });
+    }
     window.addEventListener('coronatio:privileged-state-retired', () => {
       portalServiceSettles.forEach(controller => controller.abort());
       portalServiceSettles.clear();
     });
-    function settlePortalServiceAction(portalName, goal, controller, attendance) {
+    function settlePortalServiceAction(portalName, goal, controller, attendance, flight) {
       const { signal } = controller;
-      const deadline = performance.now() + 30000;
-      const expiry = window.setTimeout(() => controller.abort(), 30000);
-      let retry;
+      let retry, expiry;
       signal.addEventListener('abort', () => {
         window.clearTimeout(expiry);
         window.clearTimeout(retry);
         if (portalServiceSettles.get(portalName) === controller) portalServiceSettles.delete(portalName);
       }, { once: true });
-      const current = () => !signal.aborted && performance.now() < deadline && headerState.isAdmin
+      const current = () => !signal.aborted && (flight.inFlight || performance.now() < flight.deadline) && headerState.isAdmin
         && coronatioAttendanceRuntime.currentAttendance === attendance;
       const read = async () => {
         if (!current()) { controller.abort(); return; }
@@ -1219,8 +1243,13 @@ fn shell_document_4() -> &'static str {
             }
           }
         } catch (_) { /* A missed read may retry only within this action's window. */ }
-        if (goal && !settled && current()) retry = window.setTimeout(read, 1000);
+        if (goal && (flight.inFlight || !settled) && current()) retry = window.setTimeout(read, 1000);
         else controller.abort();
+      };
+      flight.finish = () => {
+        flight.inFlight = false;
+        flight.deadline = performance.now() + 30000;
+        if (!signal.aborted) expiry = window.setTimeout(() => controller.abort(), 30000);
       };
       void read();
     }
@@ -1229,63 +1258,85 @@ fn shell_document_4() -> &'static str {
       event.stopPropagation();
       const button = event.currentTarget;
       const controls = button.closest('[data-portal-services]');
+      const card = button.closest('[data-portal-card]');
       const action = button.dataset.serviceAction;
       let services = [];
       try { services = JSON.parse(decodeURIComponent(controls?.dataset.portalServices || '%5B%5D')); } catch (_) { services = []; }
+      const portalName = card?.dataset.portalName || services.join(', ');
+      if (button.disabled || portalServiceBusy.has(portalName)) return;
       if (!services.length) {
         if (action === 'status') showPortalServiceStatus([{ service: 'service', error: 'No services specified for this portal.' }]);
         else showCoronatioToast('No services specified', 'error');
         return;
       }
-      const portalName = button.closest('[data-portal-card]')?.dataset.portalName;
+      const verbs = { start: 'Starting ', stop: 'Stopping ', restart: 'Restarting ', enable: 'Enabling ', disable: 'Disabling ' };
+      const announce = action === 'status' ? `Checking ${portalName} status…` : `${verbs[action]}${portalName}…`;
+      const busy = { action, announce };
+      portalServiceBusy.set(portalName, busy);
+      setPortalServiceBusy(card, busy);
+      showCoronatioToast(announce, 'info');
       const attendance = coronatioAttendanceRuntime.currentAttendance;
       let settleController;
-      if (portalName && headerState.isAdmin) {
-        portalServiceSettles.get(portalName)?.abort();
-        portalServiceSettles.delete(portalName);
-        if (['start', 'stop', 'restart', 'enable', 'disable'].includes(action)) {
-          settleController = new AbortController();
-          portalServiceSettles.set(portalName, settleController);
-        }
+      const flight = { inFlight: true, deadline: Infinity };
+      const goal = action === 'stop' ? 'down' : ['start', 'restart'].includes(action) ? 'up' : null;
+      portalServiceSettles.get(portalName)?.abort();
+      if (portalName && headerState.isAdmin && action !== 'status') {
+        settleController = new AbortController();
+        portalServiceSettles.set(portalName, settleController);
+        if (goal) settlePortalServiceAction(portalName, goal, settleController, attendance, flight);
       }
       const results = [];
-
-      for (const service of services) {
-        try {
-          const response = await fetch('/api/service/control', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service, action })
-          });
-          const text = await response.text();
-          let result;
-          try { result = JSON.parse(text); } catch (_) { result = { success: response.ok, output: text }; }
-          const decoratedError = !response.ok || result.ok === false || result.success === false ? portalServiceFailureMessage(result, `Failed to ${action} ${service}`) : '';
-          results.push({ service, ...result, decoratedError });
-          if (action !== 'status') {
-            if (response.ok && result.ok !== false && result.success !== false) showCoronatioToast(result.message || `Successfully ${action}ed ${service}`, 'success');
-            else showCoronatioToast(portalServiceFailureMessage(result, `Failed to ${action} ${service}`), 'error');
+      try {
+        for (const service of services) {
+          try {
+            const response = await fetch('/api/service/control', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ service, action })
+            });
+            const text = await response.text();
+            let result;
+            try { result = JSON.parse(text); } catch (_) { result = { success: false, error: `Failed to ${action} ${service} (HTTP ${response.status})` }; }
+            const failed = !response.ok || result.ok === false || result.success === false;
+            const decoratedError = failed ? portalServiceFailureMessage(result, `Failed to ${action} ${service}`) : '';
+            results.push({ service, ...result, decoratedError });
+            if (action !== 'status') {
+              if (!failed) showCoronatioToast(`Successfully executed ${action} on ${service}`, 'success');
+              else showCoronatioToast(decoratedError, 'error');
+            }
+          } catch (_) {
+            const unreachableMessage = 'The appliance service controller is unreachable.';
+            results.push({ service, action, error: unreachableMessage, decoratedError: unreachableMessage });
+            if (action !== 'status') showCoronatioToast(unreachableMessage, 'error');
           }
-        } catch (_) {
-          const unreachableMessage = 'The appliance service controller is unreachable.';
-          results.push({ service, action, error: unreachableMessage, decoratedError: unreachableMessage });
-          if (action !== 'status') showCoronatioToast(unreachableMessage, 'error');
         }
-      }
-      if (action === 'status') showPortalServiceStatus(results);
-      else if (settleController && !settleController.signal.aborted) {
-        const goal = action === 'stop' ? 'down' : ['start', 'restart'].includes(action) ? 'up' : null;
-        settlePortalServiceAction(portalName, goal, settleController, attendance);
+        if (action === 'status') showPortalServiceStatus(results);
+      } finally {
+        if (settleController && !settleController.signal.aborted) {
+          if (goal) flight.finish();
+          else {
+            flight.inFlight = false;
+            flight.deadline = performance.now() + 30000;
+            settlePortalServiceAction(portalName, null, settleController, attendance, flight);
+          }
+        }
+        portalServiceBusy.delete(portalName);
+        setPortalServiceBusy(card, null);
+        document.querySelectorAll('[data-portal-card]').forEach(currentCard => {
+          if (portalServiceCardName(currentCard) === portalName) setPortalServiceBusy(currentCard, null);
+        });
       }
     }
     function bindPortalFragmentControls(grid) {
       applyPortalTileStatuses(grid, crownStore.latest('services.status'));
       grid.querySelectorAll('[data-portal-card]').forEach(card => {
+        const name = portalServiceCardName(card);
+        if (portalServiceBusy.has(name)) setPortalServiceBusy(card, portalServiceBusy.get(name));
         if (card.dataset.portalFragmentControlsBound === 'true') return;
         card.dataset.portalFragmentControlsBound = 'true';
         const open = () => { const url = card.dataset.portalUrl; if (url && url !== '#') window.open(url, '_blank', 'noopener,noreferrer'); };
-        card.addEventListener('click', open);
-        card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+        card.addEventListener('click', event => { if (!event.target.closest('.admin-controls')) open(); });
+        card.addEventListener('keydown', event => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); open(); } });
       });
       grid.querySelectorAll('[data-service-action]').forEach(button => { if (button.dataset.portalFragmentControlBound === 'true') return; button.dataset.portalFragmentControlBound = 'true'; button.addEventListener('click', handlePortalServiceAction); });
       grid.querySelectorAll('[data-portal-delete]').forEach(button => { if (button.dataset.portalFragmentControlBound === 'true') return; button.dataset.portalFragmentControlBound = 'true'; button.addEventListener('click', deletePortal); });
