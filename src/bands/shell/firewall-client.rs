@@ -59,6 +59,8 @@ fn shell_firewall_client() -> &'static str {
       if (children && scaffoldReadProjectionAllowed(children, preserveReadySlots)) morphLivePane(children, policies.map(row => rowHtml(row)).join(''));
       if (observed && scaffoldReadProjectionAllowed(observed, preserveReadySlots)) { const expanded = Boolean(observed.querySelector('details')?.open); morphLivePane(observed, `<ul class="firewall-list">${main.map(row => rowHtml(row)).join('')}</ul>${other.length ? `<details class="firewall-other"${expanded ? ' open' : ''}><summary>Other addresses (${other.length})</summary><ul class="firewall-list">${other.map(row => rowHtml(row, true)).join('')}</ul></details>` : ''}`); }
       binding.root.querySelectorAll('[data-firewall-device] input').forEach(input => { const mac = input.closest('[data-firewall-device]').dataset.firewallDevice; input.disabled = !firewallState.observedReady || !firewallState.childrenReady || firewallState.busy.has(mac); });
+      const sheet = firewallModalElement(), title = sheet?.querySelector('[data-firewall-modal-title]');
+      if (sheet?.open && title && firewallState.selectedMac) title.textContent = `${firewallObservedName(firewallRow(firewallState.selectedMac))} can reach only these websites.`;
     }
     function firewallRead(binding, key, route, field, slotName, options = {}) {
       const target = binding.root.querySelector(`[data-scaffold-slot="${slotName}"]`); if (!target) return Promise.resolve(false);
@@ -89,6 +91,10 @@ fn shell_firewall_client() -> &'static str {
       const error = modal?.querySelector('[data-firewall-whitelist-error]'); if (error) { error.textContent = ''; error.hidden = true; }
       Object.assign(firewallState, { selectedMac: '', hosts: [], revision: undefined, whitelistReady: false });
     }
+    document.addEventListener('close', event => {
+      const modal = event.target; if (modal !== firewallModalElement() || modal.open) return;
+      const error = modal.querySelector('[data-firewall-whitelist-error]'); if (error) { error.textContent = ''; error.hidden = true; }
+    }, true);
     function renderFirewallHosts(binding = firewallState.binding) {
       if (!firewallCurrent(binding)) return; const target = binding.root.querySelector('[data-firewall-hosts]'); if (!target) return;
       morphLivePane(target, firewallState.hosts.map(host => `<li class="ui-setting-row ui-setting-row--ruled ui-setting-row--inline" data-scaffold-key="firewall-host:${escapeHtml(host)}"><code>${escapeHtml(host)}</code><button type="button" class="ui-button ui-button--secondary ui-button--small" data-firewall-remove-host="${escapeHtml(host)}">Remove</button></li>`).join(''));
@@ -178,7 +184,7 @@ fn shell_firewall_client() -> &'static str {
       await firewallWrite(binding, mac, way);
     });
     window.addEventListener('coronatio:privileged-state-retired', () => {
-      const binding = firewallState.binding; if (binding) { const sheet = firewallModalElement(), confirm = binding.root.querySelector('[data-firewall-confirm]'); if (sheet) closeCrownDialog(sheet); if (confirm) closeCrownDialog(confirm); }
+      const binding = firewallState.binding; if (binding) { const confirm = binding.root.querySelector('[data-firewall-confirm]'); closeFirewallModal(); if (confirm) closeCrownDialog(confirm); }
       window.scaffoldRegistry?.retire('firewall', 'Admin role retired');
       Object.assign(firewallState, { observed: [], children: [], roster: [], hosts: [], revision: undefined, selectedMac: '', observedReady: false, childrenReady: false, whitelistReady: false, binding: null, confirm: null }); firewallState.busy.clear();
       document.querySelectorAll('[data-pane-panel="firewall"] [data-firewall-observed], [data-pane-panel="firewall"] [data-firewall-children], [data-pane-panel="firewall"] [data-firewall-hosts]').forEach(node => node.replaceChildren());
