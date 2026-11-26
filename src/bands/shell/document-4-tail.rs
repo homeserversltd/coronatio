@@ -1043,10 +1043,10 @@ fn shell_document_4_tail() -> &'static str {
         try {
           const first = await drivePost('/api/v1/storage/nas/key/probe', { key_role: role, partition: '/dev/' + row.partition });
           if (String(first.body?.firstMissingSignal || '').includes('partlabel-duplicate')) classification = 'duplicate';
-          else if (first.response.ok && first.body?.state === 'key-mismatched') {
+          else if (first.body?.state === 'key-mismatched') {
             const second = await drivePost('/api/v1/storage/nas/key/probe', { key_role: role === 'primary' ? 'backup' : 'primary', partition: '/dev/' + row.partition });
             if (String(second.body?.firstMissingSignal || '').includes('partlabel-duplicate')) classification = 'duplicate';
-            else if (second.response.ok && second.body?.state === 'key-mismatched') classification = 'foreign';
+            else if (second.body?.state === 'key-mismatched') classification = 'foreign';
           }
         } catch (_) { /* an unobserved key leaves today's card unchanged */ }
         driveKeyProbes.set(driveProbeKey(row), classification);
