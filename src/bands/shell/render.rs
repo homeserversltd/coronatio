@@ -133,8 +133,15 @@ static SHELL_UX_CONTENTS: std::sync::LazyLock<Vec<&'static str>> = std::sync::La
     shared_sheet!("shell/document-2-css.css"),
 ]);
 
+static LINKER_KIT_SHEETS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| vec![
+    shared_sheet!("library/_listing.css"),
+    shared_sheet!("library/_result-line.css"),
+    shared_sheet!("library/_inline-review.css"),
+    shared_sheet!("library/_key-hints.css"),
+]);
+
 fn shell_ux_css() -> String {
-    SHELL_UX_CONTENTS.concat()
+    [SHELL_UX_CONTENTS.concat(), LINKER_KIT_SHEETS.concat()].concat()
 }
 
 fn crown_chrome_js() -> String {
