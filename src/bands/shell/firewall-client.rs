@@ -27,7 +27,11 @@ fn shell_firewall_client() -> &'static str {
       return true;
     }
     function firewallLanIp(row) { const ip = String(row?.ip || '').trim(); const parts = ip.split('.'); return parts.length === 4 && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255) ? ip : ''; }
-    function firewallRosterName(row) { const device = firewallState.roster.find(item => firewallMac(item) === firewallMac(row)); return [device?.hostname, device?.observed_lease?.hostname, ...(Array.isArray(device?.dns_names) ? device.dns_names : []), row?.hostname].find(name => typeof name === 'string' && name.trim())?.trim() || ''; }
+    function firewallRosterName(row) {
+      const device = firewallState.roster.find(item => firewallMac(item) === firewallMac(row));
+      return [device?.declared_reservation?.hostname, ...(Array.isArray(device?.dns_names) ? device.dns_names : []), device?.observed_lease?.hostname, row?.hostname]
+        .map(name => typeof name === 'string' ? name.trim().replace(/\.$/, '').trim() : '').find(Boolean) || '';
+    }
     function firewallObservedName(row) {
       return firewallRosterName(row) || 'Unknown';
     }
