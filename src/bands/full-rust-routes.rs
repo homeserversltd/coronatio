@@ -149,6 +149,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/v1/network/dns/upstream", post(dns_caduceus_mutation_route))
         .route("/api/firewall/observed", get(firewall_observed_route))
         .route("/api/firewall/children", get(firewall_children_route).post(firewall_register_route))
+        .route("/api/firewall/way", post(firewall_way_route))
         .route("/api/firewall/children/:mac", delete(firewall_unregister_route))
         .route("/api/firewall/children/:mac/whitelist", get(firewall_whitelist_get_route).put(firewall_whitelist_set_route))
         .route("/api/backups/ledger", post(backups_ledger_route))
@@ -982,6 +983,7 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/dns/records/:name", &["delete"]),
         ("/api/firewall/observed", &["get"]),
         ("/api/firewall/children", &["get", "post"]),
+        ("/api/firewall/way", &["post"]),
         ("/api/firewall/children/:mac", &["delete"]),
         ("/api/firewall/children/:mac/whitelist", &["get", "put"]),
         ("/api/nasLinker/browse", &["get"]),

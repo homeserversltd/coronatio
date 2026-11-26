@@ -81,6 +81,20 @@ fn firewall_staff_response(readback: CaduceusHttpReadback, path: &str) -> Respon
     if readback.ok {
         return (StatusCode::OK, Json(readback.body)).into_response();
     }
+    if readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(false) {
+        if let Some(signal) = readback.body.get("firstMissingSignal").and_then(serde_json::Value::as_str) {
+            let status = if signal == "firewall-revision-conflict" {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::UNPROCESSABLE_ENTITY
+            };
+            return (status, Json(readback.body)).into_response();
+        }
+    }
+    if readback.status != 0 {
+        let status = StatusCode::from_u16(readback.status).unwrap_or(StatusCode::BAD_GATEWAY);
+        return (status, Json(readback.body)).into_response();
+    }
     (
         StatusCode::SERVICE_UNAVAILABLE,
         Json(serde_json::json!({
@@ -132,7 +146,7 @@ async fn firewall_register_route(
     }
     let body = match firewall_payload(
         payload,
-        "caduceus.network.firewall.child.v1",
+        "caduceus.staff.v1",
         None,
         crown_path,
     ) {
@@ -142,10 +156,28 @@ async fn firewall_register_route(
     firewall_staff_response(
         firewall_seated_mutation(
             &headers,
-            "/api/v1/network/firewall/children",
+            "/api/v1/network/firewall/register",
             "POST",
             Some(body),
         ),
+        crown_path,
+    )
+}
+
+async fn firewall_way_route(
+    headers: axum::http::HeaderMap,
+    payload: Option<Json<serde_json::Value>>,
+) -> Response {
+    let crown_path = "/api/firewall/way";
+    if let Some(refusal) = firewall_admin(&headers, crown_path) {
+        return refusal;
+    }
+    let body = match firewall_payload(payload, "caduceus.staff.v1", None, crown_path) {
+        Ok(body) => body,
+        Err(refusal) => return refusal,
+    };
+    firewall_staff_response(
+        firewall_seated_mutation(&headers, "/api/v1/network/firewall/way/set", "POST", Some(body)),
         crown_path,
     )
 }
