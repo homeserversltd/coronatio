@@ -261,7 +261,7 @@ fn shell_document_4() -> &'static str {
       const summary = failed ? `Uploaded ${success} file(s), ${failed} failed` : `Successfully uploaded ${success} file(s)`;
       const readout = uploadReadout();
       if (readout) readout.textContent = summary;
-      if (success && failed) showCoronatioToast(summary, 'warning'); else if (success) showCoronatioToast(summary, 'success');
+      if (success && failed) showCoronatioToast(summary, 'warning'); else if (success) showCoronatioToast(summary, 'success'); else if (failed) showCoronatioToast(summary, 'error');
     }
     function uploadAdminHeaders(json = false) { return json ? { 'content-type': 'application/json' } : {}; }
     async function hydrateUploadPolicy(binding = uploadBinding()) {
