@@ -415,6 +415,7 @@ async fn linker_transition_route(h: axum::http::HeaderMap, Path(action): Path<St
             let original_selected = s.selected.clone();
             let original_eligibility = s.selected_delete_eligible.clone();
             let mut outcomes = Vec::new();
+            let mut refused = false;
             for (path, eligible) in targets {
                 if !eligible { outcomes.push(format!("{path}: kept: last copy")); continue; }
                 let r = linker_call(&h, "/api/v1/linker/delete", serde_json::json!({"path":path}));
@@ -425,11 +426,11 @@ async fn linker_transition_route(h: axum::http::HeaderMap, Path(action): Path<St
                     return linker_finish(&h, s, r, "Delete", false);
                 }
                 if r.ok { s.selected.retain(|p| p != &path); s.selected_delete_eligible.remove(&path); outcomes.push(format!("{path}: deleted")); }
-                else { outcomes.push(format!("{path}: refused ({})", r.first_missing_signal)); }
+                else { refused = true; outcomes.push(format!("{path}: refused ({})", r.first_missing_signal)); }
             }
             s.review_targets.clear();
             if let Err(r) = linker_browse(&h, s) { return linker_read_refusal(s, &r, s.path.clone(), s.filter.clone()); }
-            s.mode = LinkerMode::Result; s.feedback = outcomes.join(" · ");
+            s.mode = if refused { LinkerMode::Fault } else { LinkerMode::Result }; s.feedback = outcomes.join(" · ");
             linker_response(s, None, StatusCode::OK)
         }
         "deploy" => {
