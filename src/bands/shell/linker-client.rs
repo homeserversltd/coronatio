@@ -140,6 +140,7 @@ fn shell_linker_client() -> &'static str {
           }
           return;
         }
+        if (target !== root && !target.matches('[data-linker-entry], [data-linker-entry] input[type="checkbox"]')) return;
         if (!current) return;
         if (key === 'j' || key === 'arrowdown') {
           event.preventDefault();
