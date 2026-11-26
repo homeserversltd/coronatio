@@ -601,7 +601,9 @@ Holding-pen drain: system/key/disk/admin-tablet selectors are owned here; sessio
 
 /* UX-MIGRATION-SLICE-09B manager continuation: OG anatomy, Crown tokens, portal-created dialog. */
 .manager-modal-backdrop { display: grid; place-items: center; padding: 1rem; z-index: 40; }
-.manager-modal-backdrop[data-manager-modal="nas-setup"] { z-index: 2600; }
+.manager-modal-backdrop[data-manager-modal="nas-setup"],
+.manager-modal-backdrop[data-manager-modal="nas-foreign-unlock"],
+.manager-modal-backdrop[data-manager-modal="nas-forge-restore"] { z-index: 2600; }
 .manager-modal { width: min(100%, 42rem); max-height: min(88vh, 52rem); overflow: auto; }
 .manager-modal .modal-body { display: grid; gap: .75rem; }
 .manager-modal label { display: grid; gap: .3rem; color: var(--text); }

@@ -15,6 +15,11 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/v1/storage/disk/test", post(storage_disk_test_route))
         .route("/api/v1/storage/shares/converge", post(storage_shares_converge_route))
         .route("/api/v1/storage/nas/attach", post(storage_nas_attach_route))
+        .route("/api/v1/storage/nas/key/probe", post(storage_key_probe_route))
+        .route("/api/v1/storage/nas/key/rekey", post(storage_key_rekey_route))
+        .route("/api/v1/storage/disk/partlabel/assign", post(storage_partlabel_assign_route))
+        .route("/api/v1/exousia/verify", post(storage_pin_verify_route))
+        .route("/api/v1/storage/backup/forgejo/nas-restore", post(storage_forge_restore_route))
         .route("/api/v1/storage/nas/detach", post(storage_nas_detach_route))
         .route("/api/system/log", post(admin_class_generic_mutation_route))
         .route("/api/system/update", post(admin_class_generic_mutation_route))
@@ -893,6 +898,11 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/v1/storage/disk/test", &["post"]),
         ("/api/v1/storage/shares/converge", &["post"]),
         ("/api/v1/storage/nas/attach", &["post"]),
+        ("/api/v1/storage/nas/key/probe", &["post"]),
+        ("/api/v1/storage/nas/key/rekey", &["post"]),
+        ("/api/v1/storage/disk/partlabel/assign", &["post"]),
+        ("/api/v1/exousia/verify", &["post"]),
+        ("/api/v1/storage/backup/forgejo/nas-restore", &["post"]),
         ("/api/v1/storage/nas/detach", &["post"]),
         ("/api/themes", &["get"]),
         ("/api/system/log", &["post"]),

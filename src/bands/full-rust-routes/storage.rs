@@ -20,6 +20,29 @@ struct StorageRebuildRequest {}
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
+struct StorageKeyProbeRequest { key_role: String, partition: String }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageKeyRekeyRequest {
+    key_role: String,
+    partition: String,
+    #[serde(rename = "oldPassword")]
+    old_password: String,
+    #[serde(rename = "keepOld", default)]
+    keep_old: bool,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoragePartlabelRequest { current_label: String, label: String }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoragePinVerifyRequest { pin: String }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StorageVaultUnlockRequest {
     password: String,
 }
@@ -339,6 +362,64 @@ async fn storage_forward_staff_door(
             "ok": false,
             "firstMissingSignal": "drive-worker-failed"
         }))).into_response(),
+    }
+}
+
+fn storage_strip_envelopes(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            map.remove("raw_envelope");
+            map.remove("envelope");
+            for child in map.values_mut() { storage_strip_envelopes(child); }
+        }
+        serde_json::Value::Array(items) => for child in items { storage_strip_envelopes(child); },
+        _ => {}
+    }
+}
+
+async fn storage_forward_secret_door(headers: axum::http::HeaderMap, path: &'static str, body: serde_json::Value) -> Response {
+    let result = tokio::task::spawn_blocking(move || storage_actuate_json_timeout(&mutation_authority(), &headers, path, body, VAULT_UNLOCK_UPSTREAM_TIMEOUT)).await;
+    match result {
+        Ok(readback) if matches!(readback.status, 404 | 405) => (StatusCode::NOT_IMPLEMENTED, Json(serde_json::json!({"ok":false,"firstMissingSignal":"coronatio-caduceus-route-translation-required","path":path}))).into_response(),
+        Ok(mut readback) => {
+            let receipt_ok = readback.ok && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
+                && matches!(readback.first_missing_signal.as_str(), "" | "none") && !storage_receipt_has_failure(&readback.body);
+            storage_strip_envelopes(&mut readback.body);
+            storage_operation_response(readback, receipt_ok, true)
+        }
+        Err(_) => (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"ok":false,"firstMissingSignal":"drive-worker-failed"}))).into_response(),
+    }
+}
+
+async fn storage_key_probe_route(headers: axum::http::HeaderMap, request: Result<Json<StorageKeyProbeRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+    let Ok(Json(request)) = request else { return storage_drive_refusal("drive-request-invalid"); };
+    storage_forward_staff_door(headers, "/api/v1/storage/nas/key/probe", serde_json::json!({"key_role":request.key_role,"partition":request.partition}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+}
+
+async fn storage_key_rekey_route(headers: axum::http::HeaderMap, request: Result<Json<StorageKeyRekeyRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+    let Ok(Json(request)) = request else { return storage_drive_refusal("drive-request-invalid"); };
+    if request.old_password.is_empty() { return storage_drive_refusal("nas-rekey-password-required"); }
+    storage_forward_secret_door(headers, "/api/v1/storage/nas/key/rekey", serde_json::json!({"key_role":request.key_role,"partition":request.partition,"oldPassword":request.old_password,"keepOld":request.keep_old})).await
+}
+
+async fn storage_partlabel_assign_route(headers: axum::http::HeaderMap, request: Result<Json<StoragePartlabelRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+    let Ok(Json(request)) = request else { return storage_drive_refusal("drive-request-invalid"); };
+    storage_forward_staff_door(headers, "/api/v1/storage/disk/partlabel/assign", serde_json::json!({"current_label":request.current_label,"label":request.label}), DRIVE_STAFF_UPSTREAM_TIMEOUT).await
+}
+
+async fn storage_forge_restore_route(headers: axum::http::HeaderMap, request: Result<Json<StorageRebuildRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+    let Ok(Json(_)) = request else { return storage_drive_refusal("drive-request-invalid"); };
+    storage_forward_secret_door(headers, "/api/v1/storage/backup/forgejo/nas-restore", serde_json::json!({})).await
+}
+
+async fn storage_pin_verify_route(headers: axum::http::HeaderMap, request: Result<Json<StoragePinVerifyRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+    let Ok(Json(request)) = request else { return storage_drive_refusal("drive-request-invalid"); };
+    let path = "/api/v1/exousia/verify";
+    let result = tokio::task::spawn_blocking(move || storage_actuate_json_timeout(&mutation_authority(), &headers, path, serde_json::json!({"pin":request.pin}), VAULT_UNLOCK_UPSTREAM_TIMEOUT)).await;
+    match result {
+        Ok(readback) if readback.first_missing_signal == "caduceus-attendance-not-current" || readback.body.get("error").and_then(serde_json::Value::as_str) == Some("caduceus-mutation-refused") => storage_operation_response(readback, false, true),
+        Ok(readback) if readback.ok && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true) && readback.body.get("verified").and_then(serde_json::Value::as_bool).is_some() => Json(serde_json::json!({"verified":readback.body["verified"]})).into_response(),
+        _ => Json(serde_json::json!({"verified":false,"unavailable":true})).into_response(),
     }
 }
 

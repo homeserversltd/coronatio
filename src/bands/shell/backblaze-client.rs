@@ -418,7 +418,7 @@ fn shell_backblaze_client() -> &'static str {
     }
     function ledgerKind(row) {
       const verb = String(row.verb || '');
-      return row.job === 'drives' || row.target === 'nas-sync' || verb.startsWith('nas-sync') || verb === 'forgejo-nas-export' || verb === 'pid2-fire-interrupted-by-boot' ? 'drives' : 'offsite';
+      return row.job === 'drives' || row.target === 'nas-sync' || verb.startsWith('nas-sync') || ['forgejo-nas-export', 'forgejo-nas-restore', 'nas-rekey', 'pid2-fire-interrupted-by-boot'].includes(verb) ? 'drives' : 'offsite';
     }
     function ledgerWhat(row) {
       const verb = String(row.verb || ''), target = String(row.target || '');
@@ -440,6 +440,8 @@ fn shell_backblaze_client() -> &'static str {
       if (verb === 'nas-sync-mirror') return 'Backup drive copied';
       if (verb === 'mirror-pull') return "Copied onto this box's backup drive";
       if (verb === 'forgejo-nas-export') return 'Git server saved to the main drive';
+      if (verb === 'nas-rekey') return 'Drive unlocked for this HomeServer';
+      if (verb === 'forgejo-nas-restore') return 'Git server restored from the main drive';
       if (verb === 'nas-sync-sync' || (target === 'nas-sync' && verb.endsWith('sync'))) return 'Backup drives mirrored';
       if (verb.includes('sync-hold')) return 'Backup drives swapped · nightly mirror paused';
       if (verb.includes('sync-release')) return 'Backup drives turned back on';
@@ -462,6 +464,18 @@ fn shell_backblaze_client() -> &'static str {
         'forgejo-nas-export-copy-failed': 'The Git server files could not be copied.',
         'forgejo-nas-export-start-failed': 'The Git server could not be started.',
         'forgejo-nas-export-launch-failed': 'The Git server backup could not be started.'
+        , 'forgejo-nas-restore-forge-holds-own-work': 'Your Git server already holds your own repositories, so nothing was replaced.'
+        , 'forgejo-nas-restore-busy': 'Another backup is using the drive. Try again in a few minutes.'
+        , 'forgejo-nas-restore-source-missing': "This HomeServer's NAS isn't attached."
+        , 'forgejo-nas-restore-source-invalid': 'The saved Git server copy could not be read.'
+        , 'forgejo-nas-restore-stop-failed': 'The Git server could not be stopped.'
+        , 'forgejo-nas-restore-db-failed': 'The Git server database could not be restored.'
+        , 'forgejo-nas-restore-copy-failed': 'The Git server files could not be restored.'
+        , 'forgejo-nas-restore-start-failed': 'The Git server could not be started.'
+        , 'forgejo-nas-restore-launch-failed': 'The restore could not be started.'
+        , 'forgejo-nas-restore-forge-unobserved': 'The Git server could not be checked.'
+        , 'forgejo-nas-restore-owner-rekey-failed': 'The Git server owner could not be updated.'
+        , 'forgejo-nas-restore-ci-adopt-failed': 'The build service could not be restored.'
       };
       return known[signal] || signal;
     }

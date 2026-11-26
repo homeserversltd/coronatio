@@ -369,7 +369,7 @@ fn shell_document_4_tail() -> &'static str {
     // Key Management is carried by the attended Crown-to-Caduceus membrane.
     function managerModal(kind, title, body, confirmLabel = 'Continue') {
       const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop manager-modal-backdrop'; backdrop.dataset.managerModal = kind;
-      backdrop.toggleAttribute('data-modal-sticky', ['create-key', 'update-key', 'admin-password'].includes(kind));
+      backdrop.toggleAttribute('data-modal-sticky', ['create-key', 'update-key', 'admin-password', 'nas-foreign-unlock', 'nas-forge-restore'].includes(kind));
       backdrop.innerHTML = `<section class="modal modal-window manager-modal" role="dialog" aria-modal="true" aria-labelledby="manager-modal-title"><button type="button" class="modal-close" data-manager-close data-modal-dismiss aria-label="Close modal">×</button><h2 id="manager-modal-title">${title}</h2><div class="modal-body">${body}</div><p class="manager-route-state" data-manager-route-state aria-live="polite"></p><div class="modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-manager-close data-modal-dismiss>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-manager-confirm disabled>${confirmLabel}</button></div></section>`;
       const close = () => backdrop.remove(); backdrop.addEventListener('click', event => { if (event.target.closest('[data-manager-close]')) close(); }); document.body.appendChild(backdrop);
       return backdrop;
@@ -490,15 +490,18 @@ fn shell_document_4_tail() -> &'static str {
     function mountedNasDestinations(owner) {
       return [...new Set(owner.devices.map(device => device?.mountpoint).filter(value => value === '/mnt/nas' || value === '/mnt/nas_backup'))];
     }
+    const driveKeyProbes = new Map();
+    function driveProbeKey(row) { return `${row?.partition || ''}\u0000${row?.serial || ''}`; }
     function driveKindOf(row) {
       const label = String(row?.label || '').toLowerCase();
+      if (driveKeyProbes.get(driveProbeKey(row)) === 'foreign') return 'nas-foreign';
       if (label.includes('homeserver-primary-nas') || row?.mountpoint === '/mnt/nas') return 'nas-primary';
       if (label.includes('homeserver-backup-nas') || row?.mountpoint === '/mnt/nas_backup') return 'nas-backup';
       if (row?.encryption?.state === 'locked') return 'locked-foreign';
       if (row?.blank === true) return 'blank';
       return 'data';
     }
-    function driveRoleHeld(census, role) { return census.some(row => driveKindOf(row) === 'nas-' + role); }
+    function driveRoleHeld(census, role) { return census.some(row => row?.label === `homeserver-${role}-nas` || attachedAt(row, role)); }
     function primaryAttached(census) { return census.some(row => row?.mountpoint === '/mnt/nas'); }
     function attachedAt(row, role) { return row?.mountpoint === (role === 'primary' ? '/mnt/nas' : '/mnt/nas_backup'); }
     function makeRoleFor(census) {
@@ -517,6 +520,8 @@ fn shell_document_4_tail() -> &'static str {
     }
     function driveStatusLine(row) {
       const kind = driveKindOf(row);
+      if (driveKeyProbes.get(driveProbeKey(row)) === 'duplicate') return "Two drives have the same role. Unplug this HomeServer's NAS first.";
+      if (kind === 'nas-foreign') return 'From another HomeServer. Locked with its password.';
       if (kind === 'nas-primary') return attachedAt(row, 'primary') ? 'Your NAS. Ready at /mnt/nas.' : 'Your NAS. Not mounted.';
       if (kind === 'nas-backup') return attachedAt(row, 'backup') ? 'Your backup NAS. Ready at /mnt/nas_backup.' : 'Your backup NAS. Not mounted.';
       if (kind === 'blank') return 'Empty. Nothing on it yet.';
@@ -539,9 +544,14 @@ fn shell_document_4_tail() -> &'static str {
       const eraseAllowed = !mounted && !diskMounted && !(typeof mapper === 'string' && mapper.trim().length > 0)
         && !diskMetadataProtected(row) && !protectedDiskParents(census).has(disk) && diskNameCanNormalize(diskCensusDeviceName(row)) && make !== null;
       const options = [];
-      if (kind === 'nas-primary' || kind === 'nas-backup') {
+      if (driveKeyProbes.get(driveProbeKey(row)) === 'duplicate') {
+        if (!mounted && !diskMounted && !siblingMounted) options.push('test');
+      } else if (kind === 'nas-foreign') {
+        options.push('unlock-foreign');
+        if (!mounted && !diskMounted && !siblingMounted) options.push('test');
+      } else if (kind === 'nas-primary' || kind === 'nas-backup') {
         const role = kind === 'nas-primary' ? 'primary' : 'backup';
-        if (attachedAt(row, role)) return ['eject-nas'];
+        if (attachedAt(row, role)) return role === 'primary' ? ['restore-forge', 'eject-nas'] : ['eject-nas'];
         options.push('try-again');
         if (!mounted && !diskMounted && !siblingMounted) options.push('test');
       } else if (kind === 'blank') {
@@ -777,6 +787,7 @@ fn shell_document_4_tail() -> &'static str {
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         if (payload?.schema !== 'caduceus.disk.census.v1' && !caduceusReceiptMatchesPath(payload, path)) throw new Error('Available devices could not be read: unexpected response schema.');
         const devices = diskCensusDevices(payload);
+        await probeForeignDrives(devices);
         if (!adminDiskSnapshotCurrent(owner, context)) return true;
         owner.devices = devices; owner.protectedParents = protectedDiskParents(devices);
         owner.dataReady = true; owner.stale = false; owner.hasSnapshot = true; owner.error = ''; owner.nasSetupStateUnknown = false;
@@ -1019,6 +1030,126 @@ fn shell_document_4_tail() -> &'static str {
         container.appendChild(screen);
       }
     }
+    async function drivePost(path, body) {
+      const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return { response, body: await response.json() };
+    }
+    async function probeForeignDrives(devices) {
+      for (const row of devices) {
+        const label = String(row?.label || '');
+        const role = label === 'homeserver-primary-nas' ? 'primary' : label === 'homeserver-backup-nas' ? 'backup' : '';
+        if (!role || diskRowMounted(row) || row?.encryption?.state !== 'locked' || typeof row.partition !== 'string' || !row.partition || driveKeyProbes.has(driveProbeKey(row))) continue;
+        let classification = 'unknown';
+        try {
+          const first = await drivePost('/api/v1/storage/nas/key/probe', { key_role: role, partition: '/dev/' + row.partition });
+          if (String(first.body?.firstMissingSignal || '').includes('partlabel-duplicate')) classification = 'duplicate';
+          else if (first.response.ok && first.body?.state === 'key-mismatched') {
+            const second = await drivePost('/api/v1/storage/nas/key/probe', { key_role: role === 'primary' ? 'backup' : 'primary', partition: '/dev/' + row.partition });
+            if (String(second.body?.firstMissingSignal || '').includes('partlabel-duplicate')) classification = 'duplicate';
+            else if (second.response.ok && second.body?.state === 'key-mismatched') classification = 'foreign';
+          }
+        } catch (_) { /* an unobserved key leaves today's card unchanged */ }
+        driveKeyProbes.set(driveProbeKey(row), classification);
+      }
+    }
+    function driveSignalWords(signal) {
+      const messages = {
+        'nas-rekey-old-password-mismatched': "That password doesn't open this drive.",
+        'nas-rekey-no-free-slot': 'This drive has no room for another password.',
+        'nas-rekey-drive-busy': 'The drive is busy. Try again in a moment.',
+        'nas-rekey-own-key-unavailable': "This HomeServer's keys aren't available. Unlock the vault first.",
+        'agathodaimon-nas-partlabel-already-taken': 'Another drive already has that role. Unplug it first.',
+        'agathodaimon-nas-partlabel-duplicate': 'Another drive already has that role. Unplug it first.',
+        'forgejo-nas-restore-forge-holds-own-work': 'Your Git server already holds your own repositories, so nothing was replaced.',
+        'forgejo-nas-restore-busy': 'Another backup is using the drive. Try again in a few minutes.',
+        'forgejo-nas-restore-source-missing': "This HomeServer's NAS isn't attached.",
+        'forgejo-nas-restore-source-invalid': 'The saved Git server copy could not be read.',
+        'forgejo-nas-restore-stop-failed': 'The Git server could not be stopped.',
+        'forgejo-nas-restore-db-failed': 'The Git server database could not be restored.',
+        'forgejo-nas-restore-copy-failed': 'The Git server files could not be restored.',
+        'forgejo-nas-restore-start-failed': 'The Git server could not be started.',
+        'forgejo-nas-restore-launch-failed': 'The restore could not be started.',
+        'forgejo-nas-restore-forge-unobserved': 'The Git server could not be checked.',
+        'forgejo-nas-restore-owner-rekey-failed': 'The Git server owner could not be updated.',
+        'forgejo-nas-restore-ci-adopt-failed': 'The build service could not be restored.'
+      };
+      return messages[signal] || signal || 'The drive did not answer.';
+    }
+    function openForeignUnlock(owner, row) {
+      const taken = role => owner.devices.some(other => other !== row && other.label === `homeserver-${role}-nas`);
+      const primary = taken('primary'), backup = taken('backup');
+      const modal = managerModal('nas-foreign-unlock', 'Unlock this drive', `<label>Old password<input type="password" autocomplete="off" data-foreign-password></label><label class="manager-plan"><input type="checkbox" data-foreign-keep> Keep my old password on this drive too</label><label>Use it as<select data-foreign-role><option value="">Choose a role</option><option value="primary" ${primary ? 'disabled' : 'selected'}>This HomeServer's NAS${primary ? ' — Unplug this HomeServer\'s NAS first' : ''}</option><option value="backup" ${backup ? 'disabled' : ''}>A backup drive${backup ? ' — Unplug this HomeServer\'s backup drive first' : ''}</option></select></label><ol data-foreign-steps></ol>`, 'Unlock');
+      const password = modal.querySelector('[data-foreign-password]'), role = modal.querySelector('[data-foreign-role]'), confirm = modal.querySelector('[data-manager-confirm]');
+      const validate = () => { confirm.disabled = !password.value || !role.value || taken(role.value) || driveRequestInFlight; };
+      password.addEventListener('input', validate); role.addEventListener('change', validate); validate();
+      confirm.addEventListener('click', async () => {
+        if (!adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || !password.value || !role.value || taken(role.value) || driveRequestInFlight) return;
+        const chosen = role.value, steps = modal.querySelector('[data-foreign-steps]');
+        const status = modal.querySelector('[data-manager-route-state]');
+        driveKeyProbes.delete(driveProbeKey(row)); driveRequestInFlight = true; confirm.disabled = true;
+        const step = (name, message) => { const item = document.createElement('li'); item.textContent = `${name}: ${message}`; steps.appendChild(item); };
+        try {
+          const response = await fetch('/api/v1/storage/nas/key/rekey', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: (() => { const json = JSON.stringify({key_role: chosen, partition: '/dev/' + row.partition, oldPassword: password.value, keepOld: modal.querySelector('[data-foreign-keep]').checked}); password.value = ''; return json; })() });
+          const result = await response.json();
+          if (!response.ok || result?.ok !== true) { const text = driveSignalWords(result?.firstMissingSignal); step('Unlock', text); status.textContent = text; return; }
+          step('Unlock', 'Done.');
+          const target = `homeserver-${chosen}-nas`;
+          if (row.label !== target) {
+            const assigned = await drivePost('/api/v1/storage/disk/partlabel/assign', {current_label: row.label, label: target});
+            if (!assigned.response.ok || assigned.body?.ok !== true) { const text = driveSignalWords(assigned.body?.firstMissingSignal); step('Set role', text); status.textContent = text; return; }
+            step('Set role', 'Done.');
+          }
+          const attached = await drivePost('/api/v1/storage/nas/attach', {role: chosen});
+          if (!attached.response.ok || attached.body?.ok !== true) { const text = driveSignalWords(attached.body?.firstMissingSignal); step('Attach', text); status.textContent = text; return; }
+          step('Attach', 'Done.'); status.textContent = 'Drive is ready.'; refreshAdminDiskCensus();
+        } catch (_) { status.textContent = 'The drive did not answer.'; }
+        finally { password.value = ''; driveRequestInFlight = false; validate(); }
+      });
+      password.focus();
+    }
+    async function newestForgeRestore() {
+      const result = await drivePost('/api/backups/ledger', {limit: 50});
+      if (!result.response.ok || !Array.isArray(result.body?.rows)) throw new Error('ledger-unavailable');
+      return result.body.rows.filter(row => row?.verb === 'forgejo-nas-restore').sort ( (a,b) => String(b.at).localeCompare(String(a.at)) )[0] || null;
+    }
+    function openForgeRestore(owner, row) {
+      const modal = managerModal('nas-forge-restore', 'Restore my Forgejo', `<p>This replaces this HomeServer's Git server with the copy saved on this drive. If your Git server already holds your own repositories, nothing is replaced.</p>`, 'Continue');
+      const button = modal.querySelector('[data-manager-confirm]'), content = modal.querySelector('.modal-body'), state = modal.querySelector('[data-manager-route-state]');
+      button.disabled = false;
+      button.addEventListener('click', async () => {
+        if (!adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || !attachedAt(row, 'primary') || driveRequestInFlight) return;
+        if (!modal.querySelector('[data-restore-pin]')) {
+          content.innerHTML = '<label>Enter your PIN to restore<input type="password" autocomplete="off" data-restore-pin></label>';
+          button.textContent = 'Restore'; button.disabled = true;
+          const pin = modal.querySelector('[data-restore-pin]'); pin.addEventListener('input', () => { button.disabled = !pin.value; }); pin.focus(); return;
+        }
+        const pin = modal.querySelector('[data-restore-pin]'); if (!pin.value) return;
+        driveRequestInFlight = true; button.disabled = true; driveKeyProbes.delete(driveProbeKey(row));
+        try {
+          const verifyResponse = await fetch('/api/v1/exousia/verify', {method:'POST',headers:{'Content-Type':'application/json'},body:(() => { const json = JSON.stringify({pin:pin.value}); pin.value = ''; return json; })()});
+          const verified = await verifyResponse.json();
+          if (verified?.unavailable || !verifyResponse.ok) { state.textContent = "The PIN check isn't available right now."; return; }
+          if (verified?.verified !== true) { state.textContent = "That PIN isn't right."; return; }
+          const baseline = await newestForgeRestore();
+          const restore = await drivePost('/api/v1/storage/backup/forgejo/nas-restore', {});
+          if (!restore.response.ok || restore.body?.ok !== true || restore.body?.status !== 'accepted') { state.textContent = driveSignalWords(restore.body?.firstMissingSignal); return; }
+          state.textContent = 'Restoring. This takes a few minutes.';
+          button.textContent = 'Check the result'; button.disabled = false;
+          button.replaceWith(button.cloneNode(true));
+          const check = modal.querySelector('[data-manager-confirm]');
+          check.addEventListener('click', async () => {
+            check.disabled = true;
+            try {
+              const latest = await newestForgeRestore();
+              if (!latest || (baseline && String(latest.at) <= String(baseline.at))) state.textContent = 'Still restoring. Check again in a moment.';
+              else state.textContent = String(latest.outcome).toLowerCase() === 'ok' ? 'Done.' : driveSignalWords(latest.signal);
+            } catch (_) { state.textContent = 'The result is not available right now.'; }
+            finally { check.disabled = false; }
+          });
+        } catch (_) { state.textContent = 'The restore could not be started.'; }
+        finally { pin.value = ''; driveRequestInFlight = false; }
+      });
+    }
     async function driveSubmit(modal, key, name, row, mode) {
       if (driveRequestInFlight) { modal.querySelector('[data-drive-result]').textContent = 'Working…'; return; }
       const role = driveKindOf(row) === 'nas-primary' ? 'primary' : 'backup';
@@ -1032,6 +1163,7 @@ fn shell_document_4_tail() -> &'static str {
       };
       const action = actions[key];
       if (!action) return;
+      driveKeyProbes.delete(driveProbeKey(row));
       driveRequestInFlight = true;
       const result = modal.querySelector('[data-drive-result]');
       result.textContent = 'Working…';
@@ -1069,7 +1201,7 @@ fn shell_document_4_tail() -> &'static str {
       const kind = driveKindOf(row);
       const role = dialog.querySelector('[data-drive-sheet-role]');
       role.dataset.tone = (kind === 'nas-primary' && attachedAt(row, 'primary')) || (kind === 'nas-backup' && attachedAt(row, 'backup')) ? 'good' : 'idle';
-      role.querySelector('.ui-status-mark__word').textContent = { 'nas-primary': 'Your NAS', 'nas-backup': 'Your backup', data: 'Data drive', blank: 'Blank drive', 'locked-foreign': 'Locked drive' }[kind];
+      role.querySelector('.ui-status-mark__word').textContent = { 'nas-primary': 'Your NAS', 'nas-backup': 'Your backup', 'nas-foreign': 'From another HomeServer', data: 'Data drive', blank: 'Blank drive', 'locked-foreign': 'Locked drive' }[kind];
       const space = row.space;
       const meter = dialog.querySelector('[data-drive-sheet-meter]');
       if (Number.isFinite(space?.sizeBytes) && space.sizeBytes > 0 && Number.isFinite(space.availableBytes)) {
@@ -1091,13 +1223,15 @@ fn shell_document_4_tail() -> &'static str {
         if (key === 'driveResult') { node.setAttribute('role', 'status'); node.setAttribute('aria-live', 'polite'); }
         options.before(node);
       }
-      const labels = { 'open': 'Open', 'copy-nas': 'Copy into NAS', 'test': 'Test drive', 'eject-drive': 'Eject safely', 'eject-nas': 'Eject safely', 'try-again': 'Try again', 'make-nas': 'Make this my NAS', 'make-backup': 'Make this my backup' };
+      const labels = { 'open': 'Open', 'copy-nas': 'Copy into NAS', 'test': 'Test', 'unlock-foreign': 'Unlock with the old password', 'restore-forge': 'Restore my Forgejo from this drive', 'eject-drive': 'Eject safely', 'eject-nas': 'Eject safely', 'try-again': 'Try again', 'make-nas': 'Make this my NAS', 'make-backup': 'Make this my backup' };
       for (const key of driveOptionsFor(row, owner.devices)) {
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'ui-button ui-button--secondary ui-button--small';
         button.dataset.driveOption = key; button.textContent = labels[key];
         button.addEventListener('click', () => {
           if (driveRequestInFlight) { modal.querySelector('[data-drive-result]').textContent = 'Working…'; return; }
+          if (key === 'unlock-foreign') { openForeignUnlock(owner, row); return; }
+          if (key === 'restore-forge') { openForgeRestore(owner, row); return; }
           if (key === 'make-nas' || key === 'make-backup') { openNasSetupConfirmation(owner, name, key === 'make-nas' ? 'primary' : 'backup'); return; }
           if (key === 'test') {
             const target = modal.querySelector('[data-drive-test]');
