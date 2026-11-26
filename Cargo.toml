@@ -6,7 +6,7 @@ description = "Coronatio: Rust appliance host for HOMESERVER service cartridges 
 license = "UNLICENSED"
 
 [dependencies]
-xenia-kit = { git = "https://github.com/homeserversltd/xenia-kit", rev = "668253797a1c5f0cbb0c5e7f9ba177c79825f02f", default-features = false, features = ["markup"] }
+xenia-kit = { git = "https://github.com/homeserversltd/xenia-kit", rev = "0e403980c79f54782bfebc13df716d573b42bdcf", default-features = false, features = ["markup"] }
 maud = "0.27"
 axum = { version = "0.7", features = ["multipart"] }
 base64 = "0.22"
