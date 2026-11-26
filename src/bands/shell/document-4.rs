@@ -23,7 +23,7 @@ fn shell_document_4() -> &'static str {
         scaffoldRegistry.onRetire(binding, () => {
           if (uploadState.binding !== binding) return;
           if (uploadState.batch) uploadState.batch.pin = null;
-          uploadState.batch = null; uploadState.resumeIndex = 0;
+          uploadState.batch = null; uploadState.resumeIndex = 0; uploadState.batchTally = null;
           uploadState.binding = null; uploadState.policyReady = false; uploadState.policyStale = true;
           uploadState.history = []; uploadState.historyReady = false; uploadState.historyStale = true; uploadState.blacklist = []; uploadState.blacklistReady = false; uploadState.blacklistStale = true;
           const root = binding.root; root?.querySelectorAll('[data-upload-submit], [data-upload-pin-toggle]').forEach(node => { node.disabled = true; });
@@ -38,6 +38,8 @@ fn shell_document_4() -> &'static str {
       const detail = event.detail || {}, pane = detail.pane, binding = uploadState.binding;
       if (detail.id !== 'upload' || !(pane instanceof Element) || !pane.isConnected || document.querySelector('[data-pane-panel="upload"]') !== pane) return;
       if (binding && (binding.guest !== detail.id || scaffoldRegistry.current(binding))) return;
+      if (uploadState.batch) uploadState.batch.pin = null;
+      uploadState.batch = null; uploadState.resumeIndex = 0; uploadState.batchTally = null;
       uploadState.activeUploads.forEach(upload => { upload.removed = true; upload.xhr?.abort(); });
       uploadState.activeUploads.clear(); uploadState.currentPath = '/mnt/nas'; uploadState.selectedFiles = []; uploadState.uploading = false;
       uploadState.pinRequired = false; uploadState.policyReady = false; uploadState.policyStale = false; uploadState.binding = null;
@@ -73,9 +75,9 @@ fn shell_document_4() -> &'static str {
       uploadState.activeUploads.set(filename, Object.assign(current, update));
       renderUploadProgress();
     }
-    function setUploadSelection() {
-      uploadState.resumeIndex = 0;
-      uploadState.selectedFiles = Array.from(uploadFileInput()?.files || []);
+    function setUploadSelection(newSelection = false, readInput = true) {
+      if (newSelection) { uploadState.resumeIndex = 0; uploadState.batchTally = null; }
+      if (readInput) uploadState.selectedFiles = Array.from(uploadFileInput()?.files || []);
       const submit = uploadSubmit();
       if (submit) submit.disabled = uploadState.selectedFiles.length === 0 || uploadState.uploading || !uploadState.policyReady || uploadState.policyStale || !uploadCurrent();
       const display = document.querySelector('[data-upload-file-display]');
@@ -84,6 +86,18 @@ fn shell_document_4() -> &'static str {
         display.value = label;
         display.setAttribute('aria-label', 'Selected files: ' + label);
       }
+    }
+    function removeCompletedUploadSelection(file) {
+      const index = uploadState.selectedFiles.indexOf(file);
+      if (index < 0) return;
+      uploadState.selectedFiles.splice(index, 1); // Remove only this completed file.
+      const input = uploadFileInput();
+      if (input) {
+        const transfer = new DataTransfer();
+        uploadState.selectedFiles.forEach(selected => transfer.items.add(selected));
+        input.files = transfer.files;
+      }
+      setUploadSelection(false, false);
     }
     function uploadCurrentPath() {
       return document.querySelector('[data-upload-current-path]')?.value || uploadState.currentPath || '/mnt/nas';
@@ -211,17 +225,21 @@ fn shell_document_4() -> &'static str {
       uploadState.uploading = true;
       const submit = uploadSubmit();
       if (submit) { submit.disabled = true; submit.textContent = 'Uploading...'; }
-      let success = 0; let failed = 0; let pinSignal = '';
+      const tally = uploadState.batchTally || (uploadState.batchTally = { success: 0, failed: 0 });
+      const files = uploadState.selectedFiles.slice(); let pinSignal = '';
       try {
-        for (const [index, file] of uploadState.selectedFiles.entries()) {
+        for (const [index, file] of files.entries()) {
           if (index < (uploadState.resumeIndex || 0)) continue;
           if (!uploadCurrent(binding)) break;
-          try { const outcome = await uploadOneFile(file, batch, binding); if (!outcome?.removed) success += 1; }
+          try {
+            const outcome = await uploadOneFile(file, batch, binding);
+            if (!outcome?.removed && uploadCurrent(binding)) { tally.success += 1; removeCompletedUploadSelection(file); }
+          }
           catch (error) {
             if (!uploadCurrent(binding)) break;
             if (error?.uploadRemoved) continue;
-            if (error?.uploadPinSignal) { pinSignal = error.uploadPinSignal; uploadState.resumeIndex = index; setUpload(file.name, { status: 'pending', error: '' }, binding); break; }
-            failed += 1; setUpload(file.name, { status: 'error', error: error?.message || String(error) }, binding); showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error');
+            if (error?.uploadPinSignal) { pinSignal = error.uploadPinSignal; uploadState.resumeIndex = Math.max(0, uploadState.selectedFiles.indexOf(file)); setUpload(file.name, { status: 'pending', error: '' }, binding); break; }
+            tally.failed += 1; setUpload(file.name, { status: 'error', error: error?.message || String(error) }, binding); showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error');
           }
         }
       } finally {
@@ -239,6 +257,7 @@ fn shell_document_4() -> &'static str {
         binding.root.querySelector('[data-upload-pin-input]')?.focus(); return;
       }
       uploadState.resumeIndex = 0;
+      const { success, failed } = tally; uploadState.batchTally = null;
       const summary = failed ? `Uploaded ${success} file(s), ${failed} failed` : `Successfully uploaded ${success} file(s)`;
       const readout = uploadReadout();
       if (readout) readout.textContent = summary;
@@ -393,7 +412,7 @@ fn shell_document_4() -> &'static str {
     function refreshUploadTree(path = uploadCurrentPath()) { const binding = uploadBinding(), tree = binding?.root.querySelector('[data-upload-tree][data-scaffold-slot="upload-tree"]'); if (!binding || !uploadCurrent(binding) || !tree) return false; return window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(path), { source: tree, target: tree, swap: 'innerHTML' }); }
     async function postUploadDirectoryAction(url, successMessage) { const binding = uploadBinding(); if (!binding || !uploadCurrent(binding) || !headerState.isAdmin) return null; try { const response = await fetch(url, { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ directory: uploadState.currentPath }) }); const data = await response.json().catch(() => ({})); if (!uploadCurrent(binding)) return null; if (!response.ok || !(data.success ?? data.ok)) throw new Error(data.message || data.error || data.firstMissingSignal || `Request failed with status ${response.status}`); showCoronatioToast(successMessage, 'success'); return data; } catch (error) { if (uploadCurrent(binding)) showCoronatioToast(error?.message || 'Request failed', 'error'); return null; } }
     async function toggleUploadPin(toggle) { const binding = uploadBinding(); if (!binding || !uploadCurrent(binding) || !headerState.isAdmin || !uploadState.policyReady) return; const previous = uploadState.pinRequired, next = !previous; toggle.disabled = true; toggle.setAttribute('aria-busy', 'true'); toggle.querySelector('[data-upload-pin-spinner]')?.removeAttribute('hidden'); try { const response = await fetch('/api/upload/pin-required-status', { method: 'POST', headers: uploadAdminHeaders(true), body: JSON.stringify({ isPinRequired: next }) }); if (!uploadCurrent(binding)) return; if (!response.ok) throw new Error(`Request failed (${response.status})`); uploadState.pinRequired = next; toggle.classList.toggle('active', next); toggle.setAttribute('aria-label', `Toggle PIN requirement (currently ${next ? 'enabled' : 'disabled'})`); } catch (_) { if (uploadCurrent(binding)) { uploadState.pinRequired = previous; toggle.classList.toggle('active', previous); } } finally { if (uploadCurrent(binding)) { toggle.disabled = false; toggle.removeAttribute('aria-busy'); toggle.querySelector('[data-upload-pin-spinner]')?.setAttribute('hidden', ''); } } }
-    document.body.addEventListener('change', event => { const target = event.target instanceof Element ? event.target : null; const binding = uploadBinding(); if (target?.matches('[data-upload-file]') && binding?.root.contains(target) && uploadCurrent(binding)) setUploadSelection(); });
+    document.body.addEventListener('change', event => { const target = event.target instanceof Element ? event.target : null; const binding = uploadBinding(); if (target?.matches('[data-upload-file]') && binding?.root.contains(target) && uploadCurrent(binding)) setUploadSelection(true); });
     document.body.addEventListener('submit', event => { const target = event.target instanceof Element ? event.target : null; const binding = uploadBinding(); if (!target || !binding || !binding.root.contains(target) || !uploadCurrent(binding)) return; if (target.matches('[data-upload-pin-form]')) { event.preventDefault(); verifyUploadPin(binding); } if (target.matches('[data-upload-blacklist-form]')) { event.preventDefault(); target.querySelector('[data-upload-blacklist-add]')?.click(); } });
     document.body.addEventListener('click', async event => { const target = event.target instanceof Element ? event.target : null; if (!target) return;
       const retry = target.closest('[data-upload-read-retry]');
@@ -416,7 +435,7 @@ fn shell_document_4() -> &'static str {
       }
       if (control.matches('[data-blacklist-remove]')) { if (!headerState.isAdmin || !uploadState.blacklistReady || uploadState.blacklistStale) return; uploadState.blacklist.splice(Number(control.dataset.blacklistRemove), 1); refreshUploadBlacklistDomOnly(binding); return; }
       if (control.matches('[data-upload-breadcrumb-path]')) { uploadState.currentPath = control.dataset.uploadBreadcrumbPath || '/mnt/nas'; const field = document.querySelector('[data-upload-current-path]'); if (field) field.value = uploadState.currentPath; renderUploadBreadcrumbs(uploadState.currentPath); refreshUploadTree(uploadState.currentPath); return; }
-      if (control.matches('[data-upload-modal-close], [data-upload-pin-cancel]')) { const modal = control.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]'); if (modal?.matches('[data-upload-pin-backdrop]')) { if (uploadState.batch) uploadState.batch.pin = null; uploadState.batch = null; uploadState.resumeIndex = 0; } closeUploadModal(modal); return; }
+      if (control.matches('[data-upload-modal-close], [data-upload-pin-cancel]')) { const modal = control.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]'); if (modal?.matches('[data-upload-pin-backdrop]')) { if (uploadState.batch) uploadState.batch.pin = null; uploadState.batch = null; uploadState.resumeIndex = 0; uploadState.batchTally = null; } closeUploadModal(modal); return; }
       if (control.matches('[data-upload-submit]')) { await uploadSelectedFiles(null, binding); return; }
       if (control.matches('[data-upload-pin-confirm]')) { await verifyUploadPin(binding); return; }
       if (control.matches('[data-upload-refresh]')) { refreshUploadTree(); return; }

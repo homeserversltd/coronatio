@@ -420,20 +420,25 @@ async fn storage_pin_verify_route(mut headers: axum::http::HeaderMap, request: R
     let unavailable = |signal: &str| (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
         "verified": false, "unavailable": true, "firstMissingSignal": signal
     }))).into_response();
-    match relay_upload_body("POST", "/api/v1/exousia/verify", &headers, &(), body).await {
-        Ok(response) => {
-            let (parts, body) = response.into_parts();
-            let (body, captured) = capture_upload_body(body, UPLOAD_RESPONSE_BODY_CAPTURE_LIMIT).await;
-            // Oversized replies remain streamed, not rejected or buffered without bound.
-            if let Some(bytes) = captured {
-                let receipt = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
-                if receipt.as_ref().and_then(|value| value.get("schema")).and_then(serde_json::Value::as_str)
-                    != Some("caduceus.staff.receipt.v1") {
-                    return unavailable("caduceus-verify-receipt-unavailable");
+    match tokio::time::timeout(VAULT_UNLOCK_UPSTREAM_TIMEOUT, async {
+        match relay_upload_body("POST", "/api/v1/exousia/verify", &headers, &(), body).await {
+            Ok(response) => {
+                let (parts, body) = response.into_parts();
+                let (body, captured) = capture_upload_body(body, UPLOAD_RESPONSE_BODY_CAPTURE_LIMIT).await;
+                // Oversized replies remain streamed, not rejected or buffered without bound.
+                if let Some(bytes) = captured {
+                    let receipt = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+                    if receipt.as_ref().and_then(|value| value.get("schema")).and_then(serde_json::Value::as_str)
+                        != Some("caduceus.staff.receipt.v1") {
+                        return unavailable("caduceus-verify-receipt-unavailable");
+                    }
                 }
+                axum::http::Response::from_parts(parts, body)
             }
-            axum::http::Response::from_parts(parts, body)
+            Err(_) => unavailable("caduceus-verify-unavailable"),
         }
+    }).await {
+        Ok(response) => response,
         Err(_) => unavailable("caduceus-verify-unavailable"),
     }
 }
