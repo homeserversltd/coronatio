@@ -27,8 +27,7 @@ fn backups_scrub(value: &mut serde_json::Value) {
         serde_json::Value::Object(fields) => {
             fields.retain(|key, _| {
                 let name = key.to_ascii_lowercase();
-                !["pin", "password", "secret", "credential", "token"].iter().any(|part| name.contains(part))
-                    && !matches!(name.as_str(), "raw_envelope" | "envelope" | "raw")
+                !["pin", "password", "secret", "credential", "token", "raw", "envelope"].iter().any(|part| name.contains(part))
             });
             fields.values_mut().for_each(backups_scrub);
         }

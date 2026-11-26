@@ -1154,7 +1154,7 @@ fn shell_backblaze_client() -> &'static str {
         const ok = body?.ok === true && (kind !== 'copy-now' || body.state === 'Queued');
         const message = ok ? (kind === 'copy-now' ? `Copy started on ${pair.hostname || 'Box'}.` : kind === 'accept' ? 'Pair accepted.' : 'Backup box removed.') : pairMessage(body?.signal ?? body?.firstMissingSignal, pair.hostname || 'Box');
         if (kind === 'copy-now') setMainResult(message, binding); else if (ok) { closeModal(modal, binding); setMainResult(message, binding); } else modalResult(modal, message, binding);
-        await refreshPairs(binding);
+        try { await refreshPairs(binding); } catch (_) { /* The act already has its own outcome. */ }
         if (ok && kind === 'accept') void loadBoxDrives(binding);
       } catch (_) { if (current(binding)) { if (kind === 'copy-now') setMainResult('Request unavailable.', binding); else modalResult(modal, 'Request unavailable.', binding); } }
       finally { if (home) home.value = ''; if (other) other.value = ''; state.pairActing = false; if (submit) submit.disabled = true; actions.delete(controller); }
