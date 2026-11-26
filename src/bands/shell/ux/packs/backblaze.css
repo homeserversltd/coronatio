@@ -83,7 +83,7 @@
 .backup-table-wrap td small{display:block;margin-top:.25rem;color:var(--secondary)}
 .backup-result--ok{color:var(--success)}
 .backup-result--failed{color:var(--danger,var(--warning,#c36b37))}
-.backup-result--paused{color:var(--warning,#c99a47)}
+.backup-result--paused,.backup-drive-card p.backup-result--paused{color:var(--warning,#c99a47)}
 .backup-snapshot-list{display:grid;gap:.4rem;margin:0;padding:0;list-style:none}
 .backup-snapshot-list li{padding:.6rem 0;overflow-wrap:anywhere}
 .backup-snapshot-list li span{color:var(--secondary)}

@@ -205,7 +205,7 @@ fn shell_backblaze_client() -> &'static str {
       state.statusStale = true;
       state.readErrors = {};
       renderStatusNote('Refreshing this box’s backup details…', binding);
-      return scaffoldRegistry.run(binding, 'backblaze-status', async context => {
+      const loaded = await scaffoldRegistry.run(binding, 'backblaze-status', async context => {
         const results = await Promise.allSettled([
           readJson(context, '/api/backblaze/status'),
           readJson(context, '/api/backups/drives', {}),
@@ -233,9 +233,10 @@ fn shell_backblaze_client() -> &'static str {
           state.boxDrives = new Map();
         } catch (_) { state.pairs = []; state.boxDrives = new Map(); state.readErrors.pairs = true; }
         renderMain(binding);
-        void loadBoxDrives(binding);
         return true;
       }, { slots: [], timeoutMs: 12000, slowMs: 1500, retry: false });
+      if (loaded && current(binding)) void loadBoxDrives(binding);
+      return loaded;
     }
     async function refreshStatus(binding = state.binding) {
       if (!current(binding)) return null;
