@@ -288,7 +288,8 @@ fn shell_backblaze_client() -> &'static str {
         if (isBackup) return '<article class="backup-drive-card backup-drive-card--empty ui-panel ui-panel--filled"><strong>No backup drive in this box yet</strong></article>';
         return '<article class="backup-drive-card ui-panel ui-panel--filled"><strong>Main drive unavailable</strong><p>Drive details could not be read from this box.</p></article>';
       }
-      const [health, healthState] = driveHealth(drive);
+      const nas = jobs().find(job => job.schedule_id === 'nas-sync' || job.kind === 'nas');
+      const [health, healthState] = isBackup && isRecord(nas?.pid2?.schedule?.paused) ? ['Paused after a drive swap', 'unknown'] : driveHealth(drive);
       const size = Number(drive.sizeBytes), used = Number(drive.usedBytes), free = Number(drive.freeBytes);
       const percent = Number.isFinite(size) && size > 0 && Number.isFinite(used) ? Math.max(0, Math.min(100, (used / size) * 100)) : 0;
 
@@ -416,7 +417,8 @@ fn shell_backblaze_client() -> &'static str {
       }
       const latest = state.summaryRows[0];
       const happened = state.ledgerPending ? 'Checking…' : latest ? `${ledgerWhat(latest)} · ${formatDate(latest.at, 'Earlier')} · ${String(latest.outcome || '').toLowerCase() === 'ok' ? 'OK' : String(latest.outcome || 'Unknown')}${latest.duration_ms == null ? '' : ` · ${formatDuration(latest.duration_ms)}`}` : (state.summaryReady ? 'Nothing recorded yet' : 'Ledger unavailable');
-      setText('[data-backups-happened]', happened, binding);
+      const paused = jobs().find(job => job.schedule_id === 'nas-sync' || job.kind === 'nas')?.pid2?.schedule?.paused;
+      setText('[data-backups-happened]', happened + (isRecord(paused) ? ` · Backup drive paused since ${formatDate(paused.at, 'date unavailable')}` : ''), binding);
       const scheduledJobs = jobs().filter(job => scheduleFor(job)?.enabled).map(job => ({ job, date: nextFireDate(job) })).filter(item => item.date).sort((a, b) => a.date - b.date);
       if (scheduledJobs.length) {
         const next = scheduledJobs[0];
@@ -829,21 +831,17 @@ fn shell_backblaze_client() -> &'static str {
     }
     function scheduleBaseFromData() {
       const nas = jobs().find(job => job.schedule_id === 'nas-sync' || job.kind === 'nas');
-      const nasSchedule = scheduleFor(nas);
-      const scheduled = jobs().map(job => ({ job, schedule: scheduleFor(job) })).filter(item => item.schedule);
-      const onlyManual = scheduled.length > 0 && scheduled.every(item => !item.schedule.enabled);
-      if (onlyManual) {
-        const source = nasSchedule || scheduleFor(scheduled.find(item => item.job.kind !== 'nas')?.job);
-        const base = source && !nasSchedule ? addMinutes(source.time, -1, source.weekday) : null;
-        return { frequency: 'manual', time: base?.time || source?.time || '02:00', weekday: base?.weekday || source?.weekday || 'Mon', on: false, nasPresent: Boolean(nas) };
-      }
-      if (nasSchedule) return { frequency: nasSchedule.frequency, time: nasSchedule.time, weekday: nasSchedule.weekday, on: nasSchedule.enabled, nasPresent: true };
-      const offsite = scheduled.find(item => item.job.kind !== 'nas')?.schedule;
-      if (offsite) {
-        const prior = addMinutes(offsite.time, -1, offsite.weekday);
-        return { frequency: offsite.frequency, time: prior.time, weekday: prior.weekday, on: false, nasPresent: false };
-      }
-      return { frequency: 'daily', time: '02:00', weekday: 'Mon', on: false, nasPresent: Boolean(nas) };
+      const scheduled = jobs().filter(job => isRecord(job.pid2?.schedule));
+      const paused = isRecord(nas?.pid2?.schedule?.paused);
+      const on = nas?.pid2?.schedule?.enabled === true;
+      const source = scheduled.find(job => job === nas && isRecord(job.pid2.schedule.calendar)) || scheduled.find(job => isRecord(job.pid2.schedule.calendar));
+      const calendar = source?.pid2?.schedule?.calendar;
+      let time = typeof calendar?.time === 'string' ? calendar.time : '';
+      let weekday = typeof calendar?.weekday === 'string' ? calendar.weekday : 'Mon';
+      if (time && source !== nas) ({ time, weekday } = addMinutes(time, -1, weekday));
+      const frequency = scheduled.length && scheduled.every(job => job.pid2.schedule.enabled !== true) ? 'manual' :
+        isRecord(calendar) && ['daily', 'weekly'].includes(calendar.frequency) ? calendar.frequency : '';
+      return { frequency, time, weekday, on, paused, nasPresent: Boolean(nas) };
     }
     function addMinutes(time, delta, weekday = 'Mon') {
       const match = /^(\d{2}):(\d{2})$/.exec(String(time || ''));
@@ -859,30 +857,41 @@ fn shell_backblaze_client() -> &'static str {
     function renderScheduleOrder(binding = state.binding) {
       const order = el('[data-schedule-order]', binding);
       if (!order) return;
-      const frequency = el('[data-schedule-frequency]', binding)?.value || 'daily';
-      const time = el('[data-schedule-time]', binding)?.value || '02:00';
+      const frequency = el('[data-schedule-frequency]', binding)?.value || '';
+      const time = el('[data-schedule-time]', binding)?.value || '';
       const weekday = el('[data-schedule-day]', binding)?.selectedOptions?.[0]?.textContent || 'Monday';
       const nasPresent = jobs().some(job => job.schedule_id === 'nas-sync' || job.kind === 'nas');
       const lines = [];
       if (nasPresent) lines.push('<li>Backup drives: mirror the main drive to each backup drive</li>');
       buckets().forEach(bucket => lines.push(`<li>Off-site: ${esc(bucket.bucket)} at Backblaze B2</li>`));
-      const when = frequency === 'manual' ? 'Only when I press Sync' : frequency === 'weekly' ? `Once a week on ${esc(weekday)} at ${esc(time)}` : `Each night at ${esc(time)}`;
+      const when = !frequency ? 'Choose when backups run' : frequency === 'manual' ? 'Only when I press Sync' : frequency === 'weekly' ? `Once a week on ${esc(weekday)}${time ? ` at ${esc(time)}` : ''}` : `Each night${time ? ` at ${esc(time)}` : ''}`;
       order.innerHTML = `<p>${when}${lines.length ? ', in this order:' : '.'}</p>${lines.length ? `<ol>${lines.join('')}</ol>` : ''}`;
     }
-    function renderScheduleForm(binding = state.binding) {
+    function renderScheduleForm(binding = state.binding, initialize = true) {
       const base = scheduleBaseFromData();
       const paused = el('[data-schedule-paused]', binding);
-      if (paused) paused.hidden = !base.nasPresent || base.on;
-      const on = el('[data-schedule-on]', binding); if (on) on.checked = base.on;
-      const frequency = el('[data-schedule-frequency]', binding); if (frequency) frequency.value = base.frequency;
-      const time = el('[data-schedule-time]', binding); if (time) time.value = base.time;
-      const day = el('[data-schedule-day]', binding); if (day) day.value = base.weekday;
-      const dayWrap = el('[data-schedule-day-wrap]', binding); if (dayWrap) dayWrap.hidden = base.frequency !== 'weekly';
+      if (paused) paused.hidden = !base.paused;
+      const on = el('[data-schedule-on]', binding);
+      const frequency = el('[data-schedule-frequency]', binding);
+      const time = el('[data-schedule-time]', binding);
+      const day = el('[data-schedule-day]', binding);
+      if (initialize) {
+        if (on) on.checked = base.on;
+        if (frequency) frequency.value = base.frequency;
+        if (time) time.value = base.time;
+        if (day) day.value = base.weekday;
+        state.scheduleOpened = { frequency: frequency?.value || '', time: time?.value || '', weekday: day?.value || '', on: on?.checked === true };
+        state.schedulePausedAtOpen = jobs().find(job => job.schedule_id === 'nas-sync' || job.kind === 'nas')?.pid2?.schedule?.paused || null;
+      }
+      const selected = frequency?.value || '';
+      const timeWrap = time?.closest('label'); if (timeWrap) timeWrap.hidden = selected === 'manual';
+      const dayWrap = el('[data-schedule-day-wrap]', binding); if (dayWrap) dayWrap.hidden = selected !== 'weekly';
       renderScheduleOrder(binding);
       modalResult('schedule', state.statusStale ? 'Current schedule details are unavailable; saving is disabled.' : '', binding);
       const save = root(binding)?.querySelector('[data-backups-modal="schedule"] [data-schedule-save]');
       const hasSchedule = buckets().length > 0 || jobs().some(job => job.schedule_id === 'nas-sync' || job.kind === 'nas');
-      if (save) save.disabled = !canUse(binding) || !hasSchedule;
+      const values = { frequency: selected, time: time?.value || '', weekday: day?.value || '', on: on?.checked === true };
+      if (save) save.disabled = !canUse(binding) || !hasSchedule || !state.scheduleBaseline || !selected || stable(values) === stable(state.scheduleOpened);
     }
     async function openScheduleModal(binding = state.binding) {
       state.scheduleBaseline = null;
@@ -1009,12 +1018,16 @@ fn shell_backblaze_client() -> &'static str {
       finally { if (save && current(binding)) save.disabled = false; }
     }
     function schedulePayload(id, frequency, time, weekday, enabled) {
-      return { action: 'schedule-save', schedule_id: id, frequency, time, weekday: frequency === 'weekly' ? weekday : 'Mon', enabled, timestamp: new Date().toISOString() };
+      const payload = { action: 'schedule-save', schedule_id: id, frequency, enabled, timestamp: new Date().toISOString() };
+      if (frequency !== 'manual') { payload.time = time; if (frequency === 'weekly') payload.weekday = weekday; }
+      return payload;
     }
     async function saveSchedule(binding = state.binding) {
       if (!canUse(binding) || !state.scheduleBaseline) return;
-      const frequency = el('[data-schedule-frequency]', binding)?.value || 'daily';
-      const time = el('[data-schedule-time]', binding)?.value || '02:00';
+      const frequency = el('[data-schedule-frequency]', binding)?.value || '';
+      if (!frequency) { modalResult('schedule', 'Choose when backups run.', binding); return; }
+      const time = el('[data-schedule-time]', binding)?.value || '';
+      if (frequency !== 'manual' && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) { modalResult('schedule', 'Choose a valid time.', binding); return; }
       const weekday = el('[data-schedule-day]', binding)?.value || 'Mon';
       const nas = jobs().find(job => job.schedule_id === 'nas-sync' || job.kind === 'nas');
       const on = el('[data-schedule-on]', binding)?.checked === true;
@@ -1024,12 +1037,13 @@ fn shell_backblaze_client() -> &'static str {
         const freshBody = await getJson('/api/backblaze/status', { signal: controller.signal }, binding);
         if (!current(binding) || freshBody?.ok === false) throw new Error('Current schedules could not be read. Nothing was changed.');
         const fresh = projectStatus(freshBody);
-        if (stable(scheduleSnapshot(fresh.jobs)) !== stable(state.scheduleBaseline)) {
+        const freshPaused = fresh.jobs.find(job => job.schedule_id === 'nas-sync' || job.kind === 'nas')?.pid2?.schedule?.paused || null;
+        if (stable(scheduleSnapshot(fresh.jobs)) !== stable(state.scheduleBaseline) || stable(freshPaused) !== stable(state.schedulePausedAtOpen)) {
           applyStatus(fresh); renderMain(binding); renderScheduleForm(binding);
           throw new Error('A schedule changed elsewhere. Review the current schedule before saving again.');
         }
         if (nas) {
-          const nasEnabled = frequency !== 'manual' && on;
+          const nasEnabled = frequency !== 'manual' && (isRecord(nas.pid2?.schedule?.paused) ? on : true);
           const body = await getJson('/api/backblaze/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(schedulePayload('nas-sync', frequency, time, weekday, nasEnabled)), signal: controller.signal }, binding);
           if (!current(binding) || body?.ok !== true) throw new Error(body?.reason || 'The drive schedule could not be saved.');
         }
@@ -1251,10 +1265,8 @@ fn shell_backblaze_client() -> &'static str {
       }
       if (target.matches('[data-ledger-filter]')) { state.ledgerFilter = target.value; renderLedgerRows(binding); return; }
       if (target.matches('[data-snapshot-bucket]')) { const result = el('[data-snapshots-result]', binding); if (result) result.replaceChildren(); return; }
-      if (target.matches('[data-schedule-frequency]') || target.matches('[data-schedule-time]') || target.matches('[data-schedule-day]')) {
-        const frequency = el('[data-schedule-frequency]', binding)?.value || 'daily';
-        const day = el('[data-schedule-day-wrap]', binding); if (day) day.hidden = frequency !== 'weekly';
-        renderScheduleOrder(binding); return;
+      if (target.matches('[data-schedule-frequency]') || target.matches('[data-schedule-time]') || target.matches('[data-schedule-day]') || target.matches('[data-schedule-on]')) {
+        renderScheduleForm(binding, false); return;
       }
     });
     document.body.addEventListener('keydown', event => {
