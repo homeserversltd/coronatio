@@ -418,13 +418,17 @@ async fn linker_transition_route(h: axum::http::HeaderMap, Path(action): Path<St
             if f.confirm.as_deref() != Some("yes") {
                 if s.selected.is_empty() { return linker_local_refusal(s, "Pocket is empty."); }
                 let mut targets = Vec::new();
-                for path in &s.selected {
-                    let note = match linker_delete_check(&h, path) {
+                for path in s.selected.clone() {
+                    let note = match linker_delete_check(&h, &path) {
                         Ok(note) => note,
                         Err(r) if r.first_missing_signal.starts_with("linker-") => Some(format!("kept: {}", r.first_missing_signal)),
-                        Err(r) => return linker_response(s, Some(&r), mutation_response_status(&r)),
+                        Err(r) => {
+                            s.mode = LinkerMode::Fault;
+                            s.feedback = format!("{path}: kept: {}", r.first_missing_signal);
+                            return linker_response(s, Some(&r), mutation_response_status(&r));
+                        },
                     };
-                    targets.push((path.clone(), note));
+                    targets.push((path, note));
                 }
                 s.review_targets = targets;
                 s.mode = LinkerMode::Review;
@@ -440,7 +444,12 @@ async fn linker_transition_route(h: axum::http::HeaderMap, Path(action): Path<St
                 let fresh_note = match linker_delete_check(&h, &path) {
                     Ok(note) => note,
                     Err(r) if r.first_missing_signal.starts_with("linker-") => { refused = true; Some(format!("kept: {}", r.first_missing_signal)) },
-                    Err(r) => return linker_response(s, Some(&r), mutation_response_status(&r)),
+                    Err(r) => {
+                        outcomes.push(format!("{path}: kept: {}", r.first_missing_signal));
+                        s.mode = LinkerMode::Fault;
+                        s.feedback = outcomes.join(" · ");
+                        return linker_response(s, Some(&r), mutation_response_status(&r));
+                    },
                 };
                 if let Some(note) = fresh_note.or(review_note) { outcomes.push(format!("{path}: {note}")); continue; }
                 let r = linker_call(&h, "/api/v1/linker/delete", serde_json::json!({"path":path}));
