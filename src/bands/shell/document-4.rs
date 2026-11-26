@@ -22,6 +22,8 @@ fn shell_document_4() -> &'static str {
         binding.root.querySelectorAll('[data-upload-submit], [data-upload-pin-toggle]').forEach(node => { node.disabled = true; });
         scaffoldRegistry.onRetire(binding, () => {
           if (uploadState.binding !== binding) return;
+          if (uploadState.batch) uploadState.batch.pin = null;
+          uploadState.batch = null; uploadState.resumeIndex = 0;
           uploadState.binding = null; uploadState.policyReady = false; uploadState.policyStale = true;
           uploadState.history = []; uploadState.historyReady = false; uploadState.historyStale = true; uploadState.blacklist = []; uploadState.blacklistReady = false; uploadState.blacklistStale = true;
           const root = binding.root; root?.querySelectorAll('[data-upload-submit], [data-upload-pin-toggle]').forEach(node => { node.disabled = true; });
@@ -72,6 +74,7 @@ fn shell_document_4() -> &'static str {
       renderUploadProgress();
     }
     function setUploadSelection() {
+      uploadState.resumeIndex = 0;
       uploadState.selectedFiles = Array.from(uploadFileInput()?.files || []);
       const submit = uploadSubmit();
       if (submit) submit.disabled = uploadState.selectedFiles.length === 0 || uploadState.uploading || !uploadState.policyReady || uploadState.policyStale || !uploadCurrent();
@@ -126,19 +129,21 @@ fn shell_document_4() -> &'static str {
       }
       applyAdminDomState();
     });
-    async function uploadOneFile(file, scopedAttendance = null, binding = uploadState.binding) {
+    async function uploadOneFile(file, batch = null, binding = uploadState.binding) {
       if (!uploadCurrent(binding) || !uploadState.policyReady || uploadState.policyStale) throw new Error('Upload view is not current');
       const CHUNK_SIZE = 4194304;
-      setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending', uploadId: null, xhr: null, removed: false, attendance: scopedAttendance || coronatioAttendanceRuntime.currentAttendance }, binding);
-      const uploadHeaders = (uploadAttendance = scopedAttendance) => {
+      setUpload(file.name, { filename: file.name, progress: 0, speed: 0, uploaded: 0, total: file.size, status: 'pending', uploadId: null, xhr: null, removed: false }, binding);
+      const uploadHeaders = () => {
         const headers = { 'X-Caduceus-Document': coronatioAttendanceRuntime.documentIncarnation };
-        if (uploadAttendance || coronatioAttendanceRuntime.currentAttendance) headers['X-Caduceus-Attendance'] = uploadAttendance || coronatioAttendanceRuntime.currentAttendance;
+        if (coronatioAttendanceRuntime.currentAttendance) headers['X-Caduceus-Attendance'] = coronatioAttendanceRuntime.currentAttendance;
         return headers;
       };
-      const uploadFailure = (status, text) => {
+      const uploadFailure = (status, text, start = false) => {
         let msg = 'Upload failed with status ' + status; let signal = '';
         try { const payload = JSON.parse(text || '{}'); signal = payload.firstMissingSignal || ''; if (payload.error) msg = payload.error; } catch (_) {}
-        const error = new Error(msg); if (status === 428 && signal === 'upload-pin-required') error.uploadPinRequired = true; return error;
+        const error = new Error(msg);
+        if (start && ['exousia-pin-required', 'exousia-pin-wrong', 'exousia-pin-not-yet-provisioned'].includes(signal)) error.uploadPinSignal = signal;
+        return error;
       };
       const uploadRecord = uploadState.activeUploads.get(file.name);
       const removed = () => uploadRecord?.removed === true;
@@ -146,7 +151,7 @@ fn shell_document_4() -> &'static str {
         const xhr = new XMLHttpRequest(); const current = uploadState.activeUploads.get(file.name); if (current) current.xhr = xhr;
         xhr.onload = () => {
           if (removed()) { reject(Object.assign(new Error('Upload removed'), { uploadRemoved: true })); return; }
-          if (xhr.status < 200 || xhr.status >= 300) { reject(uploadFailure(xhr.status, xhr.responseText)); return; }
+          if (xhr.status < 200 || xhr.status >= 300) { reject(uploadFailure(xhr.status, xhr.responseText, true)); return; }
           let result = {}; try { result = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
           const uploadId = result.upload_id || result.uploadId || result.id;
           if (!uploadId) { reject(new Error('Upload start response did not include an upload ID')); return; }
@@ -156,7 +161,9 @@ fn shell_document_4() -> &'static str {
         xhr.onabort = () => reject(Object.assign(new Error('Upload removed'), { uploadRemoved: true }));
         xhr.open('POST', '/api/files/upload/start');
         xhr.setRequestHeader('Content-Type', 'application/json'); const startHeaders = uploadHeaders(); Object.keys(startHeaders).forEach(name => xhr.setRequestHeader(name, startHeaders[name]));
-        xhr.send(JSON.stringify({ filename: file.name, total_size: file.size, target_dir: uploadCurrentPath(), chunk_size: CHUNK_SIZE }));
+        const startBody = { filename: file.name, total_size: file.size, target_dir: uploadCurrentPath(), chunk_size: CHUNK_SIZE };
+        if (batch?.pin) startBody.flags = { exousia: { pin: batch.pin } };
+        xhr.send(JSON.stringify(startBody));
       });
       if (removed()) throw Object.assign(new Error('Upload removed'), { uploadRemoved: true });
       setUpload(file.name, { uploadId: startUpload, status: 'uploading', xhr: null, uploaded: 0, total: file.size }, binding);
@@ -196,23 +203,42 @@ fn shell_document_4() -> &'static str {
       const readout = uploadCurrent(binding) ? uploadReadout() : null; if (readout) readout.textContent = completeText;
       return { removed: false };
     }
-    async function uploadSelectedFiles(scopedAttendance = null, binding = uploadBinding()) {
-      if (!binding || !uploadCurrent(binding) || !uploadState.policyReady || uploadState.policyStale) return;
-      if (!uploadState.selectedFiles.length) { showCoronatioToast('No files selected for upload', 'error'); return; }
-      if (uploadState.pinRequired && !headerState.isAdmin && !scopedAttendance) { openUploadModal('[data-upload-pin-modal]'); binding.root.querySelector('[data-upload-pin-input]')?.focus(); return; }
+    async function uploadSelectedFiles(batch = null, binding = uploadBinding()) {
+      if (!binding || !uploadCurrent(binding) || !uploadState.policyReady || uploadState.policyStale) { if (batch) batch.pin = null; return; }
+      if (!uploadState.selectedFiles.length) { if (batch) batch.pin = null; showCoronatioToast('No files selected for upload', 'error'); return; }
+      if (uploadState.pinRequired && !headerState.isAdmin && !batch?.pin) { openUploadModal('[data-upload-pin-modal]'); binding.root.querySelector('[data-upload-pin-input]')?.focus(); return; }
+      uploadState.batch = batch;
       uploadState.uploading = true;
       const submit = uploadSubmit();
       if (submit) { submit.disabled = true; submit.textContent = 'Uploading...'; }
-      let success = 0; let failed = 0; let pinRequired = false;
-      for (const file of uploadState.selectedFiles) {
-        if (!uploadCurrent(binding)) break;
-        try { const outcome = await uploadOneFile(file, scopedAttendance, binding); if (!outcome?.removed) success += 1; }
-        catch (error) { if (!uploadCurrent(binding)) break; if (error?.uploadRemoved) continue; if (error?.uploadPinRequired && !headerState.isAdmin) { pinRequired = true; setUpload(file.name, { status: 'pending', error: '' }, binding); break; } failed += 1; setUpload(file.name, { status: 'error', error: error?.message || String(error) }, binding); showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error'); }
+      let success = 0; let failed = 0; let pinSignal = '';
+      try {
+        for (const [index, file] of uploadState.selectedFiles.entries()) {
+          if (index < (uploadState.resumeIndex || 0)) continue;
+          if (!uploadCurrent(binding)) break;
+          try { const outcome = await uploadOneFile(file, batch, binding); if (!outcome?.removed) success += 1; }
+          catch (error) {
+            if (!uploadCurrent(binding)) break;
+            if (error?.uploadRemoved) continue;
+            if (error?.uploadPinSignal) { pinSignal = error.uploadPinSignal; uploadState.resumeIndex = index; setUpload(file.name, { status: 'pending', error: '' }, binding); break; }
+            failed += 1; setUpload(file.name, { status: 'error', error: error?.message || String(error) }, binding); showCoronatioToast(`Failed to upload ${file.name}: ${error?.message || error}`, 'error');
+          }
+        }
+      } finally {
+        if (batch) batch.pin = null;
+        if (uploadState.batch === batch) uploadState.batch = null;
+        if (uploadState.binding === binding) uploadState.uploading = false;
       }
-      if (uploadState.binding === binding) uploadState.uploading = false;
       if (!uploadCurrent(binding)) return;
       const submitAfterUpload = uploadSubmit();
-      if (submitAfterUpload) { submitAfterUpload.textContent = 'Upload Selected Files'; submitAfterUpload.disabled = uploadState.selectedFiles.length === 0 || !uploadState.policyReady || uploadState.policyStale; } if (pinRequired) { openUploadModal('[data-upload-pin-modal]'); binding.root.querySelector('[data-upload-pin-input]')?.focus(); return; }
+      if (submitAfterUpload) { submitAfterUpload.textContent = 'Upload Selected Files'; submitAfterUpload.disabled = uploadState.selectedFiles.length === 0 || !uploadState.policyReady || uploadState.policyStale; }
+      if (pinSignal) {
+        openUploadModal('[data-upload-pin-modal]');
+        const message = binding.root.querySelector('[data-upload-pin-message]');
+        if (message) message.textContent = pinSignal === 'exousia-pin-wrong' ? "That PIN isn't right." : pinSignal === 'exousia-pin-not-yet-provisioned' ? 'This house has no PIN set yet' : '';
+        binding.root.querySelector('[data-upload-pin-input]')?.focus(); return;
+      }
+      uploadState.resumeIndex = 0;
       const summary = failed ? `Uploaded ${success} file(s), ${failed} failed` : `Successfully uploaded ${success} file(s)`;
       const readout = uploadReadout();
       if (readout) readout.textContent = summary;
@@ -339,52 +365,29 @@ fn shell_document_4() -> &'static str {
       modal?.querySelectorAll('[data-upload-blacklist-add], [data-upload-blacklist-submit]').forEach(node => { node.disabled = uploadState.blacklistStale; });
     }
     async function verifyUploadPin(binding = uploadBinding()) {
-      if (!binding || !uploadCurrent(binding) || !uploadState.policyReady) return;
-      const modal = binding.root.querySelector('[data-upload-pin-modal]'), input = modal?.querySelector('[data-upload-pin-input]'), message = modal?.querySelector('[data-upload-pin-message]'), pin = input?.value?.trim() || '';
-      if (!pin) { if (message) message.textContent = 'Admin PIN is required.'; input?.focus(); return; }
-      let scopedAttendance = null;
-      const documentIncarnation = coronatioAttendanceRuntime.documentIncarnation;
+      if (!binding || !uploadCurrent(binding) || !uploadState.policyReady || uploadState.batch) return;
+      const modal = binding.root.querySelector('[data-upload-pin-modal]'), input = modal?.querySelector('[data-upload-pin-input]'), message = modal?.querySelector('[data-upload-pin-message]');
+      const batch = { pin: input?.value?.trim() || '' };
+      if (!batch.pin) { if (message) message.textContent = 'Admin PIN is required.'; input?.focus(); return; }
+      uploadState.batch = batch;
       try {
-        let response;
-        try {
-          response = await fetch('/api/v1/attendance/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin }) });
-        } catch (_) {
-          if (uploadCurrent(binding) && message) { message.textContent = attendancePinFailureMessage(null, null, false); input?.focus(); }
-          return;
+        const response = await fetch('/api/v1/exousia/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: batch.pin }) });
+        const result = await response.json().catch(() => null);
+        if (!uploadCurrent(binding) || !batch.pin) return;
+        if (result?.unavailable || !result || typeof result.verified !== 'boolean') {
+          if (message) message.textContent = 'The PIN check isn\'t available right now.'; input?.focus(); return;
         }
-        let result = null;
-        let jsonValid = true;
-        try { result = await response.json(); } catch (_) { jsonValid = false; }
-        scopedAttendance = response.ok && typeof result?.attendance === 'string' ? result.attendance : null;
-        if (!uploadCurrent(binding)) return;
-        const failure = attendancePinFailureMessage(response, result, jsonValid);
-        if (failure) { if (message) message.textContent = failure; input?.focus(); return; }
-        if (response.status !== 200 || result?.admin !== true || !scopedAttendance) {
-          if (message) message.textContent = adminScreenLoadFailureMessage();
-          input?.focus();
-          return;
+        if (result.verified === false) {
+          if (message) message.textContent = "That PIN isn't right."; input?.focus(); return;
         }
-        try {
-          showCoronatioToast('PIN Verified.', 'success');
-          closeUploadModal(modal);
-          await uploadSelectedFiles(scopedAttendance, binding);
-        } catch (_) {
-          if (uploadCurrent(binding)) {
-            if (message) message.textContent = 'Upload failed. Try again.';
-            openUploadModal('[data-upload-pin-modal]');
-            input?.focus();
-          }
-        }
+        showCoronatioToast('PIN Verified.', 'success');
+        closeUploadModal(modal);
+        await uploadSelectedFiles(batch, binding);
       } catch (_) {
-        if (uploadCurrent(binding) && message) {
-          message.textContent = 'Upload failed. Try again.';
-          openUploadModal('[data-upload-pin-modal]');
-          input?.focus();
-        }
+        if (uploadCurrent(binding)) { if (message) message.textContent = 'The PIN check isn\'t available right now.'; input?.focus(); }
       } finally {
-        if (scopedAttendance) {
-          try { await invalidatePinAttendanceProof(scopedAttendance, documentIncarnation, true); } catch (_) {}
-        }
+        batch.pin = null;
+        if (uploadState.batch === batch) uploadState.batch = null;
       }
     }
     function refreshUploadTree(path = uploadCurrentPath()) { const binding = uploadBinding(), tree = binding?.root.querySelector('[data-upload-tree][data-scaffold-slot="upload-tree"]'); if (!binding || !uploadCurrent(binding) || !tree) return false; return window.htmx?.ajax('GET', '/admit/upload/tree?path=%2Fmnt%2Fnas&depth=0&selected=' + encodeURIComponent(path), { source: tree, target: tree, swap: 'innerHTML' }); }
@@ -413,7 +416,7 @@ fn shell_document_4() -> &'static str {
       }
       if (control.matches('[data-blacklist-remove]')) { if (!headerState.isAdmin || !uploadState.blacklistReady || uploadState.blacklistStale) return; uploadState.blacklist.splice(Number(control.dataset.blacklistRemove), 1); refreshUploadBlacklistDomOnly(binding); return; }
       if (control.matches('[data-upload-breadcrumb-path]')) { uploadState.currentPath = control.dataset.uploadBreadcrumbPath || '/mnt/nas'; const field = document.querySelector('[data-upload-current-path]'); if (field) field.value = uploadState.currentPath; renderUploadBreadcrumbs(uploadState.currentPath); refreshUploadTree(uploadState.currentPath); return; }
-      if (control.matches('[data-upload-modal-close], [data-upload-pin-cancel]')) { closeUploadModal(control.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]')); return; }
+      if (control.matches('[data-upload-modal-close], [data-upload-pin-cancel]')) { const modal = control.closest('[data-upload-history-backdrop], [data-upload-blacklist-backdrop], [data-upload-pin-backdrop]'); if (modal?.matches('[data-upload-pin-backdrop]')) { if (uploadState.batch) uploadState.batch.pin = null; uploadState.batch = null; uploadState.resumeIndex = 0; } closeUploadModal(modal); return; }
       if (control.matches('[data-upload-submit]')) { await uploadSelectedFiles(null, binding); return; }
       if (control.matches('[data-upload-pin-confirm]')) { await verifyUploadPin(binding); return; }
       if (control.matches('[data-upload-refresh]')) { refreshUploadTree(); return; }

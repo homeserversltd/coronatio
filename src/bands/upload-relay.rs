@@ -44,21 +44,19 @@ fn start_upload_digest_projection_purger() {
     });
 }
 
-fn upload_projection_from_start(value: &serde_json::Value) -> Option<UploadDigestProjection> {
+fn upload_projection_from_start(bytes: &[u8]) -> Option<UploadDigestProjection> {
     use sha2::Digest as _;
-    let filename = value.get("filename")?.as_str()?.to_string();
-    let total_bytes = value
-        .get("total_size")
-        .or_else(|| value.get("totalSize"))
-        .or_else(|| value.get("bytes"))
-        .or_else(|| value.get("size"))?
-        .as_u64()?;
-    let destination = value
-        .get("target_dir")
-        .or_else(|| value.get("targetDir"))
-        .or_else(|| value.get("destination"))?
-        .as_str()?
-        .to_string();
+    // Unknown fields, including the exousia carrier, are skipped by serde.
+    #[derive(serde::Deserialize)]
+    struct Metadata {
+        filename: String,
+        #[serde(alias = "totalSize", alias = "bytes", alias = "size")]
+        total_size: u64,
+        #[serde(alias = "targetDir", alias = "destination")]
+        target_dir: String,
+    }
+    let Metadata { filename, total_size: total_bytes, target_dir: destination } =
+        serde_json::from_slice(bytes).ok()?;
     Some(UploadDigestProjection {
         filename,
         destination,
@@ -353,51 +351,23 @@ fn commit_upload_chunk_projection(
     }
 }
 
-fn upload_pin_required_refusal() -> axum::response::Response {
-    (
-        axum::http::StatusCode::PRECONDITION_REQUIRED,
-        axum::Json(serde_json::json!({
-            "schema": "coronatio.upload.pin_required.refusal.v1",
-            "ok": false,
-            "accepted": false,
-            "error": "upload-pin-required",
-            "firstMissingSignal": "upload-pin-required"
-        })),
-    )
-        .into_response()
-}
-
-fn upload_mutation_refusal(refusal: MutationRefusal) -> axum::response::Response {
-    let status = axum::http::StatusCode::from_u16(refusal.status)
-        .unwrap_or(axum::http::StatusCode::SERVICE_UNAVAILABLE);
-    (
-        status,
-        axum::Json(serde_json::json!({
-            "schema": "coronatio.upload.relay.refusal.v1",
-            "ok": false,
-            "accepted": false,
-            "error": "caduceus-upload-relay-refused",
-            "firstMissingSignal": safe_access_code(&refusal.code)
-        })),
-    )
-        .into_response()
-}
-
 fn authorize_upload(
     headers: &axum::http::HeaderMap,
-) -> Result<MutationAttendance, axum::response::Response> {
-    if upload_pin_required() && session_from_headers(headers) != Session::Admin {
-        return Err(upload_pin_required_refusal());
+) -> Result<(), axum::response::Response> {
+    let document = headers.get("x-caduceus-document")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.trim().is_empty());
+    if document.is_none() {
+        return Err((axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({
+            "ok": false, "firstMissingSignal": "caduceus-attendance-document-required"
+        }))).into_response());
     }
-    let authority = mutation_authority();
-    authority
-        .authorize(&MutationRequestContext::from_headers(headers))
-        .map_err(upload_mutation_refusal)
+    Ok(())
 }
 
 fn upload_relay_headers(
     source: &axum::http::HeaderMap,
-    attendance: &MutationAttendance,
+    _attendance: &(),
 ) -> axum::http::HeaderMap {
     let mut headers = axum::http::HeaderMap::new();
     for (name, value) in source {
@@ -414,16 +384,6 @@ fn upload_relay_headers(
         axum::http::header::HOST,
         axum::http::HeaderValue::from_static("caduceus.local"),
     );
-    headers.insert(
-        "x-caduceus-attendance",
-        axum::http::HeaderValue::from_str(attendance.proof.expose())
-            .expect("validated attendance proof is a header value"),
-    );
-    headers.insert(
-        "x-caduceus-document",
-        axum::http::HeaderValue::from_str(&attendance.document)
-            .expect("validated document incarnation is a header value"),
-    );
     headers
 }
 
@@ -431,7 +391,7 @@ async fn relay_upload_body(
     method: &str,
     path: &str,
     source_headers: &axum::http::HeaderMap,
-    attendance: &MutationAttendance,
+    attendance: &(),
     body: axum::body::Body,
 ) -> Result<axum::response::Response, String> {
     let socket = crate::caduceus_access::staff_socket_path();
@@ -484,7 +444,7 @@ async fn upload_relay_response(
     method: &str,
     path: String,
     headers: axum::http::HeaderMap,
-    attendance: MutationAttendance,
+    attendance: (),
     body: axum::body::Body,
 ) -> axum::response::Response {
     match relay_upload_body(method, &path, &headers, &attendance, body).await {
@@ -503,7 +463,8 @@ async fn upload_start_route(
     };
     let (body, captured_body) = capture_upload_body(body, UPLOAD_START_BODY_LIMIT).await;
     let start_metadata = captured_body
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+        .as_deref().and_then(upload_projection_from_start);
+    drop(captured_body);
     let response = match relay_upload_body(
         "POST",
         "/api/v1/file/ingress/start",
@@ -524,7 +485,7 @@ async fn upload_start_route(
             .and_then(serde_json::Value::as_str);
         if let (Some(upload_id), Some(projection)) = (
             upload_id,
-            start_metadata.as_ref().and_then(upload_projection_from_start),
+            start_metadata,
         ) {
             store_upload_digest_projection(upload_id.to_string(), projection);
         }

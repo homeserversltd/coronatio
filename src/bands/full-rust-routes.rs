@@ -356,19 +356,6 @@ fn upload_submit_response(
 }
 
 async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multipart) -> Response {
-    if upload_pin_required() && session_from_headers(&headers) != Session::Admin {
-        return (
-            StatusCode::PRECONDITION_REQUIRED,
-            Json(serde_json::json!({
-                "schema": "coronatio.upload.pin_required.refusal.v1",
-                "ok": false,
-                "accepted": false,
-                "error": "upload-pin-required",
-                "firstMissingSignal": "upload-pin-required"
-            })),
-        )
-            .into_response();
-    }
     let mut filename = "upload.bin".to_string();
     let mut destination = "/mnt/nas".to_string();
     let mut spool: Option<TransientUploadSpool> = None;
@@ -523,6 +510,9 @@ async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multip
     let start_response = upload_start_route(start_headers, Body::from(start_body.to_string())).await;
     let (start_response, start_readback) = capture_upload_response(start_response).await;
     let start_status = start_response.status();
+    if !start_status.is_success() {
+        return start_response;
+    }
     let Some(start_readback) = start_readback else {
         return upload_submit_response(
             start_status,
@@ -533,16 +523,6 @@ async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multip
             serde_json::json!({"ok":false,"firstMissingSignal":"upload-start-response-invalid"}),
         );
     };
-    if !start_status.is_success() {
-        return upload_submit_response(
-            start_status,
-            false,
-            &filename,
-            byte_count,
-            &destination,
-            start_readback,
-        );
-    }
     let upload_id = start_readback
         .get("upload_id")
         .or_else(|| start_readback.get("uploadId"))

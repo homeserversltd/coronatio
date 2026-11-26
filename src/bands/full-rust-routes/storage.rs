@@ -412,14 +412,25 @@ async fn storage_forge_restore_route(headers: axum::http::HeaderMap, request: Re
     storage_forward_secret_door(headers, "/api/v1/storage/backup/forgejo/nas-restore", serde_json::json!({})).await
 }
 
-async fn storage_pin_verify_route(headers: axum::http::HeaderMap, request: Result<Json<StoragePinVerifyRequest>, axum::extract::rejection::JsonRejection>) -> Response {
+async fn storage_pin_verify_route(mut headers: axum::http::HeaderMap, request: Result<Json<StoragePinVerifyRequest>, axum::extract::rejection::JsonRejection>) -> Response {
     let Ok(Json(request)) = request else { return storage_drive_refusal("drive-request-invalid"); };
-    let path = "/api/v1/exousia/verify";
-    let result = tokio::task::spawn_blocking(move || storage_actuate_json_timeout(&mutation_authority(), &headers, path, serde_json::json!({"pin":request.pin}), VAULT_UNLOCK_UPSTREAM_TIMEOUT)).await;
-    match result {
-        Ok(readback) if readback.first_missing_signal == "caduceus-attendance-not-current" || readback.body.get("error").and_then(serde_json::Value::as_str) == Some("caduceus-mutation-refused") => storage_operation_response(readback, false, true),
-        Ok(readback) if readback.ok && readback.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true) && readback.body.get("verified").and_then(serde_json::Value::as_bool).is_some() => Json(serde_json::json!({"verified":readback.body["verified"]})).into_response(),
-        _ => Json(serde_json::json!({"verified":false,"unavailable":true})).into_response(),
+    headers.remove(axum::http::header::CONTENT_LENGTH);
+    headers.insert(axum::http::header::CONTENT_TYPE, axum::http::HeaderValue::from_static("application/json"));
+    let body = Body::from(serde_json::json!({"pin": request.pin}).to_string());
+    let unavailable = |signal: &str| (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
+        "verified": false, "unavailable": true, "firstMissingSignal": signal
+    }))).into_response();
+    match relay_upload_body("POST", "/api/v1/exousia/verify", &headers, &(), body).await {
+        Ok(response) => {
+            let (response, receipt) = capture_upload_response(response).await;
+            if receipt.as_ref().and_then(|value| value.get("schema")).and_then(serde_json::Value::as_str)
+                == Some("caduceus.staff.receipt.v1") {
+                response
+            } else {
+                unavailable("caduceus-verify-receipt-unavailable")
+            }
+        }
+        Err(_) => unavailable("caduceus-verify-unavailable"),
     }
 }
 
