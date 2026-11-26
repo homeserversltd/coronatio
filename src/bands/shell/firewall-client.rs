@@ -1,5 +1,5 @@
 fn shell_firewall_client() -> &'static str {
-    r####"    const firewallState = { observed: [], children: [], observedReady: false, childrenReady: false, binding: null, selectedMac: '', hosts: [], revision: undefined, whitelistReady: false, busy: new Map(), confirm: null };
+    r####"    const firewallState = { observed: [], children: [], roster: [], observedReady: false, childrenReady: false, binding: null, selectedMac: '', hosts: [], revision: undefined, whitelistReady: false, busy: new Map(), confirm: null };
     function firewallRows(payload, key) {
       for (const item of [payload, payload?.payload?.result, payload?.payload, payload?.result, payload?.data, payload?.receipt]) if (Array.isArray(item?.[key])) return item[key];
       if (key === 'hostnames') return payload?.device?.whitelist || payload?.payload?.device?.whitelist || payload?.receipt?.device?.whitelist || null;
@@ -21,15 +21,15 @@ fn shell_firewall_client() -> &'static str {
     function firewallAdoptBinding(binding) {
       if (!binding || firewallState.binding === binding) return firewallState.binding === binding;
       if (firewallState.binding && window.scaffoldRegistry?.current(firewallState.binding)) return false;
-      Object.assign(firewallState, { binding, observed: [], children: [], observedReady: false, childrenReady: false, selectedMac: '', hosts: [], revision: undefined, whitelistReady: false, confirm: null });
+      Object.assign(firewallState, { binding, observed: [], children: [], roster: [], observedReady: false, childrenReady: false, selectedMac: '', hosts: [], revision: undefined, whitelistReady: false, confirm: null });
       firewallState.busy.clear();
       window.scaffoldRegistry.onRetire(binding, () => { if (firewallState.binding === binding) { firewallState.observedReady = false; firewallState.childrenReady = false; firewallState.whitelistReady = false; } });
       return true;
     }
-    function firewallLanIp(row) { const ip = String(row?.ip || '').trim(); const match = /^192\.168\.123\.(\d{1,3})$/.exec(ip); return match && Number(match[1]) <= 255 ? ip : ''; }
+    function firewallLanIp(row) { const ip = String(row?.ip || '').trim(); const parts = ip.split('.'); return parts.length === 4 && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255) ? ip : ''; }
+    function firewallRosterName(row) { const device = firewallState.roster.find(item => firewallMac(item) === firewallMac(row)); return [device?.hostname, device?.observed_lease?.hostname, ...(Array.isArray(device?.dns_names) ? device.dns_names : []), row?.hostname].find(name => typeof name === 'string' && name.trim())?.trim() || ''; }
     function firewallObservedName(row) {
-      const name = String(row?.hostname || '').trim(); if (name) return name;
-      const octet = firewallMac(row).split(':')[0]; return /^[0-9A-F]{2}$/.test(octet) && (parseInt(octet, 16) & 2) ? 'Unknown · private address' : 'Unknown';
+      return firewallRosterName(row) || 'Unknown';
     }
     function firewallWay(row) { return row?.way === 'blocked' ? 'blocked' : row?.way === 'allowlist' || row?.way === 'only' ? 'only' : 'open'; }
     function firewallRow(mac) {
@@ -54,10 +54,10 @@ fn shell_firewall_client() -> &'static str {
       };
       const policies = firewallState.children.map(row => firewallRow(firewallMac(row))).sort(sort);
       const open = firewallState.observed.filter(row => !firewallState.children.some(child => firewallMac(child) === firewallMac(row))).sort(sort);
-      const main = open.filter(row => String(row.hostname || '').trim() || firewallLanIp(row));
-      const other = open.filter(row => !String(row.hostname || '').trim() && !firewallLanIp(row));
+      const main = open.filter(row => firewallRosterName(row) || firewallLanIp(row));
+      const other = open.filter(row => !firewallRosterName(row) && !firewallLanIp(row));
       if (children && scaffoldReadProjectionAllowed(children, preserveReadySlots)) morphLivePane(children, policies.map(row => rowHtml(row)).join(''));
-      if (observed && scaffoldReadProjectionAllowed(observed, preserveReadySlots)) { const expanded = Boolean(observed.querySelector('details')?.open); morphLivePane(observed, `<ul class="firewall-list">${main.map(row => rowHtml(row)).join('')}</ul><details class="firewall-other"${expanded ? ' open' : ''}><summary>Other addresses (${other.length})</summary><ul class="firewall-list">${other.map(row => rowHtml(row, true)).join('')}</ul></details>`); }
+      if (observed && scaffoldReadProjectionAllowed(observed, preserveReadySlots)) { const expanded = Boolean(observed.querySelector('details')?.open); morphLivePane(observed, `<ul class="firewall-list">${main.map(row => rowHtml(row)).join('')}</ul>${other.length ? `<details class="firewall-other"${expanded ? ' open' : ''}><summary>Other addresses (${other.length})</summary><ul class="firewall-list">${other.map(row => rowHtml(row, true)).join('')}</ul></details>` : ''}`); }
       binding.root.querySelectorAll('[data-firewall-device] input').forEach(input => { const mac = input.closest('[data-firewall-device]').dataset.firewallDevice; input.disabled = !firewallState.observedReady || !firewallState.childrenReady || firewallState.busy.has(mac); });
     }
     function firewallRead(binding, key, route, field, slotName, options = {}) {
@@ -75,12 +75,18 @@ fn shell_firewall_client() -> &'static str {
     function hydrateFirewall(options = {}) {
       const binding = scaffoldRegistry.capture('firewall');
       if (!binding || !headerState.isAdmin || !viewportFamilyAdmitted('firewall') || !firewallAdoptBinding(binding)) return Promise.resolve(false);
-      return Promise.all([firewallRead(binding, 'firewall-observed', '/api/firewall/observed', 'observed', 'firewall-observed', options), firewallRead(binding, 'firewall-children', '/api/firewall/children', 'children', 'firewall-children', options)]);
+      const roster = scaffoldRegistry.run(binding, 'firewall-roster', async ctx => {
+        const body = await ctx.fetchJson('/api/network/device');
+        if (!ctx.current() || !firewallCurrent(binding)) return false;
+        firewallState.roster = identityArray(body); renderFirewall(binding); return true;
+      }, { slots: [], supersede: options.supersede === true, onFailure: ({ current }) => { if (current() && firewallCurrent(binding)) { firewallState.roster = []; renderFirewall(binding); } } });
+      return Promise.all([firewallRead(binding, 'firewall-observed', '/api/firewall/observed', 'observed', 'firewall-observed', options), firewallRead(binding, 'firewall-children', '/api/firewall/children', 'children', 'firewall-children', options), roster]).then(results => results.slice(0, 2));
     }
     function firewallShowError(binding, text) { const error = binding.root.querySelector('[data-firewall-error]'); if (error) { error.textContent = text || ''; error.hidden = !text; } }
     function firewallModalElement() { return firewallState.binding?.root?.querySelector('[data-firewall-modal-backdrop]') || null; }
     function closeFirewallModal() {
       const modal = firewallModalElement(); if (modal) closeCrownDialog(modal);
+      const error = modal?.querySelector('[data-firewall-whitelist-error]'); if (error) { error.textContent = ''; error.hidden = true; }
       Object.assign(firewallState, { selectedMac: '', hosts: [], revision: undefined, whitelistReady: false });
     }
     function renderFirewallHosts(binding = firewallState.binding) {
@@ -90,7 +96,7 @@ fn shell_firewall_client() -> &'static str {
     async function openFirewallModal(mac, opener) {
       const binding = firewallState.binding, row = firewallRow(mac); if (!firewallCurrent(binding) || !firewallState.childrenReady || !firewallState.observedReady) return;
       firewallState.selectedMac = mac; firewallState.hosts = Array.isArray(row.hostnames) ? row.hostnames.slice() : []; firewallState.revision = row.revision; firewallState.whitelistReady = !row.registered || (Array.isArray(row.hostnames) && row.revision != null);
-      const modal = firewallModalElement(); modal.querySelector('[data-firewall-modal-title]').textContent = `${firewallObservedName(row)} can reach only these websites.`;
+      const modal = firewallModalElement(); const error = modal.querySelector('[data-firewall-whitelist-error]'); if (error) { error.textContent = ''; error.hidden = true; } modal.querySelector('[data-firewall-modal-title]').textContent = `${firewallObservedName(row)} can reach only these websites.`;
       openCrownDialog(modal, opener); renderFirewallHosts(binding);
       if (row.registered && !firewallState.whitelistReady) {
         try {
@@ -167,21 +173,21 @@ fn shell_firewall_client() -> &'static str {
       if (way === firewallWay(row)) return;
       if (firewallWay(row) === 'only' && !Array.isArray(row.hostnames)) { renderFirewall(binding); firewallShowError(binding, 'The website list could not be loaded. Refresh and try again.'); return; }
       if (firewallWay(row) === 'only' && row.hostnames.length) {
-        firewallState.confirm = { mac, way }; const dialog = binding.root.querySelector('[data-firewall-confirm]'); dialog.querySelector('[data-firewall-confirm-title]').textContent = `Forget ${row.hostnames.length} sites?`; renderFirewall(binding); openCrownDialog(dialog, input); return;
+        firewallState.confirm = { mac, way }; const dialog = binding.root.querySelector('[data-firewall-confirm]'); dialog.querySelector('[data-firewall-confirm-title]').textContent = `Forget ${row.hostnames.length} ${row.hostnames.length === 1 ? 'site' : 'sites'}?`; renderFirewall(binding); openCrownDialog(dialog, input); return;
       }
       await firewallWrite(binding, mac, way);
     });
     window.addEventListener('coronatio:privileged-state-retired', () => {
       const binding = firewallState.binding; if (binding) { const sheet = firewallModalElement(), confirm = binding.root.querySelector('[data-firewall-confirm]'); if (sheet) closeCrownDialog(sheet); if (confirm) closeCrownDialog(confirm); }
       window.scaffoldRegistry?.retire('firewall', 'Admin role retired');
-      Object.assign(firewallState, { observed: [], children: [], hosts: [], revision: undefined, selectedMac: '', observedReady: false, childrenReady: false, whitelistReady: false, binding: null, confirm: null }); firewallState.busy.clear();
+      Object.assign(firewallState, { observed: [], children: [], roster: [], hosts: [], revision: undefined, selectedMac: '', observedReady: false, childrenReady: false, whitelistReady: false, binding: null, confirm: null }); firewallState.busy.clear();
       document.querySelectorAll('[data-pane-panel="firewall"] [data-firewall-observed], [data-pane-panel="firewall"] [data-firewall-children], [data-pane-panel="firewall"] [data-firewall-hosts]').forEach(node => node.replaceChildren());
     });
     window.addEventListener('coronatio:native-pane-reset', event => {
       const detail = event.detail || {}, pane = detail.pane, binding = firewallState.binding;
       if (detail.id !== 'firewall' || !(pane instanceof Element) || !pane.isConnected || document.querySelector('[data-pane-panel="firewall"]') !== pane) return;
       if (binding && (binding.guest !== detail.id || window.scaffoldRegistry?.current(binding))) return;
-      Object.assign(firewallState, { observed: [], children: [], hosts: [], revision: undefined, selectedMac: '', observedReady: false, childrenReady: false, whitelistReady: false, binding: null, confirm: null }); firewallState.busy.clear();
+      Object.assign(firewallState, { observed: [], children: [], roster: [], hosts: [], revision: undefined, selectedMac: '', observedReady: false, childrenReady: false, whitelistReady: false, binding: null, confirm: null }); firewallState.busy.clear();
     });
 "####
 }
