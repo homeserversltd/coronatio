@@ -416,19 +416,16 @@ fn shell_backblaze_client() -> &'static str {
       }
       const latest = state.summaryRows[0];
       const happened = state.ledgerPending ? 'Checking…' : latest ? `${ledgerWhat(latest)} · ${formatDate(latest.at, 'Earlier')} · ${String(latest.outcome || '').toLowerCase() === 'ok' ? 'OK' : String(latest.outcome || 'Unknown')}${latest.duration_ms == null ? '' : ` · ${formatDuration(latest.duration_ms)}`}` : (state.summaryReady ? 'Nothing recorded yet' : 'Ledger unavailable');
-      const nasJob = jobs().find(job => job.schedule_id === 'nas-sync' || job.kind === 'nas');
-      const paused = false;
       setText('[data-backups-happened]', happened, binding);
       const scheduledJobs = jobs().filter(job => scheduleFor(job)?.enabled).map(job => ({ job, date: nextFireDate(job) })).filter(item => item.date).sort((a, b) => a.date - b.date);
       if (scheduledJobs.length) {
         const next = scheduledJobs[0];
         const when = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(next.date);
-        const labels = [];
-        if (nasJob) labels.push(paused ? 'Backup drive (paused, skipped)' : 'Backup drive');
-        jobs().filter(job => job !== nasJob && scheduleFor(job)?.enabled).sort((a, b) => String(a.bucket || '').localeCompare(String(b.bucket || ''))).forEach(job => labels.push(jobLabel(job)));
-        setText('[data-backups-next]', `${when}${labels.length ? ` · ${labels.join(' · ')}` : ` · ${jobLabel(next.job)}`}`, binding);
-      } else if (jobs().length && jobs().every(job => scheduleFor(job)?.enabled !== true)) setText('[data-backups-next]', 'Only when I press Sync', binding);
-      else setText('[data-backups-next]', 'Not scheduled', binding);
+        const labels = scheduledJobs.filter(item => item.date.getTime() === next.date.getTime()).map(item => jobLabel(item.job));
+        setText('[data-backups-next]', `${when} · ${labels.join(' · ')}`, binding);
+      } else if (jobs().some(job => job.pid2?.schedule?.enabled === true && isRecord(job.pid2?.schedule?.calendar))) setText('[data-backups-next]', 'Next time unavailable', binding);
+      else if (jobs().length) setText('[data-backups-next]', 'Only when I press Sync', binding);
+      else setText('[data-backups-next]', 'No backups set up yet', binding);
     }
     function scheduleForBucket(bucketName) { return jobs().find(job => job.bucket === bucketName || job.schedule_id === `backblaze-${bucketName}`) || null; }
     function renderSnapshotPicker(binding = state.binding) {
