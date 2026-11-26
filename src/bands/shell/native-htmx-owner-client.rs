@@ -893,16 +893,16 @@ fn shell_native_htmx_owner_client() -> &'static str {
       }
       const source = detail.elt instanceof Element ? detail.elt : null;
       const target = detail.target instanceof Element ? detail.target : null;
-      const request = source?.closest('[hx-get], [hx-post], [hx-put], [hx-patch], [hx-delete]');
+      const request = source?.closest('[hx-get], [hx-post], [hx-put], [hx-patch], [hx-delete], [data-hx-get], [data-hx-post], [data-hx-put], [data-hx-patch], [data-hx-delete]');
       const configuredVerb = String(detail.requestConfig?.verb || detail.requestConfig?.method || '').toLowerCase();
-      const verb = configuredVerb || (request?.hasAttribute('hx-get') ? 'get'
-        : request?.hasAttribute('hx-post') ? 'post'
-        : request?.hasAttribute('hx-put') ? 'put'
-        : request?.hasAttribute('hx-patch') ? 'patch'
-        : request?.hasAttribute('hx-delete') ? 'delete' : '');
+      const verb = configuredVerb || (request?.hasAttribute('hx-get') || request?.hasAttribute('data-hx-get') ? 'get'
+        : request?.hasAttribute('hx-post') || request?.hasAttribute('data-hx-post') ? 'post'
+        : request?.hasAttribute('hx-put') || request?.hasAttribute('data-hx-put') ? 'put'
+        : request?.hasAttribute('hx-patch') || request?.hasAttribute('data-hx-patch') ? 'patch'
+        : request?.hasAttribute('hx-delete') || request?.hasAttribute('data-hx-delete') ? 'delete' : '');
       const pane = source?.closest('[data-pane-panel]') || target?.closest('[data-pane-panel]');
       const guest = pane?.dataset.panePanel;
-      const path = String(detail.requestConfig?.path || request?.getAttribute('hx-get') || '');
+      const path = String(detail.requestConfig?.path || request?.getAttribute('hx-get') || request?.getAttribute('data-hx-get') || '');
       const finalPath = detail.pathInfo?.finalRequestPath;
       const finalPathname = finalPath && new URL(finalPath, document.baseURI).pathname;
       const logsClear = path === nativeAdminLogsClearPath || finalPathname === nativeAdminLogsClearPath
@@ -970,7 +970,7 @@ fn shell_native_htmx_owner_client() -> &'static str {
         ? Math.min(requestedTimeout, 30000) : DEFAULT_NATIVE_READ_TIMEOUT_MS;
       // An attended clear is followed by another attended read.
       const timeoutMs = logsClear ? 16000 : readTimeoutMs;
-      const swap = String(request?.getAttribute('hx-swap') || detail.requestConfig?.swap || 'innerHTML');
+      const swap = String(request?.getAttribute('hx-swap') || request?.getAttribute('data-hx-swap') || detail.requestConfig?.swap || 'innerHTML');
       const owner = {
         guest, pane, source, request, target, binding, xhr: detail.xhr, path, swap,
         logsClear,
