@@ -19,13 +19,38 @@ fn shell_document_4_tail() -> &'static str {
       const allowed = ['info', 'success', 'warning', 'error'];
       const resolvedVariant = allowed.includes(variant) ? variant : 'info';
       const duration = Number.isInteger(timeout) && timeout >= 1 && timeout <= 2147483647 ? timeout : 3000;
+      const rawMessage = String(message);
+      const existing = [...stack.querySelectorAll('[data-coronatio-toast]')].find(toast =>
+        !toast.classList.contains('toast-exit') && toast.dataset.toastMessage === rawMessage && toast.dataset.toastVariant === resolvedVariant);
+      if (existing) {
+        const count = Number(existing.dataset.toastCount || 1) + 1;
+        existing.dataset.toastCount = String(count);
+        const text = existing.querySelector('.toast-message');
+        let extension = text.querySelector('.toast-extension-count');
+        if (!extension) {
+          extension = document.createElement('span');
+          extension.className = 'toast-extension-count';
+          text.prepend(extension);
+        }
+        extension.textContent = `(×${count}) `;
+        if (existing.matches(':hover')) {
+          window.clearTimeout(Number(existing.dataset.toastTimer || 0));
+          delete existing.dataset.toastTimer;
+          existing.dataset.toastRemaining = String(duration);
+        } else {
+          startCoronatioToastTimer(existing, duration);
+        }
+        return;
+      }
       const icons = { info: 'ℹ️', success: '✅', warning: '⚠️', error: '❌' };
       const toast = document.createElement('div');
       toast.className = `toast ${resolvedVariant}`;
       toast.dataset.coronatioToast = '';
+      toast.dataset.toastMessage = rawMessage;
+      toast.dataset.toastVariant = resolvedVariant;
       toast.setAttribute('role', 'alert');
       const icon = document.createElement('span'); icon.className = 'toast-icon'; icon.setAttribute('aria-hidden', 'true'); icon.textContent = icons[resolvedVariant];
-      const text = document.createElement('span'); text.className = 'toast-message'; text.textContent = String(message);
+      const text = document.createElement('span'); text.className = 'toast-message'; text.textContent = rawMessage;
       toast.append(icon, text); stack.appendChild(toast); startCoronatioToastTimer(toast, duration);
     }
     // UX-MIGRATION-SLICE-09A: delegated so these bindings survive Caduceus HTMX card swaps.
