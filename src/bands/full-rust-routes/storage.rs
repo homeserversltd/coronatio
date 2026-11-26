@@ -422,13 +422,17 @@ async fn storage_pin_verify_route(mut headers: axum::http::HeaderMap, request: R
     }))).into_response();
     match relay_upload_body("POST", "/api/v1/exousia/verify", &headers, &(), body).await {
         Ok(response) => {
-            let (response, receipt) = capture_upload_response(response).await;
-            if receipt.as_ref().and_then(|value| value.get("schema")).and_then(serde_json::Value::as_str)
-                == Some("caduceus.staff.receipt.v1") {
-                response
-            } else {
-                unavailable("caduceus-verify-receipt-unavailable")
+            let (parts, body) = response.into_parts();
+            let (body, captured) = capture_upload_body(body, UPLOAD_RESPONSE_BODY_CAPTURE_LIMIT).await;
+            // Oversized replies remain streamed, not rejected or buffered without bound.
+            if let Some(bytes) = captured {
+                let receipt = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+                if receipt.as_ref().and_then(|value| value.get("schema")).and_then(serde_json::Value::as_str)
+                    != Some("caduceus.staff.receipt.v1") {
+                    return unavailable("caduceus-verify-receipt-unavailable");
+                }
             }
+            axum::http::Response::from_parts(parts, body)
         }
         Err(_) => unavailable("caduceus-verify-unavailable"),
     }

@@ -378,7 +378,7 @@ fn shell_document_4() -> &'static str {
           if (message) message.textContent = 'The PIN check isn\'t available right now.'; input?.focus(); return;
         }
         if (result.verified === false) {
-          if (message) message.textContent = "That PIN isn't right."; input?.focus(); return;
+          if (message) message.textContent = result.firstMissingSignal === 'exousia-pin-not-yet-provisioned' ? 'This house has no PIN set yet' : "That PIN isn't right."; input?.focus(); return;
         }
         showCoronatioToast('PIN Verified.', 'success');
         closeUploadModal(modal);

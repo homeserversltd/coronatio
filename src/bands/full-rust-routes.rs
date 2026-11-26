@@ -510,7 +510,7 @@ async fn upload_file_route(headers: axum::http::HeaderMap, mut multipart: Multip
     let start_response = upload_start_route(start_headers, Body::from(start_body.to_string())).await;
     let (start_response, start_readback) = capture_upload_response(start_response).await;
     let start_status = start_response.status();
-    if !start_status.is_success() {
+    if !upload_response_ok(start_status, start_readback.as_ref()) {
         return start_response;
     }
     let Some(start_readback) = start_readback else {
