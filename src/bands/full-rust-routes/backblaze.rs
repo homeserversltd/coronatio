@@ -17,7 +17,11 @@ async fn backups_ledger_route(Json(body): Json<serde_json::Value>) -> Response {
     backblaze_readback_response(caduceus_http_json("POST", "/api/v1/storage/backup/ledger", body, None))
 }
 async fn backups_drives_route() -> Response {
-    backblaze_readback_response(caduceus_http_json("POST", "/api/v1/storage/nas/drives", serde_json::json!({}), None))
+    const PATH: &str = "/api/v1/storage/nas/drives";
+    let reply = tokio::task::spawn_blocking(|| caduceus_http_json_with_attendance_and_document_timeout(
+        "POST", PATH, serde_json::json!({}), None, None, Duration::from_secs(28)
+    )).await.unwrap_or_else(|_| mutation_task_failure_readback(PATH));
+    backblaze_readback_response(reply)
 }
 
 // Drop credential-bearing fields by name without corrupting MACs or dates.

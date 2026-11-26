@@ -5,14 +5,18 @@ fn shell_backblaze_client() -> &'static str {
       data: null,
       statusReady: false,
       statusStale: true,
+      statusPending: false,
       drives: [],
       drivesReady: false,
+      drivesPending: false,
       pairs: [],
       boxDrives: new Map(),
       selectedPair: null,
       pairActing: false,
       summaryRows: [],
       summaryReady: false,
+      ledgerPending: false,
+      mainGeneration: 0,
       ledgerRows: [],
       ledgerNext: null,
       ledgerLoading: false,
@@ -86,7 +90,7 @@ fn shell_backblaze_client() -> &'static str {
       };
     }
     function projectStatus(body) {
-      if (!isRecord(body) || body.ok === false || !Array.isArray(body.buckets) || !Array.isArray(body.jobs)) throw new Error('Backup status response is incomplete');
+      if (!isRecord(body) || body.ok === false || !Array.isArray(body.buckets) || !Array.isArray(body.jobs)) throw new Error(body?.reason || body?.signal || body?.firstMissingSignal || 'Backup status response is incomplete');
       const checkedBuckets = body.buckets.map(bucket => {
         if (!isRecord(bucket) || typeof bucket.bucket !== 'string' || !bucket.bucket) throw new Error('Backup bucket row is malformed');
         return bucket;
@@ -98,11 +102,11 @@ fn shell_backblaze_client() -> &'static str {
       return { ...body, buckets: checkedBuckets, jobs: checkedJobs };
     }
     function normalizeDriveResponse(body) {
-      if (!isRecord(body) || body.ok === false || !Array.isArray(body.drives)) throw new Error('Drive response is incomplete');
+      if (!isRecord(body) || body.ok === false || !Array.isArray(body.drives)) throw new Error(body?.reason || body?.signal || body?.firstMissingSignal || 'Drive response is incomplete');
       return body.drives.filter(drive => isRecord(drive) && (drive.role === 'main' || drive.role === 'backup'));
     }
     function normalizeLedgerResponse(body) {
-      if (!isRecord(body) || body.ok === false || !Array.isArray(body.rows)) throw new Error('Ledger response is incomplete');
+      if (!isRecord(body) || body.ok === false || !Array.isArray(body.rows)) throw new Error(body?.reason || body?.signal || body?.firstMissingSignal || 'Ledger response is incomplete');
       return body.rows.filter(isRecord);
     }
     function formatDate(value, fallback = '—') {
@@ -158,8 +162,8 @@ fn shell_backblaze_client() -> &'static str {
       return body;
     }
     async function readJson(context, url, body = null) {
-      if (body === null) return context.fetchJson(url);
-      const result = await getJson(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: context.signal }, context.binding);
+      const init = body === null ? { signal: context.signal } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: context.signal };
+      const result = await getJson(url, init, context.binding);
       if (!context.current() || !current(context.binding)) throw new DOMException('Read retired', 'AbortError');
       return result;
     }
@@ -198,45 +202,69 @@ fn shell_backblaze_client() -> &'static str {
       const noNas = el('[data-backups-no-nas]', binding);
       if (noNas) noNas.hidden = !state.statusReady || hasNas;
       root(binding)?.querySelectorAll('[data-backups-open]').forEach(button => { button.disabled = button.dataset.backupsOpen === 'add' ? !canRewriteConfig(binding) : false; });
-      renderStatusNote(Object.values(state.readErrors).some(Boolean) ? 'Some backup details are unavailable. Reopen this tab to try again.' : '', binding);
+      const labels = { status: 'Backup status', drives: 'Drive details', ledger: 'Ledger', pairs: 'Paired boxes' };
+      const failures = Object.entries(state.readErrors).filter(([, reason]) => reason).map(([key, reason]) => `${labels[key]}: ${reason}`.slice(0, 119) + '.');
+      renderStatusNote([state.mainOutstanding ? 'Refreshing this box’s backup details…' : '', ...failures].filter(Boolean).join(' '), binding);
     }
     async function loadMain(binding = adoptBackblazeBinding()) {
       if (!binding || !current(binding)) return false;
-      state.statusStale = true;
-      state.readErrors = {};
-      renderStatusNote('Refreshing this box’s backup details…', binding);
-      const loaded = await scaffoldRegistry.run(binding, 'backblaze-status', async context => {
-        const results = await Promise.allSettled([
-          readJson(context, '/api/backblaze/status'),
-          readJson(context, '/api/backups/drives', {}),
-          readJson(context, '/api/backups/ledger', { limit: 100 }),
-          readJson(context, '/api/backups/pairs', {})
-        ]);
-        if (!context.current() || !current(binding)) return false;
-        try {
-          if (results[0].status !== 'fulfilled') throw results[0].reason;
-          applyStatus(results[0].value);
-        } catch (_) { state.statusStale = true; state.readErrors.status = true; }
-        try {
-          if (results[1].status !== 'fulfilled') throw results[1].reason;
-          state.drives = normalizeDriveResponse(results[1].value);
-          state.drivesReady = true;
-        } catch (_) { state.drives = []; state.drivesReady = false; state.readErrors.drives = true; }
-        try {
-          if (results[2].status !== 'fulfilled') throw results[2].reason;
-          state.summaryRows = normalizeLedgerResponse(results[2].value);
-          state.summaryReady = true;
-        } catch (_) { state.summaryRows = []; state.summaryReady = false; state.readErrors.ledger = true; }
-        try {
-          if (results[3].status !== 'fulfilled' || results[3].value?.ok === false || !Array.isArray(results[3].value?.pairs)) throw new Error('Pairs unavailable');
-          state.pairs = results[3].value.pairs.filter(isRecord);
-          state.boxDrives = new Map();
-        } catch (_) { state.pairs = []; state.boxDrives = new Map(); state.readErrors.pairs = true; }
+      const generation = ++state.mainGeneration;
+      state.statusStale = true; state.statusPending = true; state.drivesPending = true; state.ledgerPending = true;
+      state.readErrors = {}; state.mainOutstanding = 4;
+      let statusAnswered = false;
+      const active = () => current(binding) && state.mainGeneration === generation;
+      const reasonText = reason => {
+        const text = String(reason || '').trim();
+        if (text === 'Read timed out' || text === 'caduceus-read-timeout') return 'took too long';
+        const http = text.match(/^(?:Read failed \(HTTP |Request failed \()(\d{3})\)$/);
+        return (http ? `the box did not answer (HTTP ${http[1]})` : text === 'Read failed' || !text ? 'the box did not answer' : text).slice(0, 120);
+      };
+      const finish = (key, reason = '') => {
+        if (!active()) return;
+        if (key === 'status') state.statusPending = false;
+        if (key === 'drives') state.drivesPending = false;
+        if (key === 'ledger') state.ledgerPending = false;
+        if (reason) {
+          state.readErrors[key] = reasonText(reason);
+          if (key === 'status') state.statusStale = true;
+          if (key === 'drives') { state.drives = []; state.drivesReady = false; }
+          if (key === 'ledger') { state.summaryRows = []; state.summaryReady = false; }
+          if (key === 'pairs') { state.pairs = []; state.boxDrives = new Map(); }
+        }
+        state.mainOutstanding -= 1;
         renderMain(binding);
-        return true;
-      }, { slots: [], timeoutMs: 12000, slowMs: 1500, retry: false });
-      if (loaded && current(binding)) void loadBoxDrives(binding);
-      return loaded;
+      };
+      const failure = key => ({ reason }) => finish(key, reason);
+      renderMain(binding);
+      const statusRun = scaffoldRegistry.run(binding, 'backblaze-status', async context => {
+        const body = await readJson(context, '/api/backblaze/status');
+        if (!context.current() || !active()) return;
+        try { applyStatus(body); statusAnswered = true; finish('status'); }
+        catch (error) { finish('status', error.message); }
+      }, { slots: [], timeoutMs: 12000, slowMs: 1500, retry: false, supersede: true, onFailure: failure('status') });
+      scaffoldRegistry.run(binding, 'backblaze-drives', async context => {
+        const body = await readJson(context, '/api/backups/drives', {});
+        if (!context.current() || !active()) return;
+        try { state.drives = normalizeDriveResponse(body); state.drivesReady = true; finish('drives'); }
+        catch (error) { finish('drives', error.message); }
+      }, { slots: [], timeoutMs: 30000, slowMs: 1500, retry: false, supersede: true, onFailure: failure('drives') });
+      scaffoldRegistry.run(binding, 'backblaze-ledger', async context => {
+        const body = await readJson(context, '/api/backups/ledger', { limit: 100 });
+        if (!context.current() || !active()) return;
+        try { state.summaryRows = normalizeLedgerResponse(body); state.summaryReady = true; finish('ledger'); }
+        catch (error) { finish('ledger', error.message); }
+      }, { slots: [], timeoutMs: 12000, slowMs: 1500, retry: false, supersede: true, onFailure: failure('ledger') });
+      scaffoldRegistry.run(binding, 'backblaze-pairs', async context => {
+        const body = await readJson(context, '/api/backups/pairs', {});
+        if (!context.current() || !active()) return;
+        try {
+          if (body?.ok === false || !Array.isArray(body?.pairs)) throw new Error(body?.reason || body?.signal || body?.firstMissingSignal || 'Pairs unavailable');
+          state.pairs = body.pairs.filter(isRecord); state.boxDrives = new Map();
+          finish('pairs'); void loadBoxDrives(binding);
+        } catch (error) { finish('pairs', error.message); }
+      }, { slots: [], timeoutMs: 25000, slowMs: 1500, retry: false, supersede: true, onFailure: failure('pairs') });
+      await statusRun;
+      return active() && statusAnswered;
     }
     async function refreshStatus(binding = state.binding) {
       if (!current(binding)) return null;
@@ -263,14 +291,14 @@ fn shell_backblaze_client() -> &'static str {
       const [health, healthState] = driveHealth(drive);
       const size = Number(drive.sizeBytes), used = Number(drive.usedBytes), free = Number(drive.freeBytes);
       const percent = Number.isFinite(size) && size > 0 && Number.isFinite(used) ? Math.max(0, Math.min(100, (used / size) * 100)) : 0;
-      const paused = isBackup && jobs().some(job => (job.schedule_id === 'nas-sync' || job.kind === 'nas') && scheduleFor(job)?.enabled === false);
+
       const lastMirror = newestNasSync(state.summaryRows);
       const model = typeof drive.model === 'string' && drive.model ? drive.model : 'Model unavailable';
       const mount = typeof drive.mountpoint === 'string' && drive.mountpoint ? drive.mountpoint : 'Mount unavailable';
       const transport = typeof drive.transport === 'string' && drive.transport ? drive.transport.toUpperCase() : 'Connection unavailable';
       const readErrors = drive.readErrors == null || !Number.isFinite(Number(drive.readErrors)) ? '—' : Number(drive.readErrors);
       return `<article class="backup-drive-card ui-panel ui-panel--filled${isBackup ? ' backup-drive-card--backup' : ''}" data-drive-role="${role}" data-drive-index="${index}">
-        <div class="backup-card-heading"><div><strong>${isBackup ? 'Backup drive' : 'Main drive'} · in the HomeServer</strong><span class="backup-health backup-health--${healthState}">${esc(paused ? 'Paused after a drive swap' : health)}</span></div></div>
+        <div class="backup-card-heading"><div><strong>${isBackup ? 'Backup drive' : 'Main drive'} · in the HomeServer</strong><span class="backup-health backup-health--${healthState}">${esc(health)}</span></div></div>
         <p class="backup-drive-model">${esc(model)} · ${esc(formatBytes(drive.sizeBytes))}</p>
         <div class="backup-meter" role="img" aria-label="${esc(formatBytes(drive.usedBytes))} used of ${esc(formatBytes(drive.sizeBytes))}"><span style="width:${percent.toFixed(1)}%"></span></div>
         <p class="backup-drive-capacity">${esc(formatBytes(drive.usedBytes))} used <span>${esc(formatBytes(drive.freeBytes))} free</span></p>
@@ -325,7 +353,7 @@ fn shell_backblaze_client() -> &'static str {
       if (!host) return;
       const mains = state.drives.filter(drive => drive.role === 'main' && drive.present === true);
       const backups = state.drives.filter(drive => drive.role === 'backup' && drive.present === true);
-      const cards = state.drivesReady ? [driveCard(mains[0], 'main', 0, binding), ...(backups.length ? backups.map((drive, index) => driveCard(drive, 'backup', index, binding)) : [driveCard(null, 'backup', 0, binding)])] : ['<p class="backup-empty">Drive details are unavailable.</p>'];
+      const cards = state.drivesPending ? ['<p class="backup-empty">Checking the drives…</p>'] : state.drivesReady ? [driveCard(mains[0], 'main', 0, binding), ...(backups.length ? backups.map((drive, index) => driveCard(drive, 'backup', index, binding)) : [driveCard(null, 'backup', 0, binding)])] : [`<p class="backup-empty">Drive details are unavailable: ${esc(state.readErrors.drives || 'the box did not answer')}.</p>`];
       host.innerHTML = cards.concat(state.pairs.filter(pair => pair.state === 'accepted').map(boxCard)).join('');
     }
     function newestNasSync(rows = state.summaryRows) {
@@ -382,16 +410,15 @@ fn shell_backblaze_client() -> &'static str {
     }
     function renderRibbon(binding = state.binding) {
       if (!state.statusReady || state.statusStale) {
-        setText('[data-backups-happened]', 'Unavailable', binding);
-        setText('[data-backups-next]', 'Unavailable', binding);
+        setText('[data-backups-happened]', state.statusPending ? 'Checking…' : 'Unavailable', binding);
+        setText('[data-backups-next]', state.statusPending ? 'Checking…' : 'Unavailable', binding);
         return;
       }
       const latest = state.summaryRows[0];
-      const happened = latest ? `${ledgerWhat(latest)} · ${formatDate(latest.at, 'Earlier')} · ${String(latest.outcome || '').toLowerCase() === 'ok' ? 'OK' : String(latest.outcome || 'Unknown')}${latest.duration_ms == null ? '' : ` · ${formatDuration(latest.duration_ms)}`}` : (state.summaryReady ? 'Nothing recorded yet' : 'Ledger unavailable');
+      const happened = state.ledgerPending ? 'Checking…' : latest ? `${ledgerWhat(latest)} · ${formatDate(latest.at, 'Earlier')} · ${String(latest.outcome || '').toLowerCase() === 'ok' ? 'OK' : String(latest.outcome || 'Unknown')}${latest.duration_ms == null ? '' : ` · ${formatDuration(latest.duration_ms)}`}` : (state.summaryReady ? 'Nothing recorded yet' : 'Ledger unavailable');
       const nasJob = jobs().find(job => job.schedule_id === 'nas-sync' || job.kind === 'nas');
-      const paused = nasJob && scheduleFor(nasJob)?.enabled === false;
-      const pauseSuffix = paused ? ` · Backup drive paused since ${formatDate(newestNasSync()?.at, 'the last drive swap')}` : '';
-      setText('[data-backups-happened]', `${happened}${pauseSuffix}`, binding);
+      const paused = false;
+      setText('[data-backups-happened]', happened, binding);
       const scheduledJobs = jobs().filter(job => scheduleFor(job)?.enabled).map(job => ({ job, date: nextFireDate(job) })).filter(item => item.date).sort((a, b) => a.date - b.date);
       if (scheduledJobs.length) {
         const next = scheduledJobs[0];
@@ -631,6 +658,7 @@ fn shell_backblaze_client() -> &'static str {
       state.folderBucket = null; state.folderPath = '/mnt/nas'; state.folderNames = []; state.folderDraft = new Set(); state.folderBaseline = []; state.folderTruncated = false;
     }
     function scrubProtectedState(pane) {
+      state.mainGeneration++; state.mainOutstanding = 0; state.statusPending = false; state.drivesPending = false; state.ledgerPending = false;
       state.data = null; state.statusReady = false; state.statusStale = true; state.drives = []; state.drivesReady = false;
       state.summaryRows = []; state.summaryReady = false; state.ledgerRows = []; state.ledgerNext = null; state.ledgerLoading = false; state.ledgerFilter = 'all'; state.ledgerError = '';
       state.readErrors = {}; state.scheduleBaseline = null; state.menuBucket = null; state.snapshots = []; state.activeModal = null; state.returnFocus = null; state.addMode = 'add'; state.editBucket = null;
@@ -649,6 +677,7 @@ fn shell_backblaze_client() -> &'static str {
     }
     function retireBackblaze(binding, privilegedLoss = false) {
       if (state.binding !== binding) return;
+      state.mainGeneration++; state.mainOutstanding = 0; state.statusPending = false; state.drivesPending = false; state.ledgerPending = false;
       const roleLost = privilegedLoss || !roleAuthorized();
       actions.forEach(controller => controller.abort()); actions.clear();
       state.binding = null;
