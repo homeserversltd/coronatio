@@ -124,7 +124,8 @@ fn shell_firewall_client() -> &'static str {
         if (!firewallCurrent(binding)) return false;
         if (!result || result.some(ok => !ok)) { firewallShowError(binding, 'The setting may have changed. Refresh to see its current state.'); return false; }
         const held = firewallRow(mac), heldWay = firewallWay(held);
-        const matched = heldWay === way && (way !== 'only' || (Array.isArray(held.hostnames) && held.hostnames.length === hosts.length && hosts.every(host => held.hostnames.includes(host))));
+        const hostKey = host => String(host).trim().toLowerCase().replace(/\.$/, '');
+        const matched = heldWay === way && (way !== 'only' || (Array.isArray(held.hostnames) && held.hostnames.length === hosts.length && hosts.every(host => held.hostnames.some(heldHost => hostKey(heldHost) === hostKey(host)))));
         if (matched) return true;
         if (timedOut || failure?.message === 'Read timed out') return false;
         if (firewallCurrent(binding)) {
@@ -160,8 +161,9 @@ fn shell_firewall_client() -> &'static str {
     }, true);
     document.addEventListener('change', async event => {
       const input = event.target.closest?.('[data-firewall-device] input.ui-segmented__input'), binding = firewallState.binding;
-      if (!input || !firewallCurrent(binding) || !binding.root.contains(input) || input.disabled || input.value === 'only') return;
+      if (!input || !firewallCurrent(binding) || !binding.root.contains(input) || input.disabled) return;
       const mac = input.closest('[data-firewall-device]').dataset.firewallDevice, row = firewallRow(mac), way = input.value;
+      if (way === 'only') { renderFirewall(binding); await openFirewallModal(mac, input); return; }
       if (way === firewallWay(row)) return;
       if (firewallWay(row) === 'only' && !Array.isArray(row.hostnames)) { renderFirewall(binding); firewallShowError(binding, 'The website list could not be loaded. Refresh and try again.'); return; }
       if (firewallWay(row) === 'only' && row.hostnames.length) {
