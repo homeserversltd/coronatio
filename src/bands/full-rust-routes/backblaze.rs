@@ -19,6 +19,64 @@ async fn backups_ledger_route(Json(body): Json<serde_json::Value>) -> Response {
 async fn backups_drives_route() -> Response {
     backblaze_readback_response(caduceus_http_json("POST", "/api/v1/storage/nas/drives", serde_json::json!({}), None))
 }
+
+// Drop credential-bearing fields by name without corrupting MACs or dates.
+fn backups_scrub(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Array(rows) => rows.iter_mut().for_each(backups_scrub),
+        serde_json::Value::Object(fields) => {
+            fields.retain(|key, _| {
+                let name = key.to_ascii_lowercase();
+                !["pin", "password", "secret", "credential", "token"].iter().any(|part| name.contains(part))
+                    && !matches!(name.as_str(), "raw_envelope" | "envelope" | "raw")
+            });
+            fields.values_mut().for_each(backups_scrub);
+        }
+        _ => {}
+    }
+}
+fn backups_pair_response(mut reply: CaduceusHttpReadback) -> Response {
+    backups_scrub(&mut reply.body);
+    let status = StatusCode::from_u16(reply.status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE);
+    if !reply.ok && reply.body.get("signal").is_none() && reply.body.get("firstMissingSignal").is_none() {
+        if let Some(fields) = reply.body.as_object_mut() {
+            fields.insert("ok".into(), false.into());
+            fields.insert("firstMissingSignal".into(), reply.first_missing_signal.into());
+        }
+    }
+    (status, Json(reply.body)).into_response()
+}
+async fn backups_pair_forward(headers: axum::http::HeaderMap, path: &'static str, body: serde_json::Value, seconds: u64, act: bool) -> Response {
+    let reply = tokio::task::spawn_blocking(move || caduceus_actuate_json_with_timeout(
+        &mutation_authority(), &headers, path, body, Duration::from_secs(seconds)
+    )).await.unwrap_or_else(|_| mutation_task_failure_readback(path));
+    if act { eprintln!("coronatio {path} {}", if reply.ok { "ok" } else { "refused" }); }
+    backups_pair_response(reply)
+}
+async fn backups_pairs_route(headers: axum::http::HeaderMap) -> Response {
+    backups_pair_forward(headers, "/api/v1/storage/backup/pair/list", serde_json::json!({}), 20, false).await
+}
+async fn backups_pair_accept_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    let pin = body.get("pin").and_then(serde_json::Value::as_str).unwrap_or("");
+    let box_pin = body.get("boxPin").and_then(serde_json::Value::as_str).unwrap_or("");
+    if pin.is_empty() || box_pin.is_empty() { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok":false,"signal":"pin-required"}))).into_response(); }
+    let request = serde_json::json!({"mac":body.get("mac"),"flags":{"exousia":{"pin":pin},"inlet":{"pin":box_pin}}});
+    backups_pair_forward(headers, "/api/v1/storage/backup/pair/accept", request, 20, true).await
+}
+async fn backups_pair_revoke_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    let request = serde_json::json!({"mac":body.get("mac"),"flags":{"exousia":{"pin":body.get("pin")}}});
+    backups_pair_forward(headers, "/api/v1/storage/backup/pair/revoke", request, 20, true).await
+}
+async fn backups_pair_copy_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
+    let request = serde_json::json!({"mac":body.get("mac")});
+    backups_pair_forward(headers, "/api/v1/storage/backup/pair/copy-now", request, 45, true).await
+}
+async fn backups_box_drives_route() -> Response {
+    const PATH: &str = "/api/v1/ruyi/road?target=every&thing=backup-drive";
+    let reply = tokio::task::spawn_blocking(|| caduceus_http_timeout("GET", PATH, Duration::from_secs(75)))
+        .await.unwrap_or_else(|_| mutation_task_failure_readback(PATH));
+    backups_pair_response(reply)
+}
 async fn backups_folders_route(headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>) -> Response {
     backblaze_readback_response(admin_fragment_caduceus_json_request(&headers, "POST", "/api/v1/storage/nas/list", body))
 }

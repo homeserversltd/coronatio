@@ -108,7 +108,8 @@ fn notifications_view(readback: &CaduceusHttpReadback) -> NotificationsView {
         items.push(NotificationView {
             id: text("id"), kind: text("kind"), state: text("state"), title: text("title"),
             hostname: row.pointer("/from/hostname").and_then(serde_json::Value::as_str)
-                .or_else(|| row.pointer("/from/body").and_then(serde_json::Value::as_str)).unwrap_or("").to_owned(),
+                .or_else(|| row.pointer("/from/body").and_then(serde_json::Value::as_str))
+                .or_else(|| row.pointer("/act/target/hostname").and_then(serde_json::Value::as_str)).unwrap_or("").to_owned(),
             names: names.into_iter().flatten().filter_map(serde_json::Value::as_str).map(str::to_owned).collect(),
             color: text("color"),
             body: row.get("body").and_then(serde_json::Value::as_str).map(str::to_owned),
@@ -117,8 +118,13 @@ fn notifications_view(readback: &CaduceusHttpReadback) -> NotificationsView {
                 let verb = act.get("verb")?.as_str()?;
                 let label = act.get("label")?.as_str()?;
                 let target = act.pointer("/target/mac")?.as_str()?.to_ascii_lowercase();
-                let from = row.pointer("/from/mac")?.as_str()?.to_ascii_lowercase();
-                (verb == "update-now" && !label.is_empty() && !target.is_empty() && target == from).then(|| NotificationAction {
+                let valid_mac = target.len() == 17 && target.split(':').count() == 6 && target.split(':').all(|part| part.len() == 2 && part.bytes().all(|byte| byte.is_ascii_hexdigit()));
+                let valid = match verb {
+                    "update-now" => row.pointer("/from/mac").and_then(serde_json::Value::as_str).is_some_and(|from| target == from.to_ascii_lowercase()),
+                    "copy-now" => valid_mac,
+                    _ => false,
+                };
+                (valid && !label.is_empty() && !target.is_empty()).then(|| NotificationAction {
                     label: label.to_owned(), fields: serde_json::Value::Null, verb: verb.to_owned(), target_mac: target,
                 })
             }).or_else(|| row.get("actions").and_then(serde_json::Value::as_array).and_then(|actions| {
@@ -480,13 +486,44 @@ async fn notifications_update_route(headers: axum::http::HeaderMap, id: String, 
     notification_html_response(notifications_modal_html(&view, session, Some((&message, success)), None, hidden, show_pin.then_some(id.as_str())))
 }
 
+async fn notifications_copy_route(headers: axum::http::HeaderMap, id: String, query: std::collections::HashMap<String, String>) -> Response {
+    let hidden = query.get("view").is_some_and(|value| value == "hidden");
+    let session = session_projection_from_headers(&headers).await;
+    let (view, _) = tokio::task::spawn_blocking(|| notifications_snapshot(true)).await
+        .unwrap_or((NotificationsView { items: Vec::new(), available: false, own_mac: None }, 0));
+    let item = view.items.iter().find(|item| item.id == id && item.act.as_ref().is_some_and(|act| act.verb == "copy-now"));
+    let (message, ok) = if session != Session::Admin { (UPDATE_ADMIN.to_owned(), false) }
+    else if !view.available { (UPDATE_UNREACHABLE.to_owned(), false) }
+    else if let Some(item) = item {
+        let tag = item.hostname.clone();
+        let mac = item.act.as_ref().unwrap().target_mac.clone();
+        const PATH: &str = "/api/v1/storage/backup/pair/copy-now";
+        let reply = tokio::task::spawn_blocking(move || caduceus_actuate_json_with_timeout(
+            &mutation_authority(), &headers, PATH, serde_json::json!({"mac":mac}), Duration::from_secs(45)
+        )).await.unwrap_or_else(|_| mutation_task_failure_readback(PATH));
+        let signal = reply.body.get("signal").or_else(|| reply.body.get("firstMissingSignal")).and_then(serde_json::Value::as_str).unwrap_or(&reply.first_missing_signal);
+        let ok = reply.ok && reply.body.get("ok").and_then(serde_json::Value::as_bool) == Some(true) && reply.body.get("state").and_then(serde_json::Value::as_str) == Some("Queued");
+        let message = if ok { format!("Copy started on {tag}.") } else { match signal {
+            "backup-copy-night-running" => "Tonight's backup is running. Try again when it's done.".into(),
+            "pid2-schedule-fire-running" => format!("{tag} is already copying."),
+            "backup-pair-box-unreachable" => format!("{tag} didn't answer."),
+            "pin-inlet-missing" => format!("This HomeServer no longer holds {tag}'s PIN. Remove it and pair again."),
+            _ => signal.to_owned(),
+        }};
+        eprintln!("coronatio {PATH} {}", if ok { "ok" } else { "refused" });
+        (message, ok)
+    } else { ("That notification is already gone".to_owned(), false) };
+    notification_html_response(notifications_modal_html(&view, session, Some((&message, ok)), None, hidden, None))
+}
+
 async fn notifications_action_route(
     headers: axum::http::HeaderMap,
     Path((id, action)): Path<(String, String)>,
     axum::extract::Query(query): axum::extract::Query<std::collections::HashMap<String, String>>,
     body: Bytes,
 ) -> Response {
-    if !matches!(action.as_str(), "accept" | "dismiss" | "hide" | "unhide" | "update-now") { return StatusCode::NOT_FOUND.into_response(); }
+    if !matches!(action.as_str(), "accept" | "dismiss" | "hide" | "unhide" | "update-now" | "copy-now") { return StatusCode::NOT_FOUND.into_response(); }
+    if action == "copy-now" { return notifications_copy_route(headers, id, query).await; }
     if action == "update-now" { return notifications_update_route(headers, id, query, body).await; }
     let started = Instant::now();
     let names = if headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("application/json")) {

@@ -7,6 +7,10 @@ fn shell_backblaze_client() -> &'static str {
       statusStale: true,
       drives: [],
       drivesReady: false,
+      pairs: [],
+      boxDrives: new Map(),
+      selectedPair: null,
+      pairActing: false,
       summaryRows: [],
       summaryReady: false,
       ledgerRows: [],
@@ -183,6 +187,7 @@ fn shell_backblaze_client() -> &'static str {
     }
     function renderMain(binding = state.binding) {
       if (!current(binding)) return;
+      renderPairRequests(binding);
       renderDriveCards(binding);
       renderOffsiteCards(binding);
       renderRibbon(binding);
@@ -204,7 +209,8 @@ fn shell_backblaze_client() -> &'static str {
         const results = await Promise.allSettled([
           readJson(context, '/api/backblaze/status'),
           readJson(context, '/api/backups/drives', {}),
-          readJson(context, '/api/backups/ledger', { limit: 100 })
+          readJson(context, '/api/backups/ledger', { limit: 100 }),
+          readJson(context, '/api/backups/pairs', {})
         ]);
         if (!context.current() || !current(binding)) return false;
         try {
@@ -221,7 +227,13 @@ fn shell_backblaze_client() -> &'static str {
           state.summaryRows = normalizeLedgerResponse(results[2].value);
           state.summaryReady = true;
         } catch (_) { state.summaryRows = []; state.summaryReady = false; state.readErrors.ledger = true; }
+        try {
+          if (results[3].status !== 'fulfilled' || results[3].value?.ok === false || !Array.isArray(results[3].value?.pairs)) throw new Error('Pairs unavailable');
+          state.pairs = results[3].value.pairs.filter(isRecord);
+          state.boxDrives = new Map();
+        } catch (_) { state.pairs = []; state.boxDrives = new Map(); state.readErrors.pairs = true; }
         renderMain(binding);
+        void loadBoxDrives(binding);
         return true;
       }, { slots: [], timeoutMs: 12000, slowMs: 1500, retry: false });
     }
@@ -267,14 +279,53 @@ fn shell_backblaze_client() -> &'static str {
         <p>Connected by ${esc(transport)} <span>${esc(mount)}</span></p>
       </article>`;
     }
+    function renderPairRequests(binding = state.binding) {
+      const host = el('[data-backups-pair-requests]', binding); if (!host) return;
+      const pending = state.pairs.filter(pair => pair.state === 'pending');
+      host.innerHTML = pending.length ? `<strong>Asking to pair</strong>${pending.map(pair => `<p>${esc(pair.hostname || 'Box')} · ${esc(pair.mac)} · asked ${esc(formatDate(pair.requested_at))} <button type="button" data-pair-ask="${esc(pair.mac)}">Accept</button></p>`).join('')}` : '';
+    }
+    async function refreshPairs(binding = state.binding) {
+      const controller = actionController(binding);
+      try {
+        const body = await getJson('/api/backups/pairs', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}', signal: controller.signal }, binding);
+        if (!current(binding) || body?.ok === false || !Array.isArray(body?.pairs)) throw new Error('Pairs unavailable');
+        state.pairs = body.pairs.filter(isRecord);
+        const accepted = new Set(state.pairs.filter(pair => pair.state === 'accepted').map(pair => pair.mac));
+        state.boxDrives = new Map([...state.boxDrives].filter(([mac]) => accepted.has(mac)));
+        renderPairRequests(binding); renderDriveCards(binding);
+      } finally { actions.delete(controller); }
+    }
+    async function loadBoxDrives(binding = state.binding) {
+      if (!state.pairs.some(pair => pair.state === 'accepted')) return;
+      const controller = actionController(binding);
+      try {
+        const body = await getJson('/api/backups/box-drives', { method: 'POST', signal: controller.signal }, binding);
+        if (!current(binding)) return;
+        const accepted = new Set(state.pairs.filter(pair => pair.state === 'accepted').map(pair => pair.mac));
+        state.boxDrives = new Map((Array.isArray(body?.answers) ? body.answers : []).filter(row => accepted.has(row.mac)).map(row => [row.mac, row]));
+        for (const mac of accepted) if (!state.boxDrives.has(mac)) state.boxDrives.set(mac, { signal: 'unavailable', answer: null });
+        renderDriveCards(binding);
+      } catch (_) {
+        if (current(binding)) { for (const pair of state.pairs.filter(pair => pair.state === 'accepted')) state.boxDrives.set(pair.mac, {signal:'unavailable', answer:null}); renderDriveCards(binding); }
+      } finally { actions.delete(controller); }
+    }
+    function boxCard(pair) {
+      const name = pair.hostname || 'Box', road = state.boxDrives.get(pair.mac);
+      const checking = !road, unavailable = road && (road.signal || !road.answer);
+      const drive = !checking && !unavailable ? road.answer : null;
+      const [health, tone] = drive ? driveHealth(drive) : [checking ? 'Checking…' : 'Not answering right now', 'unknown'];
+      const size = Number(drive?.sizeBytes), used = Number(drive?.usedBytes);
+      const percent = size > 0 && Number.isFinite(used) ? Math.max(0, Math.min(100, used / size * 100)) : 0;
+      const report = pair.report_outcome === 'ok' ? `Last good copy ${formatDate(pair.report_at)}` : ['failed','refused'].includes(pair.report_outcome) ? `Missed its last copy · ${pair.report_signal || '—'} · ${formatDate(pair.report_at)}` : 'No copy yet';
+      return `<article class="backup-drive-card backup-drive-card--backup ui-panel ui-panel--filled"><strong>Backup drive · in ${esc(name)}</strong><span class="backup-health backup-health--${tone}">${esc(health)}</span><p>${drive ? esc(drive.model || 'Model unavailable') + ' · ' + esc(formatBytes(drive.sizeBytes)) : esc(health)}</p>${drive ? `<div class="backup-meter" role="img" aria-label="${esc(formatBytes(drive.usedBytes))} used of ${esc(formatBytes(drive.sizeBytes))}"><span style="width:${percent.toFixed(1)}%"></span></div><p>${esc(formatBytes(drive.usedBytes))} used · ${esc(formatBytes(drive.freeBytes))} free</p><p>Read errors this boot <strong>${esc(drive.readErrors ?? '—')}</strong></p>` : ''}<p class="${['failed','refused'].includes(pair.report_outcome) ? 'backup-result--paused' : ''}">${esc(report)}</p><button type="button" data-pair-copy="${esc(pair.mac)}">Copy now</button> <button type="button" data-pair-remove="${esc(pair.mac)}">Remove…</button></article>`;
+    }
     function renderDriveCards(binding = state.binding) {
       const host = el('[data-backups-drives]', binding);
       if (!host) return;
-      if (!state.drivesReady) { host.innerHTML = '<p class="backup-empty">Drive details are unavailable.</p>'; return; }
       const mains = state.drives.filter(drive => drive.role === 'main' && drive.present === true);
       const backups = state.drives.filter(drive => drive.role === 'backup' && drive.present === true);
-      const cards = [driveCard(mains[0], 'main', 0, binding), ...(backups.length ? backups.map((drive, index) => driveCard(drive, 'backup', index, binding)) : [driveCard(null, 'backup', 0, binding)])];
-      host.innerHTML = cards.join('');
+      const cards = state.drivesReady ? [driveCard(mains[0], 'main', 0, binding), ...(backups.length ? backups.map((drive, index) => driveCard(drive, 'backup', index, binding)) : [driveCard(null, 'backup', 0, binding)])] : ['<p class="backup-empty">Drive details are unavailable.</p>'];
+      host.innerHTML = cards.concat(state.pairs.filter(pair => pair.state === 'accepted').map(boxCard)).join('');
     }
     function newestNasSync(rows = state.summaryRows) {
       return rows.find(row => row.target === 'nas-sync' || String(row.verb || '').startsWith('nas-sync-')) || null;
@@ -514,6 +565,11 @@ fn shell_backblaze_client() -> &'static str {
         const ledger = root(binding)?.querySelector('[data-backups-modal="ledger"]');
         state.activeModal = ledger && !ledger.hidden ? 'ledger' : null;
         return;
+      }
+      if (name === 'pair-accept' || name === 'pair-remove') {
+        modal?.querySelectorAll('input[type="password"]').forEach(input => { input.value = ''; });
+        const submit = el('[data-pair-accept-submit]', binding); if (submit) submit.disabled = true;
+        modalResult(name, '', binding); state.selectedPair = null;
       }
       if (name === 'add') {
         scrubAddModal(binding); state.addMode = 'add'; state.editBucket = null;
@@ -1057,10 +1113,66 @@ fn shell_backblaze_client() -> &'static str {
       if (!safeMainDrivePath(path) || path === '/mnt/nas') return;
       void loadFolders(path, binding);
     }
+    function pairMessage(signal, name) {
+      const messages = {
+        'exousia-pin-wrong': "This HomeServer's PIN isn't right.",
+        'backup-pair-box-pin-wrong': `${name}'s PIN isn't right.`,
+        'backup-pair-box-unreachable': `${name} didn't answer.`,
+        'backup-pair-inlet-name-taken': 'Another box already uses that name.',
+        'backup-copy-night-running': "Tonight's backup is running. Try again when it's done.",
+        'pid2-schedule-fire-running': `${name} is already copying.`,
+        'pin-inlet-missing': `This HomeServer no longer holds ${name}'s PIN. Remove it and pair again.`
+      };
+      return messages[signal] || signal || 'Request unavailable.';
+    }
+    function openPair(kind, button, binding) {
+      if (!current(binding) || !roleAuthorized()) return;
+      const mac = kind === 'pair-accept' ? button.dataset.pairAsk : button.dataset.pairRemove;
+      const pair = state.pairs.find(row => row.mac === mac && row.state === (kind === 'pair-accept' ? 'pending' : 'accepted'));
+      if (!pair) return;
+      state.selectedPair = pair;
+      setText('[data-pair-box-label]', `${pair.hostname || 'Box'}'s PIN`, binding);
+      setText('[data-pair-remove-question]', `Stop backing up to ${pair.hostname || 'Box'}'s drive? The copies already on it stay there.`, binding);
+      openModal(kind, button, binding);
+    }
+    async function pairAct(kind, pair, binding = state.binding) {
+      if (!pair || state.pairActing || !current(binding) || !roleAuthorized()) return;
+      const modal = kind === 'accept' ? 'pair-accept' : 'pair-remove';
+      const home = el(kind === 'accept' ? '[data-pair-home-pin]' : '[data-pair-remove-pin]', binding);
+      const other = el('[data-pair-box-pin]', binding);
+      const pin = home?.value || '', boxPin = kind === 'accept' ? other?.value || '' : '';
+      if (kind !== 'copy-now' && (!pin || (kind === 'accept' && !boxPin))) return;
+      if (home) home.value = ''; if (other) other.value = '';
+      const submit = el('[data-pair-accept-submit]', binding); if (submit) submit.disabled = true;
+      state.pairActing = true;
+      const controller = actionController(binding);
+      try {
+        const payload = kind === 'copy-now' ? {mac:pair.mac} : kind === 'accept' ? {mac:pair.mac, pin, boxPin} : {mac:pair.mac, pin};
+        const body = await getJson(`/api/backups/pairs/${kind}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), signal:controller.signal}, binding);
+        if (!current(binding)) return;
+        const ok = body?.ok === true && (kind !== 'copy-now' || body.state === 'Queued');
+        const message = ok ? (kind === 'copy-now' ? `Copy started on ${pair.hostname || 'Box'}.` : kind === 'accept' ? 'Pair accepted.' : 'Backup box removed.') : pairMessage(body?.signal ?? body?.firstMissingSignal, pair.hostname || 'Box');
+        if (kind === 'copy-now') setMainResult(message, binding); else if (ok) { closeModal(modal, binding); setMainResult(message, binding); } else modalResult(modal, message, binding);
+        await refreshPairs(binding);
+        if (ok && kind === 'accept') void loadBoxDrives(binding);
+      } catch (_) { if (current(binding)) { if (kind === 'copy-now') setMainResult('Request unavailable.', binding); else modalResult(modal, 'Request unavailable.', binding); } }
+      finally { if (home) home.value = ''; if (other) other.value = ''; state.pairActing = false; if (submit) submit.disabled = true; actions.delete(controller); }
+    }
+    document.body.addEventListener('input', event => {
+      const target = event.target instanceof Element ? event.target : null, binding = state.binding;
+      if (!target || !binding || !root(binding)?.contains(target) || !target.matches('[data-pair-home-pin], [data-pair-box-pin]')) return;
+      const button = el('[data-pair-accept-submit]', binding);
+      if (button) button.disabled = !el('[data-pair-home-pin]', binding)?.value || !el('[data-pair-box-pin]', binding)?.value;
+    });
     document.body.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null;
       const binding = state.binding;
       if (!target || !binding || !root(binding)?.contains(target)) return;
+      if (target.closest('[data-pair-ask]')) { openPair('pair-accept', target.closest('[data-pair-ask]'), binding); return; }
+      if (target.closest('[data-pair-remove]')) { openPair('pair-remove', target.closest('[data-pair-remove]'), binding); return; }
+      if (target.closest('[data-pair-accept-submit]')) { void pairAct('accept', state.selectedPair, binding); return; }
+      if (target.closest('[data-pair-remove-submit]')) { void pairAct('revoke', state.selectedPair, binding); return; }
+      if (target.closest('[data-pair-copy]')) { const mac = target.closest('[data-pair-copy]').dataset.pairCopy; void pairAct('copy-now', state.pairs.find(pair => pair.mac === mac && pair.state === 'accepted'), binding); return; }
       const open = target.closest('[data-backups-open]');
       if (open) { openModal(open.dataset.backupsOpen, open, binding); return; }
       if (target.closest('[data-backups-close]')) {
