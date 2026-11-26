@@ -158,6 +158,7 @@ fn shell_linker_client() -> &'static str {
         }
         if (key === ' ') {
           event.preventDefault();
+          if (event.repeat) return;
           if (target.matches('input[type="checkbox"]')) checkboxSpace = true;
           pendingNextPath = current.dataset.linkerPath || null;
           current.querySelector('input[type="checkbox"]')?.click();
