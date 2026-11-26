@@ -836,7 +836,7 @@ fn shell_backblaze_client() -> &'static str {
       const on = nas?.pid2?.schedule?.enabled === true;
       const source = scheduled.find(job => job === nas && isRecord(job.pid2.schedule.calendar)) || scheduled.find(job => isRecord(job.pid2.schedule.calendar));
       const calendar = source?.pid2?.schedule?.calendar;
-      let time = typeof calendar?.time === 'string' ? calendar.time : '';
+      let time = typeof calendar?.time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(calendar.time) ? calendar.time : '';
       let weekday = typeof calendar?.weekday === 'string' ? calendar.weekday : 'Mon';
       if (time && source !== nas) ({ time, weekday } = addMinutes(time, -1, weekday));
       const frequency = scheduled.length && scheduled.every(job => job.pid2.schedule.enabled !== true) ? 'manual' :
@@ -1056,7 +1056,13 @@ fn shell_backblaze_client() -> &'static str {
         }
         if (current(binding)) { closeModal('schedule', binding); setMainResult('Schedule saved.', binding); await loadMain(binding); }
       } catch (error) { if (current(binding)) modalResult('schedule', error.message || 'Schedule could not be saved.', binding); }
-      finally { actions.delete(controller); if (save && current(binding)) save.disabled = false; }
+      finally {
+        actions.delete(controller);
+        if (save && current(binding)) {
+          const values = { frequency: el('[data-schedule-frequency]', binding)?.value || '', time: el('[data-schedule-time]', binding)?.value || '', weekday: el('[data-schedule-day]', binding)?.value || '', on: el('[data-schedule-on]', binding)?.checked === true };
+          save.disabled = !canUse(binding) || !state.scheduleBaseline || !values.frequency || stable(values) === stable(state.scheduleOpened);
+        }
+      }
     }
     async function runBucket(bucketName, binding = state.binding) {
       if (!canUse(binding) || !bucketFor(bucketName)) return;
