@@ -25,7 +25,6 @@ fn shell_document_3() -> &'static str {
         el.setAttribute('aria-hidden', String(!headerState.isAdmin));
       });
       if (!headerState.isAdmin) {
-        closeWakeOnLanModal();
         document.querySelectorAll('[data-upload-history-backdrop], [data-upload-blacklist-backdrop]').forEach(closeUploadModal);
       }
     }
@@ -169,7 +168,6 @@ fn shell_document_3() -> &'static str {
     function modalTemplate(kind) {
       const indicator = indicatorModalTemplate(kind);
       if (indicator) return indicator;
-      if (kind === 'wake-on-lan') return wakeOnLanModalTemplate();
       if (kind === 'theme') return `<div class="theme-modal"><p>Current theme: ${window.CrownTheme?.current() || 'unavailable'}.</p><p>Theme selection comes from homeserver.json global.theme.name.</p></div>`;
       return '';
     }
@@ -1229,7 +1227,6 @@ fn shell_document_3() -> &'static str {
         !(infoBackdrop.classList.contains('open') && infoBody.querySelector('[data-modal-kind-body="openvpn"]'));
       if (infoBody.querySelector('[data-modal-kind-body="power-meter"]')) cancelPowerCalibrationEditing();
       infoModalGeneration += 1;
-      invalidateWakeOnLanModal();
       clearTransmissionSecrets();
       infoTitle.textContent = title;
       infoBody.innerHTML = modalTemplate(kind);
@@ -1264,7 +1261,6 @@ fn shell_document_3() -> &'static str {
       infoBackdrop.removeAttribute('data-modal-sticky');
       if (infoBody.querySelector('[data-modal-kind-body="power-meter"]')) cancelPowerCalibrationEditing();
       infoModalGeneration += 1;
-      invalidateWakeOnLanModal();
       clearTransmissionSecrets();
       infoBackdrop.classList.remove('open');
       infoBackdrop.setAttribute('aria-hidden', 'true');
@@ -1695,7 +1691,6 @@ __NATIVE_HTMX_OWNER__
       }
       if (window.getImmortalFloorState?.() !== 'Seated') return;
       const active = currentActiveTabId();
-      if (active !== 'stats') closeWakeOnLanModal();
       if (!viewportFamilyAdmitted(active)) return;
       let binding = scaffoldRegistry.capture(active);
       if (!binding) binding = scaffoldRegistry.bind(active);

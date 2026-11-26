@@ -60,7 +60,6 @@ fn shell_document_2() -> &'static str {
         </article>
       </section>
       <section class="pane active" id="pane-stats" data-pane-panel="stats" data-view-panel="stats" data-scaffold-root data-guest-id="stats" data-scaffold-version="1" role="tabpanel" aria-label="Stats">
-        <div class="stats-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-admin-only="true" data-wake-on-lan-open hidden aria-hidden="true">Wake on LAN</button></div>
         <div class="stats-tablet" data-stats-viewport data-react-quarry="StatsTablet" data-identity-standard="one-to-one">
           __STATS_ELEMENTS_FRAGMENT__
         </div>

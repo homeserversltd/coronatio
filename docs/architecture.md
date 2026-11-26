@@ -4,7 +4,7 @@ Coronatio is a Rust process that presents a self-hosted appliance through one we
 
 ## Native tabs
 
-Native tabs are compiled into Coronatio. The current set is Admin, Portals, Upload, Stats, backBlaze, Wake on LAN, Test, Linker, DHCP, Firewall, and DNS. Admin, Wake on LAN, Linker, Firewall, and DNS require admin mode. DHCP is hidden by default.
+Native tabs are compiled into Coronatio. The current set is Admin, Portals, Upload, Stats, backBlaze, Test, Linker, DHCP, Firewall, and DNS. Admin, Linker, Firewall, and DNS require admin mode. The LAN Overview cartridge offers an admin-only Wake key on each device card. DHCP is hidden by default.
 
 Each native tab has an explicit route and state source. Native tabs are the right place for features that need direct integration with Coronatio's rendering, session filtering, or typed routes.
 

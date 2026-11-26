@@ -1,8 +1,3 @@
-#[derive(Deserialize)]
-struct WakeOnLanStatusQuery {
-    ip: Option<String>,
-}
-
 fn wake_on_lan_error(path: &str, error: &str, signal: &str, ip: Option<&str>) -> Response {
     (
         StatusCode::SERVICE_UNAVAILABLE,
@@ -30,108 +25,42 @@ fn wake_on_lan_broadcast(ip: &str) -> String {
         .unwrap_or_else(|_| "255.255.255.255".to_string())
 }
 
-fn wake_on_lan_staff_read(headers: &axum::http::HeaderMap, ip: &str) -> CaduceusHttpReadback {
-    caduceus_actuate_json(
-        &mutation_authority(),
-        headers,
-        "/api/admin/wake-on-lan/probe",
-        serde_json::json!({ "ip": ip }),
-    )
+fn wake_on_lan_fragment(sent: bool, signal: &str) -> Response {
+    let result = if sent { "sent" } else { "not-sent" };
+    let text = if sent { "Sent" } else { "Not sent" };
+    Html(maud::html! { span data-wake-result=(result) data-wake-signal=(signal) { (text) } }.into_string()).into_response()
 }
-async fn wake_on_lan_devices_route() -> Response {
-    let leases = caduceus_http("GET", "/api/v1/network/dhcp/leases");
-    let reservations = caduceus_http("GET", "/api/v1/network/dhcp/reservations");
-    if leases.ok && reservations.ok {
-        return (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "ok": true,
-                "leases": device_identity_payload(leases.body),
-                "reservations": device_identity_payload(reservations.body),
-            })),
-        )
-            .into_response();
-    }
-    let signal = if !leases.ok {
-        leases.first_missing_signal
+
+async fn wake_on_lan_wake_route(request: axum::extract::Request) -> Response {
+    use axum::extract::FromRequest;
+    let headers = request.headers().clone();
+    let htmx = headers.get("HX-Request").and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    let is_form = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/x-www-form-urlencoded"));
+    let payload = if is_form {
+        Form::<BTreeMap<String, String>>::from_request(request, &()).await.ok()
+            .and_then(|Form(value)| serde_json::to_value(value).ok())
     } else {
-        reservations.first_missing_signal
-    };
-    wake_on_lan_error(
-        "/api/wakeonlan/devices",
-        "DHCP device read is unavailable",
-        &signal,
-        None,
-    )
-}
-
-async fn wake_on_lan_wake_route(
-    headers: axum::http::HeaderMap,
-    payload: Option<Json<serde_json::Value>>,
-) -> Response {
-    let path = "/api/wakeonlan/wake";
-    let payload = payload
-        .map(|Json(value)| value)
-        .unwrap_or_else(|| serde_json::json!({}));
-    let mac = payload
-        .get("mac")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .unwrap_or("");
-    let ip = payload
-        .get("ip")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .unwrap_or("");
-    if mac.is_empty() || ip.is_empty() {
-        return wake_on_lan_error(
-            path,
-            "mac and ip are required",
-            "wake-on-lan-target-required",
-            Some(ip),
-        );
+        Json::<serde_json::Value>::from_request(request, &()).await.ok().map(|Json(value)| value)
+    }.unwrap_or_else(|| serde_json::json!({}));
+    let mac = payload.get("mac").and_then(serde_json::Value::as_str).map(str::trim).unwrap_or("");
+    let ip = payload.get("ip").and_then(serde_json::Value::as_str).map(str::trim).unwrap_or("");
+    if mac.is_empty() {
+        let signal = "wake-on-lan-target-required";
+        return if htmx { wake_on_lan_fragment(false, signal) } else {
+            wake_on_lan_error("/api/wakeonlan/wake", "mac is required", signal, Some(ip))
+        };
     }
-    let broadcast = payload
-        .get("broadcast")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| wake_on_lan_broadcast(ip));
     let readback = caduceus_actuate_json(
-        &mutation_authority(),
-        &headers,
-        "/api/admin/wake-on-lan/send",
-        serde_json::json!({ "mac": mac, "broadcast": broadcast }),
+        &mutation_authority(), &headers, "/api/v1/network/device/wake",
+        serde_json::json!({ "action": "send", "mac": mac, "broadcast": wake_on_lan_broadcast(ip) }),
     );
+    if htmx {
+        return wake_on_lan_fragment(readback.ok, if readback.ok { "" } else { &readback.first_missing_signal });
+    }
     if readback.ok {
         return (StatusCode::OK, Json(readback.body)).into_response();
     }
-    wake_on_lan_error(
-        path,
-        "Wake-on-LAN staff actuator is unavailable",
-        &readback.first_missing_signal,
-        Some(ip),
-    )
-}
-
-async fn wake_on_lan_status_route(
-    headers: axum::http::HeaderMap,
-    Query(query): Query<WakeOnLanStatusQuery>,
-) -> Response {
-    let path = "/api/wakeonlan/status";
-    let ip = query.ip.as_deref().map(str::trim).unwrap_or("");
-    if ip.is_empty() {
-        return wake_on_lan_error(path, "ip is required", "wake-on-lan-ip-required", None);
-    }
-    let readback = wake_on_lan_staff_read(&headers, ip);
-    if readback.ok {
-        return (StatusCode::OK, Json(readback.body)).into_response();
-    }
-    wake_on_lan_error(
-        path,
-        "Wake-on-LAN staff actuator is unavailable",
-        &readback.first_missing_signal,
-        Some(ip),
-    )
+    wake_on_lan_error("/api/wakeonlan/wake", "Wake-on-LAN staff actuator is unavailable", &readback.first_missing_signal, Some(ip))
 }
