@@ -81,11 +81,12 @@ fn shell_linker_client() -> &'static str {
         }
         if (key === 'h' || key === 'arrowleft') {
           event.preventDefault();
-          const path = root.dataset.linkerPath || '/';
-          if (path !== '/') {
+          const path = root.dataset.linkerPath || '';
+          const boundary = root.dataset.linkerRoot || '';
+          if (boundary && path.startsWith(`${boundary}/`) && path.replace(/\/+$/, '') !== boundary && !path.slice(boundary.length + 1).split('/').some(part => part === '.' || part === '..')) {
             const parent = path.replace(/\/+$/, '').split('/');
             parent.pop();
-            requestPath(root, parent.join('/') || '/');
+            requestPath(root, parent.join('/'));
           }
           return;
         }

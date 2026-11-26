@@ -45,6 +45,7 @@ struct LinkerState {
     mode: LinkerMode,
     rename_naming: bool,
     feedback: String,
+    retry_read: Option<(String, String)>,
 }
 impl Default for LinkerState {
     fn default() -> Self {
@@ -57,6 +58,7 @@ impl Default for LinkerState {
             mode: LinkerMode::Browsing,
             rename_naming: false,
             feedback: "Ready to browse admitted sources.".into(),
+            retry_read: None,
         }
     }
 }
@@ -86,8 +88,7 @@ fn linker_url(v: &str) -> String {
 }
 fn linker_entries(body: &serde_json::Value, filter: &str) -> Vec<LinkerEntry> {
     let Some(items) = body
-        .get("receipt")
-        .and_then(|v| v.get("entries"))
+        .get("entries")
         .and_then(serde_json::Value::as_array)
     else {
         return Vec::new();
@@ -137,13 +138,18 @@ fn linker_fragment(s: &LinkerState, readback: Option<&CaduceusHttpReadback>) -> 
         format!("<div class=\"{}\" data-linker-entry data-linker-directory=\"{}\" data-linker-path=\"{}\" tabindex=\"-1\" {}><span class=\"linker-cursor\">›</span><form method=\"post\" action=\"/admit/linker/select\"><input type=\"hidden\" name=\"path\" value=\"{}\"><input type=\"checkbox\" name=\"checked\" value=\"on\" aria-label=\"Select {}\" {} hx-post=\"/admit/linker/select\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\" hx-trigger=\"click consume\" hx-include=\"closest form\" onclick=\"event.stopPropagation()\"></form><span class=\"entry-icon\">{}</span><span class=\"entry-name\">{}</span>{}</div>",if e.is_dir{"linker-row linker-directory"}else{"linker-row"},e.is_dir,linker_escape(&e.path),nav,linker_escape(&e.path),linker_escape(&e.name),checked,if e.is_dir{"📁"}else{"📄"},linker_escape(&e.name),linked)
     }).collect::<Vec<_>>().join("")
     };
-    let segments = s
-        .path
-        .split('/')
-        .filter(|p| !p.is_empty())
-        .collect::<Vec<_>>();
-    let mut prefix = String::new();
-    let trail=segments.iter().enumerate().map(|(i,n)|{prefix.push('/');prefix.push_str(n);if i+1==segments.len(){linker_escape(n)}else{format!("<a href=\"/admit/linker?path={}\" hx-get=\"/admit/linker?path={}\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\">{}</a>",linker_url(&prefix),linker_url(&prefix),linker_escape(n))}}).collect::<Vec<_>>().join(" / ");
+    let root = LinkerState::default().path;
+    let suffix = s.path.strip_prefix(&root).filter(|p| p.is_empty() || p.starts_with('/')).unwrap_or("");
+    let segments = suffix.split('/').filter(|p| !p.is_empty()).collect::<Vec<_>>();
+    let mut prefix = root.clone();
+    let mut trail = if segments.is_empty() { linker_escape(&root) } else { format!("<a href=\"/admit/linker?path={}\" hx-get=\"/admit/linker?path={}\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\">{}</a>", linker_url(&root), linker_url(&root), linker_escape(&root)) };
+    for (i, n) in segments.iter().enumerate() {
+        prefix.push('/'); prefix.push_str(n);
+        trail.push_str(" / ");
+        if i + 1 == segments.len() { trail.push_str(&linker_escape(n)); }
+        else { trail.push_str(&format!("<a href=\"/admit/linker?path={}\" hx-get=\"/admit/linker?path={}\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\">{}</a>", linker_url(&prefix), linker_url(&prefix), linker_escape(n))); }
+    }
+    let retry = s.retry_read.as_ref().map(|(path, filter)| format!("<button data-linker-retry hx-get=\"/admit/linker?path={}&amp;filter={}\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\">Retry</button>", linker_url(path), linker_url(filter))).unwrap_or_default();
     let tree=s.entries.iter().filter(|e|e.is_dir).map(|e|format!("<div class=\"directory-entry\" role=\"treeitem\" hx-get=\"/admit/linker?path={}\" hx-target=\"#linker-fragment\" hx-swap=\"outerHTML\"><span class=\"entry-icon\">📁</span><span class=\"entry-name\">{}</span></div>",linker_url(&e.path),linker_escape(&e.name))).collect::<Vec<_>>().join("");
     let naming = if s.mode == LinkerMode::Naming {
         if s.rename_naming {
@@ -172,14 +178,16 @@ fn linker_fragment(s: &LinkerState, readback: Option<&CaduceusHttpReadback>) -> 
     };
     let style = r#"<style>.linker-cursor{visibility:hidden}.linker-row.cursor{outline:2px solid currentColor;background:color-mix(in srgb,currentColor 10%,transparent)}.linker-row.cursor>.linker-cursor{visibility:visible}</style>"#;
     format!(
-        r###"<section id="linker-fragment" data-linker-state="{}" data-linker-path="{}"><header><h2>Linker</h2><nav aria-label="Ancestor trail"><a href="/admit/linker?path=%2F" hx-get="/admit/linker?path=%2F" hx-target="#linker-fragment" hx-swap="outerHTML">/</a>{}</nav><p>Current path: {} · Visible: {} · Selected: {} · Last feedback: <span data-linker-read-status aria-live="polite">{}</span></p></header><nav class="directory-tree-container" role="tree" data-linker-tree aria-label="Child directories">{}</nav><form method="get" action="/admit/linker" hx-get="/admit/linker" hx-target="#linker-fragment" hx-swap="outerHTML"><label>Name filter <input name="filter" type="search" value="{}"></label><input type="hidden" name="path" value="{}"><button>Filter</button></form><div class="linker-list" role="list">{}</div>{}<form class="linker-action-shelf" method="post"><button formaction="/admit/linker/deploy" hx-post="/admit/linker/deploy" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Deploy selected</button><button formaction="/admit/linker/naming" hx-post="/admit/linker/naming" hx-target="#linker-fragment" hx-swap="outerHTML">New directory</button><button formaction="/admit/linker/rename" hx-post="/admit/linker/rename" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Rename selected</button><button formaction="/admit/linker/delete" hx-post="/admit/linker/delete" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Delete selected</button></form>{}{}<p hidden>Browsing Naming Result Fault</p></section>"###,
+        r###"<section id="linker-fragment" data-linker-state="{}" data-linker-path="{}" data-linker-root="{}"><header><h2>Linker</h2><nav aria-label="Ancestor trail">{}</nav><p>Current path: {} · Visible: {} · Selected: {} · Last feedback: <span data-linker-read-status aria-live="polite">{}</span></p>{}</header><nav class="directory-tree-container" role="tree" data-linker-tree aria-label="Child directories">{}</nav><form method="get" action="/admit/linker" hx-get="/admit/linker" hx-target="#linker-fragment" hx-swap="outerHTML"><label>Name filter <input name="filter" type="search" value="{}"></label><input type="hidden" name="path" value="{}"><button>Filter</button></form><div class="linker-list" role="list">{}</div>{}<form class="linker-action-shelf" method="post"><button formaction="/admit/linker/deploy" hx-post="/admit/linker/deploy" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Deploy selected</button><button formaction="/admit/linker/naming" hx-post="/admit/linker/naming" hx-target="#linker-fragment" hx-swap="outerHTML">New directory</button><button formaction="/admit/linker/rename" hx-post="/admit/linker/rename" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Rename selected</button><button formaction="/admit/linker/delete" hx-post="/admit/linker/delete" hx-target="#linker-fragment" hx-swap="outerHTML" {}>Delete selected</button></form>{}{}<p hidden>Browsing Naming Result Fault</p></section>"###,
         s.mode.as_str(),
         linker_escape(&s.path),
+        linker_escape(&root),
         trail,
         linker_escape(&s.path),
         s.entries.len(),
         s.selected.len(),
         linker_escape(&s.feedback),
+        retry,
         tree,
         linker_escape(&s.filter),
         linker_escape(&s.path),
@@ -217,6 +225,17 @@ fn linker_call(
         p,
         b,
     )
+}
+fn linker_read_refusal(s: &mut LinkerState, r: &CaduceusHttpReadback, path: String, filter: String) -> Response {
+    s.mode = LinkerMode::Fault;
+    s.feedback = r.first_missing_signal.clone();
+    if !r.ok && r.first_missing_signal.starts_with("linker-") {
+        let mut fault = s.clone();
+        fault.retry_read = Some((path, filter));
+        linker_response(&fault, Some(r), StatusCode::OK)
+    } else {
+        linker_response(s, Some(r), mutation_response_status(r))
+    }
 }
 fn linker_read(
     h: &axum::http::HeaderMap,
@@ -273,7 +292,7 @@ async fn linker_fragment_route(h: axum::http::HeaderMap, Query(q): Query<LinkerQ
         skeleton.feedback = "Directory data loads after this view is admitted.".into();
         let body = linker_fragment(&skeleton, None).replacen(
             "<section id=\"linker-fragment\"",
-            r#"<section id="linker-fragment" data-linker-readback hx-get="/admit/linker?path=%2F" hx-trigger="linker-readback" hx-target="this" hx-swap="outerHTML" hx-request='{"timeout":8000}'"#,
+            &format!(r#"<section id="linker-fragment" data-linker-readback hx-get="/admit/linker?path={}" hx-trigger="linker-readback" hx-target="this" hx-swap="outerHTML" hx-request='{{"timeout":8000}}'"#, linker_url(&skeleton.path)),
             1,
         );
         let mut response = (StatusCode::OK, Html(body)).into_response();
@@ -283,23 +302,21 @@ async fn linker_fragment_route(h: axum::http::HeaderMap, Query(q): Query<LinkerQ
     let k = linker_key(&h);
     let mut all = linker_states().lock().expect("linker states lock");
     let s = all.entry(k).or_default();
+    let mut staged = s.clone();
     if let Some(p) = q.path.filter(|p| !p.trim().is_empty()) {
-        s.path = p
+        staged.path = p
     }
     if let Some(f) = q.filter {
-        s.filter = f
+        staged.filter = f
     }
-    s.mode = LinkerMode::Browsing;
-    match linker_browse(&h, s) {
+    staged.mode = LinkerMode::Browsing;
+    match linker_browse(&h, &mut staged) {
         Ok(r) => {
-            s.feedback = format!("Browse complete at {}.", s.path);
+            staged.feedback = format!("Browse complete at {}.", staged.path);
+            *s = staged;
             linker_response(s, Some(&r), StatusCode::OK)
         }
-        Err(r) => {
-            s.mode = LinkerMode::Fault;
-            s.feedback = r.first_missing_signal.clone();
-            linker_response(s, Some(&r), mutation_response_status(&r))
-        }
+        Err(r) => linker_read_refusal(s, &r, staged.path, staged.filter),
     }
 }
 fn linker_finish(
@@ -366,25 +383,19 @@ async fn linker_transition_route(
                 s.selected.retain(|x| x != &p);
                 s.selected_delete_eligible.remove(&p);
             }
-            s.mode = LinkerMode::Browsing;
-            match linker_browse(&h, s) {
-                Ok(r) => linker_response(s, Some(&r), StatusCode::OK),
-                Err(r) => {
-                    s.mode = LinkerMode::Fault;
-                    s.feedback = r.first_missing_signal.clone();
-                    linker_response(s, Some(&r), mutation_response_status(&r))
-                }
+            let mut staged = s.clone();
+            staged.mode = LinkerMode::Browsing;
+            match linker_browse(&h, &mut staged) {
+                Ok(r) => { *s = staged; linker_response(s, Some(&r), StatusCode::OK) },
+                Err(r) => linker_read_refusal(s, &r, staged.path, staged.filter),
             }
         }
         "browse" => {
-            s.mode = LinkerMode::Browsing;
-            match linker_browse(&h, s) {
-                Ok(r) => linker_response(s, Some(&r), StatusCode::OK),
-                Err(r) => {
-                    s.mode = LinkerMode::Fault;
-                    s.feedback = r.first_missing_signal.clone();
-                    linker_response(s, Some(&r), mutation_response_status(&r))
-                }
+            let mut staged = s.clone();
+            staged.mode = LinkerMode::Browsing;
+            match linker_browse(&h, &mut staged) {
+                Ok(r) => { *s = staged; linker_response(s, Some(&r), StatusCode::OK) },
+                Err(r) => linker_read_refusal(s, &r, staged.path, staged.filter),
             }
         }
         "naming" => {
