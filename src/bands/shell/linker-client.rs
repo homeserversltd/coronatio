@@ -3,6 +3,18 @@ fn shell_linker_client() -> &'static str {
       let currentPath = null;
       let pendingNextPath = null;
       let cursorIndex = 0;
+      let pendingEditor = null;
+
+      function editors(root) {
+        return [...root.querySelectorAll('input,textarea,[contenteditable]')];
+      }
+
+      function sameEditor(a, b) {
+        return a.tagName === b.tagName && a.id === b.id &&
+          a.getAttribute('name') === b.getAttribute('name') &&
+          a.getAttribute('type') === b.getAttribute('type') &&
+          a.closest('[data-linker-entry]')?.dataset.linkerPath === b.closest('[data-linker-entry]')?.dataset.linkerPath;
+      }
 
       function entries(root) {
         return [...root.querySelectorAll('[data-linker-entry]')];
@@ -56,9 +68,25 @@ fn shell_linker_client() -> &'static str {
         });
       }
 
+      document.body.addEventListener('htmx:beforeSwap', event => {
+        const root = event.detail?.target;
+        if (!(root instanceof Element) || !root.matches('#linker-fragment')) return;
+        const focused = document.activeElement;
+        pendingEditor = null;
+        if (!activePane(root) || !(focused instanceof Element) || !root.contains(focused) || !focused.matches('input,textarea,[contenteditable]')) return;
+        pendingEditor = { element: focused, index: editors(root).filter(editor => sameEditor(editor, focused)).indexOf(focused) };
+      });
+
       document.body.addEventListener('htmx:afterSwap', event => {
         const target = event.target;
-        if (target instanceof Element && (target.matches('#linker-fragment') || target.querySelector('#linker-fragment'))) refresh(target);
+        if (!(target instanceof Element) || !(target.matches('#linker-fragment') || target.querySelector('#linker-fragment'))) return;
+        const root = target.matches('#linker-fragment') ? target : target.querySelector('#linker-fragment');
+        if (pendingEditor && root.isConnected && activePane(root)) {
+          const replacement = editors(root).filter(editor => sameEditor(editor, pendingEditor.element))[pendingEditor.index];
+          if (replacement && !root.contains(document.activeElement)) replacement.focus();
+        }
+        pendingEditor = null;
+        refresh(target);
       });
 
       document.body.addEventListener('keydown', event => {
