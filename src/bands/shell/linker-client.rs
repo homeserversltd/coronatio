@@ -25,7 +25,9 @@ fn shell_linker_client() -> &'static str {
 
       function refresh(node) {
         const root = node?.matches?.('#linker-fragment') ? node : node?.querySelector?.('#linker-fragment');
-        if (!root || !activePane(root)) return false;
+        if (!root || !root.isConnected || !activePane(root)) return false;
+        const focused = document.activeElement;
+        if (focused instanceof Element && root.contains(focused) && focused.closest('input,textarea,[contenteditable]')) return false;
         const rows = entries(root);
         if (!rows.length) {
           currentPath = null;
@@ -55,7 +57,7 @@ fn shell_linker_client() -> &'static str {
       }
 
       document.body.addEventListener('htmx:afterSwap', event => {
-        const target = event.detail?.target;
+        const target = event.target;
         if (target instanceof Element && (target.matches('#linker-fragment') || target.querySelector('#linker-fragment'))) refresh(target);
       });
 
