@@ -15,14 +15,13 @@ fn wake_on_lan_error(path: &str, error: &str, signal: &str, ip: Option<&str>) ->
         .into_response()
 }
 
-fn wake_on_lan_broadcast(ip: &str) -> String {
-    ip.parse::<std::net::Ipv4Addr>()
-        .map(|address| {
-            let mut octets = address.octets();
-            octets[3] = 255;
-            std::net::Ipv4Addr::from(octets).to_string()
-        })
-        .unwrap_or_else(|_| "255.255.255.255".to_string())
+fn wake_on_lan_broadcast(ip: &str) -> Option<String> {
+    ip.parse::<std::net::Ipv4Addr>().ok().and_then(|address| {
+        let mut octets = address.octets();
+        octets[3] = 255;
+        let broadcast = std::net::Ipv4Addr::from(octets);
+        (broadcast != std::net::Ipv4Addr::BROADCAST).then(|| broadcast.to_string())
+    })
 }
 
 fn wake_on_lan_fragment(sent: bool, signal: &str) -> Response {
@@ -46,15 +45,16 @@ async fn wake_on_lan_wake_route(request: axum::extract::Request) -> Response {
     }.unwrap_or_else(|| serde_json::json!({}));
     let mac = payload.get("mac").and_then(serde_json::Value::as_str).map(str::trim).unwrap_or("");
     let ip = payload.get("ip").and_then(serde_json::Value::as_str).map(str::trim).unwrap_or("");
-    if mac.is_empty() {
+    let broadcast = wake_on_lan_broadcast(ip);
+    if mac.is_empty() || broadcast.is_none() {
         let signal = "wake-on-lan-target-required";
         return if htmx { wake_on_lan_fragment(false, signal) } else {
-            wake_on_lan_error("/api/wakeonlan/wake", "mac is required", signal, Some(ip))
+            wake_on_lan_error("/api/wakeonlan/wake", "mac and ip are required", signal, Some(ip))
         };
     }
     let readback = caduceus_actuate_json(
         &mutation_authority(), &headers, "/api/v1/network/device/wake",
-        serde_json::json!({ "action": "send", "mac": mac, "broadcast": wake_on_lan_broadcast(ip) }),
+        serde_json::json!({ "action": "send", "mac": mac, "broadcast": broadcast }),
     );
     if htmx {
         return wake_on_lan_fragment(readback.ok, if readback.ok { "" } else { &readback.first_missing_signal });
