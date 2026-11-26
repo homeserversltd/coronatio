@@ -49,7 +49,7 @@ struct LinkerState {
     rename_naming: bool,
     naming_refused: bool,
     rename_target: Option<String>,
-    review_targets: Vec<(String, bool)>,
+    review_targets: Vec<(String, Option<String>)>,
     feedback: String,
     retry_read: Option<(String, String)>,
 }
@@ -187,10 +187,10 @@ fn linker_fragment(s: &LinkerState, _readback: Option<&CaduceusHttpReadback>) ->
     let folder = s.path.rsplit('/').next().unwrap_or("nas");
     let listing = ListingRows { label: format!("Files in {folder}"), rows, seats: vec![] }.render().into_string();
     let review = if s.mode == LinkerMode::Review {
-        let eligible = s.review_targets.iter().filter(|(_, yes)| *yes).count();
+        let eligible = s.review_targets.iter().filter(|(_, note)| note.is_none()).count();
         let mut confirm = linker_act("confirm", "data-hx-post", "/admit/linker/delete".into());
         confirm.push(linker_seat("data-hx-vals", r#"{"confirm":"yes"}"#));
-        InlineReview { question: format!("Delete {eligible}?"), targets: s.review_targets.iter().map(|(name, yes)| ReviewTarget { name: name.clone(), note: (!yes).then(|| "kept: last copy".into()), seats: vec![] }).collect(), confirm: "Delete".into(), confirm_key: "y".into(), cancel: "Cancel".into(), cancel_key: "n".into(), seats: InlineReviewSeats { confirm, cancel: linker_act("cancel", "data-hx-post", "/admit/linker/cancel".into()), ..Default::default() } }.render().into_string()
+        InlineReview { question: format!("Delete {eligible}?"), targets: s.review_targets.iter().map(|(name, note)| ReviewTarget { name: name.clone(), note: note.clone(), seats: vec![] }).collect(), confirm: "Delete".into(), confirm_key: "y".into(), cancel: "Cancel".into(), cancel_key: "n".into(), seats: InlineReviewSeats { confirm, cancel: linker_act("cancel", "data-hx-post", "/admit/linker/cancel".into()), ..Default::default() } }.render().into_string()
     } else { String::new() };
     let naming = if s.mode == LinkerMode::Naming {
         let (path, field, label, submit) = if s.rename_naming { ("rename", "new_name", "New name", "Rename") } else { ("mkdir", "new_dir_name", "Folder name", "Create") };
@@ -282,6 +282,17 @@ fn linker_browse(
         }
     }
     Ok(r)
+}
+// None means eligible on this scan; every other disposition keeps the target.
+fn linker_delete_check(h: &axum::http::HeaderMap, target: &str) -> Result<Option<String>, CaduceusHttpReadback> {
+    let Some((parent, _)) = target.rsplit_once('/') else { return Ok(Some("kept: not found".into())); };
+    let scan = linker_read(h, "/api/v1/linker/hardlink-scan", &[("path", parent)]);
+    if !scan.ok { return Err(scan); }
+    match linker_entries(&scan.body, "").into_iter().find(|entry| entry.path == target) {
+        None => Ok(Some("kept: not found".into())),
+        Some(entry) if entry.is_dir || entry.nlink > 1 => Ok(None),
+        Some(_) => Ok(Some("kept: last copy".into())),
+    }
 }
 async fn linker_fragment_route(h: axum::http::HeaderMap, Query(q): Query<LinkerQuery>) -> Response {
     let session = session_projection_from_headers(&h).await;
@@ -406,7 +417,16 @@ async fn linker_transition_route(h: axum::http::HeaderMap, Path(action): Path<St
         "delete" => {
             if f.confirm.as_deref() != Some("yes") {
                 if s.selected.is_empty() { return linker_local_refusal(s, "Pocket is empty."); }
-                s.review_targets = s.selected.iter().map(|p| (p.clone(), s.selected_delete_eligible.get(p).copied().unwrap_or(false))).collect();
+                let mut targets = Vec::new();
+                for path in &s.selected {
+                    let note = match linker_delete_check(&h, path) {
+                        Ok(note) => note,
+                        Err(r) if r.first_missing_signal.starts_with("linker-") => Some(format!("kept: {}", r.first_missing_signal)),
+                        Err(r) => return linker_response(s, Some(&r), mutation_response_status(&r)),
+                    };
+                    targets.push((path.clone(), note));
+                }
+                s.review_targets = targets;
                 s.mode = LinkerMode::Review;
                 return linker_response(s, None, StatusCode::OK);
             }
@@ -416,8 +436,13 @@ async fn linker_transition_route(h: axum::http::HeaderMap, Path(action): Path<St
             let original_eligibility = s.selected_delete_eligible.clone();
             let mut outcomes = Vec::new();
             let mut refused = false;
-            for (path, eligible) in targets {
-                if !eligible { outcomes.push(format!("{path}: kept: last copy")); continue; }
+            for (path, review_note) in targets {
+                let fresh_note = match linker_delete_check(&h, &path) {
+                    Ok(note) => note,
+                    Err(r) if r.first_missing_signal.starts_with("linker-") => { refused = true; Some(format!("kept: {}", r.first_missing_signal)) },
+                    Err(r) => return linker_response(s, Some(&r), mutation_response_status(&r)),
+                };
+                if let Some(note) = fresh_note.or(review_note) { outcomes.push(format!("{path}: {note}")); continue; }
                 let r = linker_call(&h, "/api/v1/linker/delete", serde_json::json!({"path":path}));
                 if !r.ok && !r.first_missing_signal.starts_with("linker-") { return linker_response(s, Some(&r), mutation_response_status(&r)); }
                 if matches!(r.first_missing_signal.as_str(), "linker-deploy-outcome-unknown" | "linker-mutation-outcome-unknown") {
