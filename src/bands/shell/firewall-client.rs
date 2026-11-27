@@ -62,7 +62,7 @@ fn shell_firewall_client() -> &'static str {
       const other = open.filter(row => !firewallRosterName(row) && !firewallLanIp(row));
       if (children && scaffoldReadProjectionAllowed(children, preserveReadySlots)) morphLivePane(children, policies.map(row => rowHtml(row)).join(''));
       if (observed && scaffoldReadProjectionAllowed(observed, preserveReadySlots)) { const expanded = Boolean(observed.querySelector('details')?.open); morphLivePane(observed, `<ul class="firewall-list">${main.map(row => rowHtml(row)).join('')}</ul>${other.length ? `<details class="firewall-other"${expanded ? ' open' : ''}><summary>Other addresses (${other.length})</summary><ul class="firewall-list">${other.map(row => rowHtml(row, true)).join('')}</ul></details>` : ''}`); }
-      binding.root.querySelectorAll('[data-firewall-device] input').forEach(input => { const mac = input.closest('[data-firewall-device]').dataset.firewallDevice; input.disabled = !firewallState.observedReady || !firewallState.childrenReady || firewallState.busy.has(mac); });
+      binding.root.querySelectorAll('[data-firewall-device] input').forEach(input => { const mac = input.closest('[data-firewall-device]').dataset.firewallDevice; input.disabled = !firewallState.observedReady || !firewallState.childrenReady || firewallState.busy.has(mac); input.checked = input.hasAttribute('checked'); });
       const sheet = firewallModalElement(), title = sheet?.querySelector('[data-firewall-modal-title]');
       if (sheet?.open && title && firewallState.selectedMac) title.textContent = `${firewallObservedName(firewallRow(firewallState.selectedMac))} can reach only these websites.`;
     }
