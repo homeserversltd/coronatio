@@ -53,6 +53,22 @@ struct StorageNasSetupRequest {
     device: String,
     role: String,
     confirmation: String,
+    #[serde(default)]
+    flash: bool,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageNasPrefireRequest { device: String, role: String }
+
+async fn storage_nas_prefire_route(Json(request): Json<StorageNasPrefireRequest>) -> Response {
+    const PATH: &str = "/api/v1/storage/nas/prefire";
+    let Some(device) = normalized_storage_device(&request.device) else { return storage_drive_refusal("drive-device-name-invalid"); };
+    if !matches!(request.role.as_str(), "primary" | "backup") { return storage_drive_refusal("drive-role-invalid"); }
+    let reply = tokio::task::spawn_blocking(move || caduceus_http_json_with_attendance_and_document_timeout(
+        "POST", PATH, serde_json::json!({"device": device, "role": request.role}), None, None, Duration::from_secs(28)
+    )).await.unwrap_or_else(|_| mutation_task_failure_readback(PATH));
+    backups_pair_response(reply)
 }
 
 fn storage_disk_census_route_status(readback: &CaduceusHttpReadback) -> StatusCode {
@@ -292,7 +308,7 @@ async fn storage_nas_setup_route(
     }
 
     let path = NAS_SETUP_PATH;
-    let body = serde_json::json!({ "device": device, "role": request.role });
+    let body = serde_json::json!({ "device": device, "role": request.role, "flash": request.flash });
     let result = tokio::task::spawn_blocking(move || {
         storage_actuate_json_timeout(
             &mutation_authority(),

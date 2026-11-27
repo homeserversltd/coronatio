@@ -394,7 +394,7 @@ fn shell_document_4_tail() -> &'static str {
     // Key Management is carried by the attended Crown-to-Caduceus membrane.
     function managerModal(kind, title, body, confirmLabel = 'Continue') {
       const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop manager-modal-backdrop'; backdrop.dataset.managerModal = kind;
-      backdrop.toggleAttribute('data-modal-sticky', ['create-key', 'update-key', 'admin-password', 'nas-foreign-unlock', 'nas-forge-restore'].includes(kind));
+      backdrop.toggleAttribute('data-modal-sticky', ['create-key', 'update-key', 'admin-password', 'nas-foreign-unlock', 'nas-forge-restore', 'nas-setup-pin'].includes(kind));
       backdrop.innerHTML = `<section class="modal modal-window manager-modal" role="dialog" aria-modal="true" aria-labelledby="manager-modal-title"><button type="button" class="modal-close" data-manager-close data-modal-dismiss aria-label="Close modal">×</button><h2 id="manager-modal-title">${title}</h2><div class="modal-body">${body}</div><p class="manager-route-state" data-manager-route-state aria-live="polite"></p><div class="modal-actions"><button type="button" class="ui-button ui-button--secondary ui-button--small" data-manager-close data-modal-dismiss>Cancel</button><button type="button" class="ui-button ui-button--primary ui-button--small" data-manager-confirm disabled>${confirmLabel}</button></div></section>`;
       const close = () => backdrop.remove(); backdrop.addEventListener('click', event => { if (event.target.closest('[data-manager-close]')) close(); }); document.body.appendChild(backdrop);
       return backdrop;
@@ -558,7 +558,7 @@ fn shell_document_4_tail() -> &'static str {
       const role = makeRoleFor(census)?.role;
       return role === 'primary' ? 'Tap to set up as your NAS' : role === 'backup' ? 'Tap to set up as your backup' : '';
     }
-    function driveOptionsFor(row, census) {
+    function driveOptionsFor(row, census, prefire = null) {
       const kind = driveKindOf(row);
       const mounted = diskRowMounted(row);
       const diskMounted = row?.diskMounted === true;
@@ -566,8 +566,10 @@ fn shell_document_4_tail() -> &'static str {
       const siblingMounted = census.some(other => other !== row && diskIdentity(diskCensusDeviceName(other)) === disk && diskRowMounted(other));
       const mapper = row?.encryption?.mapper;
       const make = makeRoleFor(census);
-      const eraseAllowed = !mounted && !diskMounted && !(typeof mapper === 'string' && mapper.trim().length > 0)
+      const eraseAllowed = prefire?.ok === true && prefire?.lockedIn === false && (make?.role === 'primary' || prefire?.fits === true)
+        && typeof prefire?.blank === 'boolean' && !mounted && !diskMounted && !(typeof mapper === 'string' && mapper.trim().length > 0)
         && !diskMetadataProtected(row) && !protectedDiskParents(census).has(disk) && diskNameCanNormalize(diskCensusDeviceName(row)) && make !== null;
+      const eraseKey = eraseAllowed ? (prefire.blank ? make.key : 'flash-backup') : null;
       const options = [];
       if (driveKeyProbes.get(driveProbeKey(row)) === 'duplicate') {
         if (!mounted && !diskMounted && !siblingMounted) options.push('test');
@@ -580,17 +582,17 @@ fn shell_document_4_tail() -> &'static str {
         options.push('try-again');
         if (!mounted && !diskMounted && !siblingMounted) options.push('test');
       } else if (kind === 'blank') {
-        if (eraseAllowed) options.push(make.key);
+        if (eraseKey) options.push(eraseKey);
         if (!mounted && !diskMounted && !siblingMounted) options.push('test');
       } else if (kind === 'data') {
         options.push('open');
         if (primaryAttached(census) && !mounted) options.push('copy-nas');
-        if (eraseAllowed) options.push(make.key);
+        if (eraseKey) options.push(eraseKey);
         if (!mounted && !diskMounted && !siblingMounted) options.push('test');
         if (mounted && typeof row?.mountpoint === 'string' && row.mountpoint.startsWith('/mnt/') && row.mountpoint !== '/mnt/nas' && row.mountpoint !== '/mnt/nas_backup') options.push('eject-drive');
       } else {
         if (!mounted && !diskMounted && !siblingMounted) options.push('test');
-        if (eraseAllowed) options.push(make.key);
+        if (eraseKey) options.push(eraseKey);
       }
       return options;
     }
@@ -952,7 +954,7 @@ fn shell_document_4_tail() -> &'static str {
       target.appendChild(details);
     }
 
-    function openNasSetupConfirmation(owner, name, requestedRole = null) {
+    function openNasSetupConfirmation(owner, name, requestedRole = null, flash = false) {
       if (!adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name))) return;
       const device = owner.devices.find(item => diskCensusDeviceName(item) === name);
       if (!device || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || owner.protectedParents.has(diskIdentity(name)) || !diskNameCanNormalize(name)) return;
@@ -966,8 +968,30 @@ fn shell_document_4_tail() -> &'static str {
       const state = modal.querySelector('[data-nas-setup-state]');
       const validate = () => { confirm.disabled = input.value !== name || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name)); };
       input.addEventListener('input', validate);
-      confirm.addEventListener('click', async () => {
+      confirm.addEventListener('click', () => {
         if (modal.dataset.setupStarted === 'true' || input.value !== name || !adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || adminNasSetupInFlight || adminNasSetupRequests.has(diskIdentity(name))) return;
+        const pinModal = managerModal('nas-setup-pin', 'Confirm your PIN', '<label>Enter your PIN<input type="password" autocomplete="off" data-nas-setup-pin></label>', flash ? 'Flash it' : 'Set up');
+        const pin = pinModal.querySelector('[data-nas-setup-pin]');
+        const pinButton = pinModal.querySelector('[data-manager-confirm]');
+        const pinState = pinModal.querySelector('[data-manager-route-state]');
+        pin.addEventListener('input', () => { pinButton.disabled = !pin.value; });
+        pinButton.addEventListener('click', async () => {
+          if (!pin.value || !adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || adminNasSetupInFlight || input.value !== name) return;
+          pinButton.disabled = true;
+          try {
+            const verifyResponse = await fetch('/api/v1/exousia/verify', {method:'POST', headers:{'Content-Type':'application/json'}, body:(() => { const json = JSON.stringify({pin:pin.value}); pin.value = ''; return json; })()});
+            const verified = await verifyResponse.json();
+            if (verified?.unavailable || !verifyResponse.ok) { pinState.textContent = "The PIN check isn't available right now."; return; }
+            if (verified?.verified !== true) { pinState.textContent = "That PIN isn't right."; return; }
+            if (!pinModal.isConnected || !modal.isConnected || !adminDiskSnapshotCurrent(owner) || !owner.dataReady || owner.stale || owner.nasSetupStateUnknown || adminNasSetupInFlight || input.value !== name) return;
+            pinModal.remove();
+            await sendSetup();
+          } catch (_) { pinState.textContent = "The PIN check isn't available right now."; }
+          finally { pin.value = ''; }
+        });
+        pin.focus();
+      });
+      async function sendSetup() {
         modal.dataset.setupStarted = 'true';
         input.disabled = true;
         confirm.disabled = true;
@@ -978,12 +1002,12 @@ fn shell_document_4_tail() -> &'static str {
         let responseOk = false;
         let responseStatus = 0;
         try {
-          const response = await fetch(nasSetupPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: '/dev/' + name, role, confirmation: '/dev/' + input.value }) });
+          const response = await fetch(nasSetupPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: '/dev/' + bareDiskName(name), role, confirmation: '/dev/' + bareDiskName(input.value), flash }) });
           responseStatus = response.status;
           responseOk = response.ok;
           result = await response.json().catch(() => null);
           const success = nasReceiptSucceeded(result, responseOk);
-          state.textContent = success ? 'NAS is ready.' : 'NAS setup could not finish.';
+          state.textContent = success ? 'NAS is ready.' : driveSignalWords(result?.firstMissingSignal);
           if (role === 'primary' && success) owner.primaryNasExists = true;
           if (!success) owner.nasSetupStateUnknown = true;
           renderNasSetupReceipt(owner, result, responseOk, responseStatus);
@@ -1001,7 +1025,7 @@ fn shell_document_4_tail() -> &'static str {
             refreshAdminDiskCensus();
           }
         }
-      });
+      }
       input.focus();
     }
     let driveRequestInFlight = false;
@@ -1079,6 +1103,10 @@ fn shell_document_4_tail() -> &'static str {
     }
     function driveSignalWords(signal) {
       const messages = {
+        'nas-drive-not-blank': 'This drive holds files. Flash it to use it.',
+        'nas-backup-too-small': 'This drive is too small for your NAS.',
+        'nas-main-size-unknown': 'Plug in your NAS first.',
+        'nas-prefire-unavailable': "The drive check isn't available right now.",
         'nas-rekey-old-password-mismatched': "That password doesn't open this drive.",
         'nas-rekey-no-free-slot': 'This drive has no room for another password.',
         'nas-rekey-drive-busy': 'The drive is busy. Try again in a moment.',
@@ -1248,8 +1276,13 @@ fn shell_document_4_tail() -> &'static str {
         if (key === 'driveResult') { node.setAttribute('role', 'status'); node.setAttribute('aria-live', 'polite'); }
         options.before(node);
       }
-      const labels = { 'open': 'Open', 'copy-nas': 'Copy into NAS', 'test': 'Test', 'unlock-foreign': 'Unlock with the old password', 'restore-forge': 'Restore my Forgejo from this drive', 'eject-drive': 'Eject safely', 'eject-nas': 'Eject safely', 'try-again': 'Try again', 'make-nas': 'Make this my NAS', 'make-backup': 'Make this my backup' };
-      for (const key of driveOptionsFor(row, owner.devices)) {
+      const labels = { 'open': 'Open', 'copy-nas': 'Copy into NAS', 'test': 'Test', 'unlock-foreign': 'Unlock with the old password', 'restore-forge': 'Restore my Forgejo from this drive', 'eject-drive': 'Eject safely', 'eject-nas': 'Eject safely', 'try-again': 'Try again', 'make-nas': 'Make this my NAS', 'make-backup': 'Use as backup drive', 'flash-backup': 'Flash it' };
+      const snapshot = owner.devices;
+      const prefireRole = driveRoleHeld(snapshot, 'primary') ? 'backup' : 'primary';
+      const current = () => modal.isConnected && adminDiskSnapshotCurrent(owner) && owner.dataReady && !owner.stale && owner.devices === snapshot;
+      const renderOptions = prefire => {
+      options.replaceChildren(); modal.querySelector('[data-drive-test-slot]').replaceChildren();
+      for (const key of driveOptionsFor(row, snapshot, prefire)) {
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'ui-button ui-button--secondary ui-button--small';
         button.dataset.driveOption = key; button.textContent = labels[key];
@@ -1257,7 +1290,8 @@ fn shell_document_4_tail() -> &'static str {
           if (driveRequestInFlight) { modal.querySelector('[data-drive-result]').textContent = 'Working…'; return; }
           if (key === 'unlock-foreign') { openForeignUnlock(owner, row); return; }
           if (key === 'restore-forge') { openForgeRestore(owner, row); return; }
-          if (key === 'make-nas' || key === 'make-backup') { openNasSetupConfirmation(owner, name, key === 'make-nas' ? 'primary' : 'backup'); return; }
+          if (!current()) return;
+          if (key === 'make-nas' || key === 'make-backup' || key === 'flash-backup') { openNasSetupConfirmation(owner, name, key === 'make-nas' ? 'primary' : key === 'make-backup' ? 'backup' : prefireRole, key === 'flash-backup'); return; }
           if (key === 'test') {
             const target = modal.querySelector('[data-drive-test]');
             target.innerHTML = '<label>Test type<select data-drive-test-mode><option value="quick">Quick</option><option value="full">Full</option></select></label><button type="button" data-drive-test-start>Start test</button>';
@@ -1268,7 +1302,23 @@ fn shell_document_4_tail() -> &'static str {
         });
         (key === 'test' ? modal.querySelector('[data-drive-test-slot]') : options).appendChild(button);
       }
+      };
       document.body.appendChild(modal);
+      const result = modal.querySelector('[data-drive-result]');
+      result.textContent = 'Checking drive…';
+      renderOptions(null);
+      drivePost('/api/v1/storage/nas/prefire', {device: '/dev/' + bareDiskName(name), role: prefireRole}).then(({response, body}) => {
+        if (!current()) return;
+        if (body?.lockedIn === true) result.textContent = 'Locked in';
+        else if (body?.firstMissingSignal === 'nas-main-size-unknown') result.textContent = driveSignalWords(body.firstMissingSignal);
+        else if (body?.fits === false && Number.isFinite(body?.mainSizeBytes)) result.textContent = `Too small for your NAS (needs at least ${diskFormatBytes(body.mainSizeBytes * 0.9667)})`;
+        else if (!response.ok || body?.ok !== true) result.textContent = driveSignalWords(body?.firstMissingSignal || 'nas-prefire-unavailable');
+        else {
+          const parts = Array.isArray(body.contents) ? body.contents.map(item => [item?.partlabel || 'Unlabelled', item?.type || 'Unknown type', Number.isFinite(item?.sizeBytes) ? diskFormatBytes(item.sizeBytes) : 'Unknown size'].join(' · ')).join('; ') : '';
+          result.textContent = `${prefireRole === 'backup' ? 'Fits your NAS. ' : ''}${body.blank ? 'Blank drive.' : (parts || 'This drive holds something.')}`;
+        }
+        renderOptions(response.ok ? body : null);
+      }).catch(() => { if (current()) result.textContent = driveSignalWords('nas-prefire-unavailable'); });
     }
     document.body.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null;

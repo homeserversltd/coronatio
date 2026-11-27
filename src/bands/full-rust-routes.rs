@@ -9,6 +9,7 @@ fn full_rust_route_table() -> Router<AppState> {
         .route("/api/v1/storage/disk/census", get(storage_disk_census_route))
         .route("/api/v1/storage/vault/unlock", post(storage_vault_unlock_route))
         .route("/api/v1/storage/nas/setup", post(storage_nas_setup_route))
+        .route("/api/v1/storage/nas/prefire", post(storage_nas_prefire_route))
         .route("/api/v1/storage/drive/add", post(storage_drive_add_route))
         .route("/api/v1/storage/drive/remove", post(storage_drive_remove_route))
         .route("/api/v1/storage/nas-import/run", post(storage_nas_import_run_route))
@@ -876,6 +877,7 @@ fn full_rust_route_inventory() -> &'static [(&'static str, &'static [&'static st
         ("/api/v1/storage/disk/census", &["get"]),
         ("/api/v1/storage/vault/unlock", &["post"]),
         ("/api/v1/storage/nas/setup", &["post"]),
+        ("/api/v1/storage/nas/prefire", &["post"]),
         ("/api/v1/storage/drive/add", &["post"]),
         ("/api/v1/storage/drive/remove", &["post"]),
         ("/api/v1/storage/nas-import/run", &["post"]),
