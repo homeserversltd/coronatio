@@ -58,7 +58,13 @@ fn dns_intent(headers: &axum::http::HeaderMap, path: &str, intent: serde_json::V
 async fn dns_caduceus_read_route(uri: axum::http::Uri) -> Response {
     let path = uri.path();
     let readback = match path {
-        "/api/v1/network/dns/read" | "/api/v1/network/dns/resolver/status" => caduceus_http("GET", path),
+        "/api/v1/network/dns/read" => caduceus_http("GET", path),
+        "/api/v1/network/dns/resolver/status" => caduceus_http_json(
+            "POST",
+            "/api/v1/network/unbound-resolver/status-the-unbound-resolver-upstreams-dot-adblock-and-unit-state",
+            serde_json::json!({}),
+            None,
+        ),
         _ => translation_debt_readback("GET", path, Some(path), None),
     };
     dns_response(path, readback)

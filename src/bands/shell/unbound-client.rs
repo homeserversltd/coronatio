@@ -411,7 +411,7 @@ fn shell_unbound_client() -> &'static str {
           dnsSetState('Refreshing resolver status; last successful values remain visible.');
           const envelope=await ctx.fetchJson('/api/v1/network/dns/resolver/status');
           if(!ctx.current()||!dnsCurrent(binding))return false;
-          if(!envelope||envelope.ok!==true||!envelope.payload||envelope.payload.ok!==true)throw new Error(dnsRefusal(envelope)||'Resolver response is incomplete');
+          if(!envelope||envelope.ok!==true)throw new Error(dnsRefusal(envelope)||'Resolver response is incomplete');
           const source=resolverReceipt(envelope);
           if(!source)throw new Error('Resolver status fields are unavailable');
           const status=Object.fromEntries(['adblockEnabled','upstreams','dnsOverTls','blocklistDomainCount','blocklistLastUpdate','blocklistCheckedAt','blocklistSources','unboundActive'].filter(key=>Object.prototype.hasOwnProperty.call(source,key)).map(key=>[key,source[key]]));
