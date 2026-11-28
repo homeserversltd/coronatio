@@ -688,7 +688,7 @@ fn fetch_stats_identity_roster() -> Result<StatsKeaLeases, String> {
     let roster = caduceus_http_timeout("GET", "/api/v1/network/device", remaining);
     if !roster.ok || roster.status == 0 { return Err(if roster.first_missing_signal.trim().is_empty() { "caduceus-lease-door-unavailable".to_owned() } else { roster.first_missing_signal }); }
     let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else { return Err("stats-roster-source-deadline-exhausted".to_owned()); };
-    let notes = caduceus_http_timeout("GET", "/api/v1/network/notes", remaining);
+    let notes = caduceus_http_timeout("POST", "/api/v1/network/lan-device-notes/read-the-free-text-notes-of-network-devices-from-the-state-file", remaining);
     if !notes.ok || notes.status == 0 { return Err(if notes.first_missing_signal.trim().is_empty() { "caduceus-network-notes-unavailable".to_owned() } else { notes.first_missing_signal }); }
     let Some(notes) = notes.body.get("notes").and_then(serde_json::Value::as_object) else { return Err("caduceus-network-notes-malformed".to_owned()); };
     let mut body = roster.body;

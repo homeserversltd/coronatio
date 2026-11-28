@@ -33,7 +33,7 @@ fn canonical_network_note_mac(raw: &str) -> Option<String> {
 }
 
 async fn network_notes_read_route() -> Response {
-    let readback = caduceus_http("GET", "/api/v1/network/notes");
+    let readback = caduceus_http("POST", "/api/v1/network/lan-device-notes/read-the-free-text-notes-of-network-devices-from-the-state-file");
     let notes = readback.body.get("notes").cloned();
     match (readback.ok, notes) {
         (true, Some(notes)) if notes.is_object() => (
