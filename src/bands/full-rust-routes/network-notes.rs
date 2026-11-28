@@ -75,12 +75,12 @@ async fn network_notes_write_route(headers: axum::http::HeaderMap, body: Bytes) 
         &MutationRequestContext::from_headers(&headers),
     ) {
         Ok(attendance) => attendance,
-        Err(refusal) => return network_note_write_response(mutation_refusal_readback("/api/v1/network/notes", refusal), false),
+        Err(refusal) => return network_note_write_response(mutation_refusal_readback("/api/v1/network/lan-device-notes/set-the-free-text-note-of-a-network-device-by-its-mac", refusal), false),
     };
     let requested = serde_json::json!({"mac": mac, "note": payload.note});
     let readback = caduceus_http_json_with_attendance_and_document(
-        "PUT",
-        "/api/v1/network/notes",
+        "POST",
+        "/api/v1/network/lan-device-notes/set-the-free-text-note-of-a-network-device-by-its-mac",
         requested.clone(),
         Some(&attendance.proof),
         Some(&attendance.document),
