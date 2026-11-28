@@ -26,7 +26,9 @@ fn device_identity_read(path: &str, target: Option<&str>, headers: &axum::http::
     if let Some(refusal) = device_identity_admin(headers, path) {
         return refusal;
     }
+    let verbatim = matches!(path, "/api/network/dhcp/boundary" | "/api/network/dns/read");
     let readback = match target {
+        Some(target) if verbatim => caduceus_http_json("POST", target, serde_json::json!({}), None),
         Some(target) => caduceus_http("GET", target),
         None => translation_debt_readback(
             "GET",
@@ -40,7 +42,11 @@ fn device_identity_read(path: &str, target: Option<&str>, headers: &axum::http::
         ),
     };
     if readback.ok {
-        let payload = device_identity_payload(readback.body);
+        let payload = if verbatim {
+            readback.body.get("result").cloned().unwrap_or(readback.body)
+        } else {
+            device_identity_payload(readback.body)
+        };
         let payload = if path == "/api/network/dhcp/boundary" {
             payload
                 .as_array()
@@ -64,7 +70,7 @@ async fn device_roster_route(headers: axum::http::HeaderMap) -> Response {
     device_identity_read("/api/network/device", Some("/api/v1/network/device"), &headers)
 }
 async fn device_boundary_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read("/api/network/dhcp/boundary", Some("/api/v1/network/dhcp/boundary"), &headers)
+    device_identity_read("/api/network/dhcp/boundary", Some("/api/v1/network/kea-dhcp/read-the-pool-boundary-of-the-kea-dhcp4-subnet"), &headers)
 }
 async fn device_leases_route(headers: axum::http::HeaderMap) -> Response {
     device_identity_read("/api/network/dhcp/leases", Some("/api/v1/network/dhcp/leases"), &headers)
@@ -73,7 +79,7 @@ async fn device_reservations_route(headers: axum::http::HeaderMap) -> Response {
     device_identity_read("/api/network/dhcp/reservations", Some("/api/v1/network/dhcp/reservations"), &headers)
 }
 async fn device_dns_read_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read("/api/network/dns/read", Some("/api/v1/network/dns/read"), &headers)
+    device_identity_read("/api/network/dns/read", Some("/api/v1/network/unbound-dns-records/list-every-local-dns-record-with-where-it-is-declared"), &headers)
 }
 
 async fn device_claim_route(
