@@ -3,12 +3,12 @@ use std::time::Instant;
 async fn caduceus_status_route(_headers: axum::http::HeaderMap) -> impl IntoResponse {
     let (health, update, staff) = load_trace::spawn_blocking_with_trace(|| (
         caduceus_http("GET", "/health"),
-        caduceus_http("GET", "/api/v1/update/status"),
-        caduceus_http("GET", "/api/v1/doors"),
+        caduceus_http("POST", "/api/v1/appliance/harmonia-update-engine/read-the-harmonia-update-profile-state-and-route-presence"),
+        caduceus_http("POST", "/api/v1/appliance/caduceus-doors/read-the-door-route-list-of-the-active-profile"),
     )).await.unwrap_or_else(|_| (
         caduceus_failure_readback("/health", "caduceus-status-task-failed"),
-        caduceus_failure_readback("/api/v1/update/status", "caduceus-status-task-failed"),
-        caduceus_failure_readback("/api/v1/doors", "caduceus-status-task-failed"),
+        caduceus_failure_readback("/api/v1/appliance/harmonia-update-engine/read-the-harmonia-update-profile-state-and-route-presence", "caduceus-status-task-failed"),
+        caduceus_failure_readback("/api/v1/appliance/caduceus-doors/read-the-door-route-list-of-the-active-profile", "caduceus-status-task-failed"),
     ));
     let ok = health.ok && update.ok && staff.ok;
     let first_missing_signal = if ok {
