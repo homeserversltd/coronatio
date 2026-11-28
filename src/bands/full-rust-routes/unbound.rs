@@ -81,25 +81,41 @@ async fn dns_caduceus_mutation_route(
         "/api/v1/network/dns/blocklist/update" | "/api/v1/network/dns/blocklist/source/add" | "/api/v1/network/dns/blocklist/source/remove" => Some(DNS_BLOCKLIST_TIMEOUT),
         _ => None,
     };
+    let mut body = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
+    let target = match path {
+        "/api/v1/network/dns/device-name/create" => "/api/v1/network/unbound-dns-device-name/add-one-device-name-by-its-hostname-and-ip",
+        "/api/v1/network/dns/device-name/remove" => "/api/v1/network/unbound-dns-device-name/remove-one-device-name-by-its-hostname-and-ip",
+        "/api/v1/network/identity/device/plan" => "/api/v1/network/lan-device-identity/verify-whether-a-device-identity-would-take-by-its-mac-hostname-and-ip-without-writing",
+        "/api/v1/network/dns/blocklist/source/add" => "/api/v1/network/unbound-dns-blocklist/add-one-blocklist-source-by-its-url",
+        "/api/v1/network/dns/blocklist/source/remove" => "/api/v1/network/unbound-dns-blocklist/remove-one-blocklist-source-by-its-url",
+        "/api/v1/network/dns/upstream" => "/api/v1/network/unbound-resolver/set-the-unbound-upstream-resolvers-by-preset-or-custom-list-and-dns-over-tls",
+        "/api/v1/network/dns/adblock" => {
+            let target = match body.get("enabled").and_then(serde_json::Value::as_bool) {
+                Some(true) => "/api/v1/network/unbound-resolver/set-the-unbound-adblock-blocklist-include-on",
+                Some(false) => "/api/v1/network/unbound-resolver/set-the-unbound-adblock-blocklist-include-off",
+                None => return dns_refusal(path, mutation_refusal_readback(path, MutationRefusal {
+                    code: "resolver-adblock-enabled-invalid".to_string(),
+                    status: 400,
+                })),
+            };
+            body = serde_json::json!({});
+            target
+        }
+        _ => path,
+    };
     let readback = if let Some(timeout) = timeout {
-        let target = path.to_owned();
+        let target = target.to_owned();
         tokio::task::spawn_blocking(move || {
             if target == "/api/v1/network/dns/blocklist/update" {
                 caduceus_actuate_with_timeout(&mutation_authority(), &headers, &target, timeout)
             } else {
-                let body = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
                 caduceus_actuate_json_with_timeout(&mutation_authority(), &headers, &target, body, timeout)
             }
         })
         .await
         .unwrap_or_else(|_| mutation_task_failure_readback(path))
     } else {
-        caduceus_actuate_json(
-            &mutation_authority(),
-            &headers,
-            path,
-            payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({})),
-        )
+        caduceus_actuate_json(&mutation_authority(), &headers, target, body)
     };
     dns_response(path, readback)
 }
