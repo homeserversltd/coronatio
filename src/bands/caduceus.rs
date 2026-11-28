@@ -43,7 +43,7 @@ async fn caduceus_update_check_route(headers: axum::http::HeaderMap) -> impl Int
 }
 
 async fn caduceus_update_now_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    caduceus_mutation_route(&headers, "update_now", "/api/v1/update/now")
+    caduceus_mutation_route(&headers, "update_now", "/api/v1/appliance/harmonia-update-engine/converge-this-appliance-to-the-latest-harmonia-sources-now")
 }
 
 async fn caduceus_update_service_status_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
@@ -903,7 +903,7 @@ fn admin_service_status_target(toggle_id: &str) -> Option<&'static str> {
 fn admin_action_target(action_id: &str) -> Option<(&'static str, &'static str, &'static str, bool)> {
     match action_id {
         "hard-drive-test" => Some(("Hard Drive Test", "POST", "/api/admin/hard-drive-test/start", true)),
-        "update" => Some(("Update", "POST", "/api/v1/update/now", true)),
+        "update" => Some(("Update", "POST", "/api/v1/appliance/harmonia-update-engine/converge-this-appliance-to-the-latest-harmonia-sources-now", true)),
         "rotate-capability-key" => Some(("Rotate Capability Key", "POST", "/usr/local/sbin/caduceus-keyman-rotate-capability", true)),
         "restart" => Some(("Restart", "POST", "/api/v1/appliance/power/reboot", true)),
         "shutdown" => Some(("Shutdown", "POST", "/api/v1/appliance/power/poweroff", true)),

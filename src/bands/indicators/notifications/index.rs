@@ -463,7 +463,7 @@ async fn notifications_update_route(headers: axum::http::HeaderMap, id: String, 
             let remote = view.own_mac.as_deref() != Some(target.as_str());
             let pin = pin.unwrap_or_default();
             let request_headers = headers.clone();
-            let path = if remote { "/api/v1/ruyi/road" } else { "/api/v1/update/now" };
+            let path = if remote { "/api/v1/ruyi/road" } else { "/api/v1/appliance/harmonia-update-engine/converge-this-appliance-to-the-latest-harmonia-sources-now" };
             let readback = tokio::task::spawn_blocking(move || {
                 if remote {
                     let payload = serde_json::json!({"schema":"caduceus.ruyi.v1", "target":target, "thing":"update-now", "flags":{"exousia":{"pin":pin}}});
