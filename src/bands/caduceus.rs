@@ -97,9 +97,16 @@ fn update_manager_read(headers: &axum::http::HeaderMap, path: &str) -> (StatusCo
     (status, Json(serde_json::json!({"ok": ok, "readback": readback})))
 }
 
-async fn update_manager_status(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_read(&headers, "/api/v1/update/status") }
-async fn update_manager_modules(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_read(&headers, "/api/v1/update/modules") }
-async fn update_manager_history(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_read(&headers, "/api/v1/update/history") }
+fn update_manager_named_read(headers: &axum::http::HeaderMap, path: &str) -> (StatusCode, Json<serde_json::Value>) {
+    let readback = admin_fragment_caduceus_json_request(headers, "POST", path, serde_json::json!({}));
+    let status = mutation_response_status(&readback);
+    let ok = readback.ok;
+    (status, Json(serde_json::json!({"ok": ok, "readback": readback})))
+}
+
+async fn update_manager_status(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_named_read(&headers, "/api/v1/appliance/harmonia-update-engine/read-the-harmonia-update-profile-state-and-route-presence") }
+async fn update_manager_modules(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_named_read(&headers, "/api/v1/appliance/harmonia-module-profile/list-all-modules-with-enabled-state-and-metadata") }
+async fn update_manager_history(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_named_read(&headers, "/api/v1/appliance/harmonia-update-engine/list-every-harmonia-update-history-entry") }
 async fn update_manager_interactables(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_read(&headers, "/api/v1/interactables") }
 
 fn update_manager_segment(id: &str) -> Option<String> {
@@ -124,9 +131,9 @@ fn update_manager_mutation(headers: &axum::http::HeaderMap, path: &str, body: Op
 }
 
 async fn update_manager_module(headers: axum::http::HeaderMap, Path(id): Path<String>, Json(body): Json<serde_json::Value>) -> (StatusCode, Json<serde_json::Value>) {
-    let Some(id) = update_manager_segment(&id) else { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok":false}))); };
+    let Some(_) = update_manager_segment(&id) else { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok":false}))); };
     let Some(enabled) = body.get("enabled").and_then(serde_json::Value::as_bool) else { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok":false}))); };
-    update_manager_mutation(&headers, &format!("/api/v1/update/modules/{id}"), Some(serde_json::json!({"enabled":enabled})))
+    update_manager_mutation(&headers, "/api/v1/appliance/harmonia-module-profile/set-one-module-enabled-state-by-its-id", Some(serde_json::json!({"id":id,"state":if enabled { "on" } else { "off" }})))
 }
 
 async fn update_manager_interactable(headers: axum::http::HeaderMap, Path((id, action)): Path<(String, String)>) -> (StatusCode, Json<serde_json::Value>) {
@@ -1099,7 +1106,7 @@ async fn admin_restart_list_fragment_route(headers: axum::http::HeaderMap) -> Re
 }
 
 async fn admin_restart_service_fragment_route(headers: axum::http::HeaderMap, Path(name): Path<String>) -> Response {
-    const PATH: &str = "/api/v1/appliance/restart-listed";
+    const PATH: &str = "/api/v1/appliance/restartable-services/restart-one-listed-face-or-guest-service-by-its-restartable-name";
     let readback = load_trace::spawn_blocking_with_trace(move || {
         caduceus_actuate_json_with_timeout(
             &mutation_authority(), &headers, PATH, serde_json::json!({"name": name}), ADMIN_SERVICE_ACTION_TIMEOUT,
