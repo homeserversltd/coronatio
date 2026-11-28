@@ -169,8 +169,8 @@ async fn tailscale_config_read_response(headers: &axum::http::HeaderMap) -> Resp
 async fn tailscale_mutation_route(headers: axum::http::HeaderMap, uri: Uri, body: Bytes) -> Response {
     let mut authkey_for_redaction = None;
     let (action, caduceus_path, request_body) = match uri.path() {
-        "/api/status/tailscale/connect" => ("connect", "/api/v1/network/tailscale/up", None),
-        "/api/status/tailscale/disconnect" => ("disconnect", "/api/v1/network/tailscale/down", None),
+        "/api/status/tailscale/connect" => ("connect", "/api/v1/network/tailscaled/on-the-tailscaled-link-and-offer-the-home-network-route", None),
+        "/api/status/tailscale/disconnect" => ("disconnect", "/api/v1/network/tailscaled/off-the-tailscaled-link", None),
         "/api/status/tailscale/enable" => ("enable", "/api/v1/appliance/service/tailscaled/enable", None),
         "/api/status/tailscale/disable" => ("disable", "/api/v1/appliance/service/tailscaled/disable", None),
         "/api/status/tailscale/authkey" => {
@@ -194,7 +194,7 @@ async fn tailscale_mutation_route(headers: axum::http::HeaderMap, uri: Uri, body
                 Some(name) => serde_json::json!({"name":name}),
                 None => serde_json::json!({}),
             };
-            ("update-tailnet", "/api/v1/network/tailscale/tailnet", Some(request))
+            ("update-tailnet", "/api/v1/network/tailscaled/sync-the-appliance-config-and-nginx-sources-to-the-live-tailnet-name", Some(request))
         }
         _ => return tailscale_mutation_refusal("coronatio-tailscale-mutation-route-unknown"),
     };
