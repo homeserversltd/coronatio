@@ -15,11 +15,11 @@ fn dhcp_guest_refusal(path: &str) -> Response {
 
 fn dhcp_readback(_headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpReadback {
     let Some(target) = (match path {
-        "/api/dhcp/status" => Some("/api/v1/network/dhcp/status"),
+        "/api/dhcp/status" => Some("/api/v1/network/kea-dhcp/status-the-kea-dhcp4-server-unit-and-its-configuration-validity"),
         "/api/dhcp/leases" => Some("/api/v1/network/dhcp/leases"),
-        "/api/dhcp/health" => Some("/api/v1/network/dhcp/health"),
-        "/api/dhcp/statistics" => Some("/api/v1/network/dhcp/statistics"),
-        "/api/dhcp/pool-boundary" => Some("/api/v1/network/dhcp/boundary"),
+        "/api/dhcp/health" => Some("/api/v1/network/kea-dhcp/verify-the-health-of-the-kea-dhcp4-service-and-its-configuration"),
+        "/api/dhcp/statistics" => Some("/api/v1/network/kea-dhcp/read-the-pool-usage-statistics-of-kea-dhcp4"),
+        "/api/dhcp/pool-boundary" => Some("/api/v1/network/kea-dhcp/read-the-pool-boundary-of-the-kea-dhcp4-subnet"),
         _ => None,
     }) else {
         let historical_target = match path {
@@ -29,7 +29,11 @@ fn dhcp_readback(_headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpRe
         };
         return translation_debt_readback("GET", path, historical_target, None);
     };
-    caduceus_http("GET", target)
+    if path == "/api/dhcp/leases" {
+        caduceus_http("GET", target)
+    } else {
+        caduceus_http_json("POST", target, serde_json::json!({}), None)
+    }
 }
 
 fn strip_dhcp_identity(value: &serde_json::Value) -> serde_json::Value {
@@ -73,7 +77,11 @@ fn dhcp_read_payload(path: &str, readback: CaduceusHttpReadback) -> serde_json::
     {
         return readback.body;
     }
-    device_identity_payload(readback.body)
+    if path == "/api/dhcp/leases" {
+        device_identity_payload(readback.body)
+    } else {
+        readback.body.get("result").cloned().unwrap_or(readback.body)
+    }
 }
 
 async fn dhcp_read_route(headers: axum::http::HeaderMap, uri: Uri) -> Response {
@@ -126,7 +134,7 @@ fn dhcp_mutation_response(
     if session_from_headers(headers) != Session::Admin {
         return dhcp_guest_refusal(path);
     }
-    let readback = admin_fragment_caduceus_json_request(headers, method, target, metadata);
+    let readback = admin_fragment_caduceus_json_request(headers, "POST", target, metadata);
     dhcp_mutation_result_response(method, path, readback)
 }
 
@@ -166,14 +174,19 @@ async fn dhcp_reservation_create_route(
     headers: axum::http::HeaderMap,
     payload: Option<Json<serde_json::Value>>,
 ) -> Response {
+    let input = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
+    let mut body = serde_json::json!({});
+    for (source, target) in [("mac", "hw_address"), ("ip", "ip_address"), ("hostname", "hostname")] {
+        if let Some(value) = input.get(source) {
+            body[target] = value.clone();
+        }
+    }
     dhcp_mutation_response(
         &headers,
         "POST",
         "/api/dhcp/reservations",
-        "/api/v1/network/dhcp/reservations",
-        payload
-            .map(|Json(value)| value)
-            .unwrap_or_else(|| serde_json::json!({})),
+        "/api/v1/network/kea-dhcp/add-one-reservation-by-its-mac-with-its-ip-and-hostname",
+        body,
     )
 }
 
@@ -183,12 +196,14 @@ async fn dhcp_reservation_update_route(
     payload: Option<Json<serde_json::Value>>,
 ) -> Response {
     let path = format!("/api/dhcp/reservations/{reservation_id}");
-    let metadata = payload
+    let input = payload
         .map(|Json(value)| value)
         .unwrap_or_else(|| serde_json::json!({}));
-    let encoded_id: String = url::form_urlencoded::byte_serialize(reservation_id.as_bytes()).collect();
-    let target = format!("/api/v1/network/dhcp/reservations/{encoded_id}");
-    dhcp_mutation_response(&headers, "PUT", &path, &target, metadata)
+    let mut body = serde_json::json!({"identifier": reservation_id});
+    if let Some(ip) = input.get("ip") {
+        body["new_ip"] = ip.clone();
+    }
+    dhcp_mutation_response(&headers, "PUT", &path, "/api/v1/network/kea-dhcp/set-the-ip-of-one-reservation-by-its-identifier", body)
 }
 
 async fn dhcp_reservation_delete_route(
@@ -196,22 +211,23 @@ async fn dhcp_reservation_delete_route(
     headers: axum::http::HeaderMap,
 ) -> Response {
     let path = format!("/api/dhcp/reservations/{reservation_id}");
-    let encoded_id: String = url::form_urlencoded::byte_serialize(reservation_id.as_bytes()).collect();
-    let target = format!("/api/v1/network/dhcp/reservations/{encoded_id}");
-    dhcp_mutation_response(&headers, "DELETE", &path, &target, serde_json::json!({}))
+    dhcp_mutation_response(&headers, "DELETE", &path, "/api/v1/network/kea-dhcp/remove-one-reservation-by-its-identifier", serde_json::json!({"identifier": reservation_id}))
 }
 
 async fn dhcp_pool_boundary_route(
     headers: axum::http::HeaderMap,
     payload: Option<Json<serde_json::Value>>,
 ) -> Response {
+    let input = payload.map(|Json(value)| value).unwrap_or_else(|| serde_json::json!({}));
+    let mut body = serde_json::json!({});
+    if let Some(value) = input.get("max_reservations") {
+        body["max_reservations"] = value.clone();
+    }
     dhcp_mutation_response(
         &headers,
         "POST",
         "/api/dhcp/pool-boundary",
-        "/api/v1/network/dhcp/pool-boundary",
-        payload
-            .map(|Json(value)| value)
-            .unwrap_or_else(|| serde_json::json!({})),
+        "/api/v1/network/kea-dhcp/set-the-max-reservations-of-the-kea-dhcp4-pool-boundary",
+        body,
     )
 }
