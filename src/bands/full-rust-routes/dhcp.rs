@@ -16,7 +16,7 @@ fn dhcp_guest_refusal(path: &str) -> Response {
 fn dhcp_readback(_headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpReadback {
     let Some(target) = (match path {
         "/api/dhcp/status" => Some("/api/v1/network/kea-dhcp/status-the-kea-dhcp4-server-unit-and-its-configuration-validity"),
-        "/api/dhcp/leases" => Some("/api/v1/network/dhcp/leases"),
+        "/api/dhcp/leases" => Some("/api/v1/network/kea-dhcp/list-the-dhcp-leases-from-the-kea-lease-file"),
         "/api/dhcp/health" => Some("/api/v1/network/kea-dhcp/verify-the-health-of-the-kea-dhcp4-service-and-its-configuration"),
         "/api/dhcp/statistics" => Some("/api/v1/network/kea-dhcp/read-the-pool-usage-statistics-of-kea-dhcp4"),
         "/api/dhcp/pool-boundary" => Some("/api/v1/network/kea-dhcp/read-the-pool-boundary-of-the-kea-dhcp4-subnet"),
@@ -29,11 +29,7 @@ fn dhcp_readback(_headers: &axum::http::HeaderMap, path: &str) -> CaduceusHttpRe
         };
         return translation_debt_readback("GET", path, historical_target, None);
     };
-    if path == "/api/dhcp/leases" {
-        caduceus_http("GET", target)
-    } else {
-        caduceus_http_json("POST", target, serde_json::json!({}), None)
-    }
+    caduceus_http_json("POST", target, serde_json::json!({}), None)
 }
 
 fn strip_dhcp_identity(value: &serde_json::Value) -> serde_json::Value {

@@ -28,6 +28,11 @@ fn device_identity_read(path: &str, target: Option<&str>, headers: &axum::http::
     }
     let verbatim = matches!(path, "/api/network/dhcp/boundary" | "/api/network/dns/read");
     let readback = match target {
+        Some(target) if path == "/api/network/dhcp/reservations" => caduceus_http_json_with_attendance_and_document(
+            "POST", target, serde_json::json!({}), attendance_from_headers(headers).as_ref(),
+            document_incarnation_from_headers(headers).as_deref(),
+        ),
+        Some(target) if path == "/api/network/dhcp/leases" => caduceus_http_json("POST", target, serde_json::json!({}), None),
         Some(target) if verbatim => caduceus_http_json("POST", target, serde_json::json!({}), None),
         Some(target) => caduceus_http("GET", target),
         None => translation_debt_readback(
@@ -73,10 +78,10 @@ async fn device_boundary_route(headers: axum::http::HeaderMap) -> Response {
     device_identity_read("/api/network/dhcp/boundary", Some("/api/v1/network/kea-dhcp/read-the-pool-boundary-of-the-kea-dhcp4-subnet"), &headers)
 }
 async fn device_leases_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read("/api/network/dhcp/leases", Some("/api/v1/network/dhcp/leases"), &headers)
+    device_identity_read("/api/network/dhcp/leases", Some("/api/v1/network/kea-dhcp/list-the-dhcp-leases-from-the-kea-lease-file"), &headers)
 }
 async fn device_reservations_route(headers: axum::http::HeaderMap) -> Response {
-    device_identity_read("/api/network/dhcp/reservations", Some("/api/v1/network/dhcp/reservations"), &headers)
+    device_identity_read("/api/network/dhcp/reservations", Some("/api/v1/network/kea-dhcp/list-the-dhcp-reservations-from-the-kea-configuration"), &headers)
 }
 async fn device_dns_read_route(headers: axum::http::HeaderMap) -> Response {
     device_identity_read("/api/network/dns/read", Some("/api/v1/network/unbound-dns-records/list-every-local-dns-record-with-where-it-is-declared"), &headers)

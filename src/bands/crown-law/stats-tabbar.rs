@@ -572,7 +572,7 @@ pub(crate) fn stats_kea_leases_cached() -> StatsKeaLeasesReadback {
 fn stats_kea_leases() -> Vec<StatsKeaLease> { stats_kea_leases_cached().entries }
 
 fn fetch_stats_kea_leases() -> Result<Vec<StatsKeaLease>, String> {
-    let readback = caduceus_http("GET", "/api/v1/network/dhcp/leases");
+    let readback = caduceus_http_json("POST", "/api/v1/network/kea-dhcp/list-the-dhcp-leases-from-the-kea-lease-file", serde_json::json!({}), None);
     if !readback.ok { return Err(if readback.first_missing_signal.trim().is_empty() { "caduceus-lease-door-unavailable".to_owned() } else { readback.first_missing_signal }); }
     let rows = readback.body.get("payload").and_then(|payload| payload.get("result")).and_then(serde_json::Value::as_array)
         .ok_or_else(|| "caduceus-lease-result-malformed".to_owned())?;
