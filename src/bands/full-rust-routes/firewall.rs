@@ -12,14 +12,12 @@ fn firewall_guest_refusal(path: &str) -> Response {
         .into_response()
 }
 
-fn firewall_seated_read(method: &str, caduceus_path: &str) -> CaduceusHttpReadback {
-    caduceus_http(method, caduceus_path)
+fn firewall_seated_read(caduceus_path: &str, body: serde_json::Value) -> CaduceusHttpReadback {
+    caduceus_http_json("POST", caduceus_path, body, None)
 }
 
 fn firewall_payload(
     payload: Option<Json<serde_json::Value>>,
-    schema: &str,
-    path_mac: Option<&str>,
     crown_path: &str,
 ) -> Result<serde_json::Value, Response> {
     let mut metadata = payload
@@ -38,10 +36,7 @@ fn firewall_payload(
         )
             .into_response());
     };
-    fields.insert("schema".to_string(), serde_json::json!(schema));
-    if let Some(mac) = path_mac {
-        fields.insert("mac".to_string(), serde_json::json!(mac));
-    }
+    fields.remove("schema");
     Ok(metadata)
 }
 
@@ -120,7 +115,7 @@ async fn firewall_observed_route(headers: axum::http::HeaderMap) -> Response {
         return refusal;
     }
     firewall_staff_response(
-        firewall_seated_read("GET", "/api/v1/network/firewall/observed"),
+        firewall_seated_read("/api/v1/network/nftables-child-filter/list-the-devices-observed-on-the-lan-with-their-child-filter-policy", serde_json::json!({})),
         crown_path,
     )
 }
@@ -131,7 +126,7 @@ async fn firewall_children_route(headers: axum::http::HeaderMap) -> Response {
         return refusal;
     }
     firewall_staff_response(
-        firewall_seated_read("GET", "/api/v1/network/firewall/children"),
+        firewall_seated_read("/api/v1/network/nftables-child-filter/list-every-filtered-child-device-with-its-way-and-hostnames", serde_json::json!({})),
         crown_path,
     )
 }
@@ -144,19 +139,14 @@ async fn firewall_register_route(
     if let Some(refusal) = firewall_admin(&headers, crown_path) {
         return refusal;
     }
-    let body = match firewall_payload(
-        payload,
-        "caduceus.staff.v1",
-        None,
-        crown_path,
-    ) {
+    let body = match firewall_payload(payload, crown_path) {
         Ok(body) => body,
         Err(refusal) => return refusal,
     };
     firewall_staff_response(
         firewall_seated_mutation(
             &headers,
-            "/api/v1/network/firewall/register",
+            "/api/v1/network/nftables-child-filter/add-one-filtered-child-device-with-its-way-and-hostnames-by-its-mac",
             "POST",
             Some(body),
         ),
@@ -172,12 +162,12 @@ async fn firewall_way_route(
     if let Some(refusal) = firewall_admin(&headers, crown_path) {
         return refusal;
     }
-    let body = match firewall_payload(payload, "caduceus.staff.v1", None, crown_path) {
+    let body = match firewall_payload(payload, crown_path) {
         Ok(body) => body,
         Err(refusal) => return refusal,
     };
     firewall_staff_response(
-        firewall_seated_mutation(&headers, "/api/v1/network/firewall/way/set", "POST", Some(body)),
+        firewall_seated_mutation(&headers, "/api/v1/network/nftables-child-filter/set-the-way-of-one-filtered-child-device-by-its-mac-to-blocked-or-allowlist", "POST", Some(body)),
         crown_path,
     )
 }
@@ -190,9 +180,8 @@ async fn firewall_unregister_route(
     if let Some(refusal) = firewall_admin(&headers, &crown_path) {
         return refusal;
     }
-    let caduceus_path = format!("/api/v1/network/firewall/children/{mac}");
     firewall_staff_response(
-        firewall_seated_mutation(&headers, &caduceus_path, "DELETE", None),
+        firewall_seated_mutation(&headers, "/api/v1/network/nftables-child-filter/remove-one-filtered-child-device-by-its-mac", "POST", Some(serde_json::json!({"mac": mac}))),
         &crown_path,
     )
 }
@@ -205,8 +194,7 @@ async fn firewall_whitelist_get_route(
     if let Some(refusal) = firewall_admin(&headers, &crown_path) {
         return refusal;
     }
-    let caduceus_path = format!("/api/v1/network/firewall/children/{mac}/whitelist");
-    firewall_staff_response(firewall_seated_read("GET", &caduceus_path), &crown_path)
+    firewall_staff_response(firewall_seated_read("/api/v1/network/nftables-child-filter/read-the-hostname-whitelist-of-one-filtered-child-device-by-its-mac", serde_json::json!({"mac": mac})), &crown_path)
 }
 
 async fn firewall_whitelist_set_route(
@@ -218,18 +206,19 @@ async fn firewall_whitelist_set_route(
     if let Some(refusal) = firewall_admin(&headers, &crown_path) {
         return refusal;
     }
-    let body = match firewall_payload(
-        payload,
-        "caduceus.network.firewall.whitelist.v1",
-        Some(&mac),
-        &crown_path,
-    ) {
+    let payload = match firewall_payload(payload, &crown_path) {
         Ok(body) => body,
         Err(refusal) => return refusal,
     };
-    let caduceus_path = format!("/api/v1/network/firewall/children/{mac}/whitelist");
+    let mut body = serde_json::json!({"mac": mac});
+    if let Some(hostnames) = payload.get("hostnames") {
+        body["hostnames"] = hostnames.clone();
+    }
+    if let Some(revision) = payload.get("revision").or_else(|| payload.get("expectedRevision")) {
+        body["revision"] = revision.clone();
+    }
     firewall_staff_response(
-        firewall_seated_mutation(&headers, &caduceus_path, "PUT", Some(body)),
+        firewall_seated_mutation(&headers, "/api/v1/network/nftables-child-filter/set-the-hostname-whitelist-of-one-filtered-child-device-by-its-mac-at-its-revision", "POST", Some(body)),
         &crown_path,
     )
 }
