@@ -39,7 +39,7 @@ async fn caduceus_status_route(_headers: axum::http::HeaderMap) -> impl IntoResp
 }
 
 async fn caduceus_update_check_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    caduceus_mutation_route(&headers, "update_check", "/api/v1/update/check")
+    caduceus_mutation_route(&headers, "update_check", "/api/v1/appliance/harmonia-update-engine/verify-whether-a-harmonia-update-is-available-and-record-the-check")
 }
 
 async fn caduceus_update_now_route(headers: axum::http::HeaderMap) -> impl IntoResponse {
@@ -107,7 +107,7 @@ fn update_manager_named_read(headers: &axum::http::HeaderMap, path: &str) -> (St
 async fn update_manager_status(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_named_read(&headers, "/api/v1/appliance/harmonia-update-engine/read-the-harmonia-update-profile-state-and-route-presence") }
 async fn update_manager_modules(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_named_read(&headers, "/api/v1/appliance/harmonia-module-profile/list-all-modules-with-enabled-state-and-metadata") }
 async fn update_manager_history(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_named_read(&headers, "/api/v1/appliance/harmonia-update-engine/list-every-harmonia-update-history-entry") }
-async fn update_manager_interactables(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_read(&headers, "/api/v1/interactables") }
+async fn update_manager_interactables(headers: axum::http::HeaderMap) -> impl IntoResponse { update_manager_named_read(&headers, "/api/v1/appliance/harmonia-pending-interactables/list-every-pending-harmonia-interactable") }
 
 fn update_manager_segment(id: &str) -> Option<String> {
     if id.is_empty() || id.len() > 512 || id.chars().any(char::is_control) { return None; }
@@ -137,9 +137,15 @@ async fn update_manager_module(headers: axum::http::HeaderMap, Path(id): Path<St
 }
 
 async fn update_manager_interactable(headers: axum::http::HeaderMap, Path((id, action)): Path<(String, String)>) -> (StatusCode, Json<serde_json::Value>) {
-    let Some(id) = update_manager_segment(&id) else { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok":false}))); };
+    let Some(_) = update_manager_segment(&id) else { return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok":false}))); };
     if !matches!(action.as_str(), "run" | "silence" | "unsilence") { return (StatusCode::NOT_FOUND, Json(serde_json::json!({"ok":false}))); }
-    update_manager_mutation(&headers, &format!("/api/v1/interactables/{id}/{action}"), None)
+    let path = match action.as_str() {
+        "run" => "/api/v1/appliance/harmonia-pending-interactables/run-one-pending-harmonia-interactable-by-its-id",
+        "silence" => "/api/v1/appliance/harmonia-pending-interactables/set-one-harmonia-interactable-silenced-on-by-its-id",
+        "unsilence" => "/api/v1/appliance/harmonia-pending-interactables/set-one-harmonia-interactable-silenced-off-by-its-id",
+        _ => unreachable!(),
+    };
+    update_manager_mutation(&headers, path, Some(serde_json::json!({"id": id})))
 }
 
 #[derive(Deserialize)]
