@@ -53,8 +53,8 @@ async fn wake_on_lan_wake_route(request: axum::extract::Request) -> Response {
         };
     }
     let readback = caduceus_actuate_json(
-        &mutation_authority(), &headers, "/api/v1/network/device/wake",
-        serde_json::json!({ "action": "send", "mac": mac, "broadcast": broadcast }),
+        &mutation_authority(), &headers, "/api/v1/network/wake-on-lan/send-a-wake-on-lan-magic-packet-to-one-lan-device-by-its-mac-and-broadcast",
+        serde_json::json!({ "mac": mac, "broadcast": broadcast }),
     );
     if htmx {
         return wake_on_lan_fragment(readback.ok, if readback.ok { "" } else { &readback.first_missing_signal });
